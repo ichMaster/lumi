@@ -10,7 +10,7 @@ ROADMAP, EMOTION). This is a **spec-first** repository built version by version.
 
 ## Current version
 
-**v0.1 — Skeleton and canon.** The interface-independent `core`, a thin
+**0.1.0 — v0.1 Skeleton and canon.** The interface-independent `core`, a thin
 `LLMClient` seam over Claude Haiku, Лілі's authored canon as the system prompt, a
 local `Repository`, and a Textual TUI that holds a dialogue.
 

@@ -1,0 +1,17 @@
+Lumi — Release notes
+====================
+
+Version 0.1.0 (2026-06-06)
+---------------------------
+- v0.1 — Skeleton and canon (the foundation): interface-independent core with a
+  single reply(user_text, session) contract; no interface logic leaks into it.
+- LLMClient seam over Claude Haiku (Anthropic SDK), with a MockLLMClient and a
+  bounded retry — tests never call paid APIs.
+- Лілі's authored Ukrainian canon loaded verbatim as the system prompt.
+- Repository interface + local JSON store; session messages persist and reload.
+- Textual TUI: scrollable history, input, clean exit; model calls run off the UI
+  thread; failures degrade to a readable line.
+- TUI polish: color-coded speakers, spaced/bordered panels, Markdown rendering of
+  Лілі's replies, clipboard copy (Ctrl+Y / Ctrl+O), clear screen (Ctrl+L), and a
+  mouse-selection toggle (Ctrl+T).
+- Tooling: uv project, ruff + pytest (41 tests, mock model — no paid APIs).
