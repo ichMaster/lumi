@@ -87,3 +87,34 @@ async def test_model_failure_degrades_to_a_readable_line(tmp_path):
         assert any(ERROR_LINE in line for line in app.transcript)
         # The loop is still alive: the input is re-enabled and focused.
         assert app.query_one("#prompt").disabled is False
+
+
+async def test_ctrl_y_copies_lili_last_reply(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Це **відповідь**.")))
+    copied: list[str] = []
+    async with app.run_test() as pilot:
+        app.copy_to_clipboard = copied.append  # capture OSC-52 payload
+        await _submit(pilot, app, "привіт")
+        await pilot.press("ctrl+y")
+        await pilot.pause()
+        assert copied == ["Це **відповідь**."]
+
+
+async def test_copy_all_copies_full_conversation(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("вітаю")))
+    copied: list[str] = []
+    async with app.run_test() as pilot:
+        app.copy_to_clipboard = copied.append
+        await _submit(pilot, app, "привіт")
+        app.action_copy_all()
+        assert copied and "Ти: привіт" in copied[0] and "Лілі: вітаю" in copied[0]
+
+
+async def test_copy_reply_with_nothing_yet_does_not_copy(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("...")))
+    copied: list[str] = []
+    async with app.run_test() as pilot:
+        app.copy_to_clipboard = copied.append
+        app.action_copy_reply()  # no reply yet
+        await pilot.pause()
+        assert copied == []

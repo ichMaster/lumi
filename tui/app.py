@@ -38,6 +38,8 @@ class LumiApp(App[None]):
     BINDINGS = [
         ("ctrl+q", "quit", "Вийти"),
         ("ctrl+c", "quit", "Вийти"),
+        ("ctrl+y", "copy_reply", "Копіювати відповідь"),
+        ("ctrl+o", "copy_all", "Копіювати все"),
     ]
     CSS = """
     #history {
@@ -59,12 +61,17 @@ class LumiApp(App[None]):
         self._session = session
         # Plain-text mirror of the conversation (for tests + simplicity).
         self.transcript: list[str] = []
+        # Лілі's most recent reply, for one-key copy.
+        self._last_reply: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical():
             yield RichLog(id="history", wrap=True, markup=False)
-            yield Input(id="prompt", placeholder="Напиши Лілі…  (Ctrl+Q — вийти)")
+            yield Input(
+                id="prompt",
+                placeholder="Напиши Лілі…  (Ctrl+Y — копіювати відповідь · Ctrl+Q — вийти)",
+            )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -119,9 +126,27 @@ class LumiApp(App[None]):
         try:
             assert self._session is not None
             reply = await asyncio.to_thread(self._core.reply, text, self._session)
+            self._last_reply = reply
             self._say_markdown(LILI_LABEL, reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
             prompt.disabled = False
             prompt.focus()
+
+    # --- clipboard actions ----------------------------------------------
+    def action_copy_reply(self) -> None:
+        """Copy Лілі's last reply to the system clipboard (OSC-52)."""
+        if not self._last_reply:
+            self.notify("Ще немає відповіді Лілі для копіювання.", severity="warning")
+            return
+        self.copy_to_clipboard(self._last_reply)
+        self.notify("Скопійовано останню відповідь Лілі.")
+
+    def action_copy_all(self) -> None:
+        """Copy the whole conversation (plain text) to the system clipboard."""
+        if not self.transcript:
+            self.notify("Розмова поки порожня.", severity="warning")
+            return
+        self.copy_to_clipboard("\n".join(self.transcript))
+        self.notify(f"Скопійовано всю розмову ({len(self.transcript)} рядків).")
