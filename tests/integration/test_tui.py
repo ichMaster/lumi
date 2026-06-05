@@ -4,6 +4,8 @@ Drives a turn through the real app against MockLLMClient (no paid call) and
 asserts a model failure degrades to a readable line instead of crashing.
 """
 
+from rich.markdown import Markdown
+
 from core.agent import Core
 from core.llm import MockLLMClient
 from state.local_store import JsonRepository
@@ -42,6 +44,15 @@ async def test_tui_drives_a_turn_against_mock_model(tmp_path):
         await _submit(pilot, app, "привіт")
         assert any("Ти: привіт" in line for line in app.transcript)
         assert any("Лілі: Привіт. Я Лілі." in line for line in app.transcript)
+
+
+def test_lili_reply_is_rendered_as_markdown():
+    # Лілі writes Markdown; the body must render as Markdown, not literal text.
+    label, body = LumiApp._markdown_block(LILI_LABEL, "це **жирно** і `код`", LILI_COLOR)
+    assert isinstance(body, Markdown)
+    assert body.markup == "це **жирно** і `код`"
+    # The label keeps the speaker color.
+    assert LILI_COLOR in str(label.style)
 
 
 def test_speakers_have_distinct_colors():

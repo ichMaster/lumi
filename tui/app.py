@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 
+from rich.console import RenderableType
+from rich.markdown import Markdown
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
@@ -78,13 +80,31 @@ class LumiApp(App[None]):
         line.append(message, style=color)
         return line
 
-    def _emit(self, plain: str, renderable: Text | None = None) -> None:
-        # ``transcript`` stays plain text (tests + simplicity); the widget is colored.
+    @staticmethod
+    def _markdown_block(label: str, message: str, color: str) -> list[RenderableType]:
+        """A colored speaker label, then the message rendered as Markdown.
+
+        Лілі writes Markdown (``**bold**``, italics, lists, code); render it so
+        the formatting shows instead of literal asterisks. The label keeps the
+        speaker color; the body uses Markdown's own styling.
+        """
+        return [Text(f"{label}:", style=f"bold {color}"), Markdown(message)]
+
+    def _emit(self, plain: str, *renderables: RenderableType) -> None:
+        # ``transcript`` stays plain text (tests + simplicity); the widget is rich.
         self.transcript.append(plain)
-        self.query_one("#history", RichLog).write(renderable if renderable is not None else plain)
+        log = self.query_one("#history", RichLog)
+        if renderables:
+            for renderable in renderables:
+                log.write(renderable)
+        else:
+            log.write(plain)
 
     def _say(self, label: str, message: str, color: str) -> None:
         self._emit(f"{label}: {message}", self._styled(label, message, color))
+
+    def _say_markdown(self, label: str, message: str, color: str) -> None:
+        self._emit(f"{label}: {message}", *self._markdown_block(label, message, color))
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
@@ -99,7 +119,7 @@ class LumiApp(App[None]):
         try:
             assert self._session is not None
             reply = await asyncio.to_thread(self._core.reply, text, self._session)
-            self._say(LILI_LABEL, reply, LILI_COLOR)
+            self._say_markdown(LILI_LABEL, reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
