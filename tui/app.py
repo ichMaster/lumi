@@ -40,6 +40,8 @@ class LumiApp(App[None]):
         ("ctrl+c", "quit", "Вийти"),
         ("ctrl+y", "copy_reply", "Копіювати відповідь"),
         ("ctrl+o", "copy_all", "Копіювати все"),
+        ("ctrl+l", "clear", "Очистити екран"),
+        ("ctrl+t", "toggle_mouse", "Виділення мишею"),
     ]
     CSS = """
     #history {
@@ -63,6 +65,8 @@ class LumiApp(App[None]):
         self.transcript: list[str] = []
         # Лілі's most recent reply, for one-key copy.
         self._last_reply: str | None = None
+        # When True the app releases the mouse so the terminal can select text.
+        self._mouse_selection: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -150,3 +154,27 @@ class LumiApp(App[None]):
             return
         self.copy_to_clipboard("\n".join(self.transcript))
         self.notify(f"Скопійовано всю розмову ({len(self.transcript)} рядків).")
+
+    def action_clear(self) -> None:
+        """Clear the on-screen history. Лілі still remembers (the store is kept)."""
+        self.query_one("#history", RichLog).clear()
+        self.transcript.clear()
+        self._last_reply = None
+        self.notify("Екран очищено. Лілі памʼятає розмову — історія збережена.")
+
+    def action_toggle_mouse(self) -> None:
+        """Release/recapture the mouse so the terminal can select text natively.
+
+        While released, drag-select + your terminal's copy works on the chat;
+        Textual's mouse features (scroll, click) pause until you toggle back.
+        """
+        self._mouse_selection = not self._mouse_selection
+        driver = self._driver
+        if self._mouse_selection:
+            if driver is not None and hasattr(driver, "_disable_mouse_support"):
+                driver._disable_mouse_support()
+            self.notify("Виділення мишею увімкнено — тягни, щоб виділити й скопіювати. Ctrl+T — назад.")
+        else:
+            if driver is not None and hasattr(driver, "_enable_mouse_support"):
+                driver._enable_mouse_support()
+            self.notify("Виділення мишею вимкнено (звичайний режим).")

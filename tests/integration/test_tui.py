@@ -118,3 +118,35 @@ async def test_copy_reply_with_nothing_yet_does_not_copy(tmp_path):
         app.action_copy_reply()  # no reply yet
         await pilot.pause()
         assert copied == []
+
+
+async def test_ctrl_l_clears_screen_but_keeps_memory(tmp_path):
+    repo = JsonRepository(tmp_path / "store.json")
+    core = Core(
+        llm=MockLLMClient("вітаю"),
+        repository=repo,
+        system_prompt="Ти — Лілі.",
+        model="m",
+    )
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert app.transcript
+        session_id = app._session.id
+        await pilot.press("ctrl+l")
+        await pilot.pause()
+        assert app.transcript == []
+        assert app._last_reply is None
+        # Лілі still remembers — the persisted store kept the turn.
+        assert len(repo.load_messages(session_id)) == 2
+
+
+async def test_toggle_mouse_selection_flips_flag(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("...")))
+    async with app.run_test() as pilot:
+        assert app._mouse_selection is False
+        app.action_toggle_mouse()
+        assert app._mouse_selection is True
+        app.action_toggle_mouse()
+        assert app._mouse_selection is False
+        await pilot.pause()
