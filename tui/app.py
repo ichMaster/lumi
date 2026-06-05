@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, Input, RichLog
@@ -21,6 +22,11 @@ from core.repository import Session
 USER_LABEL = "Ти"
 LILI_LABEL = "Лілі"
 ERROR_LINE = "⚠ Лілі зараз недоступна. Спробуй ще раз за мить."
+
+# Speaker colors — so your lines and Лілі's read apart at a glance.
+USER_COLOR = "cyan"
+LILI_COLOR = "green"
+ERROR_COLOR = "red"
 
 
 class LumiApp(App[None]):
@@ -51,9 +57,21 @@ class LumiApp(App[None]):
             self._session = self._core.start_session()
         self.query_one("#prompt", Input).focus()
 
-    def _emit(self, line: str) -> None:
-        self.transcript.append(line)
-        self.query_one("#history", RichLog).write(line)
+    @staticmethod
+    def _styled(label: str, message: str, color: str) -> Text:
+        """A colored ``label: message`` line (bold label, tinted message)."""
+        line = Text()
+        line.append(f"{label}: ", style=f"bold {color}")
+        line.append(message, style=color)
+        return line
+
+    def _emit(self, plain: str, renderable: Text | None = None) -> None:
+        # ``transcript`` stays plain text (tests + simplicity); the widget is colored.
+        self.transcript.append(plain)
+        self.query_one("#history", RichLog).write(renderable if renderable is not None else plain)
+
+    def _say(self, label: str, message: str, color: str) -> None:
+        self._emit(f"{label}: {message}", self._styled(label, message, color))
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
@@ -63,14 +81,14 @@ class LumiApp(App[None]):
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
         prompt.disabled = True
-        self._emit(f"{USER_LABEL}: {text}")
+        self._say(USER_LABEL, text, USER_COLOR)
 
         try:
             assert self._session is not None
             reply = await asyncio.to_thread(self._core.reply, text, self._session)
-            self._emit(f"{LILI_LABEL}: {reply}")
+            self._say(LILI_LABEL, reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
-            self._emit(ERROR_LINE)
+            self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
             prompt.disabled = False
             prompt.focus()

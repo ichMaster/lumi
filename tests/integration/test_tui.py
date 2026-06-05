@@ -7,7 +7,15 @@ asserts a model failure degrades to a readable line instead of crashing.
 from core.agent import Core
 from core.llm import MockLLMClient
 from state.local_store import JsonRepository
-from tui.app import ERROR_LINE, LumiApp
+from tui.app import (
+    ERROR_COLOR,
+    ERROR_LINE,
+    LILI_COLOR,
+    LILI_LABEL,
+    USER_COLOR,
+    USER_LABEL,
+    LumiApp,
+)
 
 
 def _core(tmp_path, llm):
@@ -34,6 +42,19 @@ async def test_tui_drives_a_turn_against_mock_model(tmp_path):
         await _submit(pilot, app, "привіт")
         assert any("Ти: привіт" in line for line in app.transcript)
         assert any("Лілі: Привіт. Я Лілі." in line for line in app.transcript)
+
+
+def test_speakers_have_distinct_colors():
+    # Your lines and Лілі's must be styled differently so they read apart.
+    assert USER_COLOR != LILI_COLOR
+    user_line = LumiApp._styled(USER_LABEL, "привіт", USER_COLOR)
+    lili_line = LumiApp._styled(LILI_LABEL, "вітаю", LILI_COLOR)
+    user_styles = {str(span.style) for span in user_line.spans}
+    lili_styles = {str(span.style) for span in lili_line.spans}
+    assert any(USER_COLOR in s for s in user_styles)
+    assert any(LILI_COLOR in s for s in lili_styles)
+    assert user_styles.isdisjoint(lili_styles)
+    assert ERROR_COLOR not in {USER_COLOR, LILI_COLOR}
 
 
 async def test_empty_input_is_ignored(tmp_path):
