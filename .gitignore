@@ -223,3 +223,9 @@ __marimo__/
 # Lumi local runtime store (v0.1)
 .lumi/
 state/data/
+
+# Local chat export (not for the repo)
+chat-export.md
+
+# Local Лілі chat export (not for the repo)
+lili-chat-export.md
