@@ -6,7 +6,13 @@ from core.config import DEFAULT_MEMORY_WINDOW, DEFAULT_MODEL, Config, load_confi
 
 
 def test_defaults_without_env(monkeypatch):
-    for key in ("LUMI_MODEL", "LUMI_PROVIDER", "LUMI_CANON_PATH", "LUMI_MEMORY_WINDOW"):
+    for key in (
+        "LUMI_MODEL",
+        "LUMI_PROVIDER",
+        "LUMI_CANON_PATH",
+        "LUMI_STORE_PATH",
+        "LUMI_MEMORY_WINDOW",
+    ):
         monkeypatch.delenv(key, raising=False)
 
     cfg = load_config(load_env=False)
@@ -15,6 +21,7 @@ def test_defaults_without_env(monkeypatch):
     assert cfg.model == DEFAULT_MODEL
     assert cfg.model.startswith("claude-haiku")
     assert cfg.canon_path.name == "lili.md"
+    assert cfg.store_path.name == "store.json"
     assert cfg.memory_window == DEFAULT_MEMORY_WINDOW
 
 

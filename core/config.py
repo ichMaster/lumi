@@ -26,6 +26,9 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 # Default canon path (config-referenced — never hardcoded in the core).
 DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 
+# Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
+DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
+
 # Rolling-window placeholder; the trimming policy lands in v0.2.
 DEFAULT_MEMORY_WINDOW = 20
 
@@ -41,6 +44,7 @@ class Config:
     provider: str = "anthropic"
     model: str = DEFAULT_MODEL
     canon_path: Path = DEFAULT_CANON_PATH
+    store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     api_key: str | None = field(default=None, repr=False)
 
@@ -61,6 +65,9 @@ def load_config(*, load_env: bool = True) -> Config:
     canon_env = os.getenv("LUMI_CANON_PATH")
     canon_path = Path(canon_env) if canon_env else DEFAULT_CANON_PATH
 
+    store_env = os.getenv("LUMI_STORE_PATH")
+    store_path = Path(store_env) if store_env else DEFAULT_STORE_PATH
+
     window_env = os.getenv("LUMI_MEMORY_WINDOW")
     memory_window = int(window_env) if window_env else DEFAULT_MEMORY_WINDOW
 
@@ -68,6 +75,7 @@ def load_config(*, load_env: bool = True) -> Config:
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
         canon_path=canon_path,
+        store_path=store_path,
         memory_window=memory_window,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )

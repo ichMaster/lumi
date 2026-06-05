@@ -219,3 +219,7 @@ __marimo__/
 
 # macOS
 .DS_Store
+
+# Lumi local runtime store (v0.1)
+.lumi/
+state/data/
