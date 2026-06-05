@@ -37,6 +37,19 @@ class LumiApp(App[None]):
         ("ctrl+q", "quit", "Вийти"),
         ("ctrl+c", "quit", "Вийти"),
     ]
+    CSS = """
+    #history {
+        height: 1fr;
+        border: round $primary;
+        padding: 0 1;
+        margin: 1 1 1 1;
+    }
+
+    #prompt {
+        border: round $accent;
+        margin: 1 1 1 1;
+    }
+    """
 
     def __init__(self, core: Core, session: Session | None = None) -> None:
         super().__init__()
