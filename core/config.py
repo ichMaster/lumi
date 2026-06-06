@@ -32,6 +32,10 @@ DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 # Rolling-window placeholder; the trimming policy lands in v0.2.
 DEFAULT_MEMORY_WINDOW = 20
 
+# Model output cap, and the extended-thinking budget (0 = thinking off).
+DEFAULT_MAX_TOKENS = 1024
+DEFAULT_THINKING_BUDGET = 0
+
 
 @dataclass(frozen=True)
 class Config:
@@ -46,6 +50,8 @@ class Config:
     canon_path: Path = DEFAULT_CANON_PATH
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
+    max_tokens: int = DEFAULT_MAX_TOKENS
+    thinking_budget: int = DEFAULT_THINKING_BUDGET
     api_key: str | None = field(default=None, repr=False)
 
 
@@ -71,11 +77,19 @@ def load_config(*, load_env: bool = True) -> Config:
     window_env = os.getenv("LUMI_MEMORY_WINDOW")
     memory_window = int(window_env) if window_env else DEFAULT_MEMORY_WINDOW
 
+    max_tokens_env = os.getenv("LUMI_MAX_TOKENS")
+    max_tokens = int(max_tokens_env) if max_tokens_env else DEFAULT_MAX_TOKENS
+
+    thinking_env = os.getenv("LUMI_THINKING")
+    thinking_budget = int(thinking_env) if thinking_env else DEFAULT_THINKING_BUDGET
+
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
         canon_path=canon_path,
         store_path=store_path,
         memory_window=memory_window,
+        max_tokens=max_tokens,
+        thinking_budget=thinking_budget,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )

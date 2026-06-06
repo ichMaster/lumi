@@ -200,7 +200,11 @@ def build_core(
         repository = JsonRepository(cfg.store_path)
 
     if llm is None:
-        llm = AnthropicClient(cfg.api_key)
+        llm = AnthropicClient(
+            cfg.api_key,
+            max_tokens=cfg.max_tokens,
+            thinking_budget=cfg.thinking_budget,
+        )
 
     canon = load_canon(cfg.canon_path)
     return Core(

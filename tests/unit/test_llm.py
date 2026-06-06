@@ -66,6 +66,45 @@ def test_anthropic_client_satisfies_protocol_without_network():
     assert client.reply("sys", [{"role": "user", "content": "hi"}], "claude-haiku-4-5-20251001") == "ok"
 
 
+class _RecordingClient:
+    """Captures the kwargs passed to messages.create; returns a canned reply."""
+
+    def __init__(self):
+        self.last_kwargs = None
+
+        class _Block:
+            type = "text"
+            text = "ok"
+
+        class _Resp:
+            content = [_Block()]
+
+        class _Messages:
+            def create(_self, **kwargs):
+                self.last_kwargs = kwargs
+                return _Resp()
+
+        self.messages = _Messages()
+
+
+def test_thinking_off_by_default_sends_no_thinking_param():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", _client=rec)
+    client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
+    assert "thinking" not in rec.last_kwargs
+    assert rec.last_kwargs["max_tokens"] == 1024
+
+
+def test_thinking_enabled_passes_budget_and_raises_max_tokens():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", max_tokens=1024, thinking_budget=2048, _client=rec)
+    client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
+
+    assert rec.last_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+    # max_tokens must exceed the budget (with reply headroom).
+    assert rec.last_kwargs["max_tokens"] > 2048
+
+
 def test_retry_succeeds_after_transient_failures():
     calls = {"n": 0}
 
