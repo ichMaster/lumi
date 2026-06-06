@@ -10,9 +10,10 @@ ROADMAP, EMOTION). This is a **spec-first** repository built version by version.
 
 ## Current version
 
-**0.1.0 — v0.1 Skeleton and canon.** The interface-independent `core`, a thin
-`LLMClient` seam over Claude Haiku, Лілі's authored canon as the system prompt, a
-local `Repository`, and a Textual TUI that holds a dialogue.
+**0.2.0 — v0.2 Three-layer memory.** User-scoped core + `Repository` (per-user
+isolation), a rolling session window, end-of-session `ShortSummary` + accumulated
+`LongTermFact` rehydrated at startup, and TUI `/memory` / `/forget` commands — so
+Лілі recalls past sessions and durable facts about you across restarts.
 
 ## Layout
 

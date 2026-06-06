@@ -1,6 +1,22 @@
 Lumi — Release notes
 ====================
 
+Version 0.2.0 (2026-06-07)
+---------------------------
+- v0.2 — Three-layer memory (LUMI-007…012): the core and Repository are now
+  user-scoped (user_id on every record) with a data-level isolation invariant;
+  rolling-window session history; end-of-session ShortSummary; accumulated
+  LongTermFact; startup rehydration of the user's context into the prompt;
+  TUI /memory and /forget commands.
+- Extended thinking (config-switchable): Anthropic adaptive thinking on Opus 4.8
+  via .env (LUMI_THINKING on/off, LUMI_EFFORT low|medium|high|xhigh|max); model
+  selectable via LUMI_MODEL.
+- TUI: Лілі's reasoning shown greyed above her reply; a technical status line
+  (online/requesting…/offline) plus a separate statistics line (tokens +
+  latency + running totals); quit no longer blocks on slow housekeeping calls.
+- Roadmap: Mood of the day moved to v0.5 (after emoji); v0.6–v0.8 renumbered.
+- Tests: 85 (mock model — no paid APIs); ruff clean.
+
 Version 0.1.0 (2026-06-06)
 ---------------------------
 - v0.1 — Skeleton and canon (the foundation): interface-independent core with a
