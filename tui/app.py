@@ -17,7 +17,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, Label, RichLog
+from textual.widgets import Footer, Header, Input, Label, RichLog, Static
 
 from core.agent import Core
 from core.repository import Session
@@ -101,6 +101,13 @@ class LumiApp(App[None]):
         border: round $accent;
         margin: 1 1 1 1;
     }
+
+    #status {
+        height: 1;
+        padding: 0 2;
+        color: $text-muted;
+        background: $panel;
+    }
     """
 
     def __init__(self, core: Core, session: Session | None = None) -> None:
@@ -113,9 +120,12 @@ class LumiApp(App[None]):
         self._last_reply: str | None = None
         # When True the app releases the mouse so the terminal can select text.
         self._mouse_selection: bool = False
+        # Connection state for the status line (False after a failed turn).
+        self._connected: bool = True
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield Static(id="status")
         with Vertical():
             yield RichLog(id="history", wrap=True, markup=False)
             yield Input(
@@ -127,6 +137,7 @@ class LumiApp(App[None]):
     def on_mount(self) -> None:
         if self._session is None:
             self._session = self._core.start_session()
+        self._render_status()
         self.query_one("#prompt", Input).focus()
 
     def on_unmount(self) -> None:
@@ -176,6 +187,45 @@ class LumiApp(App[None]):
         plain = f"{THINKING_PREFIX} {thinking}"
         self._emit(plain, Text(plain, style=f"italic {THINKING_COLOR}"))
 
+    # --- status line -----------------------------------------------------
+    @staticmethod
+    def _fmt_tokens(n: int | None) -> str:
+        if n is None:
+            return "—"
+        return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+    @staticmethod
+    def _fmt_latency(ms: int) -> str:
+        return f"{ms / 1000:.1f}с" if ms >= 1000 else f"{ms}мс"
+
+    @staticmethod
+    def _short_model(model: str) -> str:
+        return model[len("claude-") :] if model.startswith("claude-") else model
+
+    def _status_text(self, busy: str | None = None) -> str:
+        model = self._short_model(self._core.model)
+        if busy:
+            return f"[yellow]◐[/] {model} · {busy}"
+        if not self._connected:
+            return f"[red]⚠[/] {model} · немає звʼязку — спробуй ще раз"
+        stats = self._core.last_stats
+        if stats is None:
+            return f"[green]●[/] {model} · готова"
+        think = " 💭" if stats.thinking else ""
+        totals = self._core.totals
+        last = (
+            f"остання ↑{self._fmt_tokens(stats.input_tokens)} "
+            f"↓{self._fmt_tokens(stats.output_tokens)} · {self._fmt_latency(stats.latency_ms)}"
+        )
+        total = (
+            f"усього {totals.turns} · ↑{self._fmt_tokens(totals.input_tokens)} "
+            f"↓{self._fmt_tokens(totals.output_tokens)} · сер {self._fmt_latency(totals.avg_latency_ms)}"
+        )
+        return f"[green]●[/] {model}{think} · {last} · {total}"
+
+    def _render_status(self, busy: str | None = None) -> None:
+        self.query_one("#status", Static).update(self._status_text(busy))
+
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         if not text:
@@ -197,18 +247,22 @@ class LumiApp(App[None]):
 
         prompt.disabled = True
         self._say(USER_LABEL, text, USER_COLOR)
+        self._render_status(busy="Лілі думає…")  # live: working, not frozen
 
         try:
             assert self._session is not None
             reply = await asyncio.to_thread(self._core.reply, text, self._session)
+            self._connected = True
             self._last_reply = reply
             thinking = getattr(self._core, "last_thinking", None)
             if thinking:
                 self._emit_thinking(thinking)
             self._say_markdown(LILI_LABEL, reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
+            self._connected = False
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
+            self._render_status()
             prompt.disabled = False
             prompt.focus()
 

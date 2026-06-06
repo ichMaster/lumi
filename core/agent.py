@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.config import DEFAULT_MEMORY_WINDOW, Config, load_config
-from core.llm import AnthropicClient, LLMClient, Message
+from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
     RECENT_SUMMARIES,
     facts_request,
@@ -48,6 +48,20 @@ class MemoryView:
     facts: list[str]
 
 
+@dataclass
+class UsageTotals:
+    """Running totals across the session (for the TUI status line)."""
+
+    turns: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: int = 0
+
+    @property
+    def avg_latency_ms(self) -> int:
+        return self.latency_ms // self.turns if self.turns else 0
+
+
 class Core:
     """Лілі's interface-independent, user-scoped turn engine."""
 
@@ -70,6 +84,13 @@ class Core:
         # The model's reasoning summary from the last turn (None when thinking is
         # off or absent), for a client to render alongside the reply.
         self.last_thinking: str | None = None
+        # Stats for the last reply + running totals, for the TUI status line.
+        self.last_stats: ResponseStats | None = None
+        self.totals = UsageTotals()
+
+    @property
+    def model(self) -> str:
+        return self._model
 
     @property
     def user_id(self) -> str:
@@ -113,6 +134,12 @@ class Core:
             model=self._model,
         )
         self.last_thinking = getattr(self._llm, "last_thinking", None)
+        self.last_stats = getattr(self._llm, "last_stats", None)
+        if self.last_stats is not None:
+            self.totals.turns += 1
+            self.totals.input_tokens += self.last_stats.input_tokens or 0
+            self.totals.output_tokens += self.last_stats.output_tokens or 0
+            self.totals.latency_ms += self.last_stats.latency_ms
 
         self._repo.append_message(make_message(session.id, self._user_id, "user", user_text))
         self._repo.append_message(make_message(session.id, self._user_id, "lili", reply_text))
@@ -131,8 +158,18 @@ class Core:
         self._repo.end_session(session.id)
         if not history:
             return None
-        summary = self._write_summary(session, history)
-        self._accumulate_facts(history)
+        # Memory housekeeping is internal extraction, not user-facing reasoning —
+        # never spend (slow) extended thinking on it, so quitting stays snappy.
+        llm = self._llm
+        prev_thinking = getattr(llm, "_thinking", None)
+        if prev_thinking:
+            llm._thinking = False
+        try:
+            summary = self._write_summary(session, history)
+            self._accumulate_facts(history)
+        finally:
+            if prev_thinking:
+                llm._thinking = prev_thinking
         return summary
 
     def _write_summary(self, session: Session, history: list) -> ShortSummary | None:

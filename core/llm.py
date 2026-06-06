@@ -13,10 +13,23 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 # A chat message as the core hands it to the model: an Anthropic-style turn.
 Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
+
+
+@dataclass(frozen=True)
+class ResponseStats:
+    """Per-response stats for the last model call (None fields when unavailable)."""
+
+    model: str
+    latency_ms: int
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    thinking: bool = False
 
 
 class LLMError(RuntimeError):
@@ -103,6 +116,8 @@ class AnthropicClient:
         # The reasoning summary from the most recent turn (None when off/absent),
         # so a client can render it (e.g. greyed) alongside the reply.
         self.last_thinking: str | None = None
+        # Per-response stats (latency + token usage) from the last call.
+        self.last_stats: ResponseStats | None = None
         self._retries = retries
         self._backoff = backoff
         self._retryable = tuple(
@@ -128,7 +143,18 @@ class AnthropicClient:
             if self._effort:
                 # Tunes thinking depth / token spend (low|medium|high|xhigh|max).
                 kwargs["output_config"] = {"effort": self._effort}
+            started = time.monotonic()
             resp = self._client.messages.create(**kwargs)
+            latency_ms = int((time.monotonic() - started) * 1000)
+            usage = getattr(resp, "usage", None)
+            self.last_stats = ResponseStats(
+                model=model,
+                latency_ms=latency_ms,
+                input_tokens=getattr(usage, "input_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
+                cache_read_tokens=getattr(usage, "cache_read_input_tokens", None),
+                thinking=self._thinking,
+            )
             self.last_thinking = (
                 "".join(
                     getattr(block, "thinking", "")
@@ -186,10 +212,12 @@ class MockLLMClient:
         self.calls: list[dict[str, object]] = []
         self._thinking_text = thinking
         self.last_thinking: str | None = None
+        self.last_stats: ResponseStats | None = None
 
     def reply(self, system: str, messages: list[Message], model: str) -> str:
         self.calls.append({"system": system, "messages": list(messages), "model": model})
         self.last_thinking = self._thinking_text
+        self.last_stats = ResponseStats(model=model, latency_ms=0, thinking=False)
         if self._fn is not None:
             return self._fn(system, messages, model)
         if self._queue:

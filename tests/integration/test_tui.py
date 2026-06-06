@@ -5,6 +5,7 @@ asserts a model failure degrades to a readable line instead of crashing.
 """
 
 from rich.markdown import Markdown
+from textual.widgets import Static
 
 from core.agent import Core
 from core.llm import MockLLMClient
@@ -108,6 +109,26 @@ async def test_no_thinking_line_when_absent(tmp_path):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
         assert not any(line.startswith("💭") for line in app.transcript)
+
+
+async def test_status_line_shows_model_and_totals_after_a_turn(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test() as pilot:
+        # The status widget is mounted.
+        app.query_one("#status", Static)
+        # Before any turn, the status shows the model + ready.
+        assert "haiku" in app._status_text() and "готова" in app._status_text()
+        await _submit(pilot, app, "привіт")
+        status = app._status_text()
+        assert "haiku" in status
+        assert "усього 1" in status  # one turn counted
+
+
+async def test_status_line_shows_busy_indicator(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test():
+        busy = app._status_text(busy="Лілі думає…")
+        assert "Лілі думає…" in busy
 
 
 async def test_ctrl_y_copies_lili_last_reply(tmp_path):
