@@ -13,7 +13,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from uuid import uuid4
 
-from core.repository import Message, Session, now_iso
+from core.repository import Message, Session, ShortSummary, now_iso
 from core.user import DEFAULT_USER_ID
 
 
@@ -24,6 +24,7 @@ class JsonRepository:
         self._path = Path(path)
         self._sessions: dict[str, Session] = {}
         self._messages: dict[str, list[Message]] = {}
+        self._summaries: dict[str, list[ShortSummary]] = {}  # by user_id
         self._load()
 
     # --- persistence -----------------------------------------------------
@@ -41,12 +42,17 @@ class JsonRepository:
                 raw.setdefault("user_id", DEFAULT_USER_ID)
                 msgs.append(Message(**raw))
             self._messages[sid] = msgs
+        for uid, raws in data.get("summaries", {}).items():
+            self._summaries[uid] = [ShortSummary(**raw) for raw in raws]
 
     def _persist(self) -> None:
         data = {
             "sessions": {sid: asdict(s) for sid, s in self._sessions.items()},
             "messages": {
                 sid: [asdict(m) for m in msgs] for sid, msgs in self._messages.items()
+            },
+            "summaries": {
+                uid: [asdict(s) for s in items] for uid, items in self._summaries.items()
             },
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,3 +89,10 @@ class JsonRepository:
 
     def load_messages(self, session_id: str) -> list[Message]:
         return list(self._messages.get(session_id, []))
+
+    def add_summary(self, summary: ShortSummary) -> None:
+        self._summaries.setdefault(summary.user_id, []).append(summary)
+        self._persist()
+
+    def recent_summaries(self, user_id: str, limit: int = 5) -> list[ShortSummary]:
+        return list(self._summaries.get(user_id, []))[-limit:]

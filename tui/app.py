@@ -83,6 +83,14 @@ class LumiApp(App[None]):
             self._session = self._core.start_session()
         self.query_one("#prompt", Input).focus()
 
+    def on_unmount(self) -> None:
+        # Session-end hook: summarize on exit (best-effort — never block quitting).
+        if self._session is not None:
+            try:
+                self._core.end_session(self._session)
+            except Exception:  # noqa: BLE001
+                pass
+
     @staticmethod
     def _styled(label: str, message: str, color: str) -> Text:
         """A colored ``label: message`` line (bold label, tinted message)."""

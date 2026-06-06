@@ -62,6 +62,16 @@ def make_message(
     )
 
 
+@dataclass(frozen=True)
+class ShortSummary:
+    """The compressed gist of a finished session. Per-user (private)."""
+
+    user_id: str
+    session_id: str
+    summary: str
+    ts: str
+
+
 @runtime_checkable
 class Repository(Protocol):
     """The storage seam — keyed by ``user_id`` (ARCHITECTURE §Storage).
@@ -93,4 +103,12 @@ class Repository(Protocol):
 
     def load_messages(self, session_id: str) -> list[Message]:
         """Load a session's messages in insertion order."""
+        ...
+
+    def add_summary(self, summary: ShortSummary) -> None:
+        """Persist a session's short summary (per-user)."""
+        ...
+
+    def recent_summaries(self, user_id: str, limit: int = 5) -> list[ShortSummary]:
+        """The user's most recent short summaries (newest last), capped at ``limit``."""
         ...
