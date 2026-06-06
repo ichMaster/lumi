@@ -24,6 +24,16 @@ SUMMARY_SYSTEM = (
     "Без вступів і звертань — лише підсумок."
 )
 
+# Instruction for end-of-session long-term fact extraction (one durable fact per line).
+FACTS_SYSTEM = (
+    "Виокрем стійкі, довготривалі факти про співрозмовника з діалогу — "
+    "по одному факту на рядок, стисло (імʼя, уподобання, важливі обставини). "
+    "Лише те, що варто памʼятати надовго. Якщо нічого вартого — поверни порожньо."
+)
+
+# Leading bullet/numbering characters to strip from a fact line.
+_BULLET_CHARS = "-•*–—0123456789.) \t"
+
 
 def trim_history(messages: Sequence[T], max_messages: int) -> list[T]:
     """Keep only the last ``max_messages`` items for the model context.
@@ -45,3 +55,23 @@ def summary_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, st
     """
     transcript = "\n".join(f"{m.role}: {m.text}" for m in messages)
     return SUMMARY_SYSTEM, [{"role": "user", "content": transcript}]
+
+
+def facts_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) for end-of-session long-term fact extraction."""
+    transcript = "\n".join(f"{m.role}: {m.text}" for m in messages)
+    return FACTS_SYSTEM, [{"role": "user", "content": transcript}]
+
+
+def parse_facts(text: str) -> list[str]:
+    """Parse the model's line-per-fact reply into clean fact strings.
+
+    Strips bullets/numbering and drops blank lines; order preserved, no dedup
+    (the core dedups against what's already stored).
+    """
+    facts: list[str] = []
+    for line in text.splitlines():
+        cleaned = line.strip().lstrip(_BULLET_CHARS).strip()
+        if cleaned:
+            facts.append(cleaned)
+    return facts

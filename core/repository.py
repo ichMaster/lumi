@@ -72,6 +72,17 @@ class ShortSummary:
     ts: str
 
 
+@dataclass(frozen=True)
+class LongTermFact:
+    """A durable fact about a user, accumulated across sessions. Per-user (private)."""
+
+    user_id: str
+    fact: str
+    meta: str
+    confidence: float
+    ts: str
+
+
 @runtime_checkable
 class Repository(Protocol):
     """The storage seam — keyed by ``user_id`` (ARCHITECTURE §Storage).
@@ -111,4 +122,12 @@ class Repository(Protocol):
 
     def recent_summaries(self, user_id: str, limit: int = 5) -> list[ShortSummary]:
         """The user's most recent short summaries (newest last), capped at ``limit``."""
+        ...
+
+    def add_fact(self, fact: LongTermFact) -> None:
+        """Persist a durable fact about a user (per-user)."""
+        ...
+
+    def facts(self, user_id: str) -> list[LongTermFact]:
+        """The user's accumulated long-term facts."""
         ...

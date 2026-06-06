@@ -4,7 +4,7 @@ Pins ARCHITECTURE §Data model / §Contracts. Changing a record shape must chang
 this test.
 """
 
-from core.repository import ShortSummary
+from core.repository import LongTermFact, ShortSummary
 
 
 def test_short_summary_shape():
@@ -16,3 +16,14 @@ def test_short_summary_is_per_user():
     # Every short-memory record carries the owning user_id (no cross-user leak).
     s = ShortSummary(user_id="owner", session_id="s1", summary="gist", ts="2026-06-06T00:00:00+00:00")
     assert s.user_id == "owner"
+
+
+def test_long_term_fact_shape():
+    fields = set(LongTermFact.__dataclass_fields__)
+    assert fields == {"user_id", "fact", "meta", "confidence", "ts"}
+
+
+def test_long_term_fact_is_per_user():
+    f = LongTermFact(user_id="owner", fact="loves tea", meta="", confidence=0.5,
+                     ts="2026-06-06T00:00:00+00:00")
+    assert f.user_id == "owner"
