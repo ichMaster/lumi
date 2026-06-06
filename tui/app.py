@@ -102,7 +102,7 @@ class LumiApp(App[None]):
         margin: 1 1 1 1;
     }
 
-    #status {
+    #status, #stats {
         height: 1;
         padding: 0 2;
         color: $text-muted;
@@ -126,6 +126,7 @@ class LumiApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(id="status")
+        yield Static(id="stats")
         with Vertical():
             yield RichLog(id="history", wrap=True, markup=False)
             yield Input(
@@ -138,6 +139,7 @@ class LumiApp(App[None]):
         if self._session is None:
             self._session = self._core.start_session()
         self._render_status()
+        self._render_stats()
         self.query_one("#prompt", Input).focus()
 
     def on_unmount(self) -> None:
@@ -203,16 +205,21 @@ class LumiApp(App[None]):
         return model[len("claude-") :] if model.startswith("claude-") else model
 
     def _status_text(self, busy: str | None = None) -> str:
+        """The connection / state line (left of the stats line)."""
         model = self._short_model(self._core.model)
+        think = " 💭" if (self._core.last_stats and self._core.last_stats.thinking) else ""
         if busy:
-            return f"[yellow]◐[/] {model} · {busy}"
+            return f"[yellow]◐[/] {model}{think} · {busy}"
         if not self._connected:
             return f"[red]⚠[/] {model} · немає звʼязку — спробуй ще раз"
+        return f"[green]●[/] {model}{think} · готова"
+
+    def _stats_text(self) -> str:
+        """The statistics line — last response + running totals (always shown)."""
         stats = self._core.last_stats
-        if stats is None:
-            return f"[green]●[/] {model} · готова"
-        think = " 💭" if stats.thinking else ""
         totals = self._core.totals
+        if stats is None or totals.turns == 0:
+            return "📊 статистика зʼявиться після першої відповіді"
         last = (
             f"остання ↑{self._fmt_tokens(stats.input_tokens)} "
             f"↓{self._fmt_tokens(stats.output_tokens)} · {self._fmt_latency(stats.latency_ms)}"
@@ -221,10 +228,13 @@ class LumiApp(App[None]):
             f"усього {totals.turns} · ↑{self._fmt_tokens(totals.input_tokens)} "
             f"↓{self._fmt_tokens(totals.output_tokens)} · сер {self._fmt_latency(totals.avg_latency_ms)}"
         )
-        return f"[green]●[/] {model}{think} · {last} · {total}"
+        return f"📊 {last}   ·   {total}"
 
     def _render_status(self, busy: str | None = None) -> None:
         self.query_one("#status", Static).update(self._status_text(busy))
+
+    def _render_stats(self) -> None:
+        self.query_one("#stats", Static).update(self._stats_text())
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
@@ -263,6 +273,7 @@ class LumiApp(App[None]):
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
             self._render_status()
+            self._render_stats()
             prompt.disabled = False
             prompt.focus()
 

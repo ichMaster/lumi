@@ -111,24 +111,26 @@ async def test_no_thinking_line_when_absent(tmp_path):
         assert not any(line.startswith("💭") for line in app.transcript)
 
 
-async def test_status_line_shows_model_and_totals_after_a_turn(tmp_path):
+async def test_status_and_stats_are_separate_lines(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
     async with app.run_test() as pilot:
-        # The status widget is mounted.
+        # Both widgets are mounted.
         app.query_one("#status", Static)
-        # Before any turn, the status shows the model + ready.
+        app.query_one("#stats", Static)
+        # Status = state (model + ready); stats = numbers (separate concerns).
         assert "haiku" in app._status_text() and "готова" in app._status_text()
+        assert "усього" not in app._status_text()  # totals live on the stats line
         await _submit(pilot, app, "привіт")
-        status = app._status_text()
-        assert "haiku" in status
-        assert "усього 1" in status  # one turn counted
+        assert "усього 1" in app._stats_text()  # one turn counted, on the stats line
 
 
-async def test_status_line_shows_busy_indicator(tmp_path):
-    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
-    async with app.run_test():
-        busy = app._status_text(busy="Лілі думає…")
-        assert "Лілі думає…" in busy
+async def test_stats_stay_visible_while_busy(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        # While busy, the status shows the indicator but the stats line still has data.
+        assert "Лілі думає…" in app._status_text(busy="Лілі думає…")
+        assert "усього 1" in app._stats_text()
 
 
 async def test_ctrl_y_copies_lili_last_reply(tmp_path):
