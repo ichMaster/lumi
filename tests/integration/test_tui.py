@@ -24,7 +24,7 @@ def _core(tmp_path, llm):
     return Core(
         llm=llm,
         repository=JsonRepository(tmp_path / "store.json"),
-        system_prompt="Ти — Лілі.",
+        canon="Ти — Лілі.",
         model="claude-haiku-4-5-20251001",
     )
 
@@ -125,7 +125,7 @@ async def test_ctrl_l_clears_screen_but_keeps_memory(tmp_path):
     core = Core(
         llm=MockLLMClient("вітаю"),
         repository=repo,
-        system_prompt="Ти — Лілі.",
+        canon="Ти — Лілі.",
         model="m",
     )
     app = LumiApp(core)

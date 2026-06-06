@@ -14,7 +14,7 @@ def _core_with(tmp_path, llm):
     return Core(
         llm=llm,
         repository=repo,
-        system_prompt="Ти — Лілі.",
+        canon="Ти — Лілі.",
         model="claude-haiku-4-5-20251001",
     ), repo
 
@@ -59,7 +59,7 @@ def test_history_persists_across_a_restart(tmp_path):
     core = Core(
         llm=llm,
         repository=JsonRepository(path),
-        system_prompt="Ти — Лілі.",
+        canon="Ти — Лілі.",
         model="m",
     )
     session = core.start_session()

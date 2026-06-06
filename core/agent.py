@@ -1,51 +1,70 @@
 """The core turn — the single ``reply(...)`` contract every interface calls.
 
-``Core.reply(user_text, session)`` ties **canon + LLMClient + Repository** into
-one turn: assemble the system prompt and the session's history, call the model
-through the :class:`~core.llm.LLMClient` seam, persist the user and Лілі
-messages, and return the reply. No interface logic lives here — the TUI (v0),
-and the server (v1.1) call exactly this.
+``Core.reply(user_text, session)`` ties **canon + memory + LLMClient +
+Repository** into one turn: assemble the system prompt and the session's history,
+call the model through the :class:`~core.llm.LLMClient` seam, persist the user
+and Лілі messages, and return the reply. No interface logic lives here.
 
-v0.1 returns ``str`` and includes the **full** session history (rolling-window
-trimming arrives in v0.2). v0.3 turns the return into a validated ``EmotionState``.
+The core is **user-scoped** (v0.2): it carries an active ``user_id`` (default
+``owner``) and every record it writes is keyed by it. It holds the **canon** and
+builds the system prompt **per turn** (``_system_prompt``) — the seam LUMI-011
+extends to fold in the user's summaries + facts. v0.1 returns ``str``; v0.3 turns
+the return into a validated ``EmotionState``.
 """
 
 from __future__ import annotations
 
-from core.config import Config, load_config
+from core.config import DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.llm import AnthropicClient, LLMClient, Message
 from core.prompt import build_system_prompt, load_canon
 from core.repository import Repository, Session, make_message
+from core.user import DEFAULT_USER_ID
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
 
 
 class Core:
-    """Лілі's interface-independent turn engine."""
+    """Лілі's interface-independent, user-scoped turn engine."""
 
     def __init__(
         self,
         *,
         llm: LLMClient,
         repository: Repository,
-        system_prompt: str,
+        canon: str,
         model: str,
+        user_id: str = DEFAULT_USER_ID,
+        memory_window: int = DEFAULT_MEMORY_WINDOW,
     ) -> None:
         self._llm = llm
         self._repo = repository
-        self._system_prompt = system_prompt
+        self._canon = canon
         self._model = model
+        self._user_id = user_id
+        self._memory_window = memory_window
+
+    @property
+    def user_id(self) -> str:
+        return self._user_id
 
     def start_session(self) -> Session:
-        """Open a fresh session (persisted)."""
-        return self._repo.create_session()
+        """Open a fresh session for the active user (persisted)."""
+        return self._repo.create_session(self._user_id)
+
+    def _system_prompt(self) -> str:
+        """Assemble the system prompt for this turn.
+
+        v0.2: the canon verbatim. LUMI-011 folds the user's recent summaries +
+        long-term facts in here (still canon at the base).
+        """
+        return build_system_prompt(self._canon)
 
     def reply(self, user_text: str, session: Session) -> str:
         """Run one turn and return Лілі's reply.
 
-        Loads prior history, calls the model with canon + history + the new line,
-        then persists both the user and Лілі messages.
+        Loads prior history, calls the model with the system prompt + history +
+        the new line, then persists both the user and Лілі messages (user-scoped).
         """
         history = self._repo.load_messages(session.id)
         messages: list[Message] = [
@@ -54,13 +73,13 @@ class Core:
         messages.append({"role": "user", "content": user_text})
 
         reply_text = self._llm.reply(
-            system=self._system_prompt,
+            system=self._system_prompt(),
             messages=messages,
             model=self._model,
         )
 
-        self._repo.append_message(make_message(session.id, "user", user_text))
-        self._repo.append_message(make_message(session.id, "lili", reply_text))
+        self._repo.append_message(make_message(session.id, self._user_id, "user", user_text))
+        self._repo.append_message(make_message(session.id, self._user_id, "lili", reply_text))
         return reply_text
 
 
@@ -69,6 +88,7 @@ def build_core(
     config: Config | None = None,
     llm: LLMClient | None = None,
     repository: Repository | None = None,
+    user_id: str = DEFAULT_USER_ID,
 ) -> Core:
     """Wire a :class:`Core` from config.
 
@@ -87,5 +107,11 @@ def build_core(
         llm = AnthropicClient(cfg.api_key)
 
     canon = load_canon(cfg.canon_path)
-    system_prompt = build_system_prompt(canon)
-    return Core(llm=llm, repository=repository, system_prompt=system_prompt, model=cfg.model)
+    return Core(
+        llm=llm,
+        repository=repository,
+        canon=canon,
+        model=cfg.model,
+        user_id=user_id,
+        memory_window=cfg.memory_window,
+    )

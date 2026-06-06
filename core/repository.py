@@ -27,21 +27,23 @@ def now_iso() -> str:
 
 @dataclass(frozen=True)
 class Session:
-    """One conversation. (``user_id`` is added in v0.2.)"""
+    """One conversation, owned by one user (``user_id`` from v0.2)."""
 
     id: str
+    user_id: str
     started_at: str
     ended_at: str | None = None
 
 
 @dataclass(frozen=True)
 class Message:
-    """A single turn. Assistant turns carry the emotion field from v0.3.
+    """A single turn, owned by one user. Assistant turns carry the emotion field from v0.3.
 
-    (``user_id`` is added in v0.2; ``emotion``/``intensity`` in v0.3.)
+    (``user_id`` added in v0.2; ``emotion``/``intensity`` in v0.3.)
     """
 
     session_id: str
+    user_id: str
     role: str
     text: str
     ts: str
@@ -51,17 +53,26 @@ class Message:
             raise ValueError(f"Message.role must be one of {ROLES}, got {self.role!r}")
 
 
-def make_message(session_id: str, role: str, text: str, ts: str | None = None) -> Message:
+def make_message(
+    session_id: str, user_id: str, role: str, text: str, ts: str | None = None
+) -> Message:
     """Build a :class:`Message`, stamping ``ts`` now unless one is given."""
-    return Message(session_id=session_id, role=role, text=text, ts=ts or now_iso())
+    return Message(
+        session_id=session_id, user_id=user_id, role=role, text=text, ts=ts or now_iso()
+    )
 
 
 @runtime_checkable
 class Repository(Protocol):
-    """The storage seam: create a session, append messages, load history."""
+    """The storage seam — keyed by ``user_id`` (ARCHITECTURE §Storage).
 
-    def create_session(self) -> Session:
-        """Create and persist a new session."""
+    Per-user records resolve only in their owner's scope: the **isolation
+    invariant** (a record written under user A is never readable in user B's
+    context) holds at the data level from v0.2, pinned by a contract test.
+    """
+
+    def create_session(self, user_id: str) -> Session:
+        """Create and persist a new session owned by ``user_id``."""
         ...
 
     def get_session(self, session_id: str) -> Session | None:
@@ -70,6 +81,10 @@ class Repository(Protocol):
 
     def end_session(self, session_id: str) -> Session | None:
         """Mark a session ended; return the updated session (or ``None``)."""
+        ...
+
+    def list_sessions(self, user_id: str) -> list[Session]:
+        """List a user's sessions (only that user's)."""
         ...
 
     def append_message(self, message: Message) -> None:
