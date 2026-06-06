@@ -77,16 +77,13 @@ class AnthropicClient:
         "InternalServerError",
     )
 
-    # Reply headroom reserved on top of the thinking budget (extended thinking
-    # requires max_tokens > budget_tokens).
-    _THINKING_REPLY_HEADROOM = 2048
-
     def __init__(
         self,
         api_key: str | None,
         *,
         max_tokens: int = 1024,
-        thinking_budget: int = 0,
+        thinking: bool = False,
+        effort: str | None = None,
         retries: int = 2,
         backoff: float = 0.5,
         _client: object | None = None,
@@ -100,14 +97,9 @@ class AnthropicClient:
 
         self._anthropic = anthropic
         self._client = _client if _client is not None else anthropic.Anthropic(api_key=api_key)
-        self._thinking_budget = max(0, thinking_budget)
-        # Extended thinking needs max_tokens strictly above the budget; reserve
-        # headroom for the visible reply on top of it.
-        self._max_tokens = (
-            max(max_tokens, self._thinking_budget + self._THINKING_REPLY_HEADROOM)
-            if self._thinking_budget
-            else max_tokens
-        )
+        self._max_tokens = max_tokens
+        self._thinking = thinking
+        self._effort = effort
         self._retries = retries
         self._backoff = backoff
         self._retryable = tuple(
@@ -122,13 +114,15 @@ class AnthropicClient:
                 "max_tokens": self._max_tokens,
                 "messages": messages,
             }
-            if self._thinking_budget:
-                # Extended thinking: the model reasons in `thinking` blocks (which
-                # we drop) before the visible `text` reply.
-                kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": self._thinking_budget,
-                }
+            if self._thinking:
+                # Adaptive extended thinking (Opus 4.8 / Sonnet 4.6): the model
+                # reasons in `thinking` blocks (which we drop) before the visible
+                # `text` reply. NB: the legacy {type:"enabled", budget_tokens}
+                # form 400s on Opus 4.8 — adaptive is the only on-mode.
+                kwargs["thinking"] = {"type": "adaptive"}
+            if self._effort:
+                # Tunes thinking depth / token spend (low|medium|high|xhigh|max).
+                kwargs["output_config"] = {"effort": self._effort}
             resp = self._client.messages.create(**kwargs)
             return "".join(
                 getattr(block, "text", "")

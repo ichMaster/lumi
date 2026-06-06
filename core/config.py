@@ -32,9 +32,19 @@ DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 # Rolling-window placeholder; the trimming policy lands in v0.2.
 DEFAULT_MEMORY_WINDOW = 20
 
-# Model output cap, and the extended-thinking budget (0 = thinking off).
-DEFAULT_MAX_TOKENS = 1024
-DEFAULT_THINKING_BUDGET = 0
+# Model output cap. Extended thinking (Opus 4.8 / Sonnet 4.6) is adaptive and
+# off by default; `effort` tunes its depth when on (None → the API default).
+DEFAULT_MAX_TOKENS = 4096
+DEFAULT_THINKING = False
+DEFAULT_EFFORT: str | None = None
+
+# Valid effort levels (Anthropic adaptive thinking). xhigh/max are Opus-tier.
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+_TRUTHY = {"1", "true", "on", "yes", "y"}
+
+
+def _parse_bool(value: str | None) -> bool:
+    return value is not None and value.strip().lower() in _TRUTHY
 
 
 @dataclass(frozen=True)
@@ -51,7 +61,8 @@ class Config:
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     max_tokens: int = DEFAULT_MAX_TOKENS
-    thinking_budget: int = DEFAULT_THINKING_BUDGET
+    thinking: bool = DEFAULT_THINKING
+    effort: str | None = DEFAULT_EFFORT
     api_key: str | None = field(default=None, repr=False)
 
 
@@ -80,8 +91,10 @@ def load_config(*, load_env: bool = True) -> Config:
     max_tokens_env = os.getenv("LUMI_MAX_TOKENS")
     max_tokens = int(max_tokens_env) if max_tokens_env else DEFAULT_MAX_TOKENS
 
-    thinking_env = os.getenv("LUMI_THINKING")
-    thinking_budget = int(thinking_env) if thinking_env else DEFAULT_THINKING_BUDGET
+    thinking = _parse_bool(os.getenv("LUMI_THINKING"))
+
+    effort_env = os.getenv("LUMI_EFFORT")
+    effort = effort_env.strip().lower() if effort_env and effort_env.strip() else DEFAULT_EFFORT
 
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
@@ -90,6 +103,7 @@ def load_config(*, load_env: bool = True) -> Config:
         store_path=store_path,
         memory_window=memory_window,
         max_tokens=max_tokens,
-        thinking_budget=thinking_budget,
+        thinking=thinking,
+        effort=effort,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )

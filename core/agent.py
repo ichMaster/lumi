@@ -203,7 +203,8 @@ def build_core(
         llm = AnthropicClient(
             cfg.api_key,
             max_tokens=cfg.max_tokens,
-            thinking_budget=cfg.thinking_budget,
+            thinking=cfg.thinking,
+            effort=cfg.effort,
         )
 
     canon = load_canon(cfg.canon_path)

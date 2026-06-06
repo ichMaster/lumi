@@ -89,20 +89,29 @@ class _RecordingClient:
 
 def test_thinking_off_by_default_sends_no_thinking_param():
     rec = _RecordingClient()
-    client = AnthropicClient("sk-test", _client=rec)
+    client = AnthropicClient("sk-test", max_tokens=1024, _client=rec)
     client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
     assert "thinking" not in rec.last_kwargs
+    assert "output_config" not in rec.last_kwargs
     assert rec.last_kwargs["max_tokens"] == 1024
 
 
-def test_thinking_enabled_passes_budget_and_raises_max_tokens():
+def test_thinking_enabled_sends_adaptive_and_effort():
     rec = _RecordingClient()
-    client = AnthropicClient("sk-test", max_tokens=1024, thinking_budget=2048, _client=rec)
+    client = AnthropicClient("sk-test", thinking=True, effort="medium", _client=rec)
     client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
 
-    assert rec.last_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 2048}
-    # max_tokens must exceed the budget (with reply headroom).
-    assert rec.last_kwargs["max_tokens"] > 2048
+    # Opus 4.8 uses adaptive thinking — never {type: enabled, budget_tokens}.
+    assert rec.last_kwargs["thinking"] == {"type": "adaptive"}
+    assert rec.last_kwargs["output_config"] == {"effort": "medium"}
+
+
+def test_effort_can_be_set_without_thinking():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", thinking=False, effort="high", _client=rec)
+    client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
+    assert "thinking" not in rec.last_kwargs
+    assert rec.last_kwargs["output_config"] == {"effort": "high"}
 
 
 def test_retry_succeeds_after_transient_failures():
