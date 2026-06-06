@@ -100,6 +100,9 @@ class AnthropicClient:
         self._max_tokens = max_tokens
         self._thinking = thinking
         self._effort = effort
+        # The reasoning summary from the most recent turn (None when off/absent),
+        # so a client can render it (e.g. greyed) alongside the reply.
+        self.last_thinking: str | None = None
         self._retries = retries
         self._backoff = backoff
         self._retryable = tuple(
@@ -116,14 +119,24 @@ class AnthropicClient:
             }
             if self._thinking:
                 # Adaptive extended thinking (Opus 4.8 / Sonnet 4.6): the model
-                # reasons in `thinking` blocks (which we drop) before the visible
-                # `text` reply. NB: the legacy {type:"enabled", budget_tokens}
-                # form 400s on Opus 4.8 — adaptive is the only on-mode.
-                kwargs["thinking"] = {"type": "adaptive"}
+                # reasons in `thinking` blocks before the visible `text` reply.
+                # `display: "summarized"` returns a readable summary of that
+                # reasoning (default is "omitted"); we surface it via
+                # ``last_thinking``. NB: the legacy {type:"enabled",
+                # budget_tokens} form 400s on Opus 4.8 — adaptive is the only on-mode.
+                kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
             if self._effort:
                 # Tunes thinking depth / token spend (low|medium|high|xhigh|max).
                 kwargs["output_config"] = {"effort": self._effort}
             resp = self._client.messages.create(**kwargs)
+            self.last_thinking = (
+                "".join(
+                    getattr(block, "thinking", "")
+                    for block in resp.content
+                    if getattr(block, "type", None) == "thinking"
+                ).strip()
+                or None
+            )
             return "".join(
                 getattr(block, "text", "")
                 for block in resp.content
@@ -154,6 +167,8 @@ class MockLLMClient:
     def __init__(
         self,
         replies: str | list[str] | Callable[[str, list[Message], str], str] | None = None,
+        *,
+        thinking: str | None = None,
     ) -> None:
         self._fn: Callable[[str, list[Message], str], str] | None = None
         self._queue: list[str] | None = None
@@ -169,9 +184,12 @@ class MockLLMClient:
             self._queue = list(replies)
 
         self.calls: list[dict[str, object]] = []
+        self._thinking_text = thinking
+        self.last_thinking: str | None = None
 
     def reply(self, system: str, messages: list[Message], model: str) -> str:
         self.calls.append({"system": system, "messages": list(messages), "model": model})
+        self.last_thinking = self._thinking_text
         if self._fn is not None:
             return self._fn(system, messages, model)
         if self._queue:

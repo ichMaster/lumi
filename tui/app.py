@@ -34,6 +34,8 @@ USER_COLOR = "cyan"
 LILI_COLOR = "green"
 ERROR_COLOR = "red"
 SYSTEM_COLOR = "yellow"
+THINKING_COLOR = "grey50"  # Лілі's reasoning, dimmed apart from her reply
+THINKING_PREFIX = "💭"
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -169,6 +171,11 @@ class LumiApp(App[None]):
     def _say_markdown(self, label: str, message: str, color: str) -> None:
         self._emit(f"{label}: {message}", *self._markdown_block(label, message, color))
 
+    def _emit_thinking(self, thinking: str) -> None:
+        """Render Лілі's reasoning, dimmed in grey above her reply."""
+        plain = f"{THINKING_PREFIX} {thinking}"
+        self._emit(plain, Text(plain, style=f"italic {THINKING_COLOR}"))
+
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         if not text:
@@ -195,6 +202,9 @@ class LumiApp(App[None]):
             assert self._session is not None
             reply = await asyncio.to_thread(self._core.reply, text, self._session)
             self._last_reply = reply
+            thinking = getattr(self._core, "last_thinking", None)
+            if thinking:
+                self._emit_thinking(thinking)
             self._say_markdown(LILI_LABEL, reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))

@@ -102,8 +102,41 @@ def test_thinking_enabled_sends_adaptive_and_effort():
     client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
 
     # Opus 4.8 uses adaptive thinking — never {type: enabled, budget_tokens}.
-    assert rec.last_kwargs["thinking"] == {"type": "adaptive"}
+    # display "summarized" makes the reasoning summary available to render.
+    assert rec.last_kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
     assert rec.last_kwargs["output_config"] == {"effort": "medium"}
+
+
+def test_thinking_summary_captured_in_last_thinking():
+    class _Thinking:
+        type = "thinking"
+        thinking = "Користувач вітається — відповім тепло."
+
+    class _Text:
+        type = "text"
+        text = "Привіт!"
+
+    class _Resp:
+        content = [_Thinking(), _Text()]
+
+    class _Messages:
+        def create(self, **kwargs):
+            return _Resp()
+
+    class _Client:
+        messages = _Messages()
+
+    client = AnthropicClient("sk-test", thinking=True, _client=_Client())
+    out = client.reply("sys", [{"role": "user", "content": "привіт"}], "claude-opus-4-8")
+    assert out == "Привіт!"  # only the text block is the reply
+    assert client.last_thinking == "Користувач вітається — відповім тепло."
+
+
+def test_last_thinking_none_when_off():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", thinking=False, _client=rec)
+    client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
+    assert client.last_thinking is None
 
 
 def test_effort_can_be_set_without_thinking():

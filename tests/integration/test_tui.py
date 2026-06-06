@@ -89,6 +89,27 @@ async def test_model_failure_degrades_to_a_readable_line(tmp_path):
         assert app.query_one("#prompt").disabled is False
 
 
+async def test_thinking_is_shown_greyed_above_the_reply(tmp_path):
+    llm = MockLLMClient("Привіт!", thinking="Подумаю, як відповісти тепло.")
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        joined = "\n".join(app.transcript)
+        assert "💭 Подумаю, як відповісти тепло." in joined
+        assert "Лілі: Привіт!" in joined
+        # The thinking line comes before the reply.
+        think_idx = next(i for i, ln in enumerate(app.transcript) if ln.startswith("💭"))
+        reply_idx = next(i for i, ln in enumerate(app.transcript) if ln.startswith("Лілі:"))
+        assert think_idx < reply_idx
+
+
+async def test_no_thinking_line_when_absent(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))  # no thinking
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert not any(line.startswith("💭") for line in app.transcript)
+
+
 async def test_ctrl_y_copies_lili_last_reply(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("Це **відповідь**.")))
     copied: list[str] = []

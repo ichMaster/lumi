@@ -67,6 +67,9 @@ class Core:
         self._model = model
         self._user_id = user_id
         self._memory_window = memory_window
+        # The model's reasoning summary from the last turn (None when thinking is
+        # off or absent), for a client to render alongside the reply.
+        self.last_thinking: str | None = None
 
     @property
     def user_id(self) -> str:
@@ -109,6 +112,7 @@ class Core:
             messages=messages,
             model=self._model,
         )
+        self.last_thinking = getattr(self._llm, "last_thinking", None)
 
         self._repo.append_message(make_message(session.id, self._user_id, "user", user_text))
         self._repo.append_message(make_message(session.id, self._user_id, "lili", reply_text))
