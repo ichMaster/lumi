@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from core.config import DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.llm import AnthropicClient, LLMClient, Message
+from core.memory import trim_history
 from core.prompt import build_system_prompt, load_canon
 from core.repository import Repository, Session, make_message
 from core.user import DEFAULT_USER_ID
@@ -63,10 +64,12 @@ class Core:
     def reply(self, user_text: str, session: Session) -> str:
         """Run one turn and return Лілі's reply.
 
-        Loads prior history, calls the model with the system prompt + history +
-        the new line, then persists both the user and Лілі messages (user-scoped).
+        Loads prior history (trimmed to the rolling window), calls the model with
+        the system prompt + windowed history + the new line, then persists both
+        the user and Лілі messages (user-scoped). The full history stays stored;
+        only the in-context window is trimmed.
         """
-        history = self._repo.load_messages(session.id)
+        history = trim_history(self._repo.load_messages(session.id), self._memory_window)
         messages: list[Message] = [
             {"role": _ROLE_TO_LLM[m.role], "content": m.text} for m in history
         ]
