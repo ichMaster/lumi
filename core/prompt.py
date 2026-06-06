@@ -12,6 +12,7 @@ v0.8) without the core's callers changing.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 
@@ -30,11 +31,29 @@ def load_canon(path: str | Path) -> str:
     return text
 
 
-def build_system_prompt(canon: str) -> str:
-    """Assemble the system prompt from the canon.
+def build_system_prompt(
+    canon: str,
+    summaries: Sequence[str] | None = None,
+    facts: Sequence[str] | None = None,
+) -> str:
+    """Assemble the system prompt: canon + the user's memory.
 
-    v0.1: the canon verbatim. This is the seam later versions extend — it will
-    gain ``summaries`` / ``facts`` (v0.2) and ``mood`` (v0.8) parameters and
-    compose them around the canon, but the canon always rides at its base.
+    The canon always rides at the base; the user's recent ``summaries`` and
+    long-term ``facts`` are composed **around** it (ARCHITECTURE §Data model
+    assembly order: canon → summaries → facts). With no memory the result is the
+    canon verbatim (the v0.1 behavior). v0.8 adds a ``mood`` block the same way.
+
+    ``summaries``/``facts`` are plain strings so this stays a pure string
+    assembler, decoupled from the record types (the core passes the text).
     """
-    return canon
+    parts = [canon]
+    if summaries:
+        parts.append(
+            "Памʼять про попередні розмови з цією людиною:\n"
+            + "\n".join(f"- {s}" for s in summaries)
+        )
+    if facts:
+        parts.append(
+            "Що ти памʼятаєш про цю людину:\n" + "\n".join(f"- {f}" for f in facts)
+        )
+    return "\n\n".join(parts)

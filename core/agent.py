@@ -16,7 +16,13 @@ from __future__ import annotations
 
 from core.config import DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.llm import AnthropicClient, LLMClient, Message
-from core.memory import facts_request, parse_facts, summary_request, trim_history
+from core.memory import (
+    RECENT_SUMMARIES,
+    facts_request,
+    parse_facts,
+    summary_request,
+    trim_history,
+)
 from core.prompt import build_system_prompt, load_canon
 from core.repository import (
     LongTermFact,
@@ -61,12 +67,18 @@ class Core:
         return self._repo.create_session(self._user_id)
 
     def _system_prompt(self) -> str:
-        """Assemble the system prompt for this turn.
+        """Assemble the system prompt for this turn, rehydrated for the user.
 
-        v0.2: the canon verbatim. LUMI-011 folds the user's recent summaries +
-        long-term facts in here (still canon at the base).
+        Composes the canon with the user's recent summaries + long-term facts
+        (LUMI-011). Loaded per turn, so a restart recalls prior context and new
+        memory takes effect. Isolation holds — only this ``user_id``'s records
+        are read.
         """
-        return build_system_prompt(self._canon)
+        summaries = [
+            s.summary for s in self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
+        ]
+        facts = [f.fact for f in self._repo.facts(self._user_id)]
+        return build_system_prompt(self._canon, summaries=summaries, facts=facts)
 
     def reply(self, user_text: str, session: Session) -> str:
         """Run one turn and return Лілі's reply.

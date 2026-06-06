@@ -22,9 +22,23 @@ def test_build_system_prompt_places_canon_into_system_field():
     assert canon in system  # the canon rides in the system prompt (the extension seam)
 
 
-def test_build_system_prompt_is_verbatim_in_v0_1():
+def test_build_system_prompt_is_verbatim_without_memory():
     canon = "exact character content"
     assert build_system_prompt(canon) == canon
+    assert build_system_prompt(canon, summaries=[], facts=[]) == canon
+
+
+def test_build_system_prompt_composes_memory_around_canon():
+    canon = "Ти — Лілі."
+    system = build_system_prompt(canon, summaries=["Минулого разу говорили про гори."],
+                                 facts=["Зі Львова", "Любить каву"])
+    # Canon at the base; summaries and facts composed around it.
+    assert system.startswith(canon)
+    assert "Минулого разу говорили про гори." in system
+    assert "Зі Львова" in system
+    assert "Любить каву" in system
+    # Assembly order: canon → summaries → facts (ARCHITECTURE §Data model).
+    assert system.index(canon) < system.index("Минулого") < system.index("Зі Львова")
 
 
 def test_load_canon_missing_file_raises_clear_error(tmp_path):
