@@ -7,7 +7,7 @@ hardcodes character content — it all lives in the canon file.
 ``build_system_prompt`` is the deliberate **extension seam**: in v0.1 it returns
 the canon as-is; later versions assemble more *around* it (memory summaries +
 facts in v0.2, the emotion-output instruction in v0.3, the daily mood block in
-v0.8) without the core's callers changing.
+v0.5) without the core's callers changing.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def build_system_prompt(
     The canon always rides at the base; the user's recent ``summaries`` and
     long-term ``facts`` are composed **around** it (ARCHITECTURE §Data model
     assembly order: canon → summaries → facts). With no memory the result is the
-    canon verbatim (the v0.1 behavior). v0.8 adds a ``mood`` block the same way.
+    canon verbatim (the v0.1 behavior). v0.5 adds a ``mood`` block the same way.
 
     ``summaries``/``facts`` are plain strings so this stays a pure string
     assembler, decoupled from the record types (the core passes the text).

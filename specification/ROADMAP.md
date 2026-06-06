@@ -2,15 +2,15 @@
 
 Five self-contained versions, built in order: **v0** TUI (core, memory, emotion, emoji, daily mood) → **v1** server platform (client/server split, multi-user, web, admin) → **v2** face, voice, shared mind, and dictation → **v3** animated Лілі + MCP tools (web search, world context) → **v4** creative Лілі (gallery, art, music, journal, co-creation). Versions are numbered from 0; phases inside a version are numbered `vA.B` (A = version, B = phase), e.g. `v1.2`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing and CI).
 
-Arc of the two axes: capabilities grow text+memory → emotion (emoji + local image face + local voice + dictation) → daily mood → web face + voice + shared mind + dictation → animation + web search & world context (MCP) → creation (gallery, vision, art, music, journal, co-creation); the interface grows in-process TUI (v0) → server + TUI/CLI clients (v1.1) → + multi-user/session (v1.3) → + web client (v1.4) → + vision & proactive turns (v4). The **core is built first and never depends on an interface**. Complexity is added only by version, never all at once.
+Arc of the two axes: capabilities grow text+memory → emotion (emoji) → daily mood → local image face + local voice + dictation → web face + voice + shared mind + dictation → animation + web search & world context (MCP) → creation (gallery, vision, art, music, journal, co-creation); the interface grows in-process TUI (v0) → server + TUI/CLI clients (v1.1) → + multi-user/session (v1.3) → + web client (v1.4) → + vision & proactive turns (v4). The **core is built first and never depends on an interface**. Complexity is added only by version, never all at once.
 
 **Versioning (`A.B.C`).** `A` = roadmap version (v0→0 … v4→4), `B` = phase within it (`v1.2` → `1.2.0`), `C` = a post-release fix on that phase. Roadmap phase `vA.B` → semver `A.B.0`; a fix after it bumps `C`. Releases are cut per phase. Never bump the version without explicit confirmation.
 
 ---
 
-## v0 — TUI: core, memory, emotion, emoji, local face, voice, dictation, mood
+## v0 — TUI: core, memory, emotion, emoji, mood, local face, voice, dictation
 
-The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input), and a daily **mood of the day** (a horoscope-derived temperament) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.9 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.6, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
+The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.9 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.7, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
 
 ### v0.1 — Skeleton and canon
 
@@ -78,7 +78,23 @@ Swap `LogRenderer` → `EmojiRenderer` over the v0.3 channel: map each emotion t
 
 **Tests:** unit — the emotion→emoji mapping is total over the enum and intensity-variant selection.
 
-### v0.5 — Local emotion viewer (image face)
+### v0.5 — Mood of the day (temperament)
+
+**Goal:** Лілі has a daily mood — a horoscope-derived backdrop that colors her tone and the emotions she trends toward, never her competence.
+
+Add a **core** temperament subsystem: a fixed natal chart for Лілі, an astro engine (skyfield) that computes the day's transits **once per local day** into a few mood dials (energy, warmth, playfulness, talkativeness), and a "today's mood" block injected into the system prompt that **biases the emotion the model emits and her tone** — never her competence or willingness to help. It rides the v0.3 emotion channel (the model still emits `{reply, emotion, intensity}`; the core still validates it). **On by default** — it is part of her character, not an optional tool. An **experiment for daily variation, not an astrological claim**. (Voice-delivery dials come with voice in v2.2; world-context inputs feed the same mood in v3.3.) See ARCHITECTURE §Mood and temperament. Depends on: v0.3 (the emotion channel).
+
+**Tasks:**
+- Лілі's **natal chart** as a fixed JSON snapshot (timestamp + place + positions) in canon/config.
+- An **astro engine** (skyfield): compute daily transits → normalized dials (energy, warmth, playfulness, talkativeness), once per local day, cached at local midnight; a turn keeps the temperament it started with. The date/clock is injected (deterministic, testable).
+- Build a short **"today's mood" block** from the dials and inject it into the system prompt; bias the emitted emotion + tone, never competence.
+- (Optional) show the current mood in the small TUI status line.
+
+**DoD:** on different days Лілі's tone and the emotions she leans toward shift with the computed mood, while the quality of her answers is unchanged; the mood is stable within a day and recomputes at local midnight.
+
+**Tests:** unit — the transit→dial mapping, once-per-day caching (stable within a day, recompute across local midnight via an injected clock), the mood-block assembly, and that the mood biases the emitted emotion without changing competence (against a mock model + fixed clock).
+
+### v0.6 — Local emotion viewer (image face)
 
 **Goal:** Лілі's face as a real **image**, locally, without a server — the simplest way to see her before the web.
 
@@ -94,11 +110,11 @@ Add a small **separate local desktop window** (e.g. Python/Tkinter) that shows a
 
 **Tests:** unit — the emotion→image-path resolver is total over the enum and falls back to `calm`; the signal read/poll logic (against a fake signal file); intensity-variant selection when variants exist.
 
-### v0.6 — Local voice (ElevenLabs)
+### v0.7 — Local voice (ElevenLabs)
 
 **Goal:** hear Лілі — a separate local app that voices her replies, no server.
 
-Add a **separate local console app** that voices Лілі's replies with the ElevenLabs voice — **another decoupled local renderer** (like the v0.5 viewer), reading what the core writes. The core appends each reply to a local **`outbox.jsonl`** (`{id, text, emotion?, ts}`); the voicer reads the new `id`s in ascending order, voices each via the **shared ElevenLabs TTS adapter** (`/voice`), plays it locally, and appends the `id` to **`spoken.jsonl`** — its memory of what's been said, so it resumes after a restart. The core stays decoupled (it only appends; voicing never blocks the chat). The `emotion` field may bias delivery (EMOTION.md §9). It adds a **second cloud dependency** alongside the model — ElevenLabs synthesis needs `ELEVENLABS_API_KEY` + internet; it is **optional/toggle-able** (Piper (uk) is an offline alternative, but not her signature voice). It introduces the ElevenLabs TTS adapter **reused by the web voice in v2.2**. See [VOICE_LOCAL.md](features/VOICE_LOCAL.md). Depends on: v0.1 (the core appends replies) and v0.3 (the emotion field).
+Add a **separate local console app** that voices Лілі's replies with the ElevenLabs voice — **another decoupled local renderer** (like the v0.6 viewer), reading what the core writes. The core appends each reply to a local **`outbox.jsonl`** (`{id, text, emotion?, ts}`); the voicer reads the new `id`s in ascending order, voices each via the **shared ElevenLabs TTS adapter** (`/voice`), plays it locally, and appends the `id` to **`spoken.jsonl`** — its memory of what's been said, so it resumes after a restart. The core stays decoupled (it only appends; voicing never blocks the chat). The `emotion` field may bias delivery (EMOTION.md §9). It adds a **second cloud dependency** alongside the model — ElevenLabs synthesis needs `ELEVENLABS_API_KEY` + internet; it is **optional/toggle-able** (Piper (uk) is an offline alternative, but not her signature voice). It introduces the ElevenLabs TTS adapter **reused by the web voice in v2.2**. See [VOICE_LOCAL.md](features/VOICE_LOCAL.md). Depends on: v0.1 (the core appends replies) and v0.3 (the emotion field).
 
 **Tasks:**
 - Core appends each reply to `outbox.jsonl` (`{id, text, emotion?, ts}`); `id` is a monotonic counter.
@@ -110,11 +126,11 @@ Add a **separate local console app** that voices Лілі's replies with the Ele
 
 **Tests:** unit — dedup-by-`id` + ascending-order selection (`outbox` minus `spoken`), strictly-sequential playback, retry-on-failure (no `spoken` write); integration — a few `outbox` records voiced via a **mock TTS adapter** (no paid call), `spoken` updated; resumes correctly after a simulated restart.
 
-### v0.7 — Local dictation (STT)
+### v0.8 — Local dictation (STT)
 
-**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.6 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
+**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.7 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
 
-A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.6 (the local-process + shared-file pattern).
+A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.7 (the local-process + shared-file pattern).
 
 **Tasks:**
 - A separate **dictator process**: watch `listen.flag`; record the mic while `on`; on `off`, send audio to the **STT adapter** in `/voice` (`stt(audio_uk) -> text`, provider configurable) → append `{id, text, source:"voice", ts}` to `inbox.jsonl`.
@@ -124,22 +140,6 @@ A separate local process listens to the microphone, recognizes Ukrainian via the
 **DoD:** press the listen key, speak Ukrainian, and your recognized line appears in the chat (marked as yours) and is answered — identically to typing it; a missed/empty utterance is dropped, not garbled into the chat; dictation can be toggled without touching the core.
 
 **Tests:** unit — `listen.flag` on/off handling, empty-recognition is dropped (no `inbox` write), dedup by `id`; integration — a recognized line via a **mock STT adapter** (no paid call) lands in `inbox.jsonl` and drives a turn identical to a typed one.
-
-### v0.8 — Mood of the day (temperament)
-
-**Goal:** Лілі has a daily mood — a horoscope-derived backdrop that colors her tone and the emotions she trends toward, never her competence.
-
-Add a **core** temperament subsystem: a fixed natal chart for Лілі, an astro engine (skyfield) that computes the day's transits **once per local day** into a few mood dials (energy, warmth, playfulness, talkativeness), and a "today's mood" block injected into the system prompt that **biases the emotion the model emits and her tone** — never her competence or willingness to help. It rides the v0.3 emotion channel (the model still emits `{reply, emotion, intensity}`; the core still validates it). **On by default** — it is part of her character, not an optional tool. An **experiment for daily variation, not an astrological claim**. (Voice-delivery dials come with voice in v2.2; world-context inputs feed the same mood in v3.3.) See ARCHITECTURE §Mood and temperament. Depends on: v0.3 (the emotion channel).
-
-**Tasks:**
-- Лілі's **natal chart** as a fixed JSON snapshot (timestamp + place + positions) in canon/config.
-- An **astro engine** (skyfield): compute daily transits → normalized dials (energy, warmth, playfulness, talkativeness), once per local day, cached at local midnight; a turn keeps the temperament it started with. The date/clock is injected (deterministic, testable).
-- Build a short **"today's mood" block** from the dials and inject it into the system prompt; bias the emitted emotion + tone, never competence.
-- (Optional) show the current mood in the small TUI status line.
-
-**DoD:** on different days Лілі's tone and the emotions she leans toward shift with the computed mood, while the quality of her answers is unchanged; the mood is stable within a day and recomputes at local midnight.
-
-**Tests:** unit — the transit→dial mapping, once-per-day caching (stable within a day, recompute across local midnight via an injected clock), the mood-block assembly, and that the mood biases the emitted emotion without changing competence (against a mock model + fixed clock).
 
 ### v0.9 — More models (model & provider switching)
 
@@ -252,13 +252,13 @@ Now give Лілі a face, a voice, a shared mind, and ears. These rich-experienc
 
 ### v2.1 — Image of Лілі by emotion (web)
 
-**Goal:** Лілі's face in the web (static) — the web version of the v0.5 local viewer — plus a short mood caption.
+**Goal:** Лілі's face in the web (static) — the web version of the v0.6 local viewer — plus a short mood caption.
 
-The **web sibling of the v0.5 local viewer**: the same `emotion → image` render tier, now in the browser. Add a portrait panel beside the chat in the web UI (v1.4) and the `ImageRenderer`: resolve `emotion`(+`intensity`) to a portrait via the asset manifest (EMOTION.md §7) — the **same emotion-face asset pack** as v0.5 — and swap the portrait to match the current state. Full PNG quality, no palette limits. **Additionally, show a short evocative caption** describing her current state — *not* the emotion's name and not her reply, a small atmospheric line in her spirit (e.g. `playful` → "a teasing little smile"), from the curated caption set in EMOTION.md §6. Depends on: v1.4 (the web UI); reuses the v0.5 emotion-face assets.
+The **web sibling of the v0.6 local viewer**: the same `emotion → image` render tier, now in the browser. Add a portrait panel beside the chat in the web UI (v1.4) and the `ImageRenderer`: resolve `emotion`(+`intensity`) to a portrait via the asset manifest (EMOTION.md §7) — the **same emotion-face asset pack** as v0.6 — and swap the portrait to match the current state. Full PNG quality, no palette limits. **Additionally, show a short evocative caption** describing her current state — *not* the emotion's name and not her reply, a small atmospheric line in her spirit (e.g. `playful` → "a teasing little smile"), from the curated caption set in EMOTION.md §6. Depends on: v1.4 (the web UI); reuses the v0.6 emotion-face assets.
 
 **Tasks:**
 - A portrait panel beside the chat in the web UI.
-- `ImageRenderer` + the `lili_v1` asset manifest (emotion → portrait, optional intensity variants) — shared with the v0.5 local viewer.
+- `ImageRenderer` + the `lili_v1` asset manifest (emotion → portrait, optional intensity variants) — shared with the v0.6 local viewer.
 - Substitute the matching portrait for the current emotion each turn.
 - A short **mood caption** under the portrait: emotion(+intensity) → a curated descriptive phrase (never the enum name), EMOTION.md §6.
 
@@ -355,7 +355,7 @@ Introduce a minimal **MCP client** in the server and a `web_search` MCP service,
 
 **Goal:** give Лілі an ambient sense of the real world (weather, date/time, holidays, moon) and structured/fresh facts (wiki, news) — passive, knowledge-only MCP tools.
 
-Add a **world-context layer** of MCP tools, reusing the v3.2 MCP client and bounded tool loop. They are **passive and knowledge-only** (no actions in the world), so the risk is low; all **off by default**, per-user, results treated as **data, not commands**. The ambient sources (weather/time/moon/holiday) are injected as a short "today" context block that **feeds Лілі's daily mood** (the v0.8 temperament) alongside the horoscope — coloring tone, never her competence. Wiki/news are called on demand like web search. Full design and boundaries in [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md). Depends on: v3.2 (the MCP client + tool loop) and v1.5 (the per-user toggle).
+Add a **world-context layer** of MCP tools, reusing the v3.2 MCP client and bounded tool loop. They are **passive and knowledge-only** (no actions in the world), so the risk is low; all **off by default**, per-user, results treated as **data, not commands**. The ambient sources (weather/time/moon/holiday) are injected as a short "today" context block that **feeds Лілі's daily mood** (the v0.5 temperament) alongside the horoscope — coloring tone, never her competence. Wiki/news are called on demand like web search. Full design and boundaries in [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md). Depends on: v3.2 (the MCP client + tool loop) and v1.5 (the per-user toggle).
 
 **Tasks:**
 - **World context (first):** `weather.get(location)`, `time.now()`, `calendar.events(date)`, `moon.phase(date)` MCP tools; inject the enabled ambient sources as a quoted "today" block into the turn context.
@@ -372,7 +372,7 @@ Add a **world-context layer** of MCP tools, reusing the v3.2 MCP client and boun
 
 ## v4 — Creative Лілі: gallery, art, music, journal, co-creation
 
-Лілі becomes a **creator and co-creator**: a shared gallery, the ability to **see** the images you share (vision), make her own **drawings** and **music**, draw with you on a shared **canvas**, and keep a private literary **journal**. The whole creative layer is **off by default, per-user** (enabled in the admin panel); every artifact lives behind the same `repository`, **per-user isolated**; and user files are **untrusted data**. Depends on: v3 (the MCP layer + tool loop), v1 (server, multi-session, admin panel), v0.8 (the mood that flavors her art and journal). Specs: [GALLERY_MCP.md](features/GALLERY_MCP.md), [CREATIVE_MCP.md](features/CREATIVE_MCP.md), [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md), [JOURNAL.md](features/JOURNAL.md).
+Лілі becomes a **creator and co-creator**: a shared gallery, the ability to **see** the images you share (vision), make her own **drawings** and **music**, draw with you on a shared **canvas**, and keep a private literary **journal**. The whole creative layer is **off by default, per-user** (enabled in the admin panel); every artifact lives behind the same `repository`, **per-user isolated**; and user files are **untrusted data**. Depends on: v3 (the MCP layer + tool loop), v1 (server, multi-session, admin panel), v0.5 (the mood that flavors her art and journal). Specs: [GALLERY_MCP.md](features/GALLERY_MCP.md), [CREATIVE_MCP.md](features/CREATIVE_MCP.md), [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md), [JOURNAL.md](features/JOURNAL.md).
 
 ### v4.1 — Gallery & vision
 
@@ -440,11 +440,11 @@ A **synchronous, turn-based** shared canvas: Лілі sees the current canvas (v
 
 **Goal:** Лілі makes her own instrumental music by mood.
 
-Add the external **`music` MCP** (ElevenLabs Music — the same ecosystem as her voice), **instrumental only**, the track's mood set by her **emotion field** + her **mood of the day** (v0.8). Async (v4.2): submit → proactive turn with the audio; stored in the gallery. Off by default, per-user. See [CREATIVE_MCP.md](features/CREATIVE_MCP.md). Depends on: v4.1 (gallery), v4.2 (async).
+Add the external **`music` MCP** (ElevenLabs Music — the same ecosystem as her voice), **instrumental only**, the track's mood set by her **emotion field** + her **mood of the day** (v0.5). Async (v4.2): submit → proactive turn with the audio; stored in the gallery. Off by default, per-user. See [CREATIVE_MCP.md](features/CREATIVE_MCP.md). Depends on: v4.1 (gallery), v4.2 (async).
 
 **Tasks:**
 - `music.submit(prompt, mood, duration)` / `music.status(job_id)` MCP tools (ElevenLabs Music, instrumental, no vocals).
-- Mood prompt from the emotion field + the v0.8 temperament; async submit → proactive turn → gallery.
+- Mood prompt from the emotion field + the v0.5 temperament; async submit → proactive turn → gallery.
 - Per-user toggle, rate + cost caps, logging.
 
 **DoD:** Лілі decides to make a track by her current mood, submits, returns, and proactively brings the finished audio into the gallery and the conversation.
@@ -455,7 +455,7 @@ Add the external **`music` MCP** (ElevenLabs Music — the same ecosystem as her
 
 **Goal:** Лілі keeps a private literary journal of her inner life.
 
-At session end Лілі decides whether to write a **literary journal entry** — only if the session had something worthwhile (uniqueness judged from short memory) — in her own first-person voice, tied to the day's emotion and **mood** (v0.8), optionally with a mood drawing (v4.3). Stored in the gallery as admin-only `text`. **Private — read only via the admin panel (v1.5)**, never shown to users. Also writable on request; never on a schedule. See [JOURNAL.md](features/JOURNAL.md). Depends on: v0.2 (short memory), v0.3 (emotion), v0.8 (mood), v4.1 (gallery), v4.3 (optional drawing), v1.5 (admin panel).
+At session end Лілі decides whether to write a **literary journal entry** — only if the session had something worthwhile (uniqueness judged from short memory) — in her own first-person voice, tied to the day's emotion and **mood** (v0.5), optionally with a mood drawing (v4.3). Stored in the gallery as admin-only `text`. **Private — read only via the admin panel (v1.5)**, never shown to users. Also writable on request; never on a schedule. See [JOURNAL.md](features/JOURNAL.md). Depends on: v0.2 (short memory), v0.3 (emotion), v0.5 (mood), v4.1 (gallery), v4.3 (optional drawing), v1.5 (admin panel).
 
 **Tasks:**
 - End-of-session **uniqueness check** (from short memory) → optional `journal.write` (Лілі's literary prose, canon-defined voice); optional attached mood drawing (v4.3).
@@ -469,17 +469,17 @@ At session end Лілі decides whether to write a **literary journal entry** �
 
 ## Contract mapping
 
-- Emotion field `{ reply, emotion, intensity }` + enum + `IEmotionRenderer` — locked in **v0.3** (rendered: log → emoji v0.4 → local image face v0.5 → web portrait + caption v2.1 → animation v3.1). See [EMOTION.md](features/EMOTION.md).
-- Emotion-face asset pack (`emotion → image`) — first used by the local viewer in **v0.5** (see [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md)), reused by the web `ImageRenderer` in **v2.1**.
+- Emotion field `{ reply, emotion, intensity }` + enum + `IEmotionRenderer` — locked in **v0.3** (rendered: log → emoji v0.4 → local image face v0.6 → web portrait + caption v2.1 → animation v3.1). See [EMOTION.md](features/EMOTION.md).
+- Emotion-face asset pack (`emotion → image`) — first used by the local viewer in **v0.6** (see [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md)), reused by the web `ImageRenderer` in **v2.1**.
 - Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.9**.
-- Mood / temperament (daily, horoscope-derived; colors tone, never competence) — **v0.8** (core; see [ARCHITECTURE.md](ARCHITECTURE.md) §Mood and temperament).
+- Mood / temperament (daily, horoscope-derived; colors tone, never competence) — **v0.5** (core; see [ARCHITECTURE.md](ARCHITECTURE.md) §Mood and temperament).
 - Per-user memory records (`ShortSummary`, `LongTermFact`, with `user_id`) — **v0.2**.
 - User-scoping + the per-user isolation invariant — data-level in **v0.2**, enforced & tested at the auth boundary in **v1.3** (and gated as a security test in **v1.2**).
 - Core API (`reply(...)`, memory commands) — **v0.1**; exposed over the client/server API (TUI + CLI clients) in **v1.1**; web client in **v1.4**.
 - Auth — a local client token in **v1.1**; full accounts, registration/invite codes, allowlist, argon2id in **v1.3**; security testing + CI/CD (deploy, TLS, dep/secret scans) in **v1.2**; admin panel in **v1.5**.
 - Multi-user + multi-session — **v1.3**.
-- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.6** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
-- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.7** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
+- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.7** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
+- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.8** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
 - Image — **v2.1**; web voice output — **v2.2**; shared memory (`SharedMemoryItem`) + cross-pollination — **v2.3**; web dictation — **v2.4**.
 - Animation — **v3.1**.
 - MCP client + `web_search` service (`web.search`/`web.fetch`, off by default, untrusted content) — **v3.2** (see [WEB_SEARCH.md](features/WEB_SEARCH.md)).
