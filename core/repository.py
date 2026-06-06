@@ -131,3 +131,11 @@ class Repository(Protocol):
     def facts(self, user_id: str) -> list[LongTermFact]:
         """The user's accumulated long-term facts."""
         ...
+
+    def clear_memory(self, user_id: str) -> None:
+        """Wipe a user's relationship memory (short summaries + long-term facts).
+
+        Affects only this ``user_id``; the canon and other users are untouched.
+        Session messages are not removed.
+        """
+        ...

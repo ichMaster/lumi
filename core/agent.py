@@ -14,6 +14,8 @@ the return into a validated ``EmotionState``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from core.config import DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.llm import AnthropicClient, LLMClient, Message
 from core.memory import (
@@ -36,6 +38,14 @@ from core.user import DEFAULT_USER_ID
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
+
+
+@dataclass(frozen=True)
+class MemoryView:
+    """A read-only snapshot of a user's relationship memory (for the TUI)."""
+
+    summaries: list[str]
+    facts: list[str]
 
 
 class Core:
@@ -137,6 +147,19 @@ class Core:
         )
         self._repo.add_summary(summary)
         return summary
+
+    # --- memory commands (memory.view / memory.clear) -------------------
+    def view_memory(self, user_id: str | None = None) -> MemoryView:
+        """Snapshot the user's relationship memory (summaries + facts)."""
+        uid = user_id or self._user_id
+        return MemoryView(
+            summaries=[s.summary for s in self._repo.recent_summaries(uid, RECENT_SUMMARIES)],
+            facts=[f.fact for f in self._repo.facts(uid)],
+        )
+
+    def clear_memory(self, user_id: str | None = None) -> None:
+        """Wipe the user's short + long-term memory (only this user)."""
+        self._repo.clear_memory(user_id or self._user_id)
 
     def _accumulate_facts(self, history: list) -> None:
         try:

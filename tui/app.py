@@ -16,7 +16,8 @@ from rich.markdown import Markdown
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Footer, Header, Input, RichLog
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input, Label, RichLog
 
 from core.agent import Core
 from core.repository import Session
@@ -24,11 +25,54 @@ from core.repository import Session
 USER_LABEL = "Ти"
 LILI_LABEL = "Лілі"
 ERROR_LINE = "⚠ Лілі зараз недоступна. Спробуй ще раз за мить."
+MEMORY_EMPTY = "_Памʼять поки порожня._"
+CLEARED_LINE = "🧠 Памʼять очищено (короткострокову й довгострокову)."
+CANCELLED_LINE = "Скасовано."
 
 # Speaker colors — so your lines and Лілі's read apart at a glance.
 USER_COLOR = "cyan"
 LILI_COLOR = "green"
 ERROR_COLOR = "red"
+SYSTEM_COLOR = "yellow"
+
+
+class ConfirmScreen(ModalScreen[bool]):
+    """A tiny yes/no modal — returns ``True`` on confirm, ``False`` otherwise."""
+
+    BINDINGS = [
+        ("y", "confirm", "Так"),
+        ("т", "confirm", "Так"),
+        ("n", "cancel", "Ні"),
+        ("escape", "cancel", "Скасувати"),
+    ]
+    CSS = """
+    ConfirmScreen {
+        align: center middle;
+    }
+    #dialog {
+        width: auto;
+        max-width: 70%;
+        height: auto;
+        border: round $warning;
+        padding: 1 2;
+        background: $panel;
+    }
+    """
+
+    def __init__(self, question: str) -> None:
+        super().__init__()
+        self._question = question
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label(self._question)
+            yield Label("[y] так   ·   [n] ні")
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
 
 
 class LumiApp(App[None]):
@@ -74,7 +118,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             yield Input(
                 id="prompt",
-                placeholder="Напиши Лілі…  (Ctrl+Y — копіювати відповідь · Ctrl+Q — вийти)",
+                placeholder="Напиши Лілі…  (/memory · /forget · Ctrl+Y копіювати · Ctrl+Q вийти)",
             )
         yield Footer()
 
@@ -132,6 +176,18 @@ class LumiApp(App[None]):
 
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
+
+        # Memory commands (memory.view / memory.clear) — handled here, not sent
+        # to the model or persisted as a turn.
+        if text == "/memory":
+            self._show_memory()
+            prompt.focus()
+            return
+        if text == "/forget":
+            self._forget()
+            prompt.focus()
+            return
+
         prompt.disabled = True
         self._say(USER_LABEL, text, USER_COLOR)
 
@@ -145,6 +201,35 @@ class LumiApp(App[None]):
         finally:
             prompt.disabled = False
             prompt.focus()
+
+    # --- memory commands -------------------------------------------------
+    def _show_memory(self) -> None:
+        """Render the user's memory (facts + summaries) — the `/memory` command."""
+        mem = self._core.view_memory()
+        lines: list[str] = []
+        if mem.facts:
+            lines.append("**Що Лілі памʼятає про тебе:**")
+            lines += [f"- {f}" for f in mem.facts]
+        if mem.summaries:
+            lines.append("**Памʼять про попередні розмови:**")
+            lines += [f"- {s}" for s in mem.summaries]
+        body = "\n".join(lines) if lines else MEMORY_EMPTY
+        self._emit(body, Markdown(body))
+
+    def _forget(self) -> None:
+        """Clear the user's memory after a confirmation — the `/forget` command."""
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self._core.clear_memory()
+                self._emit(CLEARED_LINE, Text(CLEARED_LINE, style=f"bold {SYSTEM_COLOR}"))
+            else:
+                self._emit(CANCELLED_LINE, Text(CANCELLED_LINE, style=SYSTEM_COLOR))
+
+        self.push_screen(
+            ConfirmScreen("Очистити памʼять Лілі про тебе? Це не можна скасувати."),
+            _on_confirm,
+        )
 
     # --- clipboard actions ----------------------------------------------
     def action_copy_reply(self) -> None:

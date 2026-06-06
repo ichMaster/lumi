@@ -109,3 +109,8 @@ class JsonRepository:
 
     def facts(self, user_id: str) -> list[LongTermFact]:
         return list(self._facts.get(user_id, []))
+
+    def clear_memory(self, user_id: str) -> None:
+        self._summaries.pop(user_id, None)
+        self._facts.pop(user_id, None)
+        self._persist()
