@@ -15,6 +15,8 @@ from tui.app import (
     ERROR_LINE,
     LILI_COLOR,
     LILI_LABEL,
+    STATUS_BUSY,
+    STATUS_READY,
     USER_COLOR,
     USER_LABEL,
     LumiApp,
@@ -117,20 +119,32 @@ async def test_status_and_stats_are_separate_lines(tmp_path):
         # Both widgets are mounted.
         app.query_one("#status", Static)
         app.query_one("#stats", Static)
-        # Status = state (model + ready); stats = numbers (separate concerns).
-        assert "haiku" in app._status_text() and "готова" in app._status_text()
-        assert "усього" not in app._status_text()  # totals live on the stats line
+        # Status = technical state (model + online); stats = numbers (separate).
+        assert "haiku" in app._status_text() and STATUS_READY in app._status_text()
+        assert "total" not in app._status_text()  # totals live on the stats line
         await _submit(pilot, app, "привіт")
-        assert "усього 1" in app._stats_text()  # one turn counted, on the stats line
+        assert "total 1 turns" in app._stats_text()  # one turn counted, on stats line
 
 
-async def test_stats_stay_visible_while_busy(tmp_path):
+async def test_status_has_no_icons(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
-        # While busy, the status shows the indicator but the stats line still has data.
-        assert "Лілі думає…" in app._status_text(busy="Лілі думає…")
-        assert "усього 1" in app._stats_text()
+        for glyph in ("●", "◐", "⚠", "💭", "📊", "↑", "↓"):
+            assert glyph not in app._status_text()
+            assert glyph not in app._stats_text()
+            assert glyph not in app._status_text(busy=STATUS_BUSY)
+
+
+async def test_busy_is_a_technical_status_and_stats_stay_visible(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        # Busy state is the technical connection status (not persona "думає").
+        assert STATUS_BUSY in app._status_text(busy=STATUS_BUSY)
+        assert "думає" not in app._status_text(busy=STATUS_BUSY)
+        # ...and the stats line still has data while busy.
+        assert "total 1 turns" in app._stats_text()
 
 
 async def test_ctrl_y_copies_lili_last_reply(tmp_path):

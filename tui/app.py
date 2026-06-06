@@ -37,6 +37,11 @@ SYSTEM_COLOR = "yellow"
 THINKING_COLOR = "grey50"  # Лілі's reasoning, dimmed apart from her reply
 THINKING_PREFIX = "💭"
 
+# Technical connection status (no icons) — same vocabulary across states.
+STATUS_READY = "online"
+STATUS_BUSY = "requesting…"
+STATUS_OFFLINE = "offline"
+
 
 class ConfirmScreen(ModalScreen[bool]):
     """A tiny yes/no modal — returns ``True`` on confirm, ``False`` otherwise."""
@@ -198,37 +203,39 @@ class LumiApp(App[None]):
 
     @staticmethod
     def _fmt_latency(ms: int) -> str:
-        return f"{ms / 1000:.1f}с" if ms >= 1000 else f"{ms}мс"
+        return f"{ms / 1000:.1f}s" if ms >= 1000 else f"{ms}ms"
 
     @staticmethod
     def _short_model(model: str) -> str:
         return model[len("claude-") :] if model.startswith("claude-") else model
 
     def _status_text(self, busy: str | None = None) -> str:
-        """The connection / state line (left of the stats line)."""
+        """The technical connection/status line (no icons)."""
         model = self._short_model(self._core.model)
-        think = " 💭" if (self._core.last_stats and self._core.last_stats.thinking) else ""
+        thinking = self._core.last_stats and self._core.last_stats.thinking
+        think = " thinking" if thinking else ""
         if busy:
-            return f"[yellow]◐[/] {model}{think} · {busy}"
+            return f"status: [yellow]{busy}[/] · {model}{think}"
         if not self._connected:
-            return f"[red]⚠[/] {model} · немає звʼязку — спробуй ще раз"
-        return f"[green]●[/] {model}{think} · готова"
+            return f"status: [red]{STATUS_OFFLINE}[/] · {model} · no connection"
+        return f"status: [green]{STATUS_READY}[/] · {model}{think}"
 
     def _stats_text(self) -> str:
-        """The statistics line — last response + running totals (always shown)."""
+        """The statistics line — last response + running totals (no icons)."""
         stats = self._core.last_stats
         totals = self._core.totals
         if stats is None or totals.turns == 0:
-            return "📊 статистика зʼявиться після першої відповіді"
+            return "stats: —"
         last = (
-            f"остання ↑{self._fmt_tokens(stats.input_tokens)} "
-            f"↓{self._fmt_tokens(stats.output_tokens)} · {self._fmt_latency(stats.latency_ms)}"
+            f"last {self._fmt_tokens(stats.input_tokens)}/"
+            f"{self._fmt_tokens(stats.output_tokens)} tok · {self._fmt_latency(stats.latency_ms)}"
         )
         total = (
-            f"усього {totals.turns} · ↑{self._fmt_tokens(totals.input_tokens)} "
-            f"↓{self._fmt_tokens(totals.output_tokens)} · сер {self._fmt_latency(totals.avg_latency_ms)}"
+            f"total {totals.turns} turns · "
+            f"{self._fmt_tokens(totals.input_tokens)}/{self._fmt_tokens(totals.output_tokens)} tok"
+            f" · avg {self._fmt_latency(totals.avg_latency_ms)}"
         )
-        return f"📊 {last}   ·   {total}"
+        return f"stats: {last}   ·   {total}"
 
     def _render_status(self, busy: str | None = None) -> None:
         self.query_one("#status", Static).update(self._status_text(busy))
@@ -257,7 +264,7 @@ class LumiApp(App[None]):
 
         prompt.disabled = True
         self._say(USER_LABEL, text, USER_COLOR)
-        self._render_status(busy="Лілі думає…")  # live: working, not frozen
+        self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
 
         try:
             assert self._session is not None
