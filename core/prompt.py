@@ -53,6 +53,16 @@ STYLE_HEADER = (
     "це має пріоритет над типовою багатослівністю та іншими вказівками щодо форми:"
 )
 
+# v0.3 emotion channel (EMOTION.md §3/§8): ask Лілі to return her state via the
+# `set_state` tool alongside her reply. The tool schema constrains emotion→enum and
+# intensity→0–1; this instruction makes her pick a *meaningful* state. Injected
+# only when build_system_prompt(emotion=True).
+EMOTION_INSTRUCTION = (
+    "Разом із відповіддю познач свій емоційний стан через інструмент set_state: "
+    "emotion — одне зі значень joy, calm, playful, tender, thoughtful, serious, "
+    "surprise, doubt, sad; intensity — число від 0 до 1; reply — лише твій текст."
+)
+
 
 def load_canon(path: str | Path) -> str:
     """Read the canon file. The path comes from config (never hardcoded).
@@ -75,22 +85,26 @@ def build_system_prompt(
     facts: Sequence[str] | None = None,
     digest: str | None = None,
     style: str | None = None,
+    emotion: bool = False,
 ) -> str:
     """Assemble the system prompt: canon + the user's memory + an answer style.
 
-    The canon always rides at the base, then the user's recent ``summaries`` and
-    long-term ``facts``, then the in-session ``digest``, and finally — at the very
-    **end** — an optional ``style`` overlay (which shapes the *form* of the reply:
-    length/structure/expressiveness, never competence), framed as a prioritized
-    directive (:data:`STYLE_HEADER`) so it's the last, most salient instruction.
-    Assembly order: canon → summaries → facts → digest → **style**. With no
-    overlays the result is the canon verbatim (the v0.1 behavior). v0.5 adds a
-    ``mood`` block the same way.
+    The canon always rides at the base; ``emotion=True`` adds the v0.3
+    emotion-output instruction (:data:`EMOTION_INSTRUCTION`) right after it; then
+    the user's recent ``summaries`` and long-term ``facts``, then the in-session
+    ``digest``, and finally — at the very **end** — an optional ``style`` overlay
+    (which shapes the *form* of the reply, never competence), framed as a
+    prioritized directive (:data:`STYLE_HEADER`) so it's the last, most salient
+    instruction. Assembly order: canon → emotion → summaries → facts → digest →
+    **style**. With no overlays the result is the canon verbatim (the v0.1
+    behavior). v0.5 adds a ``mood`` block the same way.
 
     All overlay args are plain strings so this stays a pure string assembler,
     decoupled from the record types (the core passes the text).
     """
     parts = [canon]
+    if emotion:
+        parts.append(EMOTION_INSTRUCTION)
     if summaries:
         parts.append(
             "Памʼять про попередні розмови з цією людиною:\n"

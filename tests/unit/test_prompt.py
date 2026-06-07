@@ -78,3 +78,14 @@ def test_split_reasoning_handles_multiline_and_stray_tags():
     assert thinking == "рядок1\nрядок2"
     assert reply == "відповідь"  # stray closing tag stripped too
     assert "<think" not in reply and "</think" not in reply
+
+
+def test_build_system_prompt_emotion_instruction_is_opt_in():
+    from core.prompt import EMOTION_INSTRUCTION
+    # Off by default → canon verbatim (the v0.1 contract).
+    assert build_system_prompt("CANON") == "CANON"
+    assert EMOTION_INSTRUCTION not in build_system_prompt("CANON")
+    # emotion=True injects it right after the canon.
+    withe = build_system_prompt("CANON", emotion=True)
+    assert EMOTION_INSTRUCTION in withe
+    assert withe.index("CANON") < withe.index(EMOTION_INSTRUCTION)
