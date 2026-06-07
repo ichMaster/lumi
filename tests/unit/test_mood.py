@@ -130,3 +130,20 @@ def test_no_mood_means_no_block(tmp_path):
     core = _core(tmp_path, llm, mood=False)  # mood off → no block
     core.reply("привіт", core.start_session())
     assert MOOD_HEADER not in core.last_prompt["system"]
+
+
+def test_full_reading_is_persisted_to_the_mood_log_file(tmp_path):
+    log = tmp_path / "mood.log"
+    core = Core(
+        llm=MockLLMClient(_READING),
+        repository=JsonRepository(tmp_path / "s.json"),
+        canon="Ти — Лілі.",
+        model="m",
+        clock=_DAY1,
+        natal="Сонце 15° Риб",
+        mood_log_path=log,
+    )
+    core._ensure_mood()
+    assert log.is_file()
+    text = log.read_text(encoding="utf-8")
+    assert "День легкий і рухливий" in text and "2026-06-07" in text  # full reading, dated

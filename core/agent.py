@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
@@ -99,6 +100,7 @@ class Core:
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
+        mood_log_path: Path | None = None,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -111,6 +113,7 @@ class Core:
         # v0.6 mood of the day: the fixed natal seed + the cached daily MoodState.
         self._natal = natal.strip()
         self._mood_enabled = mood_enabled
+        self._mood_log_path = mood_log_path  # the full reading is appended here (readable)
         self._mood: MoodState | None = None
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
@@ -342,6 +345,13 @@ class Core:
             return
         self._mood = MoodState(date=today, resolution=split_resolution(reading), reading=reading)
         _mood_log.info("mood %s:\n%s", today, reading, extra={"date": today})
+        if self._mood_log_path is not None:  # also persist the full reading, readable
+            try:
+                self._mood_log_path.parent.mkdir(parents=True, exist_ok=True)
+                with self._mood_log_path.open("a", encoding="utf-8") as f:
+                    f.write(f"\n\n===== {today} =====\n{reading}\n")
+            except OSError:
+                pass  # best-effort; never block a turn on logging
 
     def reply(self, user_text: str, session: Session) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
@@ -522,4 +532,5 @@ def build_core(
         meta_styles=load_meta_styles(cfg.styles_path),
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
+        mood_log_path=cfg.store_path.parent / "mood.log",
     )

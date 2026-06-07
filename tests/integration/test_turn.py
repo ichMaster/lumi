@@ -84,9 +84,15 @@ def test_history_persists_across_a_restart(tmp_path):
 
 def test_build_core_wires_from_config_with_injected_llm_and_repo(tmp_path):
     # build_core never touches the Anthropic SDK when an llm is injected.
+    from dataclasses import replace
+
+    from core.config import load_config
+
     llm = MockLLMClient("ok")
     repo = JsonRepository(tmp_path / "store.json")
-    core = build_core(llm=llm, repository=repo)
+    # Isolate the store dir so the daily mood log lands in tmp, not the real .lumi/.
+    cfg = replace(load_config(), store_path=tmp_path / "store.json")
+    core = build_core(config=cfg, llm=llm, repository=repo)
 
     session = core.start_session()
     assert core.reply("hi", session).reply == "ok"
