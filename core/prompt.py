@@ -36,20 +36,23 @@ def build_system_prompt(
     summaries: Sequence[str] | None = None,
     facts: Sequence[str] | None = None,
     digest: str | None = None,
+    style: str | None = None,
 ) -> str:
-    """Assemble the system prompt: canon + the user's memory.
+    """Assemble the system prompt: canon + an answer style + the user's memory.
 
-    The canon always rides at the base; the user's recent ``summaries`` and
-    long-term ``facts`` are composed **around** it (assembly order: canon →
-    summaries → facts → digest). With no memory the result is the canon verbatim
-    (the v0.1 behavior). The ``digest`` is the running summary of the earlier part
-    of the **current** conversation (in-session compaction) — placed last, nearest
-    the live messages. v0.5 adds a ``mood`` block the same way.
+    The canon always rides at the base; an optional ``style`` overlay (which shapes
+    the *form* of the reply — length/structure/expressiveness, not competence) sits
+    right after it, then the user's recent ``summaries`` and long-term ``facts``,
+    then the in-session ``digest`` (assembly order: canon → style → summaries →
+    facts → digest). With no overlays the result is the canon verbatim (the v0.1
+    behavior). v0.5 adds a ``mood`` block the same way.
 
-    All memory args are plain strings so this stays a pure string assembler,
+    All overlay args are plain strings so this stays a pure string assembler,
     decoupled from the record types (the core passes the text).
     """
     parts = [canon]
+    if style:
+        parts.append(style)
     if summaries:
         parts.append(
             "Памʼять про попередні розмови з цією людиною:\n"

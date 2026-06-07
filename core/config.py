@@ -26,6 +26,9 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 # Default canon path (config-referenced — never hardcoded in the core).
 DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 
+# Answer styles (overlays); editable like the canon. Optional.
+DEFAULT_STYLES_PATH = _REPO_ROOT / "core" / "styles.md"
+
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
@@ -62,6 +65,7 @@ class Config:
     provider: str = "anthropic"
     model: str = DEFAULT_MODEL
     canon_path: Path = DEFAULT_CANON_PATH
+    styles_path: Path = DEFAULT_STYLES_PATH
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     compaction_batch: int = DEFAULT_COMPACTION_BATCH
@@ -87,6 +91,9 @@ def load_config(*, load_env: bool = True) -> Config:
     canon_env = os.getenv("LUMI_CANON_PATH")
     canon_path = Path(canon_env) if canon_env else DEFAULT_CANON_PATH
 
+    styles_env = os.getenv("LUMI_STYLES_PATH")
+    styles_path = Path(styles_env) if styles_env else DEFAULT_STYLES_PATH
+
     store_env = os.getenv("LUMI_STORE_PATH")
     store_path = Path(store_env) if store_env else DEFAULT_STORE_PATH
 
@@ -108,6 +115,7 @@ def load_config(*, load_env: bool = True) -> Config:
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
         canon_path=canon_path,
+        styles_path=styles_path,
         store_path=store_path,
         memory_window=memory_window,
         compaction_batch=compaction_batch,

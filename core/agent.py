@@ -37,6 +37,7 @@ from core.repository import (
     make_message,
     now_iso,
 )
+from core.styles import DEFAULT_STYLE, load_styles
 from core.user import DEFAULT_USER_ID
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
@@ -78,6 +79,7 @@ class Core:
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
+        styles: dict[str, str] | None = None,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -86,6 +88,9 @@ class Core:
         self._user_id = user_id
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
+        # Answer styles (overlays) + the active one (per-session).
+        self._styles = styles or {}
+        self._style = DEFAULT_STYLE
         # The model's reasoning summary from the last turn (None when thinking is
         # off or absent), for a client to render alongside the reply.
         self.last_thinking: str | None = None
@@ -105,8 +110,29 @@ class Core:
     def user_id(self) -> str:
         return self._user_id
 
+    @property
+    def style(self) -> str:
+        """The active answer style (per-session)."""
+        return self._style
+
+    def style_names(self) -> list[str]:
+        """All selectable style names (``normal`` + the authored overlays)."""
+        return [DEFAULT_STYLE, *sorted(self._styles)]
+
+    def set_style(self, name: str) -> bool:
+        """Switch the active answer style; returns ``False`` for an unknown style."""
+        name = name.strip().lower()
+        if name == DEFAULT_STYLE or name in self._styles:
+            self._style = name
+            return True
+        return False
+
     def start_session(self) -> Session:
-        """Open a fresh session for the active user (persisted)."""
+        """Open a fresh session for the active user (persisted).
+
+        The answer style is per-session — it resets to ``normal`` here.
+        """
+        self._style = DEFAULT_STYLE
         return self._repo.create_session(self._user_id)
 
     def _system_prompt(self, session: Session) -> str:
@@ -127,6 +153,7 @@ class Core:
             summaries=summaries,
             facts=facts,
             digest=digest.summary if digest else None,
+            style=self._styles.get(self._style) or None,
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:
@@ -316,4 +343,5 @@ def build_core(
         user_id=user_id,
         memory_window=cfg.memory_window,
         compaction_batch=cfg.compaction_batch,
+        styles=load_styles(cfg.styles_path),
     )

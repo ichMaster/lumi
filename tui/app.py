@@ -26,6 +26,7 @@ from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
 from core.agent import Core
 from core.repository import Session
+from core.styles import DEFAULT_STYLE
 
 USER_LABEL = "Ти"
 LILI_LABEL = "Лілі"
@@ -181,7 +182,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "Ти"
-            prompt.border_subtitle = "Enter — надіслати · Shift+Enter — рядок · /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — надіслати · Shift+Enter — рядок · /style /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -270,11 +271,14 @@ class LumiApp(App[None]):
         model = self._short_model(self._core.model)
         thinking = self._core.last_stats and self._core.last_stats.thinking
         think = " thinking" if thinking else ""
+        style = self._core.style
+        style_part = f" · style: {style}" if style != DEFAULT_STYLE else ""
+        meta = f"{model}{think}{style_part}"
         if busy:
-            return f"status: [yellow]{busy}[/] · {model}{think}"
+            return f"status: [yellow]{busy}[/] · {meta}"
         if not self._connected:
             return f"status: [red]{STATUS_OFFLINE}[/] · {model} · no connection"
-        return f"status: [green]{STATUS_READY}[/] · {model}{think}"
+        return f"status: [green]{STATUS_READY}[/] · {meta}"
 
     def _stats_text(self) -> str:
         """The statistics line — last response + running totals (total tokens only)."""
@@ -324,6 +328,10 @@ class LumiApp(App[None]):
             return
         if text == "/prompt":
             self._show_prompt()
+            prompt.focus()
+            return
+        if text == "/style" or text.startswith("/style "):
+            self._style_command(text)
             prompt.focus()
             return
         if text == "/new":
@@ -417,6 +425,23 @@ class LumiApp(App[None]):
             self._render_stats()
         finally:
             self._busy = False
+
+    def _style_command(self, text: str) -> None:
+        """`/style` lists styles + the current one; `/style <name>` switches."""
+        arg = text[len("/style"):].strip()
+        if not arg:
+            names = ", ".join(self._core.style_names())
+            line = f"Styles: {names}  (current: {self._core.style})"
+            self._emit(line, Text(line, style=SYSTEM_COLOR))
+            return
+        if self._core.set_style(arg):
+            line = f"Style → {self._core.style}"
+            self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
+            self._render_status()
+        else:
+            names = ", ".join(self._core.style_names())
+            line = f"Unknown style '{arg}'. Available: {names}"
+            self._emit(line, Text(line, style=ERROR_COLOR))
 
     def _show_prompt(self) -> None:
         """Show the exact prompt sent on the last turn — `/prompt`."""
