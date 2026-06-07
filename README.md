@@ -12,7 +12,7 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.6.0 — v0.6 Mood of the day.** Лілі now has a **daily temperament** — a model-generated,
+**0.6.1 — v0.6 Mood of the day.** Лілі now has a **daily temperament** — a model-generated,
 horoscope-flavoured mood that colors her tone and the emotions she leans toward, **never her
 competence**. Computed once per local day from her natal chart; an experiment for daily
 variation, not an astrological claim. (A real-ephemeris test settled the design: the model
@@ -25,6 +25,9 @@ is the point.)
 - **Prominent in the prompt** — only the resolution rides in the system prompt, as a prioritized
   block that biases her tone + emotion, never competence (LUMI-026).
 - **`/mood`** — see her mood of the day on demand (LUMI-027).
+
+_0.6.1 fixes:_ the day is now **local** (not UTC); the full reading is saved to `.lumi/mood.log`;
+the resolution is **honest/objective** (not always positive) and **describes her state, no advice**.
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog.
 

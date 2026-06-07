@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.6.1 (2026-06-08)
+---------------------------
+- clock: system_clock now returns LOCAL time, not UTC — the mood "day" (and per-message timestamps + the ambient "now") were keyed on UTC, so just after local midnight they were a day behind.
+- mood: the full daily reading is now persisted to .lumi/mood.log (it previously went only to a logger with no configured sink, so it was effectively unsaved).
+- mood: the resolution is honest/objective — not artificially positive (hard, low, tense days too) — and describes her STATE only, with no advice or recommendations.
+- mood: require the detailed reading body before the resolution (the model sometimes emitted only «РЕЗОЛЮЦІЯ:»), and fix split_resolution to handle an inline marker.
+- docs: add docs/MOOD.md — a worked example of how the mood prompt is assembled.
+
 Version 0.6.0 (2026-06-08)
 ---------------------------
 - v0.6 — Mood of the day (LUMI-025…027): Лілі has a model-generated daily temperament that colors her tone + the emotions she leans toward, never her competence. An experiment for daily variation, not an astrological claim.
