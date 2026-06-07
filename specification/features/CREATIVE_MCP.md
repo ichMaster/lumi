@@ -24,7 +24,7 @@ The same `image` generation also powers the synchronous **co-creation canvas** (
 **Goal.** Instrumental pieces, ambient, loops, musical sketches by mood — no vocals. This is what Лілі can do herself reliably and cheaply, and it fits her contemplative side (mountains, cold water, meditation).
 
 - **Provider:** **ElevenLabs Music** (the same ecosystem as her voice — one key with her TTS; clean commercial license; a real API). Instrumental mode, no vocals.
-- **Mood:** the track's mood comes from Лілі's current **emotion field** (`emotion`, `intensity`) and her **mood of the day** (the v0.5 temperament) — calm, playful, tender, and so on.
+- **Mood:** the track's mood comes from Лілі's current **emotion field** (`emotion`, `intensity`) and her **mood of the day** (the v0.6 temperament) — calm, playful, tender, and so on.
 - **Лілі's role:** she decides what and when to generate, forms the mood prompt; the tool renders the audio; the result is stored in the gallery.
 
 **Contract (asynchronous):**

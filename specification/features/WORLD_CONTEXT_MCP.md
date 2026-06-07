@@ -2,12 +2,12 @@
 
 A group of **passive** MCP tools that give Лілі a connection to the real world and to facts. All are **knowledge only** (Лілі learns something) with **no actions in the world**, so the risk is low. **Off by default**, per-user, with limits and logging. Results are **data, not commands**.
 
-These extend the MCP layer introduced for web search (v3.2): the same **MCP client** in the server and the same **bounded tool loop** in the core's model turn, and the same safety pattern as [WEB_SEARCH.md](WEB_SEARCH.md) (see ARCHITECTURE §MCP tools). Лілі's **mood of the day** is core (v0.5 — a horoscope-derived temperament; ARCHITECTURE §Mood and temperament); the world-context sources here **feed that mood** as additional ambient inputs.
+These extend the MCP layer introduced for web search (v3.2): the same **MCP client** in the server and the same **bounded tool loop** in the core's model turn, and the same safety pattern as [WEB_SEARCH.md](WEB_SEARCH.md) (see ARCHITECTURE §MCP tools). Лілі's **mood of the day** is core (v0.6 — a horoscope-derived temperament; ARCHITECTURE §Mood and temperament); the world-context sources here **feed that mood** as additional ambient inputs.
 
 ## Purpose
 
 Two roles:
-- **World context** — an ambient sense of the day (weather, date/time, holidays, moon phase) that keeps the conversation tied to reality and **feeds Лілі's mood of the day** (the v0.5 temperament) and colors what she brings up (Лілі hikes in the mountains, swims in cold water, contemplates).
+- **World context** — an ambient sense of the day (weather, date/time, holidays, moon phase) that keeps the conversation tied to reality and **feeds Лілі's mood of the day** (the v0.6 temperament) and colors what she brings up (Лілі hikes in the mountains, swims in cold water, contemplates).
 - **Knowledge** — structured and fresh facts that complement the v3.2 web search.
 
 ## World context (ambient)
@@ -30,7 +30,7 @@ Called on demand during the turn, like web search:
 
 ## How world context colors a turn
 
-When enabled, the ambient sources (weather, time, moon, holiday) are added to the turn's context and **feed Лілі's mood of the day** (the v0.5 temperament — ARCHITECTURE §Mood and temperament) alongside the horoscope. The mood biases her emitted `emotion`/`intensity` and the tone/imagery of the reply — **never her competence**. This rides the existing emotion channel (the model emits `{reply, emotion, intensity}`, the core validates it — EMOTION.md). A gloomy rainy day or a full moon can color Лілі's mood without changing the quality of her answers.
+When enabled, the ambient sources (weather, time, moon, holiday) are added to the turn's context and **feed Лілі's mood of the day** (the v0.6 temperament — ARCHITECTURE §Mood and temperament) alongside the horoscope. The mood biases her emitted `emotion`/`intensity` and the tone/imagery of the reply — **never her competence**. This rides the existing emotion channel (the model emits `{reply, emotion, intensity}`, the core validates it — EMOTION.md). A gloomy rainy day or a full moon can color Лілі's mood without changing the quality of her answers.
 
 ## Contracts
 

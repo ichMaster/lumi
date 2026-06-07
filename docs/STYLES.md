@@ -2,7 +2,7 @@
 
 A **style** changes *how* Лілі answers — length, structure, expressiveness, register —
 **never what she knows or how warm she is**. It's the manual, form‑shaping sibling of the
-future v0.5 daily **mood** (which colors tone automatically). This document describes the
+future v0.6 daily **mood** (which colors tone automatically). This document describes the
 **implemented** behavior; the design note lives in
 [../specification/ARCHITECTURE.md](../specification/ARCHITECTURE.md) §Configuration.
 
