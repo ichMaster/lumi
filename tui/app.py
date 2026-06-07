@@ -437,7 +437,7 @@ class LumiApp(App[None]):
             bases = ", ".join(self._core.base_names())
             line = (
                 f"Meta-styles: {metas}  (current: {self._core.style})\n"
-                f"Base: normal, {bases}  ·  combine: /style short formal"
+                f"Base: normal, {bases}  ·  combine: /style коротко офіційно"
             )
             self._emit(line, Text(line, style=SYSTEM_COLOR))
             return

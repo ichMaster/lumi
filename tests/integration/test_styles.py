@@ -26,28 +26,29 @@ def _core(tmp_path, llm=None):
 # --- loader ---------------------------------------------------------------
 def test_load_styles_from_the_authored_file():
     styles = load_styles(load_config(load_env=False).styles_path)
-    # The redesigned set spans the categories (length/explain/structure/register/…).
+    # Base style names are Ukrainian, spanning the categories.
     assert {
-        "short", "tldr", "detailed",
-        "explain", "eli5", "example", "metaphor",
-        "bullets", "steps", "compare", "practical",
-        "formal", "casual", "emotional", "poetic",
-        "socratic",
+        "коротко", "суть", "докладно",
+        "поясни", "просто", "приклад", "метафора",
+        "списком", "кроки", "порівняй", "практично",
+        "офіційно", "невимушено", "емоційно", "поетично",
+        "питанням",
     } <= set(styles)
     assert "normal" not in styles  # the default carries no overlay
-    # Category-header comments ("# ── Length ──") never leak into a style body.
+    # Category-header comments ("# ── Довжина ──") never leak into a style body.
     assert all("──" not in body for body in styles.values())
     # Each style includes a concrete length limit (sentences/words/lines).
-    assert "речен" in styles["short"] or "слів" in styles["short"]
+    assert "речен" in styles["коротко"] or "слів" in styles["коротко"]
     # Meta-styles are NOT base styles (their alias bodies are excluded).
-    assert "teacher" not in styles and "brief" not in styles
+    assert "стежка" not in styles and "іскра" not in styles
 
 
 def test_load_meta_styles_from_the_authored_file():
     cfg = load_config(load_env=False)
     metas = load_meta_styles(cfg.styles_path)
     base = load_styles(cfg.styles_path)
-    assert {"brief", "teacher", "analyst", "doer", "muse", "guide"} <= set(metas)
+    # Meta-style names are Лілі's (poetic, not formal).
+    assert {"іскра", "стежка", "призма", "руки", "муза", "луна"} <= set(metas)
     # Every meta expands to ≥2 real base styles.
     for name, members in metas.items():
         assert len(members) >= 2
