@@ -21,8 +21,13 @@ Clock = Callable[[], datetime]
 
 
 def system_clock() -> datetime:
-    """The real clock: the current time, timezone-aware (UTC)."""
-    return datetime.now(UTC)
+    """The real clock: the current **local** time, timezone-aware.
+
+    Local (not UTC) so "today" is the user's day — the mood recomputes at *local*
+    midnight (v0.6) and timestamps/ambient read in local time. Tests inject a fixed
+    clock, so this is the only place the wall clock is read.
+    """
+    return datetime.now(UTC).astimezone()
 
 
 def fixed_clock(when: datetime) -> Clock:
