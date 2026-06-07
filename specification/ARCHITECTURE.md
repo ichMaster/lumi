@@ -26,10 +26,10 @@ The full enum, the `EmotionState` contract, the `IEmotionRenderer` interface and
 
 Лілі has a **mood of the day** — a daily backdrop that colors which emotions and tone she trends toward, **without ever changing her competence or willingness to help**. It is **core functionality** (in `/core`, **on by default** — part of her character, not an optional tool), available from the TUI in v0. It is an **experimental generative method for daily variation, not an astrological claim**.
 
-- **Natal chart.** A fixed JSON snapshot (timestamp + place + computed positions) for Лілі, written once at setup; part of her canon/config (one Лілі), not per-user.
-- **Astro engine.** Computes the daily transits to the natal chart **once per local day** — recomputed at local midnight, cached; a turn keeps the temperament it started with even across a day boundary. Engine: **skyfield**; the transit→dial mapping is a tunable function and may start coarse. The daily date/clock is injected (deterministic, testable).
-- **Temperament dials.** The transits map to a few normalized dials — **energy, warmth, playfulness, talkativeness** (0–1) — extended with voice-delivery dials (speed, pitch) when voice arrives (v2.2).
-- **Injection.** A short "today's mood" block built from the dials is added to the system prompt; it **biases the `emotion`/`intensity` the model emits and the tone/imagery** of the reply (e.g. high warmth → more `tender`/`joy`; low energy → more `calm`/`thoughtful`). It does **not** replace the emotion channel (the model still emits `{reply, emotion, intensity}`, the core still validates it — §Emotion channel) and **never affects competence**.
+- **Natal chart.** A fixed snapshot (date/time/place + positions) for Лілі, part of her canon/config (one Лілі), not per-user. Verified accurate against a real ephemeris.
+- **Daily mood call (the model, not an astronomy engine).** Once per local day the core asks the model — through the `LLMClient` seam — for a vivid horoscope-flavored reading from the natal chart + today's date, ending in a short **resolution** (what she'll want / won't want / her mood, energy, tone). A real-ephemeris test confirmed the model writes a useful daily reading but **cannot compute accurate transits** — precision is not the goal here, daily *variation* is. Computed **once per local day**, recomputed at local midnight, cached; a turn keeps the mood it started with even across a day boundary. The daily date/clock is injected (deterministic; the model is **mocked in tests**, never a paid call).
+- **Logged in full; only the resolution injected.** The **full reading is logged** (keyed by date) — never shown to the user, never in the prompt. Only the **resolution** is added to the system prompt, as a **prominent, prioritized block** (mirroring the v0.5 style header) so it actually colors the turn. It **biases the `emotion`/`intensity` the model emits and the tone/imagery** of the reply (e.g. "wants depth and quiet" → more `tender`/`thoughtful`; "low, slow energy" → more `calm`). It does **not** replace the emotion channel (the model still emits `{reply, emotion, intensity}`, the core still validates it — §Emotion channel) and **never affects competence**. A mood-call failure degrades to no block (never blocks a turn).
+- **Visible on demand.** A `/mood` command shows the current day's resolution.
 - **World context feeds it (v3.3).** When the optional world-context tools are enabled, weather/moon/date add ambient inputs to the same mood block alongside the horoscope (§MCP tools, [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md)).
 
 ## Memory (three layers)
@@ -197,7 +197,7 @@ The TUI (v0) runs locally — nothing to deploy. From **v1.2**, right after the 
 ## Stack and repository layout
 
 ```
-/core        # Python: canon, per-user memory + shared experience, llm (thin LLMClient seam — Claude Haiku v0.1, more models v0.10), emotion field + validation, mood/temperament (astro engine — skyfield, v0.6), repository interface (user-scoped)
+/core        # Python: canon, per-user memory + shared experience, llm (thin LLMClient seam — Claude Haiku v0.1, more models v0.10), emotion field + validation, mood/temperament (model-based daily mood + resolution, v0.6), repository interface (user-scoped)
 /tui         # terminal interface: in-process app in v0, refactored to a server client in v1.1; Log/Emoji renderers
 /viewer      # later (v0.7): local desktop emotion-face window (Tkinter) + faces/ asset pack; polls a local signal
 /cli         # later (v1.1): CLI management utility — run/inspect the server, manage the owner/users, config
