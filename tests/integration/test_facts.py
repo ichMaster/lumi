@@ -11,9 +11,9 @@ def scripted(*, turn="вітаю", summary="підсумок", facts=""):
     """A mock model that answers by which internal call is being made."""
 
     def fn(system, messages, model):
-        if system == SUMMARY_SYSTEM:
+        if SUMMARY_SYSTEM in system:
             return summary
-        if system == FACTS_SYSTEM:
+        if FACTS_SYSTEM in system:
             return facts
         return turn
 

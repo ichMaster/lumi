@@ -8,9 +8,9 @@ from state.local_store import JsonRepository
 
 def scripted(*, turn="вітаю", summary="підсумок", facts=""):
     def fn(system, messages, model):
-        if system == SUMMARY_SYSTEM:
+        if SUMMARY_SYSTEM in system:
             return summary
-        if system == FACTS_SYSTEM:
+        if FACTS_SYSTEM in system:
             return facts
         return turn
 

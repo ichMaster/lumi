@@ -17,12 +17,27 @@ T = TypeVar("T")
 # How many recent summaries to recall into context at startup (LUMI-011).
 RECENT_SUMMARIES = 5
 
-# Instruction for end-of-session summarization (an internal memory note, not Лілі speaking).
+# Instruction for end-of-session summarization (an internal memory note, not Лілі
+# speaking). The target length is appended per-session (summary_request), scaled
+# to the session size — a longer conversation earns a fuller summary.
 SUMMARY_SYSTEM = (
-    "Ти стискаєш діалог у короткий підсумок для памʼяті Лілі. "
-    "2–3 речення від третьої особи: суть розмови й важливе про співрозмовника. "
-    "Без вступів і звертань — лише підсумок."
+    "Ти стискаєш діалог у підсумок для памʼяті Лілі — від третьої особи, по суті: "
+    "про що говорили й важливе про співрозмовника. Без вступів і звертань — лише підсумок."
 )
+
+# Summary length bounds (sentences), scaled by message count.
+_SUMMARY_MIN_SENTENCES = 1
+_SUMMARY_MAX_SENTENCES = 8
+
+
+def summary_sentences(n_messages: int) -> int:
+    """Target summary length (sentences), scaled to the session size.
+
+    Roughly one sentence per ~3 messages, clamped to [1, 8] — a short exchange
+    gets a one-liner, a long conversation a fuller paragraph.
+    """
+    target = (n_messages + 2) // 3
+    return max(_SUMMARY_MIN_SENTENCES, min(_SUMMARY_MAX_SENTENCES, target))
 
 # Instruction for end-of-session long-term fact extraction (one durable fact per line).
 FACTS_SYSTEM = (
@@ -51,10 +66,13 @@ def summary_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, st
     """Build the (system, messages) for an end-of-session summarization call.
 
     The session transcript goes in as a single user message; the system line
-    asks for a compact third-person gist. The model's reply is the summary text.
+    asks for a third-person gist whose **length scales with the session size**
+    (``summary_sentences``). The model's reply is the summary text.
     """
     transcript = "\n".join(f"{m.role}: {m.text}" for m in messages)
-    return SUMMARY_SYSTEM, [{"role": "user", "content": transcript}]
+    target = summary_sentences(len(messages))
+    system = f"{SUMMARY_SYSTEM} Орієнтовний обсяг: {target} речень."
+    return system, [{"role": "user", "content": transcript}]
 
 
 def facts_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, str]]]:
