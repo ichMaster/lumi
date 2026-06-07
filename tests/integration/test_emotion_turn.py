@@ -121,4 +121,6 @@ def test_history_replays_the_emotion_tag_to_the_model(tmp_path):
     core.reply("ще", session)
     second = llm.calls[1]["messages"]
     assistant = next(m for m in second if m["role"] == "assistant")
-    assert assistant["content"] == "Привіт! <emotion>joy 0.8</emotion>"
+    # Timestamped (v0.4) + the reconstructed emotion tag.
+    assert assistant["content"].startswith("[")
+    assert assistant["content"].endswith("Привіт! <emotion>joy 0.8</emotion>")

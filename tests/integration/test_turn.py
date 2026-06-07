@@ -4,9 +4,15 @@ A full turn `user_text → reply` against MockLLMClient (no paid call), assertin
 the model is reached only via the LLMClient seam and both messages persist.
 """
 
+from datetime import UTC, datetime
+
 from core.agent import Core, build_core
+from core.clock import fixed_clock
 from core.llm import MockLLMClient
 from state.local_store import JsonRepository
+
+# A fixed clock makes the per-message timestamps deterministic (v0.4).
+_CLK = fixed_clock(datetime(2026, 6, 7, 14, 30, tzinfo=UTC))
 
 
 def _core_with(tmp_path, llm):
@@ -16,6 +22,7 @@ def _core_with(tmp_path, llm):
         repository=repo,
         canon="Ти — Лілі.",
         model="claude-haiku-4-5-20251001",
+        clock=_CLK,
     ), repo
 
 
@@ -48,10 +55,12 @@ def test_turn_sends_canon_and_history_to_the_model(tmp_path):
     second = llm.calls[1]
     assert second["system"].startswith("Ти — Лілі.")
     assert second["model"] == "claude-haiku-4-5-20251001"
+    # Each message is prefixed with its date-time (v0.4); the assistant turn also
+    # carries the reconstructed <emotion> tag.
     assert second["messages"] == [
-        {"role": "user", "content": "раз"},
-        {"role": "assistant", "content": "перша <emotion>calm 0.5</emotion>"},
-        {"role": "user", "content": "два"},
+        {"role": "user", "content": "[2026-06-07 14:30] раз"},
+        {"role": "assistant", "content": "[2026-06-07 14:30] перша <emotion>calm 0.5</emotion>"},
+        {"role": "user", "content": "[2026-06-07 14:30] два"},
     ]
 
 

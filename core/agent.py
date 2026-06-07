@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from core.clock import Clock, format_date, format_stamp, system_clock
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.emotion import EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
@@ -89,12 +90,14 @@ class Core:
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
+        clock: Clock = system_clock,
     ) -> None:
         self._llm = llm
         self._repo = repository
         self._canon = canon
         self._model = model
         self._user_id = user_id
+        self._clock = clock  # injectable: real time by default, fixed in tests
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
         # Answer styles (overlays) + meta-styles (presets → several base styles) +
@@ -200,8 +203,10 @@ class Core:
         per turn, so a restart recalls prior context and new memory takes effect.
         Isolation holds — only this ``user_id``'s records are read.
         """
+        # Date each recalled summary so past sessions are placed in time (v0.4).
         summaries = [
-            s.summary for s in self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
+            f"[{format_date(s.ts)}] {s.summary}"
+            for s in self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
         ]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
@@ -269,16 +274,18 @@ class Core:
     def _history_content(m) -> str:
         """The content to replay to the model for a stored message.
 
-        For Лілі's turns, re-append the ``<emotion>…</emotion>`` tag reconstructed
-        from the persisted ``emotion``/``intensity`` — the stored text is clean
-        (tag-stripped), so without this the model only sees tag-less past replies
-        and drifts to stop emitting the tag over a long conversation (the channel
-        would then "work only at the beginning" with extended thinking on).
+        Prefixed with the message's **date-time** (so Лілі perceives the rhythm of
+        the conversation and the gap since the last turn — v0.4). For Лілі's turns,
+        also re-append the ``<emotion>…</emotion>`` tag reconstructed from the
+        persisted ``emotion``/``intensity`` — the stored text is clean (tag-stripped),
+        so without this the model only sees tag-less past replies and drifts to stop
+        emitting the tag over a long conversation.
         """
+        body = m.text
         if m.role == "lili" and m.emotion:
             intensity = m.intensity if m.intensity is not None else 0.5
-            return f"{m.text} <emotion>{m.emotion} {intensity:.1f}</emotion>"
-        return m.text
+            body = f"{m.text} <emotion>{m.emotion} {intensity:.1f}</emotion>"
+        return f"[{format_stamp(m.ts)}] {body}"
 
     def reply(self, user_text: str, session: Session) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
@@ -294,10 +301,11 @@ class Core:
         # The verbatim tail: messages not yet folded into the digest, capped for
         # safety (in case compaction repeatedly failed).
         live = trim_history(history[compacted:], self._memory_window + self._compaction_batch)
+        turn_ts = self._clock().isoformat()  # one stamp for this turn's stored messages
         messages: list[Message] = [
             {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live
         ]
-        messages.append({"role": "user", "content": user_text})
+        messages.append({"role": "user", "content": f"[{format_stamp(turn_ts)}] {user_text}"})
 
         system = self._system_prompt(session)
         self.last_prompt = {"system": system, "messages": list(messages)}
@@ -331,13 +339,16 @@ class Core:
         )
         self.last_emotion = state
 
-        self._repo.append_message(make_message(session.id, self._user_id, "user", user_text))
+        self._repo.append_message(
+            make_message(session.id, self._user_id, "user", user_text, ts=turn_ts)
+        )
         self._repo.append_message(
             make_message(
                 session.id,
                 self._user_id,
                 "lili",
                 state.reply,
+                ts=turn_ts,
                 emotion=state.emotion.value,
                 intensity=state.intensity,
             )
@@ -375,7 +386,7 @@ class Core:
             user_id=self._user_id,
             session_id=session.id,
             summary=summary_text,
-            ts=now_iso(),
+            ts=self._clock().isoformat(),
         )
         self._repo.add_summary(summary)
         return summary

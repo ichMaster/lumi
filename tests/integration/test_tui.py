@@ -236,7 +236,7 @@ async def test_prompt_command_shows_last_turn_prompt(tmp_path):
         joined = "\n".join(app.transcript)
         assert "[SYSTEM]" in joined and "[MESSAGES]" in joined
         assert "Ти — Лілі." in joined  # the canon that was sent
-        assert "user: привіт" in joined
+        assert "] привіт" in joined  # the (timestamped, v0.4) user line
 
 
 async def test_can_type_but_cannot_send_while_busy(tmp_path):
