@@ -24,8 +24,11 @@ def _core(tmp_path, llm=None):
 # --- loader ---------------------------------------------------------------
 def test_load_styles_from_the_authored_file():
     styles = load_styles(load_config(load_env=False).styles_path)
-    assert set(styles) == {"short", "explain", "emotional"}
+    # The core styles are present (the file may carry more).
+    assert {"short", "explain", "emotional"} <= set(styles)
     assert "normal" not in styles  # the default carries no overlay
+    # Each style includes a concrete length limit (sentences/words/lines).
+    assert "речен" in styles["short"] or "слів" in styles["short"]
 
 
 def test_load_styles_missing_file_is_empty(tmp_path):
@@ -43,7 +46,7 @@ def test_default_style_is_normal_with_no_overlay(tmp_path):
     assert llm.calls[-1]["system"].startswith("Ти — Лілі.")
 
 
-def test_set_style_injects_overlay_right_after_canon(tmp_path):
+def test_set_style_injects_overlay_at_the_end_with_importance(tmp_path):
     llm = MockLLMClient("ok")
     core = _core(tmp_path, llm)
     session = core.start_session()
@@ -52,6 +55,8 @@ def test_set_style_injects_overlay_right_after_canon(tmp_path):
     system = llm.calls[-1]["system"]
     assert "Be brief." in system
     assert system.index("Ти — Лілі.") < system.index("Be brief.")
+    assert "ВАЖЛИВО" in system  # framed as a prioritized directive
+    assert system.rstrip().endswith("Be brief.")  # the style is the LAST block
 
 
 def test_set_style_unknown_is_rejected(tmp_path):
@@ -74,9 +79,15 @@ def test_style_is_per_session_and_resets(tmp_path):
 
 
 # --- prompt assembly ------------------------------------------------------
-def test_build_system_prompt_places_style_after_canon():
-    system = build_system_prompt("CANON", style="STYLE-X")
-    assert system.index("CANON") < system.index("STYLE-X")
+def test_build_system_prompt_places_style_last_with_importance():
+    system = build_system_prompt(
+        "CANON", summaries=["S"], facts=["F"], digest="D", style="STYLE-X"
+    )
+    # The style is the LAST block — after canon, summaries, facts, digest.
+    for earlier in ("CANON", "S", "F", "D"):
+        assert system.index(earlier) < system.index("STYLE-X")
+    assert system.rstrip().endswith("STYLE-X")
+    assert "ВАЖЛИВО" in system  # framed as a prioritized directive
     assert build_system_prompt("CANON") == "CANON"  # no style → canon verbatim
 
 

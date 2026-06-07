@@ -15,6 +15,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+# Framing that makes the answer-style overlay a prioritized directive. Placed at
+# the very end of the system prompt (last thing the model reads before the turn).
+STYLE_HEADER = (
+    "ВАЖЛИВО — ФОРМАТ І ДОВЖИНА ТВОЄЇ ВІДПОВІДІ. Дотримуйся цього СУВОРО; "
+    "це має пріоритет над типовою багатослівністю та іншими вказівками щодо форми:"
+)
+
 
 def load_canon(path: str | Path) -> str:
     """Read the canon file. The path comes from config (never hardcoded).
@@ -38,21 +45,21 @@ def build_system_prompt(
     digest: str | None = None,
     style: str | None = None,
 ) -> str:
-    """Assemble the system prompt: canon + an answer style + the user's memory.
+    """Assemble the system prompt: canon + the user's memory + an answer style.
 
-    The canon always rides at the base; an optional ``style`` overlay (which shapes
-    the *form* of the reply — length/structure/expressiveness, not competence) sits
-    right after it, then the user's recent ``summaries`` and long-term ``facts``,
-    then the in-session ``digest`` (assembly order: canon → style → summaries →
-    facts → digest). With no overlays the result is the canon verbatim (the v0.1
-    behavior). v0.5 adds a ``mood`` block the same way.
+    The canon always rides at the base, then the user's recent ``summaries`` and
+    long-term ``facts``, then the in-session ``digest``, and finally — at the very
+    **end** — an optional ``style`` overlay (which shapes the *form* of the reply:
+    length/structure/expressiveness, never competence), framed as a prioritized
+    directive (:data:`STYLE_HEADER`) so it's the last, most salient instruction.
+    Assembly order: canon → summaries → facts → digest → **style**. With no
+    overlays the result is the canon verbatim (the v0.1 behavior). v0.5 adds a
+    ``mood`` block the same way.
 
     All overlay args are plain strings so this stays a pure string assembler,
     decoupled from the record types (the core passes the text).
     """
     parts = [canon]
-    if style:
-        parts.append(style)
     if summaries:
         parts.append(
             "Памʼять про попередні розмови з цією людиною:\n"
@@ -64,4 +71,6 @@ def build_system_prompt(
         )
     if digest:
         parts.append("Раніше в цій розмові (стисло):\n" + digest)
+    if style:
+        parts.append(f"{STYLE_HEADER}\n{style}")
     return "\n\n".join(parts)
