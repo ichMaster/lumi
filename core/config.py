@@ -29,8 +29,8 @@ DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
-# Rolling-window placeholder; the trimming policy lands in v0.2.
-DEFAULT_MEMORY_WINDOW = 20
+# Rolling window: how many recent messages of the current session enter context.
+DEFAULT_MEMORY_WINDOW = 60
 
 # Model output cap. Extended thinking (Opus 4.8 / Sonnet 4.6) is adaptive and
 # off by default; `effort` tunes its depth when on (None → the API default).

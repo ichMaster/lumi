@@ -165,7 +165,7 @@ messages.append({"role": "user", "content": user_text})
 ```
 
 - `trim_history(messages, max_messages)` ([../core/memory.py](../core/memory.py)) keeps the
-  **last `memory_window`** messages (default **20**, `DEFAULT_MEMORY_WINDOW`). The full
+  **last `memory_window`** messages (default **60**, `DEFAULT_MEMORY_WINDOW`). The full
   history stays persisted; only the in‑context window is trimmed.
 - Roles are mapped to the model's chat roles: `lili` → `assistant`, `user` → `user`.
 - **Only the *current* session's messages** ride this array. Prior sessions are **not**
@@ -216,7 +216,7 @@ the v0.1 behavior.
 | Canon | none — **full** file | fixed overhead every turn |
 | Summaries | **last 5** | compresses older sessions so they aren't resent |
 | Facts | **none — ALL** | grows unbounded as facts accumulate (§8) |
-| Session history | **last 20 messages** of the *current* session | + the new user line |
+| Session history | **last 60 messages** of the *current* session | + the new user line |
 
 `Core.last_prompt = {"system", "messages"}` captures the exact prompt sent on the last turn
 — surfaced in the TUI by `/prompt` (§6).
@@ -227,7 +227,7 @@ the v0.1 behavior.
 
 ```
 TURN  (Core.reply)
-  messages ← load_messages(session) → trim_history(20)              [Session history, read]
+  messages ← load_messages(session) → trim_history(60)              [Session history, read]
   system   ← canon
            + recent_summaries(user, 5)   → injected                 [Short memory, read]
            + facts(user)                 → injected                 [Long-term memory, read]
@@ -273,7 +273,7 @@ calls `Repository.clear_memory(user_id)`, which pops the user's `summaries` and 
 
 | Setting | Default | Env override | Effect |
 |---|---|---|---|
-| `memory_window` | `20` | `LUMI_MEMORY_WINDOW` | how many recent messages enter the model context |
+| `memory_window` | `60` | `LUMI_MEMORY_WINDOW` | how many recent messages enter the model context |
 | `store_path` | `.lumi/store.json` | `LUMI_STORE_PATH` | where the store file lives |
 
 Plus the in‑code constant `RECENT_SUMMARIES = 5` ([../core/memory.py](../core/memory.py)) — how
@@ -312,7 +312,7 @@ All of the above run against `MockLLMClient` — **no paid API calls**.
 These are deliberate simplifications, not bugs — flagged so the behavior isn't surprising:
 
 1. **Facts are uncapped at read time.** *All* facts are injected every turn, so the system
-   prompt grows as facts accumulate. (Summaries are capped at 5; history at 20 messages.)
+   prompt grows as facts accumulate. (Summaries are capped at 5; history at 60 messages.)
 2. **Fact dedup is exact‑string match only.** Paraphrases of the same fact are stored as
    separate entries, so near‑duplicates pile up over many sessions.
 3. **`confidence` / `meta` are placeholders.** They exist in the record but aren't computed
@@ -320,7 +320,7 @@ These are deliberate simplifications, not bugs — flagged so the behavior isn't
 4. **Extraction is line‑parsing, not structured output.** Whatever lines the model returns
    become facts; there's no schema/validation yet (that hardens with the v0.3 emotion‑field
    validation gate).
-5. **Rolling window is by message count (20), not a token budget.**
+5. **Rolling window is by message count (60), not a token budget.**
 6. **Single user.** The `user_id` scoping is in place but runs with one default `owner`;
    real accounts/auth arrive in v1.3.
 7. **No shared‑experience layer.** Cross‑user, de‑identified memory (the v2.3
