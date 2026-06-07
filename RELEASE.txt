@@ -1,6 +1,26 @@
 Lumi — Release notes
 ====================
 
+Version 0.2.1 (2026-06-07)
+---------------------------
+- In-session compaction: older messages of a long session fold into a running
+  per-session digest (floating verbatim window 40 + batch 20) instead of being
+  dropped; end-of-session summary length now scales with session size.
+- Answer styles (/style): 16 base styles (Ukrainian, by category) + 6 Лілі-voiced
+  meta-style presets; combinable, per-session, injected at the end of the prompt
+  as a prioritized directive with concrete length limits.
+- Thinking: reasoning is wrapped in <think>…</think> and parsed out of the reply,
+  shown in a separate Thinking box (last turn only) — it never leaks into the chat
+  or the store.
+- TUI polish: type-ahead with send-on-your-turn gating, 3-line input, macOS
+  clipboard via pbcopy, borderless chat box for clean copy, /new (clears + saves),
+  /prompt, and quit that summarizes the session first.
+- Interface in English (footer, hints, statuses, notifications); Лілі's name and
+  her replies stay Ukrainian.
+- ./lumi launcher script for the TUI.
+- Docs: docs/MEMORY.md and docs/STYLES.md implementation references; README refresh.
+- Tests: 123 (mock model — no paid APIs); ruff clean.
+
 Version 0.2.0 (2026-06-07)
 ---------------------------
 - v0.2 — Three-layer memory (LUMI-007…012): the core and Repository are now

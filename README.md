@@ -12,19 +12,19 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.2.0 — v0.2 Three-layer memory.** User-scoped core + `Repository` (per-user
-isolation), a rolling session window, end-of-session `ShortSummary` + accumulated
-`LongTermFact` rehydrated at startup, and TUI `/memory` / `/forget` commands — so
-Лілі recalls past sessions and durable facts about you across restarts.
-
-Since 0.2.0, on `main` (pending a `0.2.1` release):
+**0.2.1 — v0.2 memory, polish & styles.** Builds on v0.2's three-layer memory
+(user-scoped core + `Repository`, end-of-session `ShortSummary` + `LongTermFact`
+rehydrated at startup, `/memory` / `/forget`) with:
 
 - **In-session compaction** — older messages of a long session fold into a running
   digest instead of being dropped ([docs/MEMORY.md](docs/MEMORY.md)).
 - **Answer styles** — `/style` shapes the *form* of a reply (length/structure/tone):
   16 base styles + 6 meta-styles, combinable and per-session ([docs/STYLES.md](docs/STYLES.md)).
-- **Thinking box** — a separate panel shows Лілі's reasoning for the last turn,
-  out of the chat.
+- **Thinking box** — a separate panel shows Лілі's reasoning for the last turn
+  (parsed out of the reply), out of the chat.
+- **All-English interface** and TUI polish (type-ahead, `./lumi` launcher, clean copy).
+
+See [RELEASE.txt](RELEASE.txt) for the full changelog.
 
 ## Run
 
