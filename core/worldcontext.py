@@ -25,10 +25,14 @@ HttpGet = Callable[[str], str]
 
 # Default weather endpoint (Open-Meteo — free, no key). ``{lat}``/``{lon}`` are
 # substituted from config; override with LUMI_WEATHER_URL (must return the same
-# Open-Meteo JSON shape — current.temperature_2m + current.weather_code).
+# Open-Meteo JSON shape). Asks for current (temp + feels-like + condition) and
+# today's daily (max/min + condition) so the line shows now + the day.
 DEFAULT_WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast"
-    "?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code"
+    "?latitude={lat}&longitude={lon}"
+    "&current=temperature_2m,apparent_temperature,weather_code"
+    "&daily=temperature_2m_max,temperature_2m_min,weather_code"
+    "&forecast_days=1&timezone=auto"
 )
 
 # Ukrainian calendar bits + a small WMO weather-code lexicon (data, not exhaustive).
@@ -77,10 +81,26 @@ def _clean(text: str, limit: int = 120) -> str:
 def _weather(http_get: HttpGet, url_template: str, lat: float, lon: float) -> str | None:
     try:
         url = url_template.replace("{lat}", str(lat)).replace("{lon}", str(lon))
-        cur = json.loads(http_get(url))["current"]
+        data = json.loads(http_get(url))
+        cur = data["current"]
+        temp = round(cur["temperature_2m"])
+        now = f"{temp}°C"
+        feels = cur.get("apparent_temperature")
+        if feels is not None and round(feels) != temp:
+            now += f" (відчув. {round(feels)}°C)"
         desc = _WEATHER_CODES.get(cur.get("weather_code"))
-        line = f"{round(cur['temperature_2m'])}°C"
-        return f"{line}, {desc}" if desc else line
+        if desc:
+            now += f", {desc}"
+        segments = [now]
+        daily = data.get("daily") or {}
+        tmax = (daily.get("temperature_2m_max") or [None])[0]
+        tmin = (daily.get("temperature_2m_min") or [None])[0]
+        if tmin is not None and tmax is not None:
+            segments.append(f"сьогодні {round(tmin)}…{round(tmax)}°C")
+        day_desc = _WEATHER_CODES.get((daily.get("weather_code") or [None])[0])
+        if day_desc and day_desc != desc:  # the day's overall, if it differs from now
+            segments.append(f"вдень {day_desc}")
+        return "; ".join(segments)
     except Exception:  # noqa: BLE001 — best-effort source; degrade to None
         return None
 

@@ -35,8 +35,20 @@ def test_location_is_a_static_string_no_http():
 
 
 def test_weather_from_open_meteo():
+    # Minimal payload (current only) still renders just the now-line.
     wc = fetch_world_context(_CLK, lat=49.84, lon=24.03, http_get=lambda url: _OPEN_METEO)
     assert wc.weather == "15°C, ясно"
+
+
+_OPEN_METEO_FULL = (
+    '{"current": {"temperature_2m": 21.3, "apparent_temperature": 19.1, "weather_code": 0},'
+    ' "daily": {"temperature_2m_max": [23.0], "temperature_2m_min": [12.0], "weather_code": [61]}}'
+)
+
+
+def test_weather_adds_feels_like_today_range_and_day_forecast():
+    wc = fetch_world_context(_CLK, lat=1, lon=2, http_get=lambda url: _OPEN_METEO_FULL)
+    assert wc.weather == "21°C (відчув. 19°C), ясно; сьогодні 12…23°C; вдень дощ"
 
 
 def test_weather_url_is_configurable_with_lat_lon_substitution():
