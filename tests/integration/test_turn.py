@@ -90,5 +90,6 @@ def test_build_core_wires_from_config_with_injected_llm_and_repo(tmp_path):
 
     session = core.start_session()
     assert core.reply("hi", session).reply == "ok"
-    # The canon (system prompt) was loaded from the configured path.
-    assert "Лілі" in llm.calls[0]["system"]
+    # The canon (system prompt) was loaded from the configured path. (build_core also
+    # loads the natal seed → a daily mood call runs first; the canon rides the turn call.)
+    assert any("Лілі" in c["system"] for c in llm.calls)

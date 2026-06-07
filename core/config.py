@@ -37,6 +37,9 @@ DEFAULT_NUDGE_PATH = _REPO_ROOT / "core" / "nudges.md"
 # Emotion→emoji map (v0.5); editable. Optional (built-in default in core/emoji.py).
 DEFAULT_EMOJI_PATH = _REPO_ROOT / "core" / "emoji.md"
 
+# Лілі's natal snapshot (v0.6 mood); editable. Empty file → mood off.
+DEFAULT_NATAL_PATH = _REPO_ROOT / "core" / "natal.md"
+
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
@@ -93,6 +96,9 @@ class Config:
     nudge_path: Path = DEFAULT_NUDGE_PATH
     quiet_hours: tuple[int, int] | None = None
     emoji_path: Path = DEFAULT_EMOJI_PATH
+    # v0.6 mood of the day — on by default.
+    mood: bool = True
+    natal_path: Path = DEFAULT_NATAL_PATH
     api_key: str | None = field(default=None, repr=False)
 
 
@@ -174,5 +180,7 @@ def load_config(*, load_env: bool = True) -> Config:
         nudge_path=Path(nudge_path_env) if nudge_path_env else DEFAULT_NUDGE_PATH,
         quiet_hours=quiet_hours,
         emoji_path=Path(emoji_env) if (emoji_env := os.getenv("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,
+        mood=(os.getenv("LUMI_MOOD") or "on").strip().lower() in _TRUTHY,  # on by default
+        natal_path=Path(natal_env) if (natal_env := os.getenv("LUMI_NATAL_PATH")) else DEFAULT_NATAL_PATH,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )

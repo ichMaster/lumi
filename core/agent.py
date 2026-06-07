@@ -14,6 +14,7 @@ the return into a validated ``EmotionState``.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -30,6 +31,7 @@ from core.memory import (
     summary_request,
     trim_history,
 )
+from core.mood import MoodState, load_natal, mood_request, split_resolution
 from core.prompt import (
     REASONING_DIRECTIVE,
     build_system_prompt,
@@ -49,6 +51,9 @@ from core.repository import (
 from core.styles import DEFAULT_STYLE, load_meta_styles, load_styles
 from core.user import DEFAULT_USER_ID
 from core.worldcontext import WorldContext, ambient_line
+
+# The full daily mood reading is logged here (only the resolution rides in the prompt).
+_mood_log = logging.getLogger("lumi.mood")
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
@@ -92,6 +97,8 @@ class Core:
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
         clock: Clock = system_clock,
+        natal: str = "",
+        mood_enabled: bool = True,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -101,6 +108,10 @@ class Core:
         self._clock = clock  # injectable: real time by default, fixed in tests
         # Ambient "now / here" snapshot (v0.4), set by the client at startup/refresh.
         self._world: WorldContext | None = None
+        # v0.6 mood of the day: the fixed natal seed + the cached daily MoodState.
+        self._natal = natal.strip()
+        self._mood_enabled = mood_enabled
+        self._mood: MoodState | None = None
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
         # Answer styles (overlays) + meta-styles (presets → several base styles) +
@@ -137,6 +148,11 @@ class Core:
     def set_world_context(self, world: WorldContext | None) -> None:
         """Set the ambient *now / here* snapshot (the client fetches it at startup/refresh)."""
         self._world = world
+
+    @property
+    def mood(self) -> str | None:
+        """Today's mood **resolution** (v0.6), or ``None`` when off / not yet computed."""
+        return self._mood.resolution if self._mood else None
 
     @property
     def thinking(self) -> bool:
@@ -300,6 +316,28 @@ class Core:
             body = f"{m.text} <emotion>{m.emotion} {intensity:.1f}</emotion>"
         return f"[{format_stamp(m.ts)}] {body}"
 
+    def _ensure_mood(self) -> None:
+        """Compute today's mood once per local day (cached); **log the full reading**.
+
+        Best-effort: off, no natal, or a model failure → no mood, never blocks a turn.
+        Only the **resolution** is held (``Core.mood``); the full reading goes to the log.
+        Runs through the housekeeping path (extended thinking off), like summaries.
+        """
+        if not self._mood_enabled or not self._natal:
+            return
+        today = self._clock().strftime("%Y-%m-%d")
+        if self._mood and self._mood.date == today:
+            return  # already computed for this local day; a turn keeps its mood
+        try:
+            system, msgs = mood_request(self._natal, today)
+            reading = self._housekeeping_reply(system, msgs).strip()
+        except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
+            return
+        if not reading:
+            return
+        self._mood = MoodState(date=today, resolution=split_resolution(reading), reading=reading)
+        _mood_log.info("mood %s:\n%s", today, reading, extra={"date": today})
+
     def reply(self, user_text: str, session: Session) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
@@ -308,6 +346,7 @@ class Core:
         **live tail** (between ``memory_window`` and ``+ batch`` messages) + the
         new line, and persists both messages. The full history stays stored.
         """
+        self._ensure_mood()  # compute today's mood once per local day (v0.6)
         history = self._repo.load_messages(session.id)
         digest = self._maybe_compact(session, history)
         compacted = digest.compacted_count if digest else 0
@@ -476,4 +515,6 @@ def build_core(
         compaction_batch=cfg.compaction_batch,
         styles=load_styles(cfg.styles_path),
         meta_styles=load_meta_styles(cfg.styles_path),
+        natal=load_natal(cfg.natal_path),
+        mood_enabled=cfg.mood,
     )
