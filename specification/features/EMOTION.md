@@ -110,10 +110,33 @@ Only the renderer changes between versions. The `EmotionState` and the enum are 
 
 ## 6. Emoji mapping (v0.5) and mood caption (v2.1)
 
-**Emoji (v0.5).** The `emoji` column of §4 is the canonical v0.5 map. `intensity`
-selects emphasis, not a different feeling — e.g. low intensity renders the plain
-glyph, high intensity may repeat or add a marker (`😄` → `😄✨`). Keep it simple; the
-job of v0.5 is to prove the channel reads in the terminal end to end.
+**Emoji (v0.5).** The `emoji` column of §4 gives each emotion its base **face**;
+`intensity` scales the **emphasis, not the feeling** — the *same* face, made stronger by
+**repeating it or adding an accent emoji**. Three intensity bands (so the default `0.5`
+lands at "mid"):
+
+| band   | intensity     | emphasis            |
+|--------|---------------|---------------------|
+| low    | `0.00 – 0.33` | face only           |
+| mid    | `0.34 – 0.66` | + 1 (repeat/accent) |
+| high   | `0.67 – 1.00` | + 2 (repeat/accent) |
+
+| emotion         | low (subtle) | mid (~0.5, default) | high (strong) | scales by |
+|-----------------|:------------:|:-------------------:|:-------------:|-----------|
+| `joy` 😄        | 😄           | 😄✨                | 😄✨✨         | add ✨ |
+| `calm` 🙂       | 🙂           | 🙂                  | 🙂            | — (neutral / fallback) |
+| `playful` 😏    | 😏           | 😏😜                | 😏😜😜        | add 😜 |
+| `tender` 🥰     | 🥰           | 🥰💕                | 🥰💕💕        | add 💕 |
+| `thoughtful` 🤔 | 🤔           | 🤔💭                | 🤔💭💭        | add 💭 |
+| `serious` 😐    | 😐           | 😐❗                | 😐❗❗         | add ❗ |
+| `surprise` 😮   | 😮           | 😮😮                | 😮😮😮        | repeat 😮 |
+| `doubt` 😕      | 😕           | 😕❓                | 😕❓❓         | add ❓ |
+| `sad` 😢        | 😢           | 😢😢                | 😢😢😢        | repeat 😢 |
+
+The **face never changes** within an emotion (only the emphasis grows), the map is
+**total over the enum**, and `calm` (the neutral / fallback) does not escalate. So a
+reply at `joy 0.9` reads `Лілі 😄✨✨:` and at `sad 0.8` reads `Лілі 😢😢😢:`. v0.5's job
+is to prove the channel reads in the terminal end to end.
 
 **Mood caption (v2.1).** Alongside the web portrait, a short evocative **caption**
 describes Лілі's current state — **not** the emotion's enum name, and not her
