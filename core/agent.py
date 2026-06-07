@@ -135,7 +135,7 @@ class Core:
         """Set the active answer style(s) from a spec — base styles and/or meta-styles.
 
         Names are separated by spaces, commas, or ``+`` (e.g. ``"коротко офіційно"``
-        or a meta-style like ``"стежка"``); they stack (each overlay is appended, in
+        or a meta-style like ``"лагідна"``); they stack (each overlay is appended, in
         order). A **meta-style** expands to its base styles. ``normal`` clears the
         overlay. Returns ``False`` (and changes nothing) if **any** name is
         unknown — the switch is all-or-nothing.

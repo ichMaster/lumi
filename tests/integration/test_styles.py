@@ -47,8 +47,10 @@ def test_load_meta_styles_from_the_authored_file():
     cfg = load_config(load_env=False)
     metas = load_meta_styles(cfg.styles_path)
     base = load_styles(cfg.styles_path)
-    # Meta-style names are Лілі's (poetic, not formal).
-    assert {"іскра", "стежка", "призма", "руки", "муза", "луна"} <= set(metas)
+    # Meta-style names are Лілі's, as adjectives.
+    assert {
+        "блискавична", "лагідна", "прискіплива", "завзята", "лірична", "допитлива"
+    } <= set(metas)
     # Every meta expands to ≥2 real base styles.
     for name, members in metas.items():
         assert len(members) >= 2
