@@ -334,3 +334,17 @@ async def test_missing_reply_degrades_to_a_readable_error(tmp_path):
         await _submit(pilot, app, "привіт")
         assert any(ERROR_LINE in line for line in app.transcript)  # no crash
         assert app._connected is False
+
+
+async def test_status_shows_thinking_off_by_default(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test():
+        assert "thinking:off" in app._status_text()  # mock has no thinking enabled
+
+
+async def test_status_shows_thinking_on_when_enabled(tmp_path):
+    llm = MockLLMClient("ok")
+    llm._thinking = True  # simulate LUMI_THINKING=on
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test():
+        assert "thinking:on" in app._status_text()

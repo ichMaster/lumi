@@ -293,8 +293,7 @@ class LumiApp(App[None]):
     def _status_text(self, busy: str | None = None) -> str:
         """The technical connection/status line (no icons)."""
         model = self._short_model(self._core.model)
-        thinking = self._core.last_stats and self._core.last_stats.thinking
-        think = " thinking" if thinking else ""
+        think = f" · thinking:{'on' if self._core.thinking else 'off'}"
         style = self._core.style
         style_part = f" · style: {style}" if style != DEFAULT_STYLE else ""
         emo = self._core.last_emotion

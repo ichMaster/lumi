@@ -124,6 +124,11 @@ class Core:
         return self._user_id
 
     @property
+    def thinking(self) -> bool:
+        """Whether extended thinking is enabled on the model (for a status indicator)."""
+        return bool(getattr(self._llm, "_thinking", False))
+
+    @property
     def style(self) -> str:
         """The active answer style(s), combined for display ('short+formal')."""
         return "+".join(self._active) if self._active else DEFAULT_STYLE
