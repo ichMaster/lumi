@@ -44,6 +44,19 @@ def test_news_drops_channel_title_and_caps():
     assert wc.news == ("Перша новина", "Друга")  # channel title dropped; capped to 2
 
 
+def test_news_skips_channel_and_image_titles():
+    # Real feeds repeat the title in <channel> and <image>; only <item> titles count.
+    rss = (
+        "<rss><channel><title>Газета</title>"
+        "<image><title>Газета</title><url>x</url></image>"
+        "<item><title>Перша</title></item>"
+        "<item><title>Друга</title></item>"
+        "</channel></rss>"
+    )
+    wc = fetch_world_context(_CLK, news_url="http://x", news_cap=5, http_get=lambda url: rss)
+    assert wc.news == ("Перша", "Друга")  # neither the feed nor the image title
+
+
 def test_a_failing_source_degrades_to_none_and_never_raises():
     def boom(url):
         raise RuntimeError("source down")

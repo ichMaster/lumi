@@ -48,7 +48,11 @@ class WorldContext:
 
 
 def _http_get(url: str, timeout: float = 4.0) -> str:
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
+    # A browser-ish User-Agent — many sites/feeds reject the default urllib one (403).
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "Mozilla/5.0 (compatible; Lumi/0.4; +ambient-context)"}
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", "replace")
 
 
@@ -78,10 +82,16 @@ def _weather(http_get: HttpGet, lat: float, lon: float) -> str | None:
 
 def _news(http_get: HttpGet, url: str, cap: int) -> tuple[str, ...]:
     try:
-        titles = re.findall(r"<title>(.*?)</title>", http_get(url), re.IGNORECASE | re.DOTALL)
-        # Drop the channel/feed title (index 0); take the next `cap`, sanitized.
-        items = [_clean(t) for t in titles[1 : 1 + max(0, cap)]]
-        return tuple(t for t in items if t)
+        text = http_get(url)
+        # Titles INSIDE <item>/<entry> only (RSS/Atom) — skips the channel/image title.
+        titles: list[str] = []
+        for block in re.findall(r"<(?:item|entry)\b.*?</(?:item|entry)>", text, re.IGNORECASE | re.DOTALL):
+            m = re.search(r"<title\b[^>]*>(.*?)</title>", block, re.IGNORECASE | re.DOTALL)
+            if m and (title := _clean(m.group(1))):
+                titles.append(title)
+            if len(titles) >= max(0, cap):
+                break
+        return tuple(titles)
     except Exception:  # noqa: BLE001 — best-effort source; degrade to ()
         return ()
 
