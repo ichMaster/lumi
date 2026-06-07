@@ -183,12 +183,22 @@ class LumiApp(App[None]):
         self.query_one("#prompt", ChatInput).focus()
 
     def on_unmount(self) -> None:
-        # Session-end hook: summarize on exit (best-effort — never block quitting).
+        # Fallback for non-quit teardown (e.g. a crash): summarize if action_quit
+        # didn't already (it nulls self._session once it has processed).
         if self._session is not None:
             try:
                 self._core.end_session(self._session)
             except Exception:  # noqa: BLE001
                 pass
+
+    async def action_quit(self) -> None:
+        """Quit — but summarize the current session first, then exit when done."""
+        if self._session is not None:
+            note = "Зберігаю сесію перед виходом (підсумок + факти)…"
+            self._emit(note, Text(note, style=f"bold {SYSTEM_COLOR}"))
+            await self._process_current_session()
+            self._session = None  # so on_unmount won't re-process it
+        self.exit()
 
     @staticmethod
     def _styled(label: str, message: str, color: str) -> Text:
@@ -354,15 +364,23 @@ class LumiApp(App[None]):
         )
 
     # --- session + prompt commands --------------------------------------
-    async def _new_session(self) -> None:
-        """Start a fresh session — `/new`. The previous session is processed
-        (summarized + facts extracted) before the new one begins."""
+    async def _process_current_session(self) -> None:
+        """End + summarize the active session (writes its summary + facts).
+
+        Best-effort and run off the UI thread so it never blocks; shared by the
+        `/new` command and quit. Shows the technical "saving" status while it runs.
+        """
+        if self._session is None:
+            return
         self._render_status(busy="зберігаю сесію…")
-        if self._session is not None:
-            try:
-                await asyncio.to_thread(self._core.end_session, self._session)
-            except Exception:  # noqa: BLE001 — never block on housekeeping
-                pass
+        try:
+            await asyncio.to_thread(self._core.end_session, self._session)
+        except Exception:  # noqa: BLE001 — never block on housekeeping
+            pass
+
+    async def _new_session(self) -> None:
+        """Start a fresh session — `/new`. The previous session is summarized first."""
+        await self._process_current_session()
         self._session = self._core.start_session()
         # Fresh session → fresh screen (memory is kept in the store).
         self.query_one("#history", RichLog).clear()

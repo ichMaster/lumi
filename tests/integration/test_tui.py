@@ -195,6 +195,22 @@ async def test_new_session_starts_fresh_and_processes_previous(tmp_path):
         assert not any("привіт" in line for line in app.transcript)
 
 
+async def test_quit_summarizes_session_then_exits(tmp_path):
+    repo = JsonRepository(tmp_path / "store.json")
+    core = Core(llm=MockLLMClient("ok"), repository=repo, canon="Ти — Лілі.", model="m")
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        sid = app._session.id
+        await app.action_quit()
+        # The session was processed (summarized) before exit…
+        assert repo.get_session(sid).ended_at is not None
+        # …a system message announced it…
+        assert any("Зберігаю сесію перед виходом" in line for line in app.transcript)
+        # …and it won't be re-processed on unmount.
+        assert app._session is None
+
+
 async def test_prompt_command_shows_last_turn_prompt(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
     async with app.run_test() as pilot:
