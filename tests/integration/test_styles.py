@@ -235,3 +235,12 @@ async def test_style_command_rejects_unknown(tmp_path):
         await pilot.pause()
         assert any("Unknown style" in line for line in app.transcript)
         assert core.style == "normal"
+
+
+async def test_status_shows_the_style_including_normal(tmp_path):
+    core = _core(tmp_path)
+    app = LumiApp(core)
+    async with app.run_test():
+        assert "style: normal" in app._status_text()  # always shown, even the default
+        core.set_style("short")
+        assert "style: short" in app._status_text()

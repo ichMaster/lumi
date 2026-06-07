@@ -29,7 +29,6 @@ from core.config import load_config
 from core.emotion import LogRenderer
 from core.nudge import load_nudges, should_nudge
 from core.repository import Session
-from core.styles import DEFAULT_STYLE
 from core.worldcontext import fetch_world_context
 
 USER_LABEL = "You"
@@ -338,8 +337,7 @@ class LumiApp(App[None]):
         """The technical connection/status line (no icons)."""
         model = self._short_model(self._core.model)
         think = f" · thinking:{'on' if self._core.thinking else 'off'}"
-        style = self._core.style
-        style_part = f" · style: {style}" if style != DEFAULT_STYLE else ""
+        style_part = f" · style: {self._core.style}"  # always show (incl. 'normal')
         emo = self._core.last_emotion
         emo_part = f" · {emo.emotion.value} {emo.intensity:.1f}" if emo else ""
         meta = f"{model}{think}{style_part}{emo_part}"
