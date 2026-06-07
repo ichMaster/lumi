@@ -53,10 +53,10 @@ class ConfirmScreen(ModalScreen[bool]):
     """A tiny yes/no modal — returns ``True`` on confirm, ``False`` otherwise."""
 
     BINDINGS = [
-        ("y", "confirm", "Так"),
-        ("т", "confirm", "Так"),
-        ("n", "cancel", "Ні"),
-        ("escape", "cancel", "Скасувати"),
+        ("y", "confirm", "Yes"),
+        ("т", "confirm", "Yes"),
+        ("n", "cancel", "No"),
+        ("escape", "cancel", "Cancel"),
     ]
     CSS = """
     ConfirmScreen {
@@ -129,12 +129,12 @@ class LumiApp(App[None]):
     # priority=True so these app shortcuts win over the multi-line input's own
     # key bindings (TextArea otherwise captures ctrl+y/o/l/t while focused).
     BINDINGS = [
-        Binding("ctrl+q", "quit", "Вийти", priority=True),
-        Binding("ctrl+c", "quit", "Вийти", priority=True),
-        Binding("ctrl+y", "copy_reply", "Копіювати відповідь", priority=True),
-        Binding("ctrl+o", "copy_all", "Копіювати все", priority=True),
-        Binding("ctrl+l", "clear", "Очистити екран", priority=True),
-        Binding("ctrl+t", "toggle_mouse", "Виділення мишею", priority=True),
+        Binding("ctrl+q", "quit", "Quit", priority=True),
+        Binding("ctrl+c", "quit", "Quit", priority=True),
+        Binding("ctrl+y", "copy_reply", "Copy reply", priority=True),
+        Binding("ctrl+o", "copy_all", "Copy all", priority=True),
+        Binding("ctrl+l", "clear", "Clear screen", priority=True),
+        Binding("ctrl+t", "toggle_mouse", "Mouse select", priority=True),
     ]
     CSS = """
     #history {
@@ -182,7 +182,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "Ти"
-            prompt.border_subtitle = "Enter — надіслати · Shift+Enter — рядок · /style /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
