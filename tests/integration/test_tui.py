@@ -47,7 +47,7 @@ async def test_tui_drives_a_turn_against_mock_model(tmp_path):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
         assert any("You: привіт" in line for line in app.transcript)
-        assert any("Лілі: Привіт. Я Лілі." in line for line in app.transcript)
+        assert any("Лілі 🙂: Привіт. Я Лілі." in line for line in app.transcript)
 
 
 def test_lili_reply_is_rendered_as_markdown():
@@ -98,7 +98,7 @@ async def test_no_thinking_keeps_the_box_empty(tmp_path):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
         assert app._thinking_shown is None  # the Thinking box stays empty
-        assert "Лілі: Привіт!" in "\n".join(app.transcript)
+        assert "Лілі 🙂: Привіт!" in "\n".join(app.transcript)
 
 
 async def test_status_and_stats_are_separate_lines(tmp_path):
@@ -153,7 +153,7 @@ async def test_copy_all_copies_full_conversation(tmp_path):
         app._copy = copied.append
         await _submit(pilot, app, "привіт")
         app.action_copy_all()
-        assert copied and "You: привіт" in copied[0] and "Лілі: вітаю" in copied[0]
+        assert copied and "You: привіт" in copied[0] and "Лілі 🙂: вітаю" in copied[0]
 
 
 async def test_copy_reply_with_nothing_yet_does_not_copy(tmp_path):
@@ -260,7 +260,7 @@ async def test_send_works_again_once_free(tmp_path):
         # A normal turn flips busy True during the call, then back to False.
         await _submit(pilot, app, "привіт")
         assert app._busy is False
-        assert any("Лілі: вітаю" in line for line in app.transcript)
+        assert any("Лілі 🙂: вітаю" in line for line in app.transcript)
 
 
 async def test_multiline_input_enter_submits_shift_enter_newlines(tmp_path):
@@ -376,7 +376,7 @@ async def test_idle_nudge_runs_a_hidden_turn(tmp_path):
             if app.transcript:
                 break
         # Лілі's reply is shown…
-        assert any("Лілі: Привіт, я сама почала." in line for line in app.transcript)
+        assert any("Лілі 🙂: Привіт, я сама почала." in line for line in app.transcript)
         # …but the hidden nudge line is NOT in the displayed transcript.
         assert not any("ти тут?" in line for line in app.transcript)
         assert not any(line.startswith("You:") for line in app.transcript)
@@ -403,3 +403,25 @@ async def test_idle_nudge_off_does_nothing(tmp_path):
         app._maybe_nudge()
         await pilot.pause()
         assert app.transcript == []  # nothing fired
+
+
+async def test_emoji_shows_next_to_lili_reply(tmp_path):
+    from core.llm import MockLLMClient as _Mock
+
+    # joy 0.9 → high band → 😄✨✨ next to her name.
+    llm = _Mock(states={"reply": "Ура!", "emotion": "joy", "intensity": 0.9})
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "вітаю")
+        line = next(ln for ln in app.transcript if "Ура!" in ln)
+        assert line.startswith("Лілі 😄✨✨:")  # emoji + high-intensity emphasis
+
+
+async def test_emoji_low_intensity_is_the_plain_face(tmp_path):
+    from core.llm import MockLLMClient as _Mock
+
+    llm = _Mock(states={"reply": "ага", "emotion": "doubt", "intensity": 0.1})
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "точно?")
+        assert any(ln.startswith("Лілі 😕:") for ln in app.transcript)  # plain low glyph

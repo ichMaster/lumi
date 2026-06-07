@@ -26,6 +26,7 @@ from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
 from core.agent import Core
 from core.config import load_config
+from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
 from core.nudge import load_nudges, pick_nudge_index, should_nudge
 from core.repository import Session
@@ -181,6 +182,9 @@ class LumiApp(App[None]):
         self._thinking_shown: str | None = None
         # The v0.3 emotion renderer — the "logged" tier (IEmotionRenderer).
         self._renderer = LogRenderer()
+        # The v0.5 emoji tier — its glyph goes next to Лілі's reply (built-in map;
+        # the authored core/emoji.md is loaded in on_mount).
+        self._emoji = EmojiRenderer()
         # v0.4 idle nudge state (configured in on_mount; off by default).
         self._nudge_enabled: bool = False
         self._idle_seconds: int = 240
@@ -221,6 +225,7 @@ class LumiApp(App[None]):
         self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
         # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
         cfg = load_config()
+        self._emoji = EmojiRenderer(load_emoji_map(cfg.emoji_path))  # authored map (v0.5)
         self._nudge_enabled = cfg.idle_nudge
         self._idle_seconds = cfg.idle_seconds
         self._quiet_hours = cfg.quiet_hours
@@ -433,7 +438,8 @@ class LumiApp(App[None]):
             # Лілі's reasoning goes to the Thinking box only (not the chat);
             # the box shows just this turn's thinking, or clears if there was none.
             self._render_thinking(getattr(self._core, "last_thinking", None))
-            self._say_markdown(LILI_LABEL, state.reply, LILI_COLOR)
+            # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
+            self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
             self._render_thinking(None)  # the failed turn has no thinking
             self._connected = False
