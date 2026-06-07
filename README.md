@@ -12,21 +12,16 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.4.0 — v0.4 Ambient context & idle nudge.** Лілі now knows **when and where she
-is** and can **break a long silence first**. A lightweight ambient snapshot — date/time,
-weekday, location, weather, a few headlines — is fetched at startup and injected into the
-system prompt as background that **colors tone, never competence**.
+**0.5.0 — v0.5 Emoji rendering.** Лілі's emotion is now **visible right in the terminal**:
+her current feeling shows as an emoji next to each reply (`Лілі 😄✨:`), with `intensity`
+scaling the emphasis. A renderer swap over the locked v0.3 channel — no contract change.
+**v0 is now a complete terminal companion.**
 
-Built on the v0.3 emotion field:
-
-- **Time-legible prompts** — every message carries its date-time; recalled summaries are
-  dated (LUMI-019).
-- **WorldContext** — an injected clock for time/calendar + config-gated weather (Open-Meteo),
-  news (RSS), and location; graceful when a source is off or fails (LUMI-020/021).
-- **Richer weather** — current + feels-like + today's high/low + the day's forecast;
-  `LUMI_WEATHER_URL` configurable.
-- **Idle nudge** — after a quiet stretch Лілі opens on her own with a hidden turn from
-  `core/nudges.md` (random opener, off by default) (LUMI-022).
+- **Emotion as an emoji** — each reply is labelled with her emotion glyph; intensity adds
+  emphasis over three bands by repeating the face or adding an accent (LUMI-024).
+- **Editable emoji map** — `core/emoji.md` (`LUMI_EMOJI_PATH`): add / remove / change emojis
+  without code; a built-in default keeps the map total over the enum (LUMI-023).
+- **Emojis in her text too** — Лілі now weaves a sparing emoji or two into her replies (canon).
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog.
 

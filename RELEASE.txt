@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.5.0 (2026-06-07)
+---------------------------
+- v0.5 — Emoji rendering (LUMI-023…024): Лілі's emotion shows as an emoji next to her reply (Лілі 😄✨:). A renderer swap over the locked v0.3 channel — no contract change. v0 is now a complete terminal companion.
+- Editable emoji map (LUMI-023): core/emoji.md (LUMI_EMOJI_PATH) maps emotion→emoji+intensity over 3 bands (repeat/accent); add/remove/change emojis without code. emoji_for + EmojiRenderer; total over the enum with a built-in default fallback.
+- Emoji next to the reply in the TUI (LUMI-024): each reply labelled with her emotion glyph; intensity emphasis; the status line keeps the text readout.
+- Emojis in her text too: Лілі weaves a sparing emoji or two into her replies (canon, always on).
+
 Version 0.4.0 (2026-06-07)
 ---------------------------
 - v0.4 — Ambient context & idle nudge (LUMI-019…022): Лілі knows when/where she is and can break a long silence first.
