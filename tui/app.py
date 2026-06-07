@@ -90,7 +90,7 @@ class ConfirmScreen(ModalScreen[bool]):
 class ChatInput(TextArea):
     """A multi-line chat input: Enter submits, Shift+Enter inserts a newline.
 
-    Sized to ~2 lines and scrolls when the message is longer (or pasted).
+    Sized to ~3 lines and scrolls when the message is longer (or pasted).
     """
 
     class Submitted(Message):
@@ -137,7 +137,7 @@ class LumiApp(App[None]):
     }
 
     #prompt {
-        height: 4;          /* border (2) + ~2 text lines; scrolls if longer */
+        height: 5;          /* border (2) + ~3 text lines; scrolls if longer */
         border: round $accent;
         margin: 1 1 1 1;
     }
