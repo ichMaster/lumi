@@ -190,7 +190,9 @@ async def test_new_session_starts_fresh_and_processes_previous(tmp_path):
         # A new session is active, and the previous one was ended (processed).
         assert app._session.id != first
         assert repo.get_session(first).ended_at is not None
+        # The screen is cleared — only the divider remains; prior lines are gone.
         assert any("нова сесія" in line for line in app.transcript)
+        assert not any("привіт" in line for line in app.transcript)
 
 
 async def test_prompt_command_shows_last_turn_prompt(tmp_path):

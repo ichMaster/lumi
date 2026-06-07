@@ -364,6 +364,10 @@ class LumiApp(App[None]):
             except Exception:  # noqa: BLE001 — never block on housekeeping
                 pass
         self._session = self._core.start_session()
+        # Fresh session → fresh screen (memory is kept in the store).
+        self.query_one("#history", RichLog).clear()
+        self.transcript.clear()
+        self._last_reply = None
         line = "── нова сесія (попередню збережено) ──"
         self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
         self._render_status()
