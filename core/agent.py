@@ -21,7 +21,7 @@ from pathlib import Path
 
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
-from core.emotion import EmotionState, validate
+from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
     RECENT_SUMMARIES,
@@ -101,6 +101,7 @@ class Core:
         natal: str = "",
         mood_enabled: bool = True,
         mood_log_path: Path | None = None,
+        face_signal: Path | None = None,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -115,6 +116,8 @@ class Core:
         self._mood_enabled = mood_enabled
         self._mood_log_path = mood_log_path  # the full reading is appended here (readable)
         self._mood: MoodState | None = None
+        # v0.7 emotion-face signal: a one-word file the local viewer polls each turn.
+        self._face_signal = face_signal
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
         # Answer styles (overlays) + meta-styles (presets → several base styles) +
@@ -228,7 +231,22 @@ class Core:
         The answer style is per-session — it resets to ``normal`` here.
         """
         self._active = []
+        self._write_face_signal(DEFAULT_EMOTION.value, DEFAULT_INTENSITY)  # calm before the first turn
         return self._repo.create_session(self._user_id)
+
+    def _write_face_signal(self, emotion: str, intensity: float) -> None:
+        """Write the current emotion (one word + intensity) to the viewer signal (v0.7).
+
+        Best-effort: a separate viewer process polls this file. A write failure never
+        affects the turn.
+        """
+        if self._face_signal is None:
+            return
+        try:
+            self._face_signal.parent.mkdir(parents=True, exist_ok=True)
+            self._face_signal.write_text(f"{emotion} {intensity:.2f}", encoding="utf-8")
+        except OSError:
+            pass  # best-effort; the viewer falls back to calm
 
     def _system_prompt(self, session: Session) -> str:
         """Assemble the system prompt for this turn, rehydrated for the user.
@@ -407,6 +425,7 @@ class Core:
             turn=self.totals.turns,
         )
         self.last_emotion = state
+        self._write_face_signal(state.emotion.value, state.intensity)  # update the viewer (v0.7)
 
         self._repo.append_message(
             make_message(session.id, self._user_id, "user", user_text, ts=turn_ts)
@@ -533,4 +552,5 @@ def build_core(
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
         mood_log_path=cfg.store_path.parent / "mood.log",
+        face_signal=cfg.face_signal or cfg.store_path.parent / "face.txt",
     )

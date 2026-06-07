@@ -99,6 +99,8 @@ class Config:
     # v0.6 mood of the day — on by default.
     mood: bool = True
     natal_path: Path = DEFAULT_NATAL_PATH
+    # v0.7 emotion-face signal — a one-word file the viewer polls (None → derive from store).
+    face_signal: Path | None = None
     api_key: str | None = field(default=None, repr=False)
 
 
@@ -182,5 +184,6 @@ def load_config(*, load_env: bool = True) -> Config:
         emoji_path=Path(emoji_env) if (emoji_env := os.getenv("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,
         mood=(os.getenv("LUMI_MOOD") or "on").strip().lower() in _TRUTHY,  # on by default
         natal_path=Path(natal_env) if (natal_env := os.getenv("LUMI_NATAL_PATH")) else DEFAULT_NATAL_PATH,
+        face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
