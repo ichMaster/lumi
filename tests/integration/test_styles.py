@@ -92,13 +92,29 @@ def test_set_style_unknown_is_rejected(tmp_path):
     assert core.style == "normal"
 
 
-def test_system_prompt_keeps_reasoning_out_of_the_reply(tmp_path):
-    # The answer-only directive rides in every turn's system prompt so the model's
-    # planning doesn't leak into the visible reply (Opus 4.8 thinking hygiene).
+def test_system_prompt_has_the_reasoning_directive(tmp_path):
+    # Every turn's system prompt asks the model to wrap reasoning in <think>…</think>
+    # so it can be parsed out of the visible reply (Opus 4.8 thinking hygiene).
     llm = MockLLMClient("ok")
     core = _core(tmp_path, llm)
     core.reply("привіт", core.start_session())
-    assert "лише те, що ти кажеш співрозмовнику" in llm.calls[-1]["system"]
+    system = llm.calls[-1]["system"]
+    assert "<think>" in system
+    assert "лише те, що ти кажеш співрозмовнику" in system
+
+
+def test_reply_strips_think_tags_and_stores_clean(tmp_path):
+    # The model wraps reasoning in <think>…</think>; the stored/returned reply is
+    # clean, and the reasoning surfaces as last_thinking (→ Thinking box).
+    llm = MockLLMClient("<think>думаю, як відповісти.</think>Привіт, друже!")
+    repo = JsonRepository(tmp_path / "s.json")
+    core = Core(llm=llm, repository=repo, canon="Ти — Лілі.", model="m")
+    session = core.start_session()
+    out = core.reply("привіт", session)
+    assert out == "Привіт, друже!"  # returned reply is clean
+    assert core.last_thinking == "думаю, як відповісти."
+    stored = [m.text for m in repo.load_messages(session.id) if m.role == "lili"]
+    assert stored == ["Привіт, друже!"]  # the store never sees the reasoning
 
 
 def test_multiple_styles_stack_in_order(tmp_path):

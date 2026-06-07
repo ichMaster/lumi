@@ -12,19 +12,39 @@ v0.5) without the core's callers changing.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
-# Output hygiene: keep the model's *reasoning* out of the visible reply. Opus 4.8
-# adaptive thinking can otherwise narrate its planning into the answer text (e.g.
-# "відповім коротко, тепло…"); this directive sends only the final answer. Her
-# reasoning still surfaces via the summarized thinking channel (rendered grey).
-ANSWER_ONLY = (
-    "Важливо: у відповіді — лише те, що ти кажеш співрозмовнику. "
-    "Не виписуй у текст своїх міркувань, планів чи службових нотаток "
-    "(як-от «думаю…», «відповім коротко й тепло…», «своїм голосом…»). "
-    "Міркуй подумки, а не вголос."
+# Keep the model's *reasoning* out of the visible reply, parseably. Opus 4.8 will
+# otherwise narrate its planning into the answer text ("думаю. Це гра слів…"); a
+# bare "don't reason out loud" instruction doesn't hold. Instead we ask it to wrap
+# any pre-answer reasoning in <think>…</think> — which Claude follows reliably —
+# and `split_reasoning` strips those tags out (the reasoning goes to the Thinking
+# box; only what's outside the tags is the reply).
+REASONING_DIRECTIVE = (
+    "Якщо перед відповіддю ти міркуєш — загорни ці міркування на самому початку "
+    "у теги <think>…</think>. Поза тегами лишай лише те, що ти кажеш співрозмовнику: "
+    "без планів, службових нотаток чи пояснень власних намірів."
 )
+
+# Matches a well-formed <think>…</think> block (any reasoning the model wrapped).
+_THINK_RE = re.compile(r"<think\b[^>]*>(.*?)</think\s*>", re.IGNORECASE | re.DOTALL)
+# Catches any stray, one-sided <think>/</think> tag so it never shows in the reply.
+_STRAY_THINK_RE = re.compile(r"</?think\b[^>]*>", re.IGNORECASE)
+
+
+def split_reasoning(text: str) -> tuple[str | None, str]:
+    """Split a model reply into ``(thinking, reply)``.
+
+    Reasoning the model wrapped in ``<think>…</think>`` is extracted (joined if
+    several) as ``thinking``; the ``reply`` is the text with those blocks — and any
+    stray tags — removed and stripped. No tags → ``(None, text.strip())``.
+    """
+    thoughts = [m.strip() for m in _THINK_RE.findall(text)]
+    thinking = "\n".join(t for t in thoughts if t) or None
+    reply = _STRAY_THINK_RE.sub("", _THINK_RE.sub("", text)).strip()
+    return thinking, reply
 
 # Framing that makes the answer-style overlay a prioritized directive. Placed at
 # the very end of the system prompt (last thing the model reads before the turn).

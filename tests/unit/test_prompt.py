@@ -3,7 +3,7 @@
 import pytest
 
 from core.config import load_config
-from core.prompt import build_system_prompt, load_canon
+from core.prompt import build_system_prompt, load_canon, split_reasoning
 
 # The 9-emotion enum the canon's palette must cover (EMOTION.md §4).
 EMOTIONS = ("joy", "calm", "playful", "tender", "thoughtful", "serious", "surprise", "doubt", "sad")
@@ -58,3 +58,23 @@ def test_canon_covers_all_nine_emotions():
     canon = load_canon(cfg.canon_path)
     for emotion in EMOTIONS:
         assert emotion in canon, f"canon palette is missing emotion '{emotion}'"
+
+
+def test_split_reasoning_extracts_think_tags():
+    thinking, reply = split_reasoning("<think>думаю. гра слів.</think>Зате я анекдот вдома.")
+    assert thinking == "думаю. гра слів."
+    assert reply == "Зате я анекдот вдома."
+
+
+def test_split_reasoning_no_tags_is_clean_reply():
+    thinking, reply = split_reasoning("Просто відповідь, без міркувань.")
+    assert thinking is None
+    assert reply == "Просто відповідь, без міркувань."
+
+
+def test_split_reasoning_handles_multiline_and_stray_tags():
+    raw = "<think>\nрядок1\nрядок2\n</think>\nвідповідь</think>"
+    thinking, reply = split_reasoning(raw)
+    assert thinking == "рядок1\nрядок2"
+    assert reply == "відповідь"  # stray closing tag stripped too
+    assert "<think" not in reply and "</think" not in reply

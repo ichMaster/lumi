@@ -28,7 +28,7 @@ from core.memory import (
     summary_request,
     trim_history,
 )
-from core.prompt import ANSWER_ONLY, build_system_prompt, load_canon
+from core.prompt import REASONING_DIRECTIVE, build_system_prompt, load_canon, split_reasoning
 from core.repository import (
     LongTermFact,
     Repository,
@@ -191,10 +191,10 @@ class Core:
         ]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
-        # Append the answer-only directive to the canon so the model's reasoning
-        # never leaks into the visible reply (the style overlay still rides last).
+        # Append the reasoning directive to the canon so any pre-answer reasoning is
+        # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         return build_system_prompt(
-            f"{self._canon}\n\n{ANSWER_ONLY}",
+            f"{self._canon}\n\n{REASONING_DIRECTIVE}",
             summaries=summaries,
             facts=facts,
             digest=digest.summary if digest else None,
@@ -271,8 +271,12 @@ class Core:
 
         system = self._system_prompt(session)
         self.last_prompt = {"system": system, "messages": list(messages)}
-        reply_text = self._llm.reply(system=system, messages=messages, model=self._model)
-        self.last_thinking = getattr(self._llm, "last_thinking", None)
+        raw = self._llm.reply(system=system, messages=messages, model=self._model)
+        # Split any <think>…</think> reasoning out of the visible reply; only the
+        # clean reply is shown/stored. Prefer the model's tagged inline reasoning;
+        # fall back to the provider's summarized thinking channel.
+        inline_thinking, reply_text = split_reasoning(raw)
+        self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None)
         self.last_stats = getattr(self._llm, "last_stats", None)
         if self.last_stats is not None:
             self.totals.turns += 1
