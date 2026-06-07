@@ -86,6 +86,26 @@ def _news(http_get: HttpGet, url: str, cap: int) -> tuple[str, ...]:
         return ()
 
 
+def ambient_line(wc: WorldContext | None, clock: Clock) -> str | None:
+    """Render the ambient "now / here" block for the system prompt, or ``None``.
+
+    The **date-time is recomputed per turn** from the clock (the snapshot's
+    location/weather/news are held from startup). Framed as **background that
+    colors tone, never competence**, and fetched text is quoted as **data**.
+    """
+    if wc is None:
+        return None
+    dt = clock()
+    bits = [f"час: {dt.strftime('%Y-%m-%d %H:%M')}, {_calendar(dt.weekday(), dt.day, dt.month)}"]
+    if wc.location:
+        bits.append(f"місце: {wc.location}")
+    if wc.weather:
+        bits.append(f"погода: {wc.weather}")
+    if wc.news:
+        bits.append("новини: " + " | ".join(wc.news))
+    return "Зараз і тут (фон, що лише фарбує тон — не змінює суті):\n" + "; ".join(bits) + "."
+
+
 def fetch_world_context(
     clock: Clock,
     *,

@@ -113,13 +113,15 @@ def build_system_prompt(
     digest: str | None = None,
     style: str | None = None,
     emotion: bool = False,
+    ambient: str | None = None,
 ) -> str:
     """Assemble the system prompt: canon + the user's memory + an answer style.
 
     The canon always rides at the base; ``emotion=True`` adds the v0.3
     emotion-output instruction (:data:`EMOTION_INSTRUCTION`) right after it; then
-    the user's recent ``summaries`` and long-term ``facts``, then the in-session
-    ``digest``, and finally — at the very **end** — an optional ``style`` overlay
+    the optional ``ambient`` "now / here" block (v0.4 — background that colors tone,
+    never competence), then the user's recent ``summaries`` and long-term ``facts``,
+    then the in-session ``digest``, and finally — at the very **end** — an optional ``style`` overlay
     (which shapes the *form* of the reply, never competence), framed as a
     prioritized directive (:data:`STYLE_HEADER`) so it's the last, most salient
     instruction. Assembly order: canon → emotion → summaries → facts → digest →
@@ -132,6 +134,8 @@ def build_system_prompt(
     parts = [canon]
     if emotion:
         parts.append(EMOTION_INSTRUCTION)
+    if ambient:
+        parts.append(ambient)
     if summaries:
         parts.append(
             "Памʼять про попередні розмови з цією людиною:\n"

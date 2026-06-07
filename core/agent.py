@@ -48,6 +48,7 @@ from core.repository import (
 )
 from core.styles import DEFAULT_STYLE, load_meta_styles, load_styles
 from core.user import DEFAULT_USER_ID
+from core.worldcontext import WorldContext, ambient_line
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
@@ -98,6 +99,8 @@ class Core:
         self._model = model
         self._user_id = user_id
         self._clock = clock  # injectable: real time by default, fixed in tests
+        # Ambient "now / here" snapshot (v0.4), set by the client at startup/refresh.
+        self._world: WorldContext | None = None
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
         # Answer styles (overlays) + meta-styles (presets → several base styles) +
@@ -125,6 +128,15 @@ class Core:
     @property
     def user_id(self) -> str:
         return self._user_id
+
+    @property
+    def clock(self) -> Clock:
+        """The injected clock (so a client fetches ambient context with the same time)."""
+        return self._clock
+
+    def set_world_context(self, world: WorldContext | None) -> None:
+        """Set the ambient *now / here* snapshot (the client fetches it at startup/refresh)."""
+        self._world = world
 
     @property
     def thinking(self) -> bool:
@@ -219,6 +231,7 @@ class Core:
             digest=digest.summary if digest else None,
             style=self._style_overlay(),
             emotion=True,
+            ambient=ambient_line(self._world, self._clock),
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:

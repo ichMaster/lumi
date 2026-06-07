@@ -25,9 +25,11 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
 from core.agent import Core
+from core.config import load_config
 from core.emotion import LogRenderer
 from core.repository import Session
 from core.styles import DEFAULT_STYLE
+from core.worldcontext import fetch_world_context
 
 USER_LABEL = "You"
 LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is English
@@ -209,6 +211,30 @@ class LumiApp(App[None]):
         self._render_status()
         self._render_stats()
         self.query_one("#prompt", ChatInput).focus()
+        self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
+
+    async def _refresh_world(self) -> None:
+        """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
+
+        Only when configured (a place / coords / news feed); otherwise no ambient
+        block. Best-effort — never blocks the UI, never raises.
+        """
+        cfg = load_config()
+        if not (cfg.location or (cfg.lat is not None and cfg.lon is not None) or cfg.news_url):
+            return
+        try:
+            world = await asyncio.to_thread(
+                fetch_world_context,
+                self._core.clock,
+                location=cfg.location,
+                lat=cfg.lat,
+                lon=cfg.lon,
+                news_url=cfg.news_url,
+                news_cap=cfg.news_cap,
+            )
+            self._core.set_world_context(world)
+        except Exception:  # noqa: BLE001 — ambient context is best-effort
+            pass
 
     def on_unmount(self) -> None:
         # Fallback for non-quit teardown (e.g. a crash): summarize if action_quit
@@ -455,6 +481,7 @@ class LumiApp(App[None]):
             self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
             self._render_status()
             self._render_stats()
+            await self._refresh_world()  # re-snapshot ambient context for the new session
         finally:
             self._busy = False
 
