@@ -1,6 +1,23 @@
 Lumi — Release notes
 ====================
 
+Version 0.3.0 (2026-06-07)
+---------------------------
+- v0.3 — Emotion field (LUMI-013…018): every reply is now a validated EmotionState
+  {reply, emotion, intensity}. The fixed 9-value enum + EmotionState contract and the
+  IEmotionRenderer interface are locked; Core.reply returns EmotionState (was str) and
+  persists the field on assistant messages.
+- Structured output: the model emits its state via a set_state tool (enum + 0–1
+  constrained); the core validates/repairs it (unknown emotion -> calm, intensity
+  clamped, missing reply -> surfaced error) and logs every repair.
+- Reliable emotion with extended thinking on: an inline <emotion>name intensity</emotion>
+  tag (parsed + stripped like <think>), reconstructed in replayed history so it doesn't
+  drift away over a long conversation; the set_state tool wins when forceable (thinking off).
+- LogRenderer (the v0.3 "logged" tier) writes the field per turn; the TUI shows the
+  current emotion + intensity in the status line, plus an always-visible thinking:on/off
+  indicator.
+- Tests: 166 (mock model — no paid APIs); ruff clean.
+
 Version 0.2.1 (2026-06-07)
 ---------------------------
 - In-session compaction: older messages of a long session fold into a running

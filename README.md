@@ -12,17 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.2.1 — v0.2 memory, polish & styles.** Builds on v0.2's three-layer memory
-(user-scoped core + `Repository`, end-of-session `ShortSummary` + `LongTermFact`
-rehydrated at startup, `/memory` / `/forget`) with:
+**0.3.0 — v0.3 Emotion field.** Every reply is now a validated **`EmotionState`**
+`{reply, emotion, intensity}` — the model emits its state (one of a fixed 9), the
+core validates/repairs it, and the TUI shows it in the status line (e.g. `joy 0.8`).
+The contract, the enum, and the `IEmotionRenderer` interface are locked.
 
-- **In-session compaction** — older messages of a long session fold into a running
-  digest instead of being dropped ([docs/MEMORY.md](docs/MEMORY.md)).
-- **Answer styles** — `/style` shapes the *form* of a reply (length/structure/tone):
-  16 base styles + 6 meta-styles, combinable and per-session ([docs/STYLES.md](docs/STYLES.md)).
-- **Thinking box** — a separate panel shows Лілі's reasoning for the last turn
-  (parsed out of the reply), out of the chat.
-- **All-English interface** and TUI polish (type-ahead, `./lumi` launcher, clean copy).
+Built on v0.2's three-layer memory + the v0.2.1 polish:
+
+- **Emotion channel** — structured output (`set_state` tool) with a reliable inline
+  `<emotion>` fallback when extended thinking is on; logged + persisted.
+- **In-session compaction** + **answer styles** (`/style`) + a separate **Thinking box**
+  ([docs/MEMORY.md](docs/MEMORY.md), [docs/STYLES.md](docs/STYLES.md)).
+- **All-English interface**, `./lumi` launcher, `thinking:on/off` indicator.
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog.
 
