@@ -46,6 +46,10 @@ def test_split_resolution_falls_back_to_the_last_paragraph():
     assert split_resolution("перший абзац\n\nостанній абзац") == "останній абзац"
 
 
+def test_split_resolution_handles_an_inline_marker():
+    assert split_resolution("розклад\n\nРЕЗОЛЮЦІЯ: підсумок дня") == "підсумок дня"
+
+
 def test_load_natal_skips_comments(tmp_path):
     f = tmp_path / "natal.md"
     f.write_text("# коментар\nСонце в Рибах\n", encoding="utf-8")
