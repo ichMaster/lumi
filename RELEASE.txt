@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.6.0 (2026-06-08)
+---------------------------
+- v0.6 — Mood of the day (LUMI-025…027): Лілі has a model-generated daily temperament that colors her tone + the emotions she leans toward, never her competence. An experiment for daily variation, not an astrological claim.
+- Daily mood engine (LUMI-025): once per local day a mood call writes a horoscope-flavored reading from her natal chart (core/natal.md, skyfield-verified) + today's date; the full reading is logged, only a short resolution is held; cached per local day, recomputed at local midnight; on by default (LUMI_MOOD), graceful on failure. No astronomy engine — a real-ephemeris test confirmed the model can't compute precise transits, and variation (not precision) is the goal.
+- Prominent resolution block (LUMI-026): only the resolution is injected into the system prompt as a prioritized block (like the v0.5 style header), biasing tone + emitted emotion, never competence; the full reading never enters the prompt.
+- /mood command (LUMI-027): shows the day's resolution on demand.
+
 Version 0.5.0 (2026-06-07)
 ---------------------------
 - v0.5 — Emoji rendering (LUMI-023…024): Лілі's emotion shows as an emoji next to her reply (Лілі 😄✨:). A renderer swap over the locked v0.3 channel — no contract change. v0 is now a complete terminal companion.
