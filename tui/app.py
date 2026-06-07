@@ -146,7 +146,8 @@ class LumiApp(App[None]):
 
     #history {
         height: 1fr;
-        border: round $primary;
+        /* No border: terminal mouse-selection (Ctrl+T) would otherwise copy the
+           side │ chars along with the text. */
         padding: 0 1;
         margin: 1 1 1 1;
     }
