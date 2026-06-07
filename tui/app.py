@@ -27,6 +27,7 @@ from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 from core.agent import Core
 from core.config import load_config
 from core.emotion import LogRenderer
+from core.nudge import load_nudges, should_nudge
 from core.repository import Session
 from core.styles import DEFAULT_STYLE
 from core.worldcontext import fetch_world_context
@@ -181,6 +182,13 @@ class LumiApp(App[None]):
         self._thinking_shown: str | None = None
         # The v0.3 emotion renderer — the "logged" tier (IEmotionRenderer).
         self._renderer = LogRenderer()
+        # v0.4 idle nudge state (configured in on_mount; off by default).
+        self._nudge_enabled: bool = False
+        self._idle_seconds: int = 240
+        self._quiet_hours: tuple[int, int] | None = None
+        self._nudges: list[str] = []
+        self._nudge_idx: int = -1
+        self._last_activity = self._core.clock()
         # When True the app releases the mouse so the terminal can select text.
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
@@ -212,6 +220,15 @@ class LumiApp(App[None]):
         self._render_stats()
         self.query_one("#prompt", ChatInput).focus()
         self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
+        # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
+        cfg = load_config()
+        self._nudge_enabled = cfg.idle_nudge
+        self._idle_seconds = cfg.idle_seconds
+        self._quiet_hours = cfg.quiet_hours
+        self._last_activity = self._core.clock()
+        if self._nudge_enabled:
+            self._nudges = load_nudges(cfg.nudge_path)
+            self.set_interval(30, self._maybe_nudge)
 
     async def _refresh_world(self) -> None:
         """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
@@ -390,10 +407,16 @@ class LumiApp(App[None]):
             prompt.focus()
             return
 
-        self._busy = True
-        self._say(USER_LABEL, text, USER_COLOR)
-        self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
+        self._last_activity = self._core.clock()  # real input resets the idle timer
+        await self._run_turn(text)
 
+    async def _run_turn(self, text: str, *, hidden: bool = False) -> None:
+        """Run one model turn. A ``hidden`` turn (the idle nudge) suppresses the user
+        line entirely — only Лілі's reply is shown — so she appears to speak first."""
+        self._busy = True
+        if not hidden:
+            self._say(USER_LABEL, text, USER_COLOR)
+        self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
         try:
             assert self._session is not None
             state = await asyncio.to_thread(self._core.reply, text, self._session)
@@ -420,7 +443,23 @@ class LumiApp(App[None]):
             self._busy = False
             self._render_status()
             self._render_stats()
-            prompt.focus()
+            self.query_one("#prompt", ChatInput).focus()
+
+    def _maybe_nudge(self) -> None:
+        """Idle-timer tick: after a long silence, run a hidden nudge so Лілі speaks first.
+
+        Off by default; gated on enablement, not-busy, an open session, and quiet
+        hours; rate-limited to one nudge per idle gap (resets the activity stamp).
+        """
+        if not self._nudge_enabled or self._busy or self._session is None or not self._nudges:
+            return
+        now = self._core.clock()
+        if not should_nudge(self._last_activity, now, self._idle_seconds, self._quiet_hours):
+            return
+        self._last_activity = now  # rate-limit: one per idle gap
+        self._nudge_idx = (self._nudge_idx + 1) % len(self._nudges)
+        opener = self._nudges[self._nudge_idx]
+        self.run_worker(self._run_turn(opener, hidden=True), exclusive=False)
 
     # --- memory commands -------------------------------------------------
     def _show_memory(self) -> None:

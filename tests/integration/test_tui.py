@@ -348,3 +348,58 @@ async def test_status_shows_thinking_on_when_enabled(tmp_path):
     app = LumiApp(_core(tmp_path, llm))
     async with app.run_test():
         assert "thinking:on" in app._status_text()
+
+
+async def test_idle_nudge_runs_a_hidden_turn(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from core.clock import fixed_clock
+
+    now = datetime(2026, 6, 7, 14, 0, tzinfo=UTC)
+    core = Core(
+        llm=MockLLMClient("Привіт, я сама почала."),
+        repository=JsonRepository(tmp_path / "store.json"),
+        canon="Ти — Лілі.",
+        model="m",
+        clock=fixed_clock(now),
+    )
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        # Arm the nudge directly and make it idle.
+        app._nudge_enabled = True
+        app._nudges = ["ти тут?"]
+        app._idle_seconds = 60
+        app._last_activity = now - timedelta(seconds=120)
+        app._maybe_nudge()
+        for _ in range(50):
+            await pilot.pause()
+            if app.transcript:
+                break
+        # Лілі's reply is shown…
+        assert any("Лілі: Привіт, я сама почала." in line for line in app.transcript)
+        # …but the hidden nudge line is NOT in the displayed transcript.
+        assert not any("ти тут?" in line for line in app.transcript)
+        assert not any(line.startswith("You:") for line in app.transcript)
+
+
+async def test_idle_nudge_off_does_nothing(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from core.clock import fixed_clock
+
+    now = datetime(2026, 6, 7, 14, 0, tzinfo=UTC)
+    core = Core(
+        llm=MockLLMClient("ok"),
+        repository=JsonRepository(tmp_path / "store.json"),
+        canon="Ти — Лілі.",
+        model="m",
+        clock=fixed_clock(now),
+    )
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        app._nudge_enabled = False  # off (the default)
+        app._nudges = ["ти тут?"]
+        app._last_activity = now - timedelta(seconds=999)
+        app._maybe_nudge()
+        await pilot.pause()
+        assert app.transcript == []  # nothing fired

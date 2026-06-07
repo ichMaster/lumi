@@ -29,6 +29,9 @@ DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 # Answer styles (overlays); editable like the canon. Optional.
 DEFAULT_STYLES_PATH = _REPO_ROOT / "core" / "styles.md"
 
+# Idle-nudge openers (v0.4); editable. Optional.
+DEFAULT_NUDGE_PATH = _REPO_ROOT / "core" / "nudges.md"
+
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
@@ -78,6 +81,11 @@ class Config:
     lon: float | None = None
     news_url: str | None = None
     news_cap: int = 3
+    # v0.4 idle nudge — off by default.
+    idle_nudge: bool = False
+    idle_seconds: int = 240
+    nudge_path: Path = DEFAULT_NUDGE_PATH
+    quiet_hours: tuple[int, int] | None = None
     api_key: str | None = field(default=None, repr=False)
 
 
@@ -126,6 +134,17 @@ def load_config(*, load_env: bool = True) -> Config:
 
     news_cap_env = os.getenv("LUMI_NEWS_CAP")
 
+    idle_seconds_env = os.getenv("LUMI_IDLE_SECONDS")
+    nudge_path_env = os.getenv("LUMI_NUDGE_PATH")
+    quiet_env = os.getenv("LUMI_QUIET_HOURS")  # e.g. "23-7"
+    quiet_hours: tuple[int, int] | None = None
+    if quiet_env and "-" in quiet_env:
+        try:
+            a, b = (int(x) for x in quiet_env.split("-", 1))
+            quiet_hours = (a, b)
+        except ValueError:
+            quiet_hours = None
+
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
@@ -142,5 +161,9 @@ def load_config(*, load_env: bool = True) -> Config:
         lon=_float("LUMI_LON"),
         news_url=os.getenv("LUMI_NEWS_URL") or None,
         news_cap=int(news_cap_env) if news_cap_env else 3,
+        idle_nudge=_parse_bool(os.getenv("LUMI_IDLE_NUDGE")),
+        idle_seconds=int(idle_seconds_env) if idle_seconds_env else 240,
+        nudge_path=Path(nudge_path_env) if nudge_path_env else DEFAULT_NUDGE_PATH,
+        quiet_hours=quiet_hours,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
