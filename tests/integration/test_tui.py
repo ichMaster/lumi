@@ -46,7 +46,7 @@ async def test_tui_drives_a_turn_against_mock_model(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("Привіт. Я Лілі.")))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
-        assert any("Ти: привіт" in line for line in app.transcript)
+        assert any("You: привіт" in line for line in app.transcript)
         assert any("Лілі: Привіт. Я Лілі." in line for line in app.transcript)
 
 
@@ -166,7 +166,7 @@ async def test_copy_all_copies_full_conversation(tmp_path):
         app._copy = copied.append
         await _submit(pilot, app, "привіт")
         app.action_copy_all()
-        assert copied and "Ти: привіт" in copied[0] and "Лілі: вітаю" in copied[0]
+        assert copied and "You: привіт" in copied[0] and "Лілі: вітаю" in copied[0]
 
 
 async def test_copy_reply_with_nothing_yet_does_not_copy(tmp_path):
@@ -191,7 +191,7 @@ async def test_new_session_starts_fresh_and_processes_previous(tmp_path):
         assert app._session.id != first
         assert repo.get_session(first).ended_at is not None
         # The screen is cleared — only the divider remains; prior lines are gone.
-        assert any("нова сесія" in line for line in app.transcript)
+        assert any("new session" in line for line in app.transcript)
         assert not any("привіт" in line for line in app.transcript)
 
 
@@ -235,7 +235,7 @@ async def test_can_type_but_cannot_send_while_busy(tmp_path):
         await pilot.press("enter")
         await pilot.pause()
         # Nothing was sent and the draft is kept.
-        assert not any(line.startswith("Ти:") for line in app.transcript)
+        assert not any(line.startswith("You:") for line in app.transcript)
         assert prompt.text == "моя наступна думка"
 
 
@@ -259,7 +259,7 @@ async def test_multiline_input_enter_submits_shift_enter_newlines(tmp_path):
         await pilot.pause()
         assert "\n" in prompt.text
         # Nothing submitted yet.
-        assert not any(line.startswith("Ти:") for line in app.transcript)
+        assert not any(line.startswith("You:") for line in app.transcript)
 
 
 async def test_ctrl_l_clears_screen_but_keeps_memory(tmp_path):

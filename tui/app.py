@@ -28,12 +28,12 @@ from core.agent import Core
 from core.repository import Session
 from core.styles import DEFAULT_STYLE
 
-USER_LABEL = "Ти"
-LILI_LABEL = "Лілі"
-ERROR_LINE = "⚠ Лілі зараз недоступна. Спробуй ще раз за мить."
-MEMORY_EMPTY = "_Памʼять поки порожня._"
-CLEARED_LINE = "🧠 Памʼять очищено (короткострокову й довгострокову)."
-CANCELLED_LINE = "Скасовано."
+USER_LABEL = "You"
+LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is English
+ERROR_LINE = "Лілі is unavailable right now. Try again in a moment."
+MEMORY_EMPTY = "_Memory is empty so far._"
+CLEARED_LINE = "Memory cleared (short- and long-term)."
+CANCELLED_LINE = "Cancelled."
 
 # Speaker colors — so your lines and Лілі's read apart at a glance.
 USER_COLOR = "cyan"
@@ -79,7 +79,7 @@ class ConfirmScreen(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
             yield Label(self._question)
-            yield Label("[y] так   ·   [n] ні")
+            yield Label("[y] yes   ·   [n] no")
 
     def action_confirm(self) -> None:
         self.dismiss(True)
@@ -181,7 +181,7 @@ class LumiApp(App[None]):
         with Vertical():
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
-            prompt.border_title = "Ти"
+            prompt.border_title = "You"
             prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /new /prompt /memory /forget"
             yield prompt
         yield Footer()
@@ -307,7 +307,7 @@ class LumiApp(App[None]):
         # You can keep typing while Лілі responds, but can only *send* on your
         # turn. A premature submit keeps the draft (no clear, no send).
         if self._busy:
-            self.notify("Лілі ще відповідає — надішли, коли звільниться.",
+            self.notify("Лілі is still replying — send when it's your turn.",
                         severity="warning", timeout=2)
             return
 
@@ -371,10 +371,10 @@ class LumiApp(App[None]):
         mem = self._core.view_memory()
         lines: list[str] = []
         if mem.facts:
-            lines.append("**Що Лілі памʼятає про тебе:**")
+            lines.append("**What Лілі remembers about you:**")
             lines += [f"- {f}" for f in mem.facts]
         if mem.summaries:
-            lines.append("**Памʼять про попередні розмови:**")
+            lines.append("**Memory of past conversations:**")
             lines += [f"- {s}" for s in mem.summaries]
         body = "\n".join(lines) if lines else MEMORY_EMPTY
         self._emit(body, Markdown(body))
@@ -390,7 +390,7 @@ class LumiApp(App[None]):
                 self._emit(CANCELLED_LINE, Text(CANCELLED_LINE, style=SYSTEM_COLOR))
 
         self.push_screen(
-            ConfirmScreen("Очистити памʼять Лілі про тебе? Це не можна скасувати."),
+            ConfirmScreen("Clear Лілі's memory about you? This can't be undone."),
             _on_confirm,
         )
 
@@ -403,7 +403,7 @@ class LumiApp(App[None]):
         """
         if self._session is None:
             return
-        self._render_status(busy="зберігаю сесію…")
+        self._render_status(busy="saving session…")
         try:
             await asyncio.to_thread(self._core.end_session, self._session)
         except Exception:  # noqa: BLE001 — never block on housekeeping
@@ -419,7 +419,7 @@ class LumiApp(App[None]):
             self.query_one("#history", RichLog).clear()
             self.transcript.clear()
             self._last_reply = None
-            line = "── нова сесія (попередню збережено) ──"
+            line = "── new session (previous saved) ──"
             self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
             self._render_status()
             self._render_stats()
@@ -454,10 +454,10 @@ class LumiApp(App[None]):
         """Show the exact prompt sent on the last turn — `/prompt`."""
         p = getattr(self._core, "last_prompt", None)
         if not p:
-            msg = "Ще немає промпту — спершу зроби хід."
+            msg = "No prompt yet — make a turn first."
             self._emit(msg, Text(msg, style=SYSTEM_COLOR))
             return
-        parts = ["── промпт минулого ходу ──", "", "[SYSTEM]", p["system"], "", "[MESSAGES]"]
+        parts = ["── last turn's prompt ──", "", "[SYSTEM]", p["system"], "", "[MESSAGES]"]
         parts += [f"{m['role']}: {m['content']}" for m in p["messages"]]
         body = "\n".join(parts)
         self._emit(body, Text(body, style=THINKING_COLOR))  # dim, like a meta block
@@ -477,25 +477,25 @@ class LumiApp(App[None]):
     def action_copy_reply(self) -> None:
         """Copy Лілі's last reply to the system clipboard."""
         if not self._last_reply:
-            self.notify("Ще немає відповіді Лілі для копіювання.", severity="warning")
+            self.notify("No Лілі reply to copy yet.", severity="warning")
             return
         self._copy(self._last_reply)
-        self.notify("Скопійовано останню відповідь Лілі.")
+        self.notify("Copied Лілі's last reply.")
 
     def action_copy_all(self) -> None:
         """Copy the whole conversation (plain text) to the system clipboard."""
         if not self.transcript:
-            self.notify("Розмова поки порожня.", severity="warning")
+            self.notify("Conversation is empty.", severity="warning")
             return
         self._copy("\n".join(self.transcript))
-        self.notify(f"Скопійовано всю розмову ({len(self.transcript)} рядків).")
+        self.notify(f"Copied the whole conversation ({len(self.transcript)} lines).")
 
     def action_clear(self) -> None:
         """Clear the on-screen history. Лілі still remembers (the store is kept)."""
         self.query_one("#history", RichLog).clear()
         self.transcript.clear()
         self._last_reply = None
-        self.notify("Екран очищено. Лілі памʼятає розмову — історія збережена.")
+        self.notify("Screen cleared. Лілі still remembers — history is kept.")
 
     def action_toggle_mouse(self) -> None:
         """Release/recapture the mouse so the terminal can select text natively.
@@ -508,8 +508,8 @@ class LumiApp(App[None]):
         if self._mouse_selection:
             if driver is not None and hasattr(driver, "_disable_mouse_support"):
                 driver._disable_mouse_support()
-            self.notify("Виділення мишею увімкнено — тягни, щоб виділити й скопіювати. Ctrl+T — назад.")
+            self.notify("Mouse select on — drag to select & copy. Ctrl+T to toggle back.")
         else:
             if driver is not None and hasattr(driver, "_enable_mouse_support"):
                 driver._enable_mouse_support()
-            self.notify("Виділення мишею вимкнено (звичайний режим).")
+            self.notify("Mouse select off (normal mode).")

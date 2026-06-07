@@ -60,7 +60,7 @@ async def test_memory_command_shows_facts_and_summaries(tmp_path):
         assert "Любить каву" in joined
         assert "Говорили про гори." in joined
         # The command itself is not echoed as a user turn.
-        assert "Ти: /memory" not in app.transcript
+        assert "You: /memory" not in app.transcript
 
 
 async def test_forget_command_clears_after_confirm(tmp_path):
