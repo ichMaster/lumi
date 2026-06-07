@@ -29,7 +29,13 @@ from core.memory import (
     summary_request,
     trim_history,
 )
-from core.prompt import REASONING_DIRECTIVE, build_system_prompt, load_canon, split_reasoning
+from core.prompt import (
+    REASONING_DIRECTIVE,
+    build_system_prompt,
+    load_canon,
+    split_emotion,
+    split_reasoning,
+)
 from core.repository import (
     LongTermFact,
     Repository,
@@ -276,10 +282,11 @@ class Core:
         system = self._system_prompt(session)
         self.last_prompt = {"system": system, "messages": list(messages)}
         raw = self._llm.reply_structured(system=system, messages=messages, model=self._model)
-        # Split any <think>…</think> reasoning out of the reply field; the clean
-        # text is shown/stored. Prefer the model's tagged inline reasoning; fall
-        # back to the provider's summarized thinking channel.
+        # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of
+        # the reply field; the clean text is shown/stored. Prefer the model's tagged
+        # inline reasoning; fall back to the provider's summarized thinking channel.
         inline_thinking, reply_text = split_reasoning(str(raw.get("reply") or ""))
+        tag_emotion, reply_text = split_emotion(reply_text)
         self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None)
         self.last_stats = getattr(self._llm, "last_stats", None)
         if self.last_stats is not None:
@@ -288,9 +295,19 @@ class Core:
             self.totals.output_tokens += self.last_stats.output_tokens or 0
             self.totals.latency_ms += self.last_stats.latency_ms
 
+        # Merge emotion sources: the structured tool wins when present; otherwise the
+        # inline <emotion> tag (the reliable path when the tool can't be forced —
+        # extended thinking on); else the validation gate's fallback (calm).
+        tag = tag_emotion or {}
+        emotion = raw.get("emotion") or tag.get("emotion")
+        intensity = raw.get("intensity")
+        if intensity is None:
+            intensity = tag.get("intensity")
         # Validate/repair into a valid EmotionState (raises EmotionError if no reply).
         state = validate(
-            {**raw, "reply": reply_text}, session_id=session.id, turn=self.totals.turns
+            {"reply": reply_text, "emotion": emotion, "intensity": intensity},
+            session_id=session.id,
+            turn=self.totals.turns,
         )
         self.last_emotion = state
 

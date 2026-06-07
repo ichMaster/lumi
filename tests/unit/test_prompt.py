@@ -3,7 +3,7 @@
 import pytest
 
 from core.config import load_config
-from core.prompt import build_system_prompt, load_canon, split_reasoning
+from core.prompt import build_system_prompt, load_canon, split_emotion, split_reasoning
 
 # The 9-emotion enum the canon's palette must cover (EMOTION.md §4).
 EMOTIONS = ("joy", "calm", "playful", "tender", "thoughtful", "serious", "surprise", "doubt", "sad")
@@ -89,3 +89,24 @@ def test_build_system_prompt_emotion_instruction_is_opt_in():
     withe = build_system_prompt("CANON", emotion=True)
     assert EMOTION_INSTRUCTION in withe
     assert withe.index("CANON") < withe.index(EMOTION_INSTRUCTION)
+
+
+def test_split_emotion_parses_and_strips():
+    emo, clean = split_emotion("Привіт! <emotion>joy 0.8</emotion>")
+    assert emo == {"emotion": "joy", "intensity": 0.8}
+    assert clean == "Привіт!"
+
+
+def test_split_emotion_name_only():
+    emo, clean = split_emotion("ок <emotion>calm</emotion>")
+    assert emo == {"emotion": "calm"}
+    assert clean == "ок"
+
+
+def test_split_emotion_no_tag_is_clean_text():
+    assert split_emotion("просто текст") == (None, "просто текст")
+
+
+def test_split_emotion_strips_stray_tag():
+    _, clean = split_emotion("текст <emotion>joy 0.5</emotion> хвіст")
+    assert "<emotion" not in clean and "</emotion" not in clean

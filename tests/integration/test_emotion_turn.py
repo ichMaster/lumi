@@ -84,3 +84,22 @@ def test_pre_v03_message_without_emotion_still_loads(tmp_path):
     )
     m = JsonRepository(path).load_messages("s1")[0]
     assert m.text == "old" and m.emotion is None and m.intensity is None
+
+
+def test_inline_emotion_tag_is_used_when_the_tool_is_absent(tmp_path):
+    # thinking-on case: no structured emotion, just the reply with an <emotion> tag.
+    llm = MockLLMClient(states={"reply": "Привіт! <emotion>joy 0.8</emotion>"})
+    core = _core(tmp_path, llm)
+    state = core.reply("привіт", core.start_session())
+    assert state.reply == "Привіт!"  # tag stripped from the reply
+    assert state.emotion is Emotion.JOY and state.intensity == 0.8
+
+
+def test_tool_emotion_takes_precedence_over_the_tag(tmp_path):
+    llm = MockLLMClient(
+        states={"reply": "ок <emotion>sad 0.2</emotion>", "emotion": "joy", "intensity": 0.9}
+    )
+    core = _core(tmp_path, llm)
+    state = core.reply("привіт", core.start_session())
+    assert state.emotion is Emotion.JOY and state.intensity == 0.9
+    assert state.reply == "ок"  # tag still stripped

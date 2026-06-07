@@ -53,15 +53,42 @@ STYLE_HEADER = (
     "це має пріоритет над типовою багатослівністю та іншими вказівками щодо форми:"
 )
 
-# v0.3 emotion channel (EMOTION.md §3/§8): ask Лілі to return her state via the
-# `set_state` tool alongside her reply. The tool schema constrains emotion→enum and
-# intensity→0–1; this instruction makes her pick a *meaningful* state. Injected
-# only when build_system_prompt(emotion=True).
+# v0.3 emotion channel (EMOTION.md §3/§8). The `set_state` tool is the primary path,
+# but it can't be *forced* while extended thinking is on — so Лілі also tags her
+# state inline as <emotion>name intensity</emotion>, which `split_emotion` parses and
+# strips. Either way every turn carries an emotion. Injected only when
+# build_system_prompt(emotion=True).
 EMOTION_INSTRUCTION = (
-    "Разом із відповіддю познач свій емоційний стан через інструмент set_state: "
-    "emotion — одне зі значень joy, calm, playful, tender, thoughtful, serious, "
-    "surprise, doubt, sad; intensity — число від 0 до 1; reply — лише твій текст."
+    "Наприкінці кожної відповіді додавай свій емоційний стан окремим тегом "
+    "<emotion>назва інтенсивність</emotion> — назва: одне зі значень joy, calm, "
+    "playful, tender, thoughtful, serious, surprise, doubt, sad; інтенсивність — "
+    "число від 0 до 1 (напр. <emotion>joy 0.8</emotion>). Якщо доступний інструмент "
+    "set_state — заповни його тими самими значеннями. Сам тег не коментуй."
 )
+
+# Inline emotion tag: <emotion>name</emotion> or <emotion>name 0.8</emotion>.
+_EMOTION_TAG_RE = re.compile(
+    r"<emotion>\s*([a-zA-Z]+)\s*([0-9]*\.?[0-9]+)?\s*</emotion>", re.IGNORECASE
+)
+_STRAY_EMOTION_RE = re.compile(r"</?emotion\b[^>]*>", re.IGNORECASE)
+
+
+def split_emotion(text: str) -> tuple[dict | None, str]:
+    """Extract an inline ``<emotion>name intensity</emotion>`` tag from a reply.
+
+    Returns ``({emotion, intensity?}, clean_text)`` when a tag is present, else
+    ``(None, text.strip())``. The tag — and any stray ``<emotion>`` markers — are
+    removed so they never show in the reply. The fallback emotion channel for when
+    the structured tool can't be forced (extended thinking on).
+    """
+    match = _EMOTION_TAG_RE.search(text)
+    clean = _STRAY_EMOTION_RE.sub("", _EMOTION_TAG_RE.sub("", text)).strip()
+    if not match:
+        return None, clean
+    emo: dict = {"emotion": match.group(1).lower()}
+    if match.group(2):
+        emo["intensity"] = float(match.group(2))
+    return emo, clean
 
 
 def load_canon(path: str | Path) -> str:
