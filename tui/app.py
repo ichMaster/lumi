@@ -100,6 +100,13 @@ class ChatInput(TextArea):
             self.value = value
             super().__init__()
 
+    def on_focus(self) -> None:
+        # Blink the cursor only while the box is focused.
+        self.cursor_blink = True
+
+    def on_blur(self) -> None:
+        self.cursor_blink = False
+
     async def _on_key(self, event: events.Key) -> None:
         if event.key == "enter":
             event.prevent_default()
@@ -162,6 +169,9 @@ class LumiApp(App[None]):
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
         self._connected: bool = True
+        # True while a turn (or session save) is in flight — you can type, but
+        # can only send when it's your turn (not busy).
+        self._busy: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -194,7 +204,8 @@ class LumiApp(App[None]):
     async def action_quit(self) -> None:
         """Quit — but summarize the current session first, then exit when done."""
         if self._session is not None:
-            note = "Зберігаю сесію перед виходом (підсумок + факти)…"
+            self._busy = True
+            note = "Saving session before exit (summary + facts)…"
             self._emit(note, Text(note, style=f"bold {SYSTEM_COLOR}"))
             await self._process_current_session()
             self._session = None  # so on_unmount won't re-process it
@@ -287,8 +298,16 @@ class LumiApp(App[None]):
         self.query_one("#stats", Static).update(self._stats_text())
 
     async def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
-        text = event.value.strip()
         prompt = self.query_one("#prompt", ChatInput)
+
+        # You can keep typing while Лілі responds, but can only *send* on your
+        # turn. A premature submit keeps the draft (no clear, no send).
+        if self._busy:
+            self.notify("Лілі ще відповідає — надішли, коли звільниться.",
+                        severity="warning", timeout=2)
+            return
+
+        text = event.value.strip()
         prompt.text = ""
         if not text:
             prompt.focus()
@@ -312,7 +331,7 @@ class LumiApp(App[None]):
             prompt.focus()
             return
 
-        prompt.disabled = True
+        self._busy = True
         self._say(USER_LABEL, text, USER_COLOR)
         self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
 
@@ -329,9 +348,9 @@ class LumiApp(App[None]):
             self._connected = False
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
+            self._busy = False
             self._render_status()
             self._render_stats()
-            prompt.disabled = False
             prompt.focus()
 
     # --- memory commands -------------------------------------------------
@@ -380,16 +399,20 @@ class LumiApp(App[None]):
 
     async def _new_session(self) -> None:
         """Start a fresh session — `/new`. The previous session is summarized first."""
-        await self._process_current_session()
-        self._session = self._core.start_session()
-        # Fresh session → fresh screen (memory is kept in the store).
-        self.query_one("#history", RichLog).clear()
-        self.transcript.clear()
-        self._last_reply = None
-        line = "── нова сесія (попередню збережено) ──"
-        self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
-        self._render_status()
-        self._render_stats()
+        self._busy = True
+        try:
+            await self._process_current_session()
+            self._session = self._core.start_session()
+            # Fresh session → fresh screen (memory is kept in the store).
+            self.query_one("#history", RichLog).clear()
+            self.transcript.clear()
+            self._last_reply = None
+            line = "── нова сесія (попередню збережено) ──"
+            self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
+            self._render_status()
+            self._render_stats()
+        finally:
+            self._busy = False
 
     def _show_prompt(self) -> None:
         """Show the exact prompt sent on the last turn — `/prompt`."""

@@ -205,8 +205,8 @@ async def test_quit_summarizes_session_then_exits(tmp_path):
         await app.action_quit()
         # The session was processed (summarized) before exit…
         assert repo.get_session(sid).ended_at is not None
-        # …a system message announced it…
-        assert any("Зберігаю сесію перед виходом" in line for line in app.transcript)
+        # …a system message announced it (in English)…
+        assert any("Saving session before exit" in line for line in app.transcript)
         # …and it won't be re-processed on unmount.
         assert app._session is None
 
@@ -222,6 +222,30 @@ async def test_prompt_command_shows_last_turn_prompt(tmp_path):
         assert "[SYSTEM]" in joined and "[MESSAGES]" in joined
         assert "Ти — Лілі." in joined  # the canon that was sent
         assert "user: привіт" in joined
+
+
+async def test_can_type_but_cannot_send_while_busy(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test() as pilot:
+        app._busy = True  # simulate a turn in flight
+        prompt = app.query_one("#prompt", ChatInput)
+        # The input is never disabled — you can keep typing.
+        assert prompt.disabled is False
+        prompt.text = "моя наступна думка"
+        await pilot.press("enter")
+        await pilot.pause()
+        # Nothing was sent and the draft is kept.
+        assert not any(line.startswith("Ти:") for line in app.transcript)
+        assert prompt.text == "моя наступна думка"
+
+
+async def test_send_works_again_once_free(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("вітаю")))
+    async with app.run_test() as pilot:
+        # A normal turn flips busy True during the call, then back to False.
+        await _submit(pilot, app, "привіт")
+        assert app._busy is False
+        assert any("Лілі: вітаю" in line for line in app.transcript)
 
 
 async def test_multiline_input_enter_submits_shift_enter_newlines(tmp_path):
