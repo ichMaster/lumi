@@ -425,3 +425,41 @@ async def test_emoji_low_intensity_is_the_plain_face(tmp_path):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "точно?")
         assert any(ln.startswith("Лілі 😕:") for ln in app.transcript)  # plain low glyph
+
+
+async def test_mood_command_shows_the_resolution(tmp_path):
+    from datetime import UTC, datetime
+
+    from core.clock import fixed_clock
+
+    reading = "День легкий.\n\nРЕЗОЛЮЦІЯ:\nХотітиметься тиші й творчості. Настрій спокійний."
+    llm = MockLLMClient(replies=reading, states={"reply": "ок", "emotion": "calm", "intensity": 0.5})
+    core = Core(
+        llm=llm,
+        repository=JsonRepository(tmp_path / "store.json"),
+        canon="Ти — Лілі.",
+        model="m",
+        clock=fixed_clock(datetime(2026, 6, 7, 9, 0, tzinfo=UTC)),
+        natal="Сонце 15° Риб",
+        mood_enabled=True,
+    )
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        for _ in range(50):  # startup triggers the mood off-thread
+            await pilot.pause()
+            if core.mood:
+                break
+        app.query_one("#prompt").text = "/mood"
+        await pilot.press("enter")
+        await pilot.pause()
+        joined = "\n".join(app.transcript)
+        assert "Настрій Лілі сьогодні" in joined and "Хотітиметься тиші" in joined
+
+
+async def test_mood_command_pending_when_no_mood(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))  # no natal → no mood
+    async with app.run_test() as pilot:
+        app.query_one("#prompt").text = "/mood"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert any("ще не визначила настрій" in line for line in app.transcript)

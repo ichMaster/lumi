@@ -154,6 +154,10 @@ class Core:
         """Today's mood **resolution** (v0.6), or ``None`` when off / not yet computed."""
         return self._mood.resolution if self._mood else None
 
+    def ensure_mood(self) -> None:
+        """Compute today's mood now (idempotent / cached) — a client may call at startup."""
+        self._ensure_mood()
+
     @property
     def thinking(self) -> bool:
         """Whether extended thinking is enabled on the model (for a status indicator)."""

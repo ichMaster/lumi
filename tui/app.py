@@ -36,6 +36,7 @@ USER_LABEL = "You"
 LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is English
 ERROR_LINE = "Лілі is unavailable right now. Try again in a moment."
 MEMORY_EMPTY = "_Memory is empty so far._"
+MOOD_PENDING = "_Лілі ще не визначила настрій сьогодні — напиши їй, і він складеться._"
 CLEARED_LINE = "Memory cleared (short- and long-term)."
 CANCELLED_LINE = "Cancelled."
 
@@ -212,7 +213,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -223,6 +224,7 @@ class LumiApp(App[None]):
         self._render_stats()
         self.query_one("#prompt", ChatInput).focus()
         self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
+        self.run_worker(asyncio.to_thread(self._core.ensure_mood), exclusive=False)  # mood (v0.6)
         # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
         cfg = load_config()
         self._emoji = EmojiRenderer(load_emoji_map(cfg.emoji_path))  # authored map (v0.5)
@@ -406,6 +408,10 @@ class LumiApp(App[None]):
             self._style_command(text)
             prompt.focus()
             return
+        if text == "/mood":
+            self._show_mood()
+            prompt.focus()
+            return
         if text == "/new":
             await self._new_session()
             prompt.focus()
@@ -478,6 +484,12 @@ class LumiApp(App[None]):
             lines.append("**Memory of past conversations:**")
             lines += [f"- {s}" for s in mem.summaries]
         body = "\n".join(lines) if lines else MEMORY_EMPTY
+        self._emit(body, Markdown(body))
+
+    def _show_mood(self) -> None:
+        """Show Лілі's mood of the day — the `/mood` command (v0.6)."""
+        resolution = self._core.mood
+        body = f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING
         self._emit(body, Markdown(body))
 
     def _forget(self) -> None:
