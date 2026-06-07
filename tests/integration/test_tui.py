@@ -307,3 +307,30 @@ async def test_toggle_mouse_selection_flips_flag(tmp_path):
         app.action_toggle_mouse()
         assert app._mouse_selection is False
         await pilot.pause()
+
+
+async def test_status_line_shows_the_emotion(tmp_path):
+    llm = MockLLMClient(states={"reply": "Радо!", "emotion": "joy", "intensity": 0.8})
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert "joy 0.8" in app._status_text()  # v0.3: current emotion in the status line
+
+
+async def test_turn_routes_state_through_the_renderer(tmp_path):
+    llm = MockLLMClient(states={"reply": "ок", "emotion": "playful", "intensity": 0.6})
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        # The validated state went through the LogRenderer (IEmotionRenderer), not raw output.
+        assert app._renderer.session_id == app._session.id
+        assert app._renderer.turn == 1
+
+
+async def test_missing_reply_degrades_to_a_readable_error(tmp_path):
+    llm = MockLLMClient(states={"emotion": "joy", "intensity": 0.5})  # no reply → EmotionError
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert any(ERROR_LINE in line for line in app.transcript)  # no crash
+        assert app._connected is False

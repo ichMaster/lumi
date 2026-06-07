@@ -25,6 +25,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
 from core.agent import Core
+from core.emotion import LogRenderer
 from core.repository import Session
 from core.styles import DEFAULT_STYLE
 
@@ -176,6 +177,8 @@ class LumiApp(App[None]):
         self._last_reply: str | None = None
         # What's currently in the Thinking box (last turn's reasoning, or None).
         self._thinking_shown: str | None = None
+        # The v0.3 emotion renderer — the "logged" tier (IEmotionRenderer).
+        self._renderer = LogRenderer()
         # When True the app releases the mouse so the terminal can select text.
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
@@ -294,7 +297,9 @@ class LumiApp(App[None]):
         think = " thinking" if thinking else ""
         style = self._core.style
         style_part = f" · style: {style}" if style != DEFAULT_STYLE else ""
-        meta = f"{model}{think}{style_part}"
+        emo = self._core.last_emotion
+        emo_part = f" · {emo.emotion.value} {emo.intensity:.1f}" if emo else ""
+        meta = f"{model}{think}{style_part}{emo_part}"
         if busy:
             return f"status: [yellow]{busy}[/] · {meta}"
         if not self._connected:
@@ -369,6 +374,11 @@ class LumiApp(App[None]):
             state = await asyncio.to_thread(self._core.reply, text, self._session)
             self._connected = True
             self._last_reply = state.reply
+            # Route the validated state through the renderer (logs the field) — the
+            # status line then shows her current emotion + intensity.
+            self._renderer.session_id = self._session.id
+            self._renderer.turn = self._core.totals.turns
+            self._renderer.render(state)
             compacted = getattr(self._core, "last_compaction", 0)
             if compacted:
                 note = f"Compacted {compacted} earlier messages into a running summary."
