@@ -8,6 +8,7 @@ never displayed, only Лілі's reply — so she appears to speak first.
 
 from __future__ import annotations
 
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,13 @@ def load_nudges(path: str | Path) -> list[str]:
         for line in p.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
+
+
+def pick_nudge_index(count: int, last: int) -> int:
+    """A random opener index in ``range(count)``, avoiding ``last`` (no immediate repeat)."""
+    if count <= 1:
+        return 0
+    return random.choice([i for i in range(count) if i != last])
 
 
 def _in_quiet_hours(now: datetime, quiet: tuple[int, int]) -> bool:

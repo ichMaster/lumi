@@ -29,3 +29,13 @@ def test_load_nudges_from_the_authored_file():
 
 def test_load_nudges_missing_file_is_empty(tmp_path):
     assert load_nudges(tmp_path / "nope.md") == []
+
+
+def test_pick_nudge_index_avoids_immediate_repeat():
+    from core.nudge import pick_nudge_index
+
+    assert pick_nudge_index(1, 0) == 0          # single opener → itself
+    assert pick_nudge_index(2, 0) == 1          # with 2, the only non-repeat
+    assert pick_nudge_index(2, 1) == 0
+    for _ in range(60):                         # never repeats the last
+        assert pick_nudge_index(5, 2) != 2

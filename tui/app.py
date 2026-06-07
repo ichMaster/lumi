@@ -27,7 +27,7 @@ from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 from core.agent import Core
 from core.config import load_config
 from core.emotion import LogRenderer
-from core.nudge import load_nudges, should_nudge
+from core.nudge import load_nudges, pick_nudge_index, should_nudge
 from core.repository import Session
 from core.worldcontext import fetch_world_context
 
@@ -456,7 +456,7 @@ class LumiApp(App[None]):
         if not should_nudge(self._last_activity, now, self._idle_seconds, self._quiet_hours):
             return
         self._last_activity = now  # rate-limit: one per idle gap
-        self._nudge_idx = (self._nudge_idx + 1) % len(self._nudges)
+        self._nudge_idx = pick_nudge_index(len(self._nudges), self._nudge_idx)
         opener = self._nudges[self._nudge_idx]
         self.run_worker(self._run_turn(opener, hidden=True), exclusive=False)
 
