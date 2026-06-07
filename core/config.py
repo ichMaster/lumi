@@ -17,6 +17,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from core.worldcontext import DEFAULT_WEATHER_URL
+
 # Repo root = the parent of this ``core/`` package.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -79,6 +81,7 @@ class Config:
     location: str | None = None
     lat: float | None = None
     lon: float | None = None
+    weather_url: str = DEFAULT_WEATHER_URL
     news_url: str | None = None
     news_cap: int = 3
     # v0.4 idle nudge — off by default.
@@ -159,6 +162,7 @@ def load_config(*, load_env: bool = True) -> Config:
         location=os.getenv("LUMI_LOCATION") or None,
         lat=_float("LUMI_LAT"),
         lon=_float("LUMI_LON"),
+        weather_url=os.getenv("LUMI_WEATHER_URL") or DEFAULT_WEATHER_URL,
         news_url=os.getenv("LUMI_NEWS_URL") or None,
         news_cap=int(news_cap_env) if news_cap_env else 3,
         idle_nudge=_parse_bool(os.getenv("LUMI_IDLE_NUDGE")),

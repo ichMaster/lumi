@@ -23,6 +23,14 @@ from core.clock import Clock
 
 HttpGet = Callable[[str], str]
 
+# Default weather endpoint (Open-Meteo — free, no key). ``{lat}``/``{lon}`` are
+# substituted from config; override with LUMI_WEATHER_URL (must return the same
+# Open-Meteo JSON shape — current.temperature_2m + current.weather_code).
+DEFAULT_WEATHER_URL = (
+    "https://api.open-meteo.com/v1/forecast"
+    "?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code"
+)
+
 # Ukrainian calendar bits + a small WMO weather-code lexicon (data, not exhaustive).
 _WEEKDAYS = ["понеділок", "вівторок", "середа", "четвер", "пʼятниця", "субота", "неділя"]
 _MONTHS = [
@@ -66,12 +74,9 @@ def _clean(text: str, limit: int = 120) -> str:
     return text[:limit]
 
 
-def _weather(http_get: HttpGet, lat: float, lon: float) -> str | None:
+def _weather(http_get: HttpGet, url_template: str, lat: float, lon: float) -> str | None:
     try:
-        url = (
-            "https://api.open-meteo.com/v1/forecast"
-            f"?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code"
-        )
+        url = url_template.replace("{lat}", str(lat)).replace("{lon}", str(lon))
         cur = json.loads(http_get(url))["current"]
         desc = _WEATHER_CODES.get(cur.get("weather_code"))
         line = f"{round(cur['temperature_2m'])}°C"
@@ -122,13 +127,15 @@ def fetch_world_context(
     location: str | None = None,
     lat: float | None = None,
     lon: float | None = None,
+    weather_url: str = DEFAULT_WEATHER_URL,
     news_url: str | None = None,
     news_cap: int = 3,
     http_get: HttpGet = _http_get,
 ) -> WorldContext:
     """Build the ambient snapshot. Time/calendar from the clock; the rest config-gated."""
     dt = clock()
-    weather = _weather(http_get, lat, lon) if (lat is not None and lon is not None) else None
+    has_coords = lat is not None and lon is not None
+    weather = _weather(http_get, weather_url, lat, lon) if (has_coords and weather_url) else None
     news = _news(http_get, news_url, news_cap) if news_url else ()
     return WorldContext(
         now=dt.strftime("%Y-%m-%d %H:%M"),

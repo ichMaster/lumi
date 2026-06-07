@@ -246,6 +246,7 @@ class LumiApp(App[None]):
                 location=cfg.location,
                 lat=cfg.lat,
                 lon=cfg.lon,
+                weather_url=cfg.weather_url,
                 news_url=cfg.news_url,
                 news_cap=cfg.news_cap,
             )

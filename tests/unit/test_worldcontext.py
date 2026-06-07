@@ -39,6 +39,19 @@ def test_weather_from_open_meteo():
     assert wc.weather == "15°C, ясно"
 
 
+def test_weather_url_is_configurable_with_lat_lon_substitution():
+    seen = {}
+
+    def fake_get(url):
+        seen["url"] = url
+        return _OPEN_METEO
+
+    fetch_world_context(
+        _CLK, lat=1.5, lon=2.5, weather_url="https://x/w?la={lat}&lo={lon}", http_get=fake_get
+    )
+    assert seen["url"] == "https://x/w?la=1.5&lo=2.5"
+
+
 def test_news_drops_channel_title_and_caps():
     wc = fetch_world_context(_CLK, news_url="http://x/rss", news_cap=2, http_get=lambda url: _RSS)
     assert wc.news == ("Перша новина", "Друга")  # channel title dropped; capped to 2
