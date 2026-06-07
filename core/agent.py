@@ -14,6 +14,7 @@ the return into a validated ``EmotionState``.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
@@ -88,9 +89,10 @@ class Core:
         self._user_id = user_id
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
-        # Answer styles (overlays) + the active one (per-session).
+        # Answer styles (overlays) + the active ones (per-session; combinable).
+        # Empty list = the default "normal" (no overlay).
         self._styles = styles or {}
-        self._style = DEFAULT_STYLE
+        self._active: list[str] = []
         # The model's reasoning summary from the last turn (None when thinking is
         # off or absent), for a client to render alongside the reply.
         self.last_thinking: str | None = None
@@ -112,27 +114,44 @@ class Core:
 
     @property
     def style(self) -> str:
-        """The active answer style (per-session)."""
-        return self._style
+        """The active answer style(s), combined for display ('short+formal')."""
+        return "+".join(self._active) if self._active else DEFAULT_STYLE
 
     def style_names(self) -> list[str]:
         """All selectable style names (``normal`` + the authored overlays)."""
         return [DEFAULT_STYLE, *sorted(self._styles)]
 
-    def set_style(self, name: str) -> bool:
-        """Switch the active answer style; returns ``False`` for an unknown style."""
-        name = name.strip().lower()
-        if name == DEFAULT_STYLE or name in self._styles:
-            self._style = name
-            return True
-        return False
+    def set_style(self, spec: str) -> bool:
+        """Set the active answer style(s) from a spec — one or several names.
+
+        Names are separated by spaces, commas, or ``+`` (e.g. ``"short formal"``);
+        they stack (each overlay is appended, in order). ``normal`` clears the
+        overlay. Returns ``False`` (and changes nothing) if **any** name is
+        unknown — the switch is all-or-nothing.
+        """
+        names = [n for n in re.split(r"[\s,+]+", spec.strip().lower()) if n]
+        if not names:
+            return False
+        valid = {DEFAULT_STYLE, *self._styles}
+        if any(n not in valid for n in names):
+            return False
+        active: list[str] = []
+        for n in names:  # drop 'normal' (no overlay) and dedupe, keep order
+            if n != DEFAULT_STYLE and n not in active:
+                active.append(n)
+        self._active = active
+        return True
+
+    def _style_overlay(self) -> str | None:
+        """The combined overlay text for the active style(s), or ``None``."""
+        return "\n\n".join(self._styles[n] for n in self._active) or None
 
     def start_session(self) -> Session:
         """Open a fresh session for the active user (persisted).
 
         The answer style is per-session — it resets to ``normal`` here.
         """
-        self._style = DEFAULT_STYLE
+        self._active = []
         return self._repo.create_session(self._user_id)
 
     def _system_prompt(self, session: Session) -> str:
@@ -153,7 +172,7 @@ class Core:
             summaries=summaries,
             facts=facts,
             digest=digest.summary if digest else None,
-            style=self._styles.get(self._style) or None,
+            style=self._style_overlay(),
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:

@@ -73,6 +73,42 @@ def test_set_style_unknown_is_rejected(tmp_path):
     assert core.style == "normal"
 
 
+def test_multiple_styles_stack_in_order(tmp_path):
+    llm = MockLLMClient("ok")
+    core = _core(tmp_path, llm)
+    session = core.start_session()
+    assert core.set_style("short emotional") is True
+    assert core.style == "short+emotional"
+    core.reply("привіт", session)
+    system = llm.calls[-1]["system"]
+    # Both overlays present, in the given order.
+    assert "Be brief." in system and "Be warm." in system
+    assert system.index("Be brief.") < system.index("Be warm.")
+
+
+def test_styles_accept_comma_and_plus_separators(tmp_path):
+    core = _core(tmp_path)
+    core.start_session()
+    assert core.set_style("short, emotional") is True
+    assert core.style == "short+emotional"
+    assert core.set_style("emotional+short") is True
+    assert core.style == "emotional+short"  # order follows the spec
+
+
+def test_styles_are_all_or_nothing_on_unknown(tmp_path):
+    core = _core(tmp_path)
+    core.set_style("short")
+    assert core.set_style("short nope") is False  # one bad name → reject all
+    assert core.style == "short"  # unchanged
+
+
+def test_normal_clears_active_styles(tmp_path):
+    core = _core(tmp_path)
+    core.set_style("short emotional")
+    assert core.set_style("normal") is True
+    assert core.style == "normal"
+
+
 def test_style_names_are_normal_plus_overlays(tmp_path):
     assert _core(tmp_path).style_names() == ["normal", "emotional", "short"]
 

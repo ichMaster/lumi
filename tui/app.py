@@ -427,11 +427,14 @@ class LumiApp(App[None]):
             self._busy = False
 
     def _style_command(self, text: str) -> None:
-        """`/style` lists styles + the current one; `/style <name>` switches."""
+        """`/style` lists styles + current; `/style <name> [<name>…]` switches (combinable)."""
         arg = text[len("/style"):].strip()
         if not arg:
             names = ", ".join(self._core.style_names())
-            line = f"Styles: {names}  (current: {self._core.style})"
+            line = (
+                f"Styles: {names}  (current: {self._core.style})"
+                "  ·  combine: /style short formal"
+            )
             self._emit(line, Text(line, style=SYSTEM_COLOR))
             return
         if self._core.set_style(arg):
@@ -440,7 +443,7 @@ class LumiApp(App[None]):
             self._render_status()
         else:
             names = ", ".join(self._core.style_names())
-            line = f"Unknown style '{arg}'. Available: {names}"
+            line = f"Unknown style in '{arg}'. Available: {names}"
             self._emit(line, Text(line, style=ERROR_COLOR))
 
     def _show_prompt(self) -> None:
