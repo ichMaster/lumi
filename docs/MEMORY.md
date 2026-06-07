@@ -19,7 +19,7 @@ users, and memory scopes. This document describes **what the code does today**.
 |---|---|---|---|---|---|
 | **Session history** | the live conversation's messages | `messages` (by `session_id`) | the `messages` array (the verbatim live tail, 40–60) | every turn (append) | every turn (windowed) |
 | **Session digest** | running summary of *this* session's earlier part | `digests` (by `session_id`) | the **system prompt** (in-session compaction) | when the window overflows (batches) | every turn (if present) |
-| **Short memory** | a 2–3‑sentence gist of each finished session | `summaries` (by `user_id`) | the **system prompt** (last 5) | at session end | every turn |
+| **Short memory** | a gist of each finished session (length scales with size, 1–8 sentences) | `summaries` (by `user_id`) | the **system prompt** (last 5) | at session end | every turn |
 | **Long‑term memory** | durable facts about the user | `facts` (by `user_id`) | the **system prompt** (all) | at session end | every turn |
 
 Everything is **user‑scoped**: every record carries a `user_id` (the single default
@@ -110,14 +110,26 @@ and **never raises** (so it can't block quitting).
 #### The summarization prompt (`SUMMARY_SYSTEM`, [../core/memory.py](../core/memory.py))
 
 ```
-Ти стискаєш діалог у короткий підсумок для памʼяті Лілі.
-2–3 речення від третьої особи: суть розмови й важливе про співрозмовника.
-Без вступів і звертань — лише підсумок.
+Ти стискаєш діалог у підсумок для памʼяті Лілі — від третьої особи, по суті:
+про що говорили й важливе про співрозмовника. Без вступів і звертань — лише підсумок.
 ```
 
-`summary_request(messages)` turns the session transcript into one `user` message; the
-model's reply **is** the summary text. `_write_summary` stores it as
-`ShortSummary(user_id, session_id, summary, ts)` (skipped if the reply is empty).
+`summary_request(messages)` turns the session transcript into one `user` message and
+appends a **target length scaled to the session size** — `Орієнтовний обсяг: N речень.`
+where `N = summary_sentences(len(messages))`. The model's reply **is** the summary text;
+`_write_summary` stores it as `ShortSummary(user_id, session_id, summary, ts)` (skipped if
+empty).
+
+**Length scaling** (`summary_sentences`, [../core/memory.py](../core/memory.py)) — roughly
+**one sentence per 3 messages, clamped to `[1, 8]`** (`max(1, min(8, (n+2)//3))`), so a short
+exchange gets a one‑liner and a long conversation a fuller paragraph:
+
+| messages | 1–2 | 4 | 8 | 12 | 20 | 30+ |
+|---|---|---|---|---|---|---|
+| **sentences** | 1 | 2 | 3 | 4 | 7 | 8 (cap) |
+
+`SUMMARY_SYSTEM` is the stable base instruction; the length directive is appended
+per‑session. (The model decides the actual prose — the target only guides it.)
 
 #### The fact‑extraction prompt (`FACTS_SYSTEM`, [../core/memory.py](../core/memory.py))
 
@@ -196,8 +208,9 @@ return build_system_prompt(self._canon, summaries=summaries, facts=facts)
 
 ### 4.3 The assembled system prompt
 
-`build_system_prompt(canon, summaries, facts)` ([../core/prompt.py](../core/prompt.py))
-composes the blocks **around** the canon, in a fixed order — **canon → summaries → facts**:
+`build_system_prompt(canon, summaries, facts, digest, style)`
+([../core/prompt.py](../core/prompt.py)) composes the blocks **around** the canon, in a fixed
+order — **canon → summaries → facts → digest → style**:
 
 ```
 <canon — core/canon/lili.md, verbatim>
@@ -211,10 +224,18 @@ composes the blocks **around** the canon, in a fixed order — **canon → summa
 - <fact 1>
 - <fact 2>
 ...
+
+Раніше в цій розмові (стисло):
+<session digest — §4.5, only if compacted>
+
+<STYLE_HEADER — only if a /style is active; see docs/STYLES.md>
+<active style overlay text>
 ```
 
-With no summaries/facts (a brand‑new user), the result is the **canon verbatim** — exactly
-the v0.1 behavior.
+With no summaries/facts/digest/style (a brand‑new user), the result is the **canon
+verbatim** — exactly the v0.1 behavior. The **digest** is the in‑session compaction block
+(§4.5); the **style** block is the answer‑style overlay (not memory — it's documented
+separately in [STYLES.md](STYLES.md)), appended last as a prioritized directive.
 
 ### 4.4 What is added every turn (and the caps)
 
@@ -317,7 +338,7 @@ many summaries are recalled into the prompt.
 |---|---|
 | [../core/repository.py](../core/repository.py) | record shapes (`Session`/`Message`/`ShortSummary`/`LongTermFact`/`SessionDigest`) + the `Repository` interface + `make_message`/`now_iso` |
 | [../state/local_store.py](../state/local_store.py) | `JsonRepository` — the concrete JSON store (sessions/messages/summaries/facts/digests), atomic write, migration shim |
-| [../core/memory.py](../core/memory.py) | `trim_history`, `summary_request`/`SUMMARY_SYSTEM`, `facts_request`/`FACTS_SYSTEM`, `parse_facts`, `compaction_plan`/`digest_request`/`COMPACTION_DIGEST_SYSTEM`, `RECENT_SUMMARIES` |
+| [../core/memory.py](../core/memory.py) | `trim_history`, `summary_request`/`SUMMARY_SYSTEM`/`summary_sentences`, `facts_request`/`FACTS_SYSTEM`, `parse_facts`, `compaction_plan`/`digest_request`/`COMPACTION_DIGEST_SYSTEM`, `RECENT_SUMMARIES` |
 | [../core/prompt.py](../core/prompt.py) | `load_canon`, `build_system_prompt(canon, summaries, facts, digest)` — the prompt assembler |
 | [../core/agent.py](../core/agent.py) | `Core` — `reply`, `_system_prompt`, `_maybe_compact`/`_housekeeping_reply`, `end_session`/`_write_summary`/`_accumulate_facts`, `view_memory`/`clear_memory`, `last_prompt`/`last_stats`/`last_compaction`/`totals` |
 | [../core/config.py](../core/config.py) | `memory_window`, `compaction_batch`, `store_path` |
