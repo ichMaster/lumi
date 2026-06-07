@@ -53,6 +53,14 @@ STYLE_HEADER = (
     "це має пріоритет над типовою багатослівністю та іншими вказівками щодо форми:"
 )
 
+# Framing for the v0.6 daily mood resolution — a prominent, prioritized block that
+# colors her tone and the emotions she leans toward, never her competence.
+MOOD_HEADER = (
+    "ВАЖЛИВО — ТВІЙ НАСТРІЙ СЬОГОДНІ. Нехай він відчутно фарбує твій тон і емоції, "
+    "до яких ти схиляєшся (емоцію в <emotion> теж). Це фон дня, не вказівка до дії; "
+    "він НЕ змінює твоєї компетентності чи готовності допомогти:"
+)
+
 # v0.3 emotion channel (EMOTION.md §3/§8). The `set_state` tool is the primary path,
 # but it can't be *forced* while extended thinking is on — so Лілі also tags her
 # state inline as <emotion>name intensity</emotion>, which `split_emotion` parses and
@@ -114,6 +122,7 @@ def build_system_prompt(
     style: str | None = None,
     emotion: bool = False,
     ambient: str | None = None,
+    mood: str | None = None,
 ) -> str:
     """Assemble the system prompt: canon + the user's memory + an answer style.
 
@@ -147,6 +156,8 @@ def build_system_prompt(
         )
     if digest:
         parts.append("Раніше в цій розмові (стисло):\n" + digest)
+    if mood:
+        parts.append(f"{MOOD_HEADER}\n{mood}")
     if style:
         parts.append(f"{STYLE_HEADER}\n{style}")
     return "\n\n".join(parts)

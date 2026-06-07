@@ -248,6 +248,7 @@ class Core:
             style=self._style_overlay(),
             emotion=True,
             ambient=ambient_line(self._world, self._clock),
+            mood=self.mood,  # only the resolution rides in the prompt (v0.6)
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:

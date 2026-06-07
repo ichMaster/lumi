@@ -101,3 +101,32 @@ def test_mood_off_or_no_natal_makes_no_call(tmp_path):
     no_natal = _core(tmp_path, MockLLMClient(_READING), natal="")
     no_natal._ensure_mood()
     assert no_natal.mood is None and no_natal._llm.calls == []
+
+
+# --- injection (LUMI-026) -------------------------------------------------
+def test_build_system_prompt_mood_is_a_prominent_block():
+    from core.prompt import MOOD_HEADER, build_system_prompt
+
+    assert "X-MOOD" not in build_system_prompt("CANON")
+    out = build_system_prompt("CANON", mood="X-MOOD")
+    assert "X-MOOD" in out and MOOD_HEADER in out  # prominent prioritized header
+
+
+def test_only_the_resolution_is_injected_not_the_full_reading(tmp_path):
+    from core.prompt import MOOD_HEADER
+
+    llm = MockLLMClient(replies=_READING, states={"reply": "ок", "emotion": "calm", "intensity": 0.5})
+    core = _core(tmp_path, llm)
+    core.reply("привіт", core.start_session())
+    system = core.last_prompt["system"]
+    assert _RESOLUTION in system and MOOD_HEADER in system   # resolution as a prominent block
+    assert "День легкий і рухливий" not in system            # full reading stays in the log only
+
+
+def test_no_mood_means_no_block(tmp_path):
+    from core.prompt import MOOD_HEADER
+
+    llm = MockLLMClient(replies=_READING, states={"reply": "ок", "emotion": "calm", "intensity": 0.5})
+    core = _core(tmp_path, llm, mood=False)  # mood off → no block
+    core.reply("привіт", core.start_session())
+    assert MOOD_HEADER not in core.last_prompt["system"]
