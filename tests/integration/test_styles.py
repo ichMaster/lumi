@@ -4,11 +4,12 @@ from core.agent import Core
 from core.config import load_config
 from core.llm import MockLLMClient
 from core.prompt import build_system_prompt
-from core.styles import load_styles
+from core.styles import load_meta_styles, load_styles
 from state.local_store import JsonRepository
 from tui.app import ChatInput, LumiApp
 
-STYLES = {"short": "Be brief.", "emotional": "Be warm."}
+STYLES = {"short": "Be brief.", "emotional": "Be warm.", "formal": "Be formal."}
+METAS = {"combo": ["short", "emotional"]}
 
 
 def _core(tmp_path, llm=None):
@@ -18,6 +19,7 @@ def _core(tmp_path, llm=None):
         canon="Ти — Лілі.",
         model="m",
         styles=STYLES,
+        meta_styles=METAS,
     )
 
 
@@ -37,10 +39,24 @@ def test_load_styles_from_the_authored_file():
     assert all("──" not in body for body in styles.values())
     # Each style includes a concrete length limit (sentences/words/lines).
     assert "речен" in styles["short"] or "слів" in styles["short"]
+    # Meta-styles are NOT base styles (their alias bodies are excluded).
+    assert "teacher" not in styles and "brief" not in styles
+
+
+def test_load_meta_styles_from_the_authored_file():
+    cfg = load_config(load_env=False)
+    metas = load_meta_styles(cfg.styles_path)
+    base = load_styles(cfg.styles_path)
+    assert {"brief", "teacher", "analyst", "doer", "muse", "guide"} <= set(metas)
+    # Every meta expands to ≥2 real base styles.
+    for name, members in metas.items():
+        assert len(members) >= 2
+        assert all(m in base for m in members), name
 
 
 def test_load_styles_missing_file_is_empty(tmp_path):
     assert load_styles(tmp_path / "nope.md") == {}
+    assert load_meta_styles(tmp_path / "nope.md") == {}
 
 
 # --- core -----------------------------------------------------------------
@@ -109,8 +125,37 @@ def test_normal_clears_active_styles(tmp_path):
     assert core.style == "normal"
 
 
-def test_style_names_are_normal_plus_overlays(tmp_path):
-    assert _core(tmp_path).style_names() == ["normal", "emotional", "short"]
+# --- meta-styles ----------------------------------------------------------
+def test_meta_style_expands_to_several_base_styles(tmp_path):
+    llm = MockLLMClient("ok")
+    core = _core(tmp_path, llm)
+    session = core.start_session()
+    assert core.set_style("combo") is True  # combo = short + emotional
+    assert core.style == "combo"  # display keeps the meta name
+    core.reply("привіт", session)
+    system = llm.calls[-1]["system"]
+    assert "Be brief." in system and "Be warm." in system  # both base overlays
+    assert system.index("Be brief.") < system.index("Be warm.")
+
+
+def test_meta_and_base_styles_combine(tmp_path):
+    core = _core(tmp_path)
+    core.start_session()
+    assert core.set_style("combo formal") is True
+    assert core.style == "combo+formal"
+    assert core._expand() == ["short", "emotional", "formal"]  # meta expanded + base
+
+
+def test_meta_names_listed_separately(tmp_path):
+    core = _core(tmp_path)
+    assert core.meta_names() == ["combo"]
+    assert core.base_names() == ["emotional", "formal", "short"]
+
+
+def test_style_names_are_normal_plus_metas_plus_base(tmp_path):
+    assert _core(tmp_path).style_names() == [
+        "normal", "combo", "emotional", "formal", "short"
+    ]
 
 
 def test_style_is_per_session_and_resets(tmp_path):
@@ -143,7 +188,7 @@ async def test_style_command_lists_then_switches(tmp_path):
         app.query_one("#prompt", ChatInput).text = "/style"
         await pilot.press("enter")
         await pilot.pause()
-        assert any("Styles:" in line for line in app.transcript)
+        assert any("Meta-styles:" in line for line in app.transcript)
 
         app.query_one("#prompt", ChatInput).text = "/style short"
         await pilot.press("enter")

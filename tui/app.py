@@ -427,13 +427,17 @@ class LumiApp(App[None]):
             self._busy = False
 
     def _style_command(self, text: str) -> None:
-        """`/style` lists styles + current; `/style <name> [<name>…]` switches (combinable)."""
+        """`/style` lists styles + current; `/style <name> [<name>…]` switches (combinable).
+
+        A name can be a meta-style (expands to several) or a base style; they stack.
+        """
         arg = text[len("/style"):].strip()
         if not arg:
-            names = ", ".join(self._core.style_names())
+            metas = ", ".join(self._core.meta_names()) or "—"
+            bases = ", ".join(self._core.base_names())
             line = (
-                f"Styles: {names}  (current: {self._core.style})"
-                "  ·  combine: /style short formal"
+                f"Meta-styles: {metas}  (current: {self._core.style})\n"
+                f"Base: normal, {bases}  ·  combine: /style short formal"
             )
             self._emit(line, Text(line, style=SYSTEM_COLOR))
             return

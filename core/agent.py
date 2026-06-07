@@ -38,7 +38,7 @@ from core.repository import (
     make_message,
     now_iso,
 )
-from core.styles import DEFAULT_STYLE, load_styles
+from core.styles import DEFAULT_STYLE, load_meta_styles, load_styles
 from core.user import DEFAULT_USER_ID
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
@@ -81,6 +81,7 @@ class Core:
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
         styles: dict[str, str] | None = None,
+        meta_styles: dict[str, list[str]] | None = None,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -89,9 +90,10 @@ class Core:
         self._user_id = user_id
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
-        # Answer styles (overlays) + the active ones (per-session; combinable).
-        # Empty list = the default "normal" (no overlay).
+        # Answer styles (overlays) + meta-styles (presets → several base styles) +
+        # the active selection (per-session; combinable). Empty = "normal".
         self._styles = styles or {}
+        self._meta = meta_styles or {}
         self._active: list[str] = []
         # The model's reasoning summary from the last turn (None when thinking is
         # off or absent), for a client to render alongside the reply.
@@ -117,22 +119,31 @@ class Core:
         """The active answer style(s), combined for display ('short+formal')."""
         return "+".join(self._active) if self._active else DEFAULT_STYLE
 
+    def base_names(self) -> list[str]:
+        """The authored base style names."""
+        return sorted(self._styles)
+
+    def meta_names(self) -> list[str]:
+        """The meta-style (preset) names."""
+        return sorted(self._meta)
+
     def style_names(self) -> list[str]:
-        """All selectable style names (``normal`` + the authored overlays)."""
-        return [DEFAULT_STYLE, *sorted(self._styles)]
+        """All selectable names (``normal`` + meta-styles + base styles)."""
+        return [DEFAULT_STYLE, *sorted(self._meta), *sorted(self._styles)]
 
     def set_style(self, spec: str) -> bool:
-        """Set the active answer style(s) from a spec — one or several names.
+        """Set the active answer style(s) from a spec — base styles and/or meta-styles.
 
-        Names are separated by spaces, commas, or ``+`` (e.g. ``"short formal"``);
-        they stack (each overlay is appended, in order). ``normal`` clears the
+        Names are separated by spaces, commas, or ``+`` (e.g. ``"short formal"`` or a
+        meta-style like ``"teacher"``); they stack (each overlay is appended, in
+        order). A **meta-style** expands to its base styles. ``normal`` clears the
         overlay. Returns ``False`` (and changes nothing) if **any** name is
         unknown — the switch is all-or-nothing.
         """
         names = [n for n in re.split(r"[\s,+]+", spec.strip().lower()) if n]
         if not names:
             return False
-        valid = {DEFAULT_STYLE, *self._styles}
+        valid = {DEFAULT_STYLE, *self._styles, *self._meta}
         if any(n not in valid for n in names):
             return False
         active: list[str] = []
@@ -142,9 +153,22 @@ class Core:
         self._active = active
         return True
 
+    def _expand(self) -> list[str]:
+        """Resolve the active selection to an ordered, deduped list of base styles.
+
+        Meta-styles expand to their base styles; base styles map to themselves.
+        Unknown base references (e.g. a typo in a meta alias) are skipped.
+        """
+        out: list[str] = []
+        for token in self._active:
+            for base in self._meta.get(token, [token]):
+                if base in self._styles and base not in out:
+                    out.append(base)
+        return out
+
     def _style_overlay(self) -> str | None:
-        """The combined overlay text for the active style(s), or ``None``."""
-        return "\n\n".join(self._styles[n] for n in self._active) or None
+        """The combined overlay text for the active (expanded) style(s), or ``None``."""
+        return "\n\n".join(self._styles[b] for b in self._expand()) or None
 
     def start_session(self) -> Session:
         """Open a fresh session for the active user (persisted).
@@ -363,4 +387,5 @@ def build_core(
         memory_window=cfg.memory_window,
         compaction_batch=cfg.compaction_batch,
         styles=load_styles(cfg.styles_path),
+        meta_styles=load_meta_styles(cfg.styles_path),
     )

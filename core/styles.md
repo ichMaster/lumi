@@ -61,3 +61,25 @@
 # ── Interaction ─────────────────────────────────────────────────────────
 ## socratic
 Відповідай, повертаючи 1–2 гострі питання, що ведуть до суті, замість прямої відповіді. Коротко, без пояснень — нехай питання працює (перегукується з грою «Коани»).
+
+# ══ Meta-styles ═════════════════════════════════════════════════════════
+# Presets: a "= a, b, c" body selects several base styles at once. Choosing a
+# meta-style in /style activates all of its base styles together. Edit / add freely.
+
+## brief
+= short, bullets
+
+## teacher
+= explain, eli5, example
+
+## analyst
+= detailed, compare, formal
+
+## doer
+= steps, practical, casual
+
+## muse
+= poetic, metaphor, emotional
+
+## guide
+= socratic, example, casual
