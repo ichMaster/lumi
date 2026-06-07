@@ -72,6 +72,12 @@ class Config:
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking: bool = DEFAULT_THINKING
     effort: str | None = DEFAULT_EFFORT
+    # v0.4 ambient context — all off unless configured (graceful degradation).
+    location: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    news_url: str | None = None
+    news_cap: int = 3
     api_key: str | None = field(default=None, repr=False)
 
 
@@ -111,6 +117,15 @@ def load_config(*, load_env: bool = True) -> Config:
     effort_env = os.getenv("LUMI_EFFORT")
     effort = effort_env.strip().lower() if effort_env and effort_env.strip() else DEFAULT_EFFORT
 
+    def _float(name: str) -> float | None:
+        raw = os.getenv(name)
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    news_cap_env = os.getenv("LUMI_NEWS_CAP")
+
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
@@ -122,5 +137,10 @@ def load_config(*, load_env: bool = True) -> Config:
         max_tokens=max_tokens,
         thinking=thinking,
         effort=effort,
+        location=os.getenv("LUMI_LOCATION") or None,
+        lat=_float("LUMI_LAT"),
+        lon=_float("LUMI_LON"),
+        news_url=os.getenv("LUMI_NEWS_URL") or None,
+        news_cap=int(news_cap_env) if news_cap_env else 3,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
