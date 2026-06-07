@@ -93,25 +93,12 @@ async def test_model_failure_degrades_to_a_readable_line(tmp_path):
         assert app.query_one("#prompt").disabled is False
 
 
-async def test_thinking_is_shown_greyed_above_the_reply(tmp_path):
-    llm = MockLLMClient("Привіт!", thinking="Подумаю, як відповісти тепло.")
-    app = LumiApp(_core(tmp_path, llm))
-    async with app.run_test() as pilot:
-        await _submit(pilot, app, "привіт")
-        joined = "\n".join(app.transcript)
-        assert "💭 Подумаю, як відповісти тепло." in joined
-        assert "Лілі: Привіт!" in joined
-        # The thinking line comes before the reply.
-        think_idx = next(i for i, ln in enumerate(app.transcript) if ln.startswith("💭"))
-        reply_idx = next(i for i, ln in enumerate(app.transcript) if ln.startswith("Лілі:"))
-        assert think_idx < reply_idx
-
-
-async def test_no_thinking_line_when_absent(tmp_path):
+async def test_no_thinking_keeps_the_box_empty(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))  # no thinking
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
-        assert not any(line.startswith("💭") for line in app.transcript)
+        assert app._thinking_shown is None  # the Thinking box stays empty
+        assert "Лілі: Привіт!" in "\n".join(app.transcript)
 
 
 async def test_status_and_stats_are_separate_lines(tmp_path):
@@ -193,6 +180,34 @@ async def test_new_session_starts_fresh_and_processes_previous(tmp_path):
         # The screen is cleared — only the divider remains; prior lines are gone.
         assert any("new session" in line for line in app.transcript)
         assert not any("привіт" in line for line in app.transcript)
+
+
+async def test_thinking_shows_in_the_box_not_the_chat(tmp_path):
+    llm = MockLLMClient("привіт", thinking="Лілі обмірковує відповідь.")
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "як ти?")
+        # The reasoning is in the Thinking box…
+        assert app._thinking_shown == "Лілі обмірковує відповідь."
+        # …and never in the chat transcript.
+        assert not any("обмірковує" in line for line in app.transcript)
+
+
+async def test_thinking_box_clears_when_a_turn_has_no_thinking(tmp_path):
+    # First turn has thinking; the second doesn't → the box must empty.
+    llm = MockLLMClient("ага", thinking="Перша думка.")
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "раз")
+        assert app._thinking_shown == "Перша думка."
+        llm._thinking_text = None  # next reply carries no thinking
+        app.query_one("#prompt").text = "два"
+        await pilot.press("enter")
+        for _ in range(50):  # wait for the second reply to land (transcript → 4)
+            await pilot.pause()
+            if len(app.transcript) >= 4:
+                break
+        assert app._thinking_shown is None  # box emptied
 
 
 async def test_quit_summarizes_session_then_exits(tmp_path):

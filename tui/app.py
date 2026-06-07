@@ -41,7 +41,6 @@ LILI_COLOR = "green"
 ERROR_COLOR = "red"
 SYSTEM_COLOR = "yellow"
 THINKING_COLOR = "grey50"  # Лілі's reasoning, dimmed apart from her reply
-THINKING_PREFIX = "💭"
 
 # Technical connection status (no icons) — same vocabulary across states.
 STATUS_READY = "online"
@@ -137,6 +136,14 @@ class LumiApp(App[None]):
         Binding("ctrl+t", "toggle_mouse", "Mouse select", priority=True),
     ]
     CSS = """
+    #thinking {
+        height: 6;                 /* a small fixed peek at Лілі's reasoning */
+        border: round $primary-darken-3;
+        padding: 0 1;
+        margin: 1 1 0 1;
+        color: $text-muted;
+    }
+
     #history {
         height: 1fr;
         border: round $primary;
@@ -166,6 +173,8 @@ class LumiApp(App[None]):
         self.transcript: list[str] = []
         # Лілі's most recent reply, for one-key copy.
         self._last_reply: str | None = None
+        # What's currently in the Thinking box (last turn's reasoning, or None).
+        self._thinking_shown: str | None = None
         # When True the app releases the mouse so the terminal can select text.
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
@@ -179,6 +188,10 @@ class LumiApp(App[None]):
         yield Static(id="status")
         yield Static(id="stats")
         with Vertical():
+            thinking = RichLog(id="thinking", wrap=True, markup=False)
+            thinking.border_title = "Thinking"
+            thinking.border_subtitle = "Лілі's reasoning — last turn only"
+            yield thinking
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
@@ -246,10 +259,17 @@ class LumiApp(App[None]):
     def _say_markdown(self, label: str, message: str, color: str) -> None:
         self._emit(f"{label}: {message}", *self._markdown_block(label, message, color))
 
-    def _emit_thinking(self, thinking: str) -> None:
-        """Render Лілі's reasoning, dimmed in grey above her reply."""
-        plain = f"{THINKING_PREFIX} {thinking}"
-        self._emit(plain, Text(plain, style=f"italic {THINKING_COLOR}"))
+    def _render_thinking(self, thinking: str | None) -> None:
+        """Show the last turn's reasoning in the Thinking box only (empty if none).
+
+        Always replaces the box contents — never the chat — so the box holds just
+        the most recent response's thinking, and is empty when there was none.
+        """
+        self._thinking_shown = thinking or None
+        box = self.query_one("#thinking", RichLog)
+        box.clear()
+        if thinking:
+            box.write(Text(thinking, style=f"italic {THINKING_COLOR}"))
 
     # --- status line -----------------------------------------------------
     @staticmethod
@@ -352,11 +372,12 @@ class LumiApp(App[None]):
             if compacted:
                 note = f"Compacted {compacted} earlier messages into a running summary."
                 self._emit(note, Text(note, style=SYSTEM_COLOR))
-            thinking = getattr(self._core, "last_thinking", None)
-            if thinking:
-                self._emit_thinking(thinking)
+            # Лілі's reasoning goes to the Thinking box only (not the chat);
+            # the box shows just this turn's thinking, or clears if there was none.
+            self._render_thinking(getattr(self._core, "last_thinking", None))
             self._say_markdown(LILI_LABEL, reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
+            self._render_thinking(None)  # the failed turn has no thinking
             self._connected = False
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
@@ -417,6 +438,7 @@ class LumiApp(App[None]):
             self._session = self._core.start_session()
             # Fresh session → fresh screen (memory is kept in the store).
             self.query_one("#history", RichLog).clear()
+            self._render_thinking(None)  # clear the Thinking box too
             self.transcript.clear()
             self._last_reply = None
             line = "── new session (previous saved) ──"
