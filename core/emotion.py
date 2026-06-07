@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Protocol, runtime_checkable
 
 # Repairs are logged here, keyed by session_id/turn (ARCHITECTURE §Observability).
 _log = logging.getLogger("lumi.emotion")
@@ -121,3 +122,57 @@ def validate(
             extra={"session_id": session_id, "turn": turn},
         )
     return EmotionState(reply=reply.strip(), emotion=emotion, intensity=intensity)
+
+
+@runtime_checkable
+class IEmotionRenderer(Protocol):
+    """The one interface the core renders the emotion channel through (EMOTION.md §5).
+
+    Each tier is one implementation — v0.3 :class:`LogRenderer`, v0.4 emoji (TUI),
+    v2.1 image (web), v3.1 animation. **Only the renderer changes between versions;**
+    ``EmotionState`` and the enum are constant.
+    """
+
+    def render(self, state: EmotionState) -> None:
+        """Show the new state."""
+        ...
+
+    def set_speaking(self, speaking: bool) -> None:
+        """v2.2+ voice → lip-sync (v3). No-op in the log/emoji tiers."""
+        ...
+
+    def tick(self, dt_ms: int) -> None:
+        """v3 idle loop: transitions, micro-motion. No-op in the log/emoji tiers."""
+        ...
+
+
+class LogRenderer:
+    """The v0.3 "logged" render tier — writes the validated field to the channel log.
+
+    ``render`` logs ``{emotion, intensity}`` keyed by ``session_id``/``turn`` (set by
+    the core each turn). ``set_speaking``/``tick`` are no-ops.
+    """
+
+    def __init__(self, logger: logging.Logger | None = None) -> None:
+        self._log = logger or logging.getLogger("lumi.emotion.render")
+        self.session_id: str | None = None
+        self.turn: int | None = None
+
+    def render(self, state: EmotionState) -> None:
+        self._log.info(
+            "emotion=%s intensity=%.2f",
+            state.emotion.value,
+            state.intensity,
+            extra={
+                "session_id": self.session_id,
+                "turn": self.turn,
+                "emotion": state.emotion.value,
+                "intensity": state.intensity,
+            },
+        )
+
+    def set_speaking(self, speaking: bool) -> None:
+        pass  # v2.2+ voice → lip-sync; nothing to do in the log tier
+
+    def tick(self, dt_ms: int) -> None:
+        pass  # v3 idle loop; nothing to do in the log tier
