@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 0.4.0 (2026-06-07)
+---------------------------
+- v0.4 — Ambient context & idle nudge (LUMI-019…022): Лілі knows when/where she is and can break a long silence first.
+- Time-legible prompts (LUMI-019): every message carries its date-time; recalled short summaries are dated.
+- WorldContext provider (LUMI-020): injected clock for time/calendar + config-gated weather (Open-Meteo), news (RSS), location; graceful when a source is off or fails.
+- Ambient block (LUMI-021): the "now/here" block is injected into the system prompt (colors tone, never competence), fetched at startup and on /new.
+- Idle nudge (LUMI-022): after a configurable silence Лілі speaks first via a hidden self-started turn from core/nudges.md; random opener, off by default, rate-limited, quiet-hours-aware.
+- Richer weather: current + feels-like + today's high/low + the day's forecast; LUMI_WEATHER_URL configurable.
+- TUI: always show the current style in the status line (incl. 'normal').
+- Fix: strip a leading [timestamp] the model may echo from the timestamped history.
+
 Version 0.3.0 (2026-06-07)
 ---------------------------
 - v0.3 — Emotion field (LUMI-013…018): every reply is now a validated EmotionState

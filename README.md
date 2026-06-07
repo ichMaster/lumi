@@ -12,18 +12,21 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.3.0 — v0.3 Emotion field.** Every reply is now a validated **`EmotionState`**
-`{reply, emotion, intensity}` — the model emits its state (one of a fixed 9), the
-core validates/repairs it, and the TUI shows it in the status line (e.g. `joy 0.8`).
-The contract, the enum, and the `IEmotionRenderer` interface are locked.
+**0.4.0 — v0.4 Ambient context & idle nudge.** Лілі now knows **when and where she
+is** and can **break a long silence first**. A lightweight ambient snapshot — date/time,
+weekday, location, weather, a few headlines — is fetched at startup and injected into the
+system prompt as background that **colors tone, never competence**.
 
-Built on v0.2's three-layer memory + the v0.2.1 polish:
+Built on the v0.3 emotion field:
 
-- **Emotion channel** — structured output (`set_state` tool) with a reliable inline
-  `<emotion>` fallback when extended thinking is on; logged + persisted.
-- **In-session compaction** + **answer styles** (`/style`) + a separate **Thinking box**
-  ([docs/MEMORY.md](docs/MEMORY.md), [docs/STYLES.md](docs/STYLES.md)).
-- **All-English interface**, `./lumi` launcher, `thinking:on/off` indicator.
+- **Time-legible prompts** — every message carries its date-time; recalled summaries are
+  dated (LUMI-019).
+- **WorldContext** — an injected clock for time/calendar + config-gated weather (Open-Meteo),
+  news (RSS), and location; graceful when a source is off or fails (LUMI-020/021).
+- **Richer weather** — current + feels-like + today's high/low + the day's forecast;
+  `LUMI_WEATHER_URL` configurable.
+- **Idle nudge** — after a quiet stretch Лілі opens on her own with a hidden turn from
+  `core/nudges.md` (random opener, off by default) (LUMI-022).
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog.
 
