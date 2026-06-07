@@ -2,7 +2,13 @@
 
 from datetime import UTC, datetime
 
-from core.clock import fixed_clock, format_date, format_stamp, system_clock
+from core.clock import (
+    fixed_clock,
+    format_date,
+    format_stamp,
+    strip_leading_stamp,
+    system_clock,
+)
 
 
 def test_format_stamp_is_compact_and_deterministic():
@@ -25,3 +31,11 @@ def test_fixed_clock_returns_the_given_time():
 
 def test_system_clock_is_timezone_aware():
     assert system_clock().tzinfo is not None
+
+
+def test_strip_leading_stamp_removes_an_echoed_prefix():
+    assert strip_leading_stamp("[2026-06-07 17:06]Ха, привіт") == "Ха, привіт"
+    assert strip_leading_stamp("[2026-06-07] текст") == "текст"
+    assert strip_leading_stamp("без штампа") == "без штампа"
+    # only a LEADING stamp is removed, not one mid-text
+    assert strip_leading_stamp("текст [2026-06-07 12:00] далі") == "текст [2026-06-07 12:00] далі"

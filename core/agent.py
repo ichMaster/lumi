@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from core.clock import Clock, format_date, format_stamp, system_clock
+from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.emotion import EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
@@ -328,6 +328,8 @@ class Core:
         # inline reasoning; fall back to the provider's summarized thinking channel.
         inline_thinking, reply_text = split_reasoning(str(raw.get("reply") or ""))
         tag_emotion, reply_text = split_emotion(reply_text)
+        # Strip a leading [date-time] the model may echo from the timestamped history.
+        reply_text = strip_leading_stamp(reply_text)
         self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None)
         self.last_stats = getattr(self._llm, "last_stats", None)
         if self.last_stats is not None:

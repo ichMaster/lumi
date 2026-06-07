@@ -124,3 +124,12 @@ def test_history_replays_the_emotion_tag_to_the_model(tmp_path):
     # Timestamped (v0.4) + the reconstructed emotion tag.
     assert assistant["content"].startswith("[")
     assert assistant["content"].endswith("Привіт! <emotion>joy 0.8</emotion>")
+
+
+def test_echoed_leading_timestamp_is_stripped_from_the_reply(tmp_path):
+    llm = MockLLMClient(
+        states={"reply": "[2026-06-07 17:06]Ха, привіт!", "emotion": "playful", "intensity": 0.7}
+    )
+    core = _core(tmp_path, llm)
+    state = core.reply("привіт", core.start_session())
+    assert state.reply == "Ха, привіт!"  # the leaked timestamp is gone

@@ -9,8 +9,12 @@ formatters render a stored ISO ``ts`` into compact strings **deterministically**
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
+
+# A leading "[YYYY-MM-DD …]" the model sometimes echoes from the timestamped history.
+_LEADING_STAMP_RE = re.compile(r"^\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*")
 
 # A clock is just a callable returning an aware datetime.
 Clock = Callable[[], datetime]
@@ -40,3 +44,13 @@ def format_date(ts_iso: str) -> str:
         return datetime.fromisoformat(ts_iso).strftime("%Y-%m-%d")
     except (ValueError, TypeError):
         return ts_iso
+
+
+def strip_leading_stamp(text: str) -> str:
+    """Drop a leading ``[YYYY-MM-DD HH:MM]`` the model may echo into its reply.
+
+    Each message in context is timestamped (v0.4) so Лілі senses the conversation's
+    rhythm; she occasionally mimics the format and prepends it to her own reply —
+    this removes it so it never shows (like the ``<think>``/``<emotion>`` strips).
+    """
+    return _LEADING_STAMP_RE.sub("", text, count=1)
