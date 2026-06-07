@@ -24,9 +24,17 @@ def _core(tmp_path, llm=None):
 # --- loader ---------------------------------------------------------------
 def test_load_styles_from_the_authored_file():
     styles = load_styles(load_config(load_env=False).styles_path)
-    # The core styles are present (the file may carry more).
-    assert {"short", "explain", "emotional"} <= set(styles)
+    # The redesigned set spans the categories (length/explain/structure/register/…).
+    assert {
+        "short", "tldr", "detailed",
+        "explain", "eli5", "example", "metaphor",
+        "bullets", "steps", "compare", "practical",
+        "formal", "casual", "emotional", "poetic",
+        "socratic",
+    } <= set(styles)
     assert "normal" not in styles  # the default carries no overlay
+    # Category-header comments ("# ── Length ──") never leak into a style body.
+    assert all("──" not in body for body in styles.values())
     # Each style includes a concrete length limit (sentences/words/lines).
     assert "речен" in styles["short"] or "слів" in styles["short"]
 
