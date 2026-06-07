@@ -92,6 +92,15 @@ def test_set_style_unknown_is_rejected(tmp_path):
     assert core.style == "normal"
 
 
+def test_system_prompt_keeps_reasoning_out_of_the_reply(tmp_path):
+    # The answer-only directive rides in every turn's system prompt so the model's
+    # planning doesn't leak into the visible reply (Opus 4.8 thinking hygiene).
+    llm = MockLLMClient("ok")
+    core = _core(tmp_path, llm)
+    core.reply("привіт", core.start_session())
+    assert "лише те, що ти кажеш співрозмовнику" in llm.calls[-1]["system"]
+
+
 def test_multiple_styles_stack_in_order(tmp_path):
     llm = MockLLMClient("ok")
     core = _core(tmp_path, llm)

@@ -15,6 +15,17 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+# Output hygiene: keep the model's *reasoning* out of the visible reply. Opus 4.8
+# adaptive thinking can otherwise narrate its planning into the answer text (e.g.
+# "відповім коротко, тепло…"); this directive sends only the final answer. Her
+# reasoning still surfaces via the summarized thinking channel (rendered grey).
+ANSWER_ONLY = (
+    "Важливо: у відповіді — лише те, що ти кажеш співрозмовнику. "
+    "Не виписуй у текст своїх міркувань, планів чи службових нотаток "
+    "(як-от «думаю…», «відповім коротко й тепло…», «своїм голосом…»). "
+    "Міркуй подумки, а не вголос."
+)
+
 # Framing that makes the answer-style overlay a prioritized directive. Placed at
 # the very end of the system prompt (last thing the model reads before the turn).
 STYLE_HEADER = (

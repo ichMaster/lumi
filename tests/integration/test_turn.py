@@ -44,7 +44,7 @@ def test_turn_sends_canon_and_history_to_the_model(tmp_path):
 
     # Second call must carry the canon as system + prior turns + the new line.
     second = llm.calls[1]
-    assert second["system"] == "Ти — Лілі."
+    assert second["system"].startswith("Ти — Лілі.")
     assert second["model"] == "claude-haiku-4-5-20251001"
     assert second["messages"] == [
         {"role": "user", "content": "раз"},

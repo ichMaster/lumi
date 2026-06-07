@@ -28,7 +28,7 @@ from core.memory import (
     summary_request,
     trim_history,
 )
-from core.prompt import build_system_prompt, load_canon
+from core.prompt import ANSWER_ONLY, build_system_prompt, load_canon
 from core.repository import (
     LongTermFact,
     Repository,
@@ -191,8 +191,10 @@ class Core:
         ]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
+        # Append the answer-only directive to the canon so the model's reasoning
+        # never leaks into the visible reply (the style overlay still rides last).
         return build_system_prompt(
-            self._canon,
+            f"{self._canon}\n\n{ANSWER_ONLY}",
             summaries=summaries,
             facts=facts,
             digest=digest.summary if digest else None,

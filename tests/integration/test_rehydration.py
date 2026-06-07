@@ -51,5 +51,9 @@ def test_fresh_user_has_no_memory_in_prompt(tmp_path):
     core = Core(llm=llm, repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="m")
     session = core.start_session()
     core.reply("привіт", session)
-    # No prior sessions → the system prompt is just the canon (verbatim).
-    assert llm.calls[-1]["system"] == "Ти — Лілі."
+    # No prior sessions → no memory blocks; the system is the canon (+ the fixed
+    # answer-only directive), with nothing user-specific.
+    system = llm.calls[-1]["system"]
+    assert system.startswith("Ти — Лілі.")
+    assert "Памʼять про попередні розмови" not in system
+    assert "Що ти памʼятаєш про цю людину" not in system
