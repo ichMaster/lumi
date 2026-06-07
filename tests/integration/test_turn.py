@@ -43,12 +43,14 @@ def test_turn_sends_canon_and_history_to_the_model(tmp_path):
     core.reply("два", session)
 
     # Second call must carry the canon as system + prior turns + the new line.
+    # Лілі's prior reply is replayed with its <emotion> tag reconstructed (the mock
+    # derives a calm/0.5 state) so the model keeps emitting the tag.
     second = llm.calls[1]
     assert second["system"].startswith("Ти — Лілі.")
     assert second["model"] == "claude-haiku-4-5-20251001"
     assert second["messages"] == [
         {"role": "user", "content": "раз"},
-        {"role": "assistant", "content": "перша"},
+        {"role": "assistant", "content": "перша <emotion>calm 0.5</emotion>"},
         {"role": "user", "content": "два"},
     ]
 

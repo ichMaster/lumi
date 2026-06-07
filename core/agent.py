@@ -265,6 +265,21 @@ class Core:
         self.last_compaction = len(chunk)
         return updated
 
+    @staticmethod
+    def _history_content(m) -> str:
+        """The content to replay to the model for a stored message.
+
+        For Лілі's turns, re-append the ``<emotion>…</emotion>`` tag reconstructed
+        from the persisted ``emotion``/``intensity`` — the stored text is clean
+        (tag-stripped), so without this the model only sees tag-less past replies
+        and drifts to stop emitting the tag over a long conversation (the channel
+        would then "work only at the beginning" with extended thinking on).
+        """
+        if m.role == "lili" and m.emotion:
+            intensity = m.intensity if m.intensity is not None else 0.5
+            return f"{m.text} <emotion>{m.emotion} {intensity:.1f}</emotion>"
+        return m.text
+
     def reply(self, user_text: str, session: Session) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
@@ -280,7 +295,7 @@ class Core:
         # safety (in case compaction repeatedly failed).
         live = trim_history(history[compacted:], self._memory_window + self._compaction_batch)
         messages: list[Message] = [
-            {"role": _ROLE_TO_LLM[m.role], "content": m.text} for m in live
+            {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live
         ]
         messages.append({"role": "user", "content": user_text})
 

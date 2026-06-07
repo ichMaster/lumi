@@ -103,3 +103,22 @@ def test_tool_emotion_takes_precedence_over_the_tag(tmp_path):
     state = core.reply("привіт", core.start_session())
     assert state.emotion is Emotion.JOY and state.intensity == 0.9
     assert state.reply == "ок"  # tag still stripped
+
+
+def test_history_replays_the_emotion_tag_to_the_model(tmp_path):
+    # The fix for "emotion works only at the beginning": Лілі's prior reply is
+    # replayed WITH its <emotion> tag (from the stored field), so the model keeps
+    # the pattern instead of imitating its own tag-less (stored) history.
+    llm = MockLLMClient(
+        states=[
+            {"reply": "Привіт!", "emotion": "joy", "intensity": 0.8},
+            {"reply": "Ще!", "emotion": "calm", "intensity": 0.5},
+        ]
+    )
+    core = _core(tmp_path, llm)
+    session = core.start_session()
+    core.reply("привіт", session)
+    core.reply("ще", session)
+    second = llm.calls[1]["messages"]
+    assistant = next(m for m in second if m["role"] == "assistant")
+    assert assistant["content"] == "Привіт! <emotion>joy 0.8</emotion>"
