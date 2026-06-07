@@ -138,7 +138,11 @@ def ambient_line(wc: WorldContext | None, clock: Clock) -> str | None:
         bits.append(f"погода: {wc.weather}")
     if wc.news:
         bits.append("новини: " + " | ".join(wc.news))
-    return "Зараз і тут (фон, що лише фарбує тон — не змінює суті):\n" + "; ".join(bits) + "."
+    # One part per line — so weather's own "; " (current; range; forecast) reads as
+    # one unit, distinct from the other parts.
+    return "Зараз і тут (фон, що лише фарбує тон — не змінює суті):\n" + "\n".join(
+        f"- {b}" for b in bits
+    )
 
 
 def fetch_world_context(
