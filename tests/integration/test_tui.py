@@ -19,6 +19,7 @@ from tui.app import (
     STATUS_READY,
     USER_COLOR,
     USER_LABEL,
+    ChatInput,
     LumiApp,
 )
 
@@ -33,7 +34,7 @@ def _core(tmp_path, llm):
 
 
 async def _submit(pilot, app, text):
-    app.query_one("#prompt").value = text
+    app.query_one("#prompt").text = text
     await pilot.press("enter")
     for _ in range(50):  # let the off-thread reply land
         await pilot.pause()
@@ -74,7 +75,7 @@ def test_speakers_have_distinct_colors():
 async def test_empty_input_is_ignored(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("...")))
     async with app.run_test() as pilot:
-        app.query_one("#prompt").value = "   "
+        app.query_one("#prompt").text = "   "
         await pilot.press("enter")
         await pilot.pause()
         assert app.transcript == []
@@ -151,7 +152,7 @@ async def test_ctrl_y_copies_lili_last_reply(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("Це **відповідь**.")))
     copied: list[str] = []
     async with app.run_test() as pilot:
-        app.copy_to_clipboard = copied.append  # capture OSC-52 payload
+        app._copy = copied.append  # capture clipboard payload (pbcopy + OSC-52)
         await _submit(pilot, app, "привіт")
         await pilot.press("ctrl+y")
         await pilot.pause()
@@ -162,7 +163,7 @@ async def test_copy_all_copies_full_conversation(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("вітаю")))
     copied: list[str] = []
     async with app.run_test() as pilot:
-        app.copy_to_clipboard = copied.append
+        app._copy = copied.append
         await _submit(pilot, app, "привіт")
         app.action_copy_all()
         assert copied and "Ти: привіт" in copied[0] and "Лілі: вітаю" in copied[0]
@@ -172,10 +173,51 @@ async def test_copy_reply_with_nothing_yet_does_not_copy(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("...")))
     copied: list[str] = []
     async with app.run_test() as pilot:
-        app.copy_to_clipboard = copied.append
+        app._copy = copied.append
         app.action_copy_reply()  # no reply yet
         await pilot.pause()
         assert copied == []
+
+
+async def test_new_session_starts_fresh_and_processes_previous(tmp_path):
+    repo = JsonRepository(tmp_path / "store.json")
+    core = Core(llm=MockLLMClient("ok"), repository=repo, canon="Ти — Лілі.", model="m")
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        first = app._session.id
+        await _submit(pilot, app, "/new")
+        # A new session is active, and the previous one was ended (processed).
+        assert app._session.id != first
+        assert repo.get_session(first).ended_at is not None
+        assert any("нова сесія" in line for line in app.transcript)
+
+
+async def test_prompt_command_shows_last_turn_prompt(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        app.query_one("#prompt").text = "/prompt"
+        await pilot.press("enter")
+        await pilot.pause()
+        joined = "\n".join(app.transcript)
+        assert "[SYSTEM]" in joined and "[MESSAGES]" in joined
+        assert "Ти — Лілі." in joined  # the canon that was sent
+        assert "user: привіт" in joined
+
+
+async def test_multiline_input_enter_submits_shift_enter_newlines(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test() as pilot:
+        prompt = app.query_one("#prompt", ChatInput)
+        prompt.focus()
+        prompt.text = "рядок1"
+        await pilot.press("shift+enter")  # insert a newline, do not submit
+        prompt.insert("рядок2")
+        await pilot.pause()
+        assert "\n" in prompt.text
+        # Nothing submitted yet.
+        assert not any(line.startswith("Ти:") for line in app.transcript)
 
 
 async def test_ctrl_l_clears_screen_but_keeps_memory(tmp_path):

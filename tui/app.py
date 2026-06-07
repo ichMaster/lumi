@@ -10,14 +10,19 @@ v1.1 this is refactored into a server client calling the same contract.
 from __future__ import annotations
 
 import asyncio
+import shutil
+import subprocess
 
 from rich.console import RenderableType
 from rich.markdown import Markdown
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
+from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, Label, RichLog, Static
+from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
 from core.agent import Core
 from core.repository import Session
@@ -82,17 +87,46 @@ class ConfirmScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class ChatInput(TextArea):
+    """A multi-line chat input: Enter submits, Shift+Enter inserts a newline.
+
+    Sized to ~2 lines and scrolls when the message is longer (or pasted).
+    """
+
+    class Submitted(Message):
+        """Posted when the user submits the input (Enter)."""
+
+        def __init__(self, value: str) -> None:
+            self.value = value
+            super().__init__()
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.post_message(self.Submitted(self.text))
+            return
+        if event.key == "shift+enter":
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
+            return
+        await super()._on_key(event)
+
+
 class LumiApp(App[None]):
     """A minimal chat loop: scrollable history, an input line, clean exit."""
 
     TITLE = "Lumi — Лілі"
+    # priority=True so these app shortcuts win over the multi-line input's own
+    # key bindings (TextArea otherwise captures ctrl+y/o/l/t while focused).
     BINDINGS = [
-        ("ctrl+q", "quit", "Вийти"),
-        ("ctrl+c", "quit", "Вийти"),
-        ("ctrl+y", "copy_reply", "Копіювати відповідь"),
-        ("ctrl+o", "copy_all", "Копіювати все"),
-        ("ctrl+l", "clear", "Очистити екран"),
-        ("ctrl+t", "toggle_mouse", "Виділення мишею"),
+        Binding("ctrl+q", "quit", "Вийти", priority=True),
+        Binding("ctrl+c", "quit", "Вийти", priority=True),
+        Binding("ctrl+y", "copy_reply", "Копіювати відповідь", priority=True),
+        Binding("ctrl+o", "copy_all", "Копіювати все", priority=True),
+        Binding("ctrl+l", "clear", "Очистити екран", priority=True),
+        Binding("ctrl+t", "toggle_mouse", "Виділення мишею", priority=True),
     ]
     CSS = """
     #history {
@@ -103,6 +137,7 @@ class LumiApp(App[None]):
     }
 
     #prompt {
+        height: 4;          /* border (2) + ~2 text lines; scrolls if longer */
         border: round $accent;
         margin: 1 1 1 1;
     }
@@ -134,10 +169,10 @@ class LumiApp(App[None]):
         yield Static(id="stats")
         with Vertical():
             yield RichLog(id="history", wrap=True, markup=False)
-            yield Input(
-                id="prompt",
-                placeholder="Напиши Лілі…  (/memory · /forget · Ctrl+Y копіювати · Ctrl+Q вийти)",
-            )
+            prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
+            prompt.border_title = "Ти"
+            prompt.border_subtitle = "Enter — надіслати · Shift+Enter — рядок · /new /prompt /memory /forget"
+            yield prompt
         yield Footer()
 
     def on_mount(self) -> None:
@@ -145,7 +180,7 @@ class LumiApp(App[None]):
             self._session = self._core.start_session()
         self._render_status()
         self._render_stats()
-        self.query_one("#prompt", Input).focus()
+        self.query_one("#prompt", ChatInput).focus()
 
     def on_unmount(self) -> None:
         # Session-end hook: summarize on exit (best-effort — never block quitting).
@@ -221,18 +256,16 @@ class LumiApp(App[None]):
         return f"status: [green]{STATUS_READY}[/] · {model}{think}"
 
     def _stats_text(self) -> str:
-        """The statistics line — last response + running totals (no icons)."""
+        """The statistics line — last response + running totals (total tokens only)."""
         stats = self._core.last_stats
         totals = self._core.totals
         if stats is None or totals.turns == 0:
             return "stats: —"
-        last = (
-            f"last {self._fmt_tokens(stats.input_tokens)}/"
-            f"{self._fmt_tokens(stats.output_tokens)} tok · {self._fmt_latency(stats.latency_ms)}"
-        )
+        last_tok = (stats.input_tokens or 0) + (stats.output_tokens or 0)
+        total_tok = totals.input_tokens + totals.output_tokens
+        last = f"last {self._fmt_tokens(last_tok)} tok · {self._fmt_latency(stats.latency_ms)}"
         total = (
-            f"total {totals.turns} turns · "
-            f"{self._fmt_tokens(totals.input_tokens)}/{self._fmt_tokens(totals.output_tokens)} tok"
+            f"total {totals.turns} turns · {self._fmt_tokens(total_tok)} tok"
             f" · avg {self._fmt_latency(totals.avg_latency_ms)}"
         )
         return f"stats: {last}   ·   {total}"
@@ -243,22 +276,29 @@ class LumiApp(App[None]):
     def _render_stats(self) -> None:
         self.query_one("#stats", Static).update(self._stats_text())
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
+    async def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         text = event.value.strip()
+        prompt = self.query_one("#prompt", ChatInput)
+        prompt.text = ""
         if not text:
+            prompt.focus()
             return
 
-        prompt = self.query_one("#prompt", Input)
-        prompt.value = ""
-
-        # Memory commands (memory.view / memory.clear) — handled here, not sent
-        # to the model or persisted as a turn.
+        # Commands — handled here, not sent to the model or persisted as a turn.
         if text == "/memory":
             self._show_memory()
             prompt.focus()
             return
         if text == "/forget":
             self._forget()
+            prompt.focus()
+            return
+        if text == "/prompt":
+            self._show_prompt()
+            prompt.focus()
+            return
+        if text == "/new":
+            await self._new_session()
             prompt.focus()
             return
 
@@ -313,13 +353,52 @@ class LumiApp(App[None]):
             _on_confirm,
         )
 
+    # --- session + prompt commands --------------------------------------
+    async def _new_session(self) -> None:
+        """Start a fresh session — `/new`. The previous session is processed
+        (summarized + facts extracted) before the new one begins."""
+        self._render_status(busy="зберігаю сесію…")
+        if self._session is not None:
+            try:
+                await asyncio.to_thread(self._core.end_session, self._session)
+            except Exception:  # noqa: BLE001 — never block on housekeeping
+                pass
+        self._session = self._core.start_session()
+        line = "── нова сесія (попередню збережено) ──"
+        self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
+        self._render_status()
+        self._render_stats()
+
+    def _show_prompt(self) -> None:
+        """Show the exact prompt sent on the last turn — `/prompt`."""
+        p = getattr(self._core, "last_prompt", None)
+        if not p:
+            msg = "Ще немає промпту — спершу зроби хід."
+            self._emit(msg, Text(msg, style=SYSTEM_COLOR))
+            return
+        parts = ["── промпт минулого ходу ──", "", "[SYSTEM]", p["system"], "", "[MESSAGES]"]
+        parts += [f"{m['role']}: {m['content']}" for m in p["messages"]]
+        body = "\n".join(parts)
+        self._emit(body, Text(body, style=THINKING_COLOR))  # dim, like a meta block
+
     # --- clipboard actions ----------------------------------------------
+    def _copy(self, text: str) -> None:
+        """Copy to the system clipboard — via pbcopy on macOS (reliable) and
+        OSC-52 (for remote/other terminals)."""
+        pbcopy = shutil.which("pbcopy")
+        if pbcopy:
+            try:
+                subprocess.run([pbcopy], input=text.encode("utf-8"), check=False, timeout=5)
+            except Exception:  # noqa: BLE001 — fall back to OSC-52
+                pass
+        self.copy_to_clipboard(text)
+
     def action_copy_reply(self) -> None:
-        """Copy Лілі's last reply to the system clipboard (OSC-52)."""
+        """Copy Лілі's last reply to the system clipboard."""
         if not self._last_reply:
             self.notify("Ще немає відповіді Лілі для копіювання.", severity="warning")
             return
-        self.copy_to_clipboard(self._last_reply)
+        self._copy(self._last_reply)
         self.notify("Скопійовано останню відповідь Лілі.")
 
     def action_copy_all(self) -> None:
@@ -327,7 +406,7 @@ class LumiApp(App[None]):
         if not self.transcript:
             self.notify("Розмова поки порожня.", severity="warning")
             return
-        self.copy_to_clipboard("\n".join(self.transcript))
+        self._copy("\n".join(self.transcript))
         self.notify(f"Скопійовано всю розмову ({len(self.transcript)} рядків).")
 
     def action_clear(self) -> None:

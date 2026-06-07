@@ -87,6 +87,8 @@ class Core:
         # Stats for the last reply + running totals, for the TUI status line.
         self.last_stats: ResponseStats | None = None
         self.totals = UsageTotals()
+        # The exact prompt sent on the last turn, for inspection ({system, messages}).
+        self.last_prompt: dict | None = None
 
     @property
     def model(self) -> str:
@@ -128,11 +130,9 @@ class Core:
         ]
         messages.append({"role": "user", "content": user_text})
 
-        reply_text = self._llm.reply(
-            system=self._system_prompt(),
-            messages=messages,
-            model=self._model,
-        )
+        system = self._system_prompt()
+        self.last_prompt = {"system": system, "messages": list(messages)}
+        reply_text = self._llm.reply(system=system, messages=messages, model=self._model)
         self.last_thinking = getattr(self._llm, "last_thinking", None)
         self.last_stats = getattr(self._llm, "last_stats", None)
         if self.last_stats is not None:

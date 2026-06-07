@@ -53,7 +53,7 @@ def test_clear_memory_only_affects_the_active_user(tmp_path):
 async def test_memory_command_shows_facts_and_summaries(tmp_path):
     app = LumiApp(_core(_seeded_repo(tmp_path)))
     async with app.run_test() as pilot:
-        app.query_one("#prompt").value = "/memory"
+        app.query_one("#prompt").text = "/memory"
         await pilot.press("enter")
         await pilot.pause()
         joined = "\n".join(app.transcript)
@@ -68,7 +68,7 @@ async def test_forget_command_clears_after_confirm(tmp_path):
     core = _core(repo)
     app = LumiApp(core)
     async with app.run_test() as pilot:
-        app.query_one("#prompt").value = "/forget"
+        app.query_one("#prompt").text = "/forget"
         await pilot.press("enter")
         await pilot.pause()
         await pilot.press("y")  # confirm
@@ -83,7 +83,7 @@ async def test_forget_command_cancelled_keeps_memory(tmp_path):
     core = _core(repo)
     app = LumiApp(core)
     async with app.run_test() as pilot:
-        app.query_one("#prompt").value = "/forget"
+        app.query_one("#prompt").text = "/forget"
         await pilot.press("enter")
         await pilot.pause()
         await pilot.press("n")  # cancel
