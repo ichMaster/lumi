@@ -39,6 +39,12 @@ class _ThinkingRecorder:
         # During end-of-session housekeeping the system is the summary/facts prompt.
         return "підсумок" if system in (SUMMARY_SYSTEM, FACTS_SYSTEM) else "відповідь"
 
+    def reply_structured(self, system, messages, model):
+        # The user turn (v0.3) goes through the structured path.
+        self.thinking_per_call.append(self._thinking)
+        self.last_stats = ResponseStats(model=model, latency_ms=0)
+        return {"reply": "відповідь", "emotion": "calm", "intensity": 0.5}
+
 
 def test_end_session_disables_thinking_for_housekeeping(tmp_path):
     rec = _ThinkingRecorder()

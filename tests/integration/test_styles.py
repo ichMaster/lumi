@@ -111,7 +111,7 @@ def test_reply_strips_think_tags_and_stores_clean(tmp_path):
     core = Core(llm=llm, repository=repo, canon="Ти — Лілі.", model="m")
     session = core.start_session()
     out = core.reply("привіт", session)
-    assert out == "Привіт, друже!"  # returned reply is clean
+    assert out.reply == "Привіт, друже!"  # returned reply (EmotionState) is clean
     assert core.last_thinking == "думаю, як відповісти."
     stored = [m.text for m in repo.load_messages(session.id) if m.role == "lili"]
     assert stored == ["Привіт, друже!"]  # the store never sees the reasoning

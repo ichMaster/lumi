@@ -26,7 +26,7 @@ def test_full_turn_returns_reply_and_persists_both_messages(tmp_path):
     session = core.start_session()
     out = core.reply("Привіт!", session)
 
-    assert out == "Привіт. Я Лілі."
+    assert out.reply == "Привіт. Я Лілі."  # v0.3: reply() returns an EmotionState
     msgs = repo.load_messages(session.id)
     assert [(m.role, m.text) for m in msgs] == [
         ("user", "Привіт!"),
@@ -78,6 +78,6 @@ def test_build_core_wires_from_config_with_injected_llm_and_repo(tmp_path):
     core = build_core(llm=llm, repository=repo)
 
     session = core.start_session()
-    assert core.reply("hi", session) == "ok"
+    assert core.reply("hi", session).reply == "ok"
     # The canon (system prompt) was loaded from the configured path.
     assert "Лілі" in llm.calls[0]["system"]

@@ -1,0 +1,86 @@
+"""End-to-end emotion turn (LUMI-016): user_text -> EmotionState, persisted."""
+
+import json
+
+import pytest
+
+from core.agent import Core
+from core.emotion import Emotion, EmotionError
+from core.llm import MockLLMClient
+from core.prompt import EMOTION_INSTRUCTION
+from state.local_store import JsonRepository
+
+
+def _core(tmp_path, llm, path="s.json"):
+    return Core(
+        llm=llm, repository=JsonRepository(tmp_path / path), canon="Ти — Лілі.", model="m"
+    )
+
+
+def test_turn_returns_emotion_state_and_persists_the_field(tmp_path):
+    llm = MockLLMClient(states={"reply": "Радо!", "emotion": "joy", "intensity": 0.8})
+    core = _core(tmp_path, llm)
+    session = core.start_session()
+    state = core.reply("привіт", session)
+    assert (state.reply, state.emotion, state.intensity) == ("Радо!", Emotion.JOY, 0.8)
+    lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.text == "Радо!" and lili.emotion == "joy" and lili.intensity == 0.8
+
+
+def test_malformed_state_is_repaired_in_the_turn(tmp_path):
+    llm = MockLLMClient(states={"reply": "ок", "emotion": "ecstatic", "intensity": 9})
+    core = _core(tmp_path, llm)
+    state = core.reply("привіт", core.start_session())
+    assert state.emotion is Emotion.CALM and state.intensity == 1.0
+
+
+def test_missing_reply_surfaces_an_error(tmp_path):
+    llm = MockLLMClient(states={"emotion": "joy", "intensity": 0.5})  # no reply
+    core = _core(tmp_path, llm)
+    with pytest.raises(EmotionError):
+        core.reply("привіт", core.start_session())
+
+
+def test_turn_system_prompt_carries_the_emotion_instruction(tmp_path):
+    llm = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.4})
+    core = _core(tmp_path, llm)
+    core.reply("привіт", core.start_session())
+    assert EMOTION_INSTRUCTION in core.last_prompt["system"]
+
+
+def test_emotion_field_round_trips_across_reload(tmp_path):
+    path = tmp_path / "store.json"
+    llm = MockLLMClient(states={"reply": "Сумно.", "emotion": "sad", "intensity": 0.3})
+    core = Core(llm=llm, repository=JsonRepository(path), canon="Ти — Лілі.", model="m")
+    session = core.start_session()
+    core.reply("привіт", session)
+    # Reopen the store from disk — the emotion field survives the round-trip.
+    lili = [m for m in JsonRepository(path).load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.emotion == "sad" and lili.intensity == 0.3
+
+
+def test_pre_v03_message_without_emotion_still_loads(tmp_path):
+    path = tmp_path / "old.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sessions": {
+                    "s1": {"id": "s1", "user_id": "owner", "started_at": "2026-01-01T00:00:00+00:00"}
+                },
+                "messages": {
+                    "s1": [
+                        {
+                            "session_id": "s1",
+                            "user_id": "owner",
+                            "role": "lili",
+                            "text": "old",
+                            "ts": "2026-01-01T00:00:00+00:00",
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    m = JsonRepository(path).load_messages("s1")[0]
+    assert m.text == "old" and m.emotion is None and m.intensity is None

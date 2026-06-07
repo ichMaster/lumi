@@ -47,6 +47,10 @@ class Message:
     role: str
     text: str
     ts: str
+    # Assistant turns carry the emotion field from v0.3 (EMOTION.md §3); None on
+    # user turns (and on pre-v0.3 stored messages).
+    emotion: str | None = None
+    intensity: float | None = None
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
@@ -54,11 +58,24 @@ class Message:
 
 
 def make_message(
-    session_id: str, user_id: str, role: str, text: str, ts: str | None = None
+    session_id: str,
+    user_id: str,
+    role: str,
+    text: str,
+    ts: str | None = None,
+    *,
+    emotion: str | None = None,
+    intensity: float | None = None,
 ) -> Message:
     """Build a :class:`Message`, stamping ``ts`` now unless one is given."""
     return Message(
-        session_id=session_id, user_id=user_id, role=role, text=text, ts=ts or now_iso()
+        session_id=session_id,
+        user_id=user_id,
+        role=role,
+        text=text,
+        ts=ts or now_iso(),
+        emotion=emotion,
+        intensity=intensity,
     )
 
 

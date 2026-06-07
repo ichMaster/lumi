@@ -366,9 +366,9 @@ class LumiApp(App[None]):
 
         try:
             assert self._session is not None
-            reply = await asyncio.to_thread(self._core.reply, text, self._session)
+            state = await asyncio.to_thread(self._core.reply, text, self._session)
             self._connected = True
-            self._last_reply = reply
+            self._last_reply = state.reply
             compacted = getattr(self._core, "last_compaction", 0)
             if compacted:
                 note = f"Compacted {compacted} earlier messages into a running summary."
@@ -376,7 +376,7 @@ class LumiApp(App[None]):
             # Лілі's reasoning goes to the Thinking box only (not the chat);
             # the box shows just this turn's thinking, or clears if there was none.
             self._render_thinking(getattr(self._core, "last_thinking", None))
-            self._say_markdown(LILI_LABEL, reply, LILI_COLOR)
+            self._say_markdown(LILI_LABEL, state.reply, LILI_COLOR)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
             self._render_thinking(None)  # the failed turn has no thinking
             self._connected = False

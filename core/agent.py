@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
+from core.emotion import EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
     RECENT_SUMMARIES,
@@ -95,6 +96,8 @@ class Core:
         self._styles = styles or {}
         self._meta = meta_styles or {}
         self._active: list[str] = []
+        # The validated EmotionState from the last turn (for a renderer / status line).
+        self.last_emotion: EmotionState | None = None
         # The model's reasoning summary from the last turn (None when thinking is
         # off or absent), for a client to render alongside the reply.
         self.last_thinking: str | None = None
@@ -199,6 +202,7 @@ class Core:
             facts=facts,
             digest=digest.summary if digest else None,
             style=self._style_overlay(),
+            emotion=True,
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:
@@ -250,8 +254,8 @@ class Core:
         self.last_compaction = len(chunk)
         return updated
 
-    def reply(self, user_text: str, session: Session) -> str:
-        """Run one turn and return Лілі's reply.
+    def reply(self, user_text: str, session: Session) -> EmotionState:
+        """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
         Compacts older-than-window messages into the session digest (in batches),
         then calls the model with the system prompt (+ digest) + the verbatim
@@ -271,11 +275,11 @@ class Core:
 
         system = self._system_prompt(session)
         self.last_prompt = {"system": system, "messages": list(messages)}
-        raw = self._llm.reply(system=system, messages=messages, model=self._model)
-        # Split any <think>…</think> reasoning out of the visible reply; only the
-        # clean reply is shown/stored. Prefer the model's tagged inline reasoning;
-        # fall back to the provider's summarized thinking channel.
-        inline_thinking, reply_text = split_reasoning(raw)
+        raw = self._llm.reply_structured(system=system, messages=messages, model=self._model)
+        # Split any <think>…</think> reasoning out of the reply field; the clean
+        # text is shown/stored. Prefer the model's tagged inline reasoning; fall
+        # back to the provider's summarized thinking channel.
+        inline_thinking, reply_text = split_reasoning(str(raw.get("reply") or ""))
         self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None)
         self.last_stats = getattr(self._llm, "last_stats", None)
         if self.last_stats is not None:
@@ -284,9 +288,24 @@ class Core:
             self.totals.output_tokens += self.last_stats.output_tokens or 0
             self.totals.latency_ms += self.last_stats.latency_ms
 
+        # Validate/repair into a valid EmotionState (raises EmotionError if no reply).
+        state = validate(
+            {**raw, "reply": reply_text}, session_id=session.id, turn=self.totals.turns
+        )
+        self.last_emotion = state
+
         self._repo.append_message(make_message(session.id, self._user_id, "user", user_text))
-        self._repo.append_message(make_message(session.id, self._user_id, "lili", reply_text))
-        return reply_text
+        self._repo.append_message(
+            make_message(
+                session.id,
+                self._user_id,
+                "lili",
+                state.reply,
+                emotion=state.emotion.value,
+                intensity=state.intensity,
+            )
+        )
+        return state
 
     def end_session(self, session: Session) -> ShortSummary | None:
         """Close a session: mark it ended, write a short summary, accumulate facts.
