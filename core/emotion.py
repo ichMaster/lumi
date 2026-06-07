@@ -13,8 +13,12 @@ v0.3 and never change** — only the renderer changes between versions.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
+
+# Repairs are logged here, keyed by session_id/turn (ARCHITECTURE §Observability).
+_log = logging.getLogger("lumi.emotion")
 
 
 class Emotion(StrEnum):
@@ -58,3 +62,62 @@ class EmotionState:
     reply: str
     emotion: Emotion
     intensity: float
+
+
+class EmotionError(ValueError):
+    """The model turn lacked a usable ``reply`` — surfaced to the interface, never
+    a silent empty turn (EMOTION.md §8 / ARCHITECTURE §Error handling)."""
+
+
+def _coerce_emotion(value: object, repairs: list[str]) -> Emotion:
+    try:
+        return Emotion(value)
+    except ValueError:
+        repairs.append(f"emotion {value!r} -> {DEFAULT_EMOTION.value}")
+        return DEFAULT_EMOTION
+
+
+def _coerce_intensity(value: object, repairs: list[str]) -> float:
+    if value is None:
+        repairs.append(f"intensity missing -> {DEFAULT_INTENSITY}")
+        return DEFAULT_INTENSITY
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        repairs.append(f"intensity {value!r} -> {DEFAULT_INTENSITY}")
+        return DEFAULT_INTENSITY
+    clamped = min(1.0, max(0.0, number))
+    if clamped != number:
+        repairs.append(f"intensity {number} -> {clamped}")
+    return clamped
+
+
+def validate(
+    raw: object,
+    *,
+    session_id: str | None = None,
+    turn: int | None = None,
+) -> EmotionState:
+    """Validate/repair raw model output into a valid :class:`EmotionState` (EMOTION.md §8).
+
+    The core never trusts raw output. Repairs (each **logged** keyed by
+    ``session_id``/``turn``): an unknown/missing ``emotion`` → ``calm``;
+    ``intensity`` clamped to ``[0, 1]``, missing/non-numeric → ``0.5``. A
+    missing/empty ``reply`` raises :class:`EmotionError` — surfaced to the
+    interface, not swallowed.
+    """
+    data = raw if isinstance(raw, dict) else {}
+    reply = data.get("reply")
+    if not isinstance(reply, str) or not reply.strip():
+        raise EmotionError("model returned no usable reply")
+
+    repairs: list[str] = []
+    emotion = _coerce_emotion(data.get("emotion"), repairs)
+    intensity = _coerce_intensity(data.get("intensity"), repairs)
+    if repairs:
+        _log.warning(
+            "emotion field repaired: %s",
+            "; ".join(repairs),
+            extra={"session_id": session_id, "turn": turn},
+        )
+    return EmotionState(reply=reply.strip(), emotion=emotion, intensity=intensity)
