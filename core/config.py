@@ -29,8 +29,12 @@ DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
-# Rolling window: how many recent messages of the current session enter context.
-DEFAULT_MEMORY_WINDOW = 60
+# Rolling window: how many recent messages are kept verbatim in context. Older
+# messages of the current session are folded into a running digest (compaction),
+# in batches of DEFAULT_COMPACTION_BATCH — so the verbatim tail floats between
+# memory_window and memory_window + batch.
+DEFAULT_MEMORY_WINDOW = 40
+DEFAULT_COMPACTION_BATCH = 20
 
 # Model output cap. Extended thinking (Opus 4.8 / Sonnet 4.6) is adaptive and
 # off by default; `effort` tunes its depth when on (None → the API default).
@@ -60,6 +64,7 @@ class Config:
     canon_path: Path = DEFAULT_CANON_PATH
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
+    compaction_batch: int = DEFAULT_COMPACTION_BATCH
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking: bool = DEFAULT_THINKING
     effort: str | None = DEFAULT_EFFORT
@@ -88,6 +93,9 @@ def load_config(*, load_env: bool = True) -> Config:
     window_env = os.getenv("LUMI_MEMORY_WINDOW")
     memory_window = int(window_env) if window_env else DEFAULT_MEMORY_WINDOW
 
+    batch_env = os.getenv("LUMI_COMPACTION_BATCH")
+    compaction_batch = int(batch_env) if batch_env else DEFAULT_COMPACTION_BATCH
+
     max_tokens_env = os.getenv("LUMI_MAX_TOKENS")
     max_tokens = int(max_tokens_env) if max_tokens_env else DEFAULT_MAX_TOKENS
 
@@ -102,6 +110,7 @@ def load_config(*, load_env: bool = True) -> Config:
         canon_path=canon_path,
         store_path=store_path,
         memory_window=memory_window,
+        compaction_batch=compaction_batch,
         max_tokens=max_tokens,
         thinking=thinking,
         effort=effort,

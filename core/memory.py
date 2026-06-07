@@ -49,6 +49,15 @@ FACTS_SYSTEM = (
 # Leading bullet/numbering characters to strip from a fact line.
 _BULLET_CHARS = "-•*–—0123456789.) \t"
 
+# Instruction for in-session compaction: maintain a running digest of the earlier
+# part of the *current* conversation (the messages that fell out of the verbatim
+# window). Folds an existing digest together with a new chunk of older messages.
+COMPACTION_DIGEST_SYSTEM = (
+    "Ти ведеш стислий конспект ранньої частини поточної розмови — для контексту. "
+    "Онови наявний конспект, додавши нові, давніші репліки. Від третьої особи, по суті, "
+    "без вступів. Зберігай важливе (теми, рішення, факти), відкидай дрібниці."
+)
+
 
 def trim_history(messages: Sequence[T], max_messages: int) -> list[T]:
     """Keep only the last ``max_messages`` items for the model context.
@@ -79,6 +88,32 @@ def facts_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, str]
     """Build the (system, messages) for end-of-session long-term fact extraction."""
     transcript = "\n".join(f"{m.role}: {m.text}" for m in messages)
     return FACTS_SYSTEM, [{"role": "user", "content": transcript}]
+
+
+def compaction_plan(n_messages: int, compacted_count: int, window: int, batch: int) -> int:
+    """Decide how many oldest messages should be compacted (the new high-water mark).
+
+    Floating window: keep the verbatim tail between ``window`` and
+    ``window + batch``. When it would exceed ``window + batch``, fold the oldest
+    messages down to a ``window``-length tail. Returns the new ``compacted_count``
+    (>= the current one); equal means "nothing to compact this turn".
+    """
+    live = n_messages - compacted_count
+    if live >= window + batch:
+        return n_messages - window
+    return compacted_count
+
+
+def digest_request(
+    existing: str | None, chunk: Sequence[Message]
+) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to fold ``chunk`` into the running digest."""
+    transcript = "\n".join(f"{m.role}: {m.text}" for m in chunk)
+    if existing:
+        content = f"Наявний конспект:\n{existing}\n\nДавніші репліки, які треба додати:\n{transcript}"
+    else:
+        content = f"Давніші репліки розмови:\n{transcript}"
+    return COMPACTION_DIGEST_SYSTEM, [{"role": "user", "content": content}]
 
 
 def parse_facts(text: str) -> list[str]:

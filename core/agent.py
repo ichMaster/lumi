@@ -16,10 +16,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.config import DEFAULT_MEMORY_WINDOW, Config, load_config
+from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
     RECENT_SUMMARIES,
+    compaction_plan,
+    digest_request,
     facts_request,
     parse_facts,
     summary_request,
@@ -30,6 +32,7 @@ from core.repository import (
     LongTermFact,
     Repository,
     Session,
+    SessionDigest,
     ShortSummary,
     make_message,
     now_iso,
@@ -74,6 +77,7 @@ class Core:
         model: str,
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
+        compaction_batch: int = DEFAULT_COMPACTION_BATCH,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -81,6 +85,7 @@ class Core:
         self._model = model
         self._user_id = user_id
         self._memory_window = memory_window
+        self._compaction_batch = compaction_batch
         # The model's reasoning summary from the last turn (None when thinking is
         # off or absent), for a client to render alongside the reply.
         self.last_thinking: str | None = None
@@ -89,6 +94,8 @@ class Core:
         self.totals = UsageTotals()
         # The exact prompt sent on the last turn, for inspection ({system, messages}).
         self.last_prompt: dict | None = None
+        # How many messages the last turn folded into the session digest (0 if none).
+        self.last_compaction: int = 0
 
     @property
     def model(self) -> str:
@@ -102,35 +109,95 @@ class Core:
         """Open a fresh session for the active user (persisted)."""
         return self._repo.create_session(self._user_id)
 
-    def _system_prompt(self) -> str:
+    def _system_prompt(self, session: Session) -> str:
         """Assemble the system prompt for this turn, rehydrated for the user.
 
-        Composes the canon with the user's recent summaries + long-term facts
-        (LUMI-011). Loaded per turn, so a restart recalls prior context and new
-        memory takes effect. Isolation holds — only this ``user_id``'s records
-        are read.
+        Composes the canon with the user's recent summaries + long-term facts and
+        — if the current session has been compacted — its running digest. Loaded
+        per turn, so a restart recalls prior context and new memory takes effect.
+        Isolation holds — only this ``user_id``'s records are read.
         """
         summaries = [
             s.summary for s in self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
         ]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
-        return build_system_prompt(self._canon, summaries=summaries, facts=facts)
+        digest = self._repo.get_digest(session.id)
+        return build_system_prompt(
+            self._canon,
+            summaries=summaries,
+            facts=facts,
+            digest=digest.summary if digest else None,
+        )
+
+    def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:
+        """An internal model call with extended thinking forced off.
+
+        Used for summaries / facts / compaction — internal extraction, not
+        user-facing reasoning, so it stays fast and cheap.
+        """
+        llm = self._llm
+        prev_thinking = getattr(llm, "_thinking", None)
+        if prev_thinking:
+            llm._thinking = False
+        try:
+            return llm.reply(system=system, messages=messages, model=self._model)
+        finally:
+            if prev_thinking:
+                llm._thinking = prev_thinking
+
+    def _maybe_compact(self, session: Session, history: list) -> SessionDigest | None:
+        """Fold older-than-window messages into the session digest, in batches.
+
+        Returns the current digest (possibly updated). Sets ``last_compaction`` to
+        how many messages were folded this turn (0 if none). Best-effort — a model
+        failure keeps the prior digest and never breaks the turn.
+        """
+        self.last_compaction = 0
+        digest = self._repo.get_digest(session.id)
+        compacted = digest.compacted_count if digest else 0
+        new_compacted = compaction_plan(
+            len(history), compacted, self._memory_window, self._compaction_batch
+        )
+        if new_compacted <= compacted:
+            return digest
+        chunk = history[compacted:new_compacted]
+        try:
+            system, msgs = digest_request(digest.summary if digest else None, chunk)
+            summary = self._housekeeping_reply(system, msgs).strip()
+        except Exception:  # noqa: BLE001 — best-effort; keep the prior digest
+            return digest
+        if not summary:
+            return digest
+        updated = SessionDigest(
+            session_id=session.id,
+            summary=summary,
+            compacted_count=new_compacted,
+            ts=now_iso(),
+        )
+        self._repo.set_digest(updated)
+        self.last_compaction = len(chunk)
+        return updated
 
     def reply(self, user_text: str, session: Session) -> str:
         """Run one turn and return Лілі's reply.
 
-        Loads prior history (trimmed to the rolling window), calls the model with
-        the system prompt + windowed history + the new line, then persists both
-        the user and Лілі messages (user-scoped). The full history stays stored;
-        only the in-context window is trimmed.
+        Compacts older-than-window messages into the session digest (in batches),
+        then calls the model with the system prompt (+ digest) + the verbatim
+        **live tail** (between ``memory_window`` and ``+ batch`` messages) + the
+        new line, and persists both messages. The full history stays stored.
         """
-        history = trim_history(self._repo.load_messages(session.id), self._memory_window)
+        history = self._repo.load_messages(session.id)
+        digest = self._maybe_compact(session, history)
+        compacted = digest.compacted_count if digest else 0
+        # The verbatim tail: messages not yet folded into the digest, capped for
+        # safety (in case compaction repeatedly failed).
+        live = trim_history(history[compacted:], self._memory_window + self._compaction_batch)
         messages: list[Message] = [
-            {"role": _ROLE_TO_LLM[m.role], "content": m.text} for m in history
+            {"role": _ROLE_TO_LLM[m.role], "content": m.text} for m in live
         ]
         messages.append({"role": "user", "content": user_text})
 
-        system = self._system_prompt()
+        system = self._system_prompt(session)
         self.last_prompt = {"system": system, "messages": list(messages)}
         reply_text = self._llm.reply(system=system, messages=messages, model=self._model)
         self.last_thinking = getattr(self._llm, "last_thinking", None)
@@ -158,24 +225,16 @@ class Core:
         self._repo.end_session(session.id)
         if not history:
             return None
-        # Memory housekeeping is internal extraction, not user-facing reasoning —
-        # never spend (slow) extended thinking on it, so quitting stays snappy.
-        llm = self._llm
-        prev_thinking = getattr(llm, "_thinking", None)
-        if prev_thinking:
-            llm._thinking = False
-        try:
-            summary = self._write_summary(session, history)
-            self._accumulate_facts(history)
-        finally:
-            if prev_thinking:
-                llm._thinking = prev_thinking
+        # Summary + facts run via _housekeeping_reply (extended thinking off) so
+        # this internal extraction stays fast and quitting is snappy.
+        summary = self._write_summary(session, history)
+        self._accumulate_facts(history)
         return summary
 
     def _write_summary(self, session: Session, history: list) -> ShortSummary | None:
         try:
             system, msgs = summary_request(history)
-            summary_text = self._llm.reply(system=system, messages=msgs, model=self._model).strip()
+            summary_text = self._housekeeping_reply(system, msgs).strip()
         except Exception:  # noqa: BLE001 — never block session end on a model error
             return None
         if not summary_text:
@@ -205,7 +264,7 @@ class Core:
     def _accumulate_facts(self, history: list) -> None:
         try:
             system, msgs = facts_request(history)
-            text = self._llm.reply(system=system, messages=msgs, model=self._model)
+            text = self._housekeeping_reply(system, msgs)
         except Exception:  # noqa: BLE001 — facts are best-effort
             return
         existing = {f.fact for f in self._repo.facts(self._user_id)}
@@ -256,4 +315,5 @@ def build_core(
         model=cfg.model,
         user_id=user_id,
         memory_window=cfg.memory_window,
+        compaction_batch=cfg.compaction_batch,
     )

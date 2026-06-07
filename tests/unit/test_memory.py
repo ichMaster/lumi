@@ -1,10 +1,7 @@
 """Unit tests for memory helpers (LUMI-008 windowing; summary scaling)."""
 
-from core.agent import Core
-from core.llm import MockLLMClient
 from core.memory import SUMMARY_SYSTEM, summary_request, summary_sentences, trim_history
 from core.repository import make_message
-from state.local_store import JsonRepository
 
 
 def test_trim_keeps_last_n():
@@ -58,23 +55,15 @@ def test_trim_returns_a_new_list():
     assert out is not src
 
 
-def test_core_sends_only_the_window_to_the_model(tmp_path):
-    llm = MockLLMClient("ok")
-    core = Core(
-        llm=llm,
-        repository=JsonRepository(tmp_path / "store.json"),
-        canon="Ти — Лілі.",
-        model="m",
-        memory_window=2,  # keep only the last 2 prior messages in context
-    )
-    session = core.start_session()
-    core.reply("a", session)  # history: [] → sends just "a"
-    core.reply("b", session)  # prior: [a-user, a-lili] → windowed to 2
-    core.reply("c", session)  # prior: 4 msgs → windowed to last 2
+def test_compaction_plan_floating_window():
+    from core.memory import compaction_plan
 
-    last = llm.calls[-1]["messages"]
-    # 2 windowed prior messages + the new "c" line.
-    assert len(last) == 3
-    assert last[-1] == {"role": "user", "content": "c"}
-    # Full history is still persisted (not trimmed in storage).
-    assert len(core._repo.load_messages(session.id)) == 6
+    # No compaction until the live tail would exceed window + batch.
+    assert compaction_plan(50, 0, 40, 20) == 0  # 50 live < 60 → keep all verbatim
+    assert compaction_plan(40, 0, 40, 20) == 0  # exactly the window → nothing to do
+    assert compaction_plan(59, 0, 40, 20) == 0  # just under the trigger
+    # At window + batch, fold the oldest down to a window-length live tail.
+    assert compaction_plan(60, 0, 40, 20) == 20  # fold 20, keep 40 verbatim
+    assert compaction_plan(80, 20, 40, 20) == 40  # next batch folds another 20
+    # Never goes backwards.
+    assert compaction_plan(45, 30, 40, 20) >= 30

@@ -13,7 +13,14 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from uuid import uuid4
 
-from core.repository import LongTermFact, Message, Session, ShortSummary, now_iso
+from core.repository import (
+    LongTermFact,
+    Message,
+    Session,
+    SessionDigest,
+    ShortSummary,
+    now_iso,
+)
 from core.user import DEFAULT_USER_ID
 
 
@@ -26,6 +33,7 @@ class JsonRepository:
         self._messages: dict[str, list[Message]] = {}
         self._summaries: dict[str, list[ShortSummary]] = {}  # by user_id
         self._facts: dict[str, list[LongTermFact]] = {}  # by user_id
+        self._digests: dict[str, SessionDigest] = {}  # by session_id
         self._load()
 
     # --- persistence -----------------------------------------------------
@@ -47,6 +55,8 @@ class JsonRepository:
             self._summaries[uid] = [ShortSummary(**raw) for raw in raws]
         for uid, raws in data.get("facts", {}).items():
             self._facts[uid] = [LongTermFact(**raw) for raw in raws]
+        for sid, raw in data.get("digests", {}).items():
+            self._digests[sid] = SessionDigest(**raw)
 
     def _persist(self) -> None:
         data = {
@@ -60,6 +70,7 @@ class JsonRepository:
             "facts": {
                 uid: [asdict(f) for f in items] for uid, items in self._facts.items()
             },
+            "digests": {sid: asdict(d) for sid, d in self._digests.items()},
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(self._path.suffix + ".tmp")
@@ -113,4 +124,11 @@ class JsonRepository:
     def clear_memory(self, user_id: str) -> None:
         self._summaries.pop(user_id, None)
         self._facts.pop(user_id, None)
+        self._persist()
+
+    def get_digest(self, session_id: str) -> SessionDigest | None:
+        return self._digests.get(session_id)
+
+    def set_digest(self, digest: SessionDigest) -> None:
+        self._digests[digest.session_id] = digest
         self._persist()

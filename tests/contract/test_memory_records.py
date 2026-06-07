@@ -4,7 +4,7 @@ Pins ARCHITECTURE §Data model / §Contracts. Changing a record shape must chang
 this test.
 """
 
-from core.repository import LongTermFact, ShortSummary
+from core.repository import LongTermFact, SessionDigest, ShortSummary
 
 
 def test_short_summary_shape():
@@ -27,3 +27,9 @@ def test_long_term_fact_is_per_user():
     f = LongTermFact(user_id="owner", fact="loves tea", meta="", confidence=0.5,
                      ts="2026-06-06T00:00:00+00:00")
     assert f.user_id == "owner"
+
+
+def test_session_digest_shape():
+    # In-session compaction record (per-session, behind repository).
+    fields = set(SessionDigest.__dataclass_fields__)
+    assert fields == {"session_id", "summary", "compacted_count", "ts"}

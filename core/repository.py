@@ -83,6 +83,20 @@ class LongTermFact:
     ts: str
 
 
+@dataclass(frozen=True)
+class SessionDigest:
+    """A running summary of the earlier part of one session (in-session compaction).
+
+    ``compacted_count`` is how many of the session's oldest messages this digest
+    already covers — those are folded out of the verbatim window. Per-session.
+    """
+
+    session_id: str
+    summary: str
+    compacted_count: int
+    ts: str
+
+
 @runtime_checkable
 class Repository(Protocol):
     """The storage seam — keyed by ``user_id`` (ARCHITECTURE §Storage).
@@ -138,4 +152,12 @@ class Repository(Protocol):
         Affects only this ``user_id``; the canon and other users are untouched.
         Session messages are not removed.
         """
+        ...
+
+    def get_digest(self, session_id: str) -> SessionDigest | None:
+        """The session's running compaction digest, or ``None``."""
+        ...
+
+    def set_digest(self, digest: SessionDigest) -> None:
+        """Persist (replace) a session's compaction digest."""
         ...

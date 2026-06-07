@@ -340,6 +340,10 @@ class LumiApp(App[None]):
             reply = await asyncio.to_thread(self._core.reply, text, self._session)
             self._connected = True
             self._last_reply = reply
+            compacted = getattr(self._core, "last_compaction", 0)
+            if compacted:
+                note = f"Compacted {compacted} earlier messages into a running summary."
+                self._emit(note, Text(note, style=SYSTEM_COLOR))
             thinking = getattr(self._core, "last_thinking", None)
             if thinking:
                 self._emit_thinking(thinking)
