@@ -138,6 +138,12 @@ The **face never changes** within an emotion (only the emphasis grows), the map 
 reply at `joy 0.9` reads `Лілі 😄✨✨:` and at `sad 0.8` reads `Лілі 😢😢😢:`. v0.5's job
 is to prove the channel reads in the terminal end to end.
 
+This table is the **built-in default**; in v0.5 it is loaded from an **editable authored
+file** (`LUMI_EMOJI_PATH`, like the canon / styles / nudges), so the user can **change
+the table and add / remove / replace emojis** without touching code. A missing file or an
+absent/blank row falls back to this default (ultimately the base glyph → `calm`), keeping
+the resolved map total over the enum.
+
 **Mood caption (v2.1).** Alongside the web portrait, a short evocative **caption**
 describes Лілі's current state — **not** the emotion's enum name, and not her
 reply: a small atmospheric line in her spirit. A curated phrase per emotion

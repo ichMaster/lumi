@@ -88,16 +88,19 @@ The same time-awareness lets her **break a long silence**: an **idle nudge** qui
 
 **Goal:** Лілі's emotion is visible right in the terminal — the last step that makes v0 the complete TUI.
 
-Swap `LogRenderer` → `EmojiRenderer` over the v0.3 channel: map each emotion to an emoji (EMOTION.md §4/§6) shown next to the reply, with `intensity` selecting emphasis (not a different feeling). No contract change — only a new `IEmotionRenderer` implementation. Depends on: v0.3 (the locked emotion contract).
+Swap `LogRenderer` → `EmojiRenderer` over the v0.3 channel: map each emotion to an emoji (EMOTION.md §4/§6) shown next to the reply, with `intensity` selecting emphasis — the same face made stronger by **repeating it or adding an accent** over three bands (low/mid/high; EMOTION.md §6 table), not a different feeling. No contract change — only a new `IEmotionRenderer` implementation. Depends on: v0.3 (the locked emotion contract).
+
+The emotion→emoji+intensity table is an **editable authored file** (like the canon, styles, and nudges) — config-pathed (`LUMI_EMOJI_PATH`, default e.g. `core/emoji.md`) — so **the user can change the table and add / remove / replace emojis without touching code**. A built-in default ships the EMOTION.md §6 map; a missing file or an absent/blank row **falls back** to the built-in (and ultimately the base glyph / `calm`), so the map stays **total over the enum**.
 
 **Tasks:**
-- `EmojiRenderer` implementing `IEmotionRenderer`; emotion → emoji map (EMOTION.md §4).
-- Display the emoji next to Лілі's reply in the TUI.
-- Account for `intensity` (e.g. a plain vs. emphasized glyph variant).
+- An **editable emoji-map file** + loader: per emotion, its base face and the low/mid/high emphasis (repeat or accent); `#` comments; loaded at startup. Authored default = EMOTION.md §6.
+- `EmojiRenderer` implementing `IEmotionRenderer` over the loaded map; `emoji_for(state)` resolves emotion + intensity band → glyph(s).
+- Display the emoji next to Лілі's reply in the TUI (e.g. `Лілі 😄✨:`).
+- Account for `intensity` via the three bands; **fallback** when the file/row is missing (→ built-in default → base glyph → `calm`).
 
-**DoD:** during the conversation Лілі's emotion reads as a simple emoji in the TUI; v0 is a complete terminal companion.
+**DoD:** during the conversation Лілі's emotion reads as an emoji next to her reply, with intensity emphasis; **the table is user-editable — adding / removing / changing emojis in the authored file takes effect on restart** (no code change); v0 is a complete terminal companion.
 
-**Tests:** unit — the emotion→emoji mapping is total over the enum and intensity-variant selection.
+**Tests:** unit — the loader parses the authored table (base + low/mid/high); the resolved map is **total over the enum** with intensity-band selection; a missing file / absent row / unknown emotion **falls back** to the built-in default (ultimately `calm`), never raising.
 
 ### v0.6 — Mood of the day (temperament)
 
