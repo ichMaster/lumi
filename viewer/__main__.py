@@ -21,7 +21,7 @@ def main() -> None:  # pragma: no cover - launches a GUI
     signal = cfg.face_signal or cfg.store_path.parent / "face.txt"
     if not (FACES_DIR / "calm.png").exists():  # seed placeholders if there's no art yet
         generate_placeholders(FACES_DIR)
-    run(signal, FACES_DIR)
+    run(signal, FACES_DIR, idle_timeout=cfg.face_idle if cfg.face_idle > 0 else None)
 
 
 if __name__ == "__main__":

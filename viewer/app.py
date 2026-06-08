@@ -34,16 +34,24 @@ def png_to_surface(path: str | Path, size: tuple[int, int]):
 
 
 def run(
-    signal_path: str | Path, faces_dir: str | Path, *, poll_ms: int = POLL_MS, size=(512, 512)
+    signal_path: str | Path,
+    faces_dir: str | Path,
+    *,
+    poll_ms: int = POLL_MS,
+    size=(512, 512),
+    idle_timeout: float | None = None,
 ) -> None:  # pragma: no cover - requires a display
-    """Open the window and loop: poll the signal → show the matching face. Blocks until closed."""
+    """Open the window and loop: poll the signal → show the matching face. Blocks until closed.
+
+    With ``idle_timeout`` the face relaxes to `calm` after that many seconds of no change.
+    """
     import pygame
 
     faces = Path(faces_dir)
     pygame.init()
     screen = pygame.display.set_mode(size)
     pygame.display.set_caption("Лілі")
-    switcher = FaceSwitcher(signal_path, faces)
+    switcher = FaceSwitcher(signal_path, faces, idle_timeout=idle_timeout)
     clock = pygame.time.Clock()
     surface = None
 

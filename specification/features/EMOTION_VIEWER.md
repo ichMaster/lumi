@@ -37,6 +37,7 @@ Either way the viewer never talks to the core directly — only through the shar
 2. Build the path `faces/<emotion>.png`.
 3. If it changed from the previous one — show the new file.
 4. **Fallback:** an unknown word or a missing file → show `faces/calm.png` (the neutral default, per EMOTION.md §8), so the window never breaks.
+5. **Idle relax (EMOTION.md `ttl_ms`):** if the signal hasn't changed for `LUMI_FACE_IDLE_SECONDS` (default ~120 s; `0` = off), relax the face to the **default (`calm`)** — a still-but-present resting face when the conversation pauses. The next signal change wakes it again (and resets the idle timer). Computed from an injected clock (deterministic; the resolver/idle logic is tested without a display).
 
 ## Optional — intensity
 
