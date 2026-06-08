@@ -12,7 +12,7 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.7.1 — v0.7 Local emotion viewer.** Лілі's face as a real **image**, locally, without a
+**0.7.2 — v0.7 Local emotion viewer.** Лілі's face as a real **image**, locally, without a
 server: a separate desktop window shows a portrait for her current emotion and changes as the
 conversation does. Another **renderer of the locked v0.3 emotion channel** (alongside the v0.5
 emoji) — no contract change.
@@ -27,6 +27,12 @@ emoji) — no contract change.
 _0.7.1 fixes:_ the face **relaxes to `calm` after an idle period** (`LUMI_FACE_IDLE_SECONDS`,
 default 120s; the next emotion wakes it); the signal carries **date+time** so every turn's line is
 unique; the **TUI input box locks while Лілі replies** and re-enables on your turn.
+
+_0.7.2 fixes:_ **TUI send/receive sound** — a blip on send + receive (macOS `afplay`; off by
+default, **Ctrl+S** toggles, status shows `sound:on/off`; never the idle nudge); and **auto-style** —
+Лілі now **chooses her own answer style** each turn (prefers "mega"/meta-styles) and declares it,
+**`/style` is a recommendation** not a switch, and the status bar shows the style **+ who picked
+it** (`(Лілі)` / `(ти)`).
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog.
 
