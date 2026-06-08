@@ -8,15 +8,15 @@ Arc of the two axes: capabilities grow text+memory → emotion (emoji) → daily
 
 ---
 
-## v0 — TUI: core, memory, emotion, emoji, mood, local face (+ wardrobe), voice, dictation
+## v0 — TUI: core, memory, emotion, emoji, mood, closeness, local face (+ wardrobe), voice, dictation
 
-The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.12 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.10, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
+The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.13 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.11, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
 
 ### v0.1 — Skeleton and canon
 
 **Goal:** a working text chat with Лілі's character in the terminal.
 
-Stand up the project skeleton and the `core` package, an **Anthropic client (Claude Haiku)** behind a thin **`LLMClient`** seam the core depends on (mockable in tests; model id from config, default Haiku), Лілі's authored canon loaded as the system prompt, a TUI loop with input and scrollable history, and the `Repository` interface with a local store behind it. The core exposes one `reply(...)` contract the TUI calls — no interface logic leaks into the core. **Claude Haiku is the only model to start**; more models are added behind the same seam in v0.12.
+Stand up the project skeleton and the `core` package, an **Anthropic client (Claude Haiku)** behind a thin **`LLMClient`** seam the core depends on (mockable in tests; model id from config, default Haiku), Лілі's authored canon loaded as the system prompt, a TUI loop with input and scrollable history, and the `Repository` interface with a local store behind it. The core exposes one `reply(...)` contract the TUI calls — no interface logic leaks into the core. **Claude Haiku is the only model to start**; more models are added behind the same seam in v0.13.
 
 **Tasks:**
 - Create the repo skeleton and the `core` package; wire `pyproject.toml` (ruff + pytest) and `.env` loading for `ANTHROPIC_API_KEY`.
@@ -54,7 +54,7 @@ Add the three (per-user) memory layers: session history trimmed to a rolling win
 Lock the emotion channel. The model emits `{reply, emotion, intensity}` as structured output; the core validates it against the fixed 9-value enum and the 0–1 range, repairs/falls back on invalid output, and logs the field. The `IEmotionRenderer` interface and the `LogRenderer` (plus an optional small TUI status line) land here. **This is the contract every later render tier reuses** — see [EMOTION.md](features/EMOTION.md).
 
 **Tasks:**
-- Structured output `{reply, emotion, intensity}`; constrain `emotion` to the enum and `intensity` to 0–1 via Anthropic's tool/structured output (Claude Haiku) — EMOTION.md §8. (Other models' structured output is handled per-provider when they arrive in v0.12.)
+- Structured output `{reply, emotion, intensity}`; constrain `emotion` to the enum and `intensity` to 0–1 via Anthropic's tool/structured output (Claude Haiku) — EMOTION.md §8. (Other models' structured output is handled per-provider when they arrive in v0.13.)
 - The validation/fallback gate (unknown emotion → `calm`; clamp/default intensity; missing reply → error) — EMOTION.md §8.
 - Log the emotion field per turn (the "logged" render tier); structured logs keyed by `session_id`.
 - `IEmotionRenderer` interface + `LogRenderer`; optional small TUI status line showing the current state.
@@ -156,7 +156,32 @@ It is a memory-record shape change — `ShortSummary` gains a `gist` (the `summa
 
 **Tests:** unit — the two-tier assembly (last N detailed + D-day gists, dedup, cap) against a fake store + fixed clock; the one-call summarizer returns both fields (mock model); the "since date" / local-day window selection; old-summary migration (no `gist`). Contract — the updated `ShortSummary` shape.
 
-### v0.9 — Face variants & mood themes
+### v0.9 — Closeness (relationship level)
+
+**Goal:** Лілі grows **closer to (or cooler with) each person over time** — a per-user closeness level that modulates how *open* she is, **never her competence**.
+
+A per-user **closeness value** bucketed into **5 levels**, read from how you talk to her and how often:
+- **Per-turn relational read.** Folded into the reply turn (one call), the model scores *your* message — **warmth / vulnerability / playful** raise, **harm / manipulation** lower — emitted **alongside** `{reply, emotion, intensity}` (additive; the locked v0.3 emotion contract is untouched).
+- **Value + time decay.** The core turns the read into a small delta, applies **decay toward a baseline over days of silence** (frequent contact builds faster; via the v0.4 injected clock + `last_ts`), updates the value, re-buckets to a level with **inertia** (no turn-to-turn flapping).
+- **Behavior per level** (authored, editable like styles): L1 reserved → L2 friendly → L3 familiar/teasing → L4 close/tender → L5 intimate/trusted. The active level injects a "closeness" block into the system prompt — it shapes **warmth / openness / initiative / teasing / vulnerability**.
+- **Hard guardrail (same as the mood):** it **never** changes her competence or willingness to help. L1 is more reserved/formal — **never cold, withholding, or less useful**; a low `harm`/`manipulation` score never triggers a refusal. She stays kind and capable; only how *close* she is changes.
+- **Persisted, isolated.** `Closeness{user_id, value, level, last_ts}` per user behind the `Repository`, keyed by `user_id`; **never crosses users** (the isolation invariant). A `/closeness` command shows the level **by name** (the raw dimension scores stay internal).
+
+It is a contract addition (`Closeness` record + the relational-read field) → updates ARCHITECTURE §Closeness + a contract test (shape + isolation). See [CLOSENESS.md](features/CLOSENESS.md). Depends on: v0.3 (emotion/structured output), v0.2 (per-user memory), v0.4 (the injected clock).
+
+**Tasks:**
+- **Relational read.** Extend the per-turn structured output with a `relation` read of the *user's* message (warmth, vulnerability, playful, harm, manipulation; 0–1), validated/clamped; additive to the emotion contract.
+- **Closeness engine.** A per-user continuous value + 5-level bucketing with inertia; the per-turn weighted delta; **time decay** toward a baseline via the injected clock + `last_ts`; config weights / decay rate / baseline.
+- **Levels (authored).** An editable `core/closeness.md` (like styles): 5 level names + behavior directives (reserved → intimate); injected as a system-prompt block.
+- **Persistence.** `Closeness{user_id, value, level, last_ts}` behind the `Repository`, keyed by `user_id`; isolation pinned by a contract test.
+- **Surface.** A `/closeness` command (level by name); optional status-line indicator. Raw scores stay internal.
+- **Guardrail.** The block biases warmth/openness, never competence; a low score never refuses help.
+
+**DoD:** the same user gets warmer, more open behavior as warmth/vulnerability/playfulness accrue and cooler/more reserved (but **never unhelpful**) on harm/manipulation; the level is stable within a session (inertia), **decays over days of silence** and rebuilds with contact; per-user, never crossing users; `/closeness` shows the level.
+
+**Tests:** unit — the dimension→delta math + bucketing/inertia; time decay across days (fixed clock); the level→behavior-block assembly; the relational-read validation/clamp. Contract — the `Closeness` shape + **per-user isolation** (A's closeness never visible to B); **competence-unaffected** (a low-closeness turn still answers fully, against a mock model). No paid calls.
+
+### v0.10 — Face variants & mood themes
 
 **Goal:** Лілі's image face stops repeating and dresses for the day — **several pictures per emotion** picked at random, and a **themed outfit** chosen by her **mood of the day**.
 
@@ -177,7 +202,7 @@ With no themes/variants present it behaves exactly like v0.7 (single image + `ca
 
 **Tests:** unit — the variant picker (random, no immediate repeat, total over the enum, calm/default-theme fallback) against a fake faces tree; the theme-manifest loader; the mood→theme selection (mock model + fixed clock; cached per day, recompute across midnight; default on failure); the extended signal parse (`theme emotion intensity`).
 
-### v0.10 — Local voice (ElevenLabs)
+### v0.11 — Local voice (ElevenLabs)
 
 **Goal:** hear Лілі — a separate local app that voices her replies, no server.
 
@@ -193,11 +218,11 @@ Add a **separate local console app** that voices Лілі's replies with the Ele
 
 **Tests:** unit — dedup-by-`id` + ascending-order selection (`outbox` minus `spoken`), strictly-sequential playback, retry-on-failure (no `spoken` write); integration — a few `outbox` records voiced via a **mock TTS adapter** (no paid call), `spoken` updated; resumes correctly after a simulated restart.
 
-### v0.11 — Local dictation (STT)
+### v0.12 — Local dictation (STT)
 
-**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.10 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
+**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.11 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
 
-A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.10 (the local-process + shared-file pattern).
+A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.11 (the local-process + shared-file pattern).
 
 **Tasks:**
 - A separate **dictator process**: watch `listen.flag`; record the mic while `on`; on `off`, send audio to the **STT adapter** in `/voice` (`stt(audio_uk) -> text`, provider configurable) → append `{id, text, source:"voice", ts}` to `inbox.jsonl`.
@@ -208,7 +233,7 @@ A separate local process listens to the microphone, recognizes Ukrainian via the
 
 **Tests:** unit — `listen.flag` on/off handling, empty-recognition is dropped (no `inbox` write), dedup by `id`; integration — a recognized line via a **mock STT adapter** (no paid call) lands in `inbox.jsonl` and drives a turn identical to a typed one.
 
-### v0.12 — More models (model & provider switching)
+### v0.13 — More models (model & provider switching)
 
 **Goal:** switch Лілі to a different model beyond the v0.1 Claude Haiku default — other Claude tiers (Opus/Sonnet) or other providers (OpenAI, DeepSeek, MiniMax) — as a config switch with no code change.
 
@@ -538,15 +563,15 @@ At session end Лілі decides whether to write a **literary journal entry** �
 
 - Emotion field `{ reply, emotion, intensity }` + enum + `IEmotionRenderer` — locked in **v0.3** (rendered: log → emoji v0.5 → local image face v0.7 → web portrait + caption v2.1 → animation v3.1). See [EMOTION.md](features/EMOTION.md).
 - Emotion-face asset pack (`emotion → image`) — first used by the local viewer in **v0.7** (see [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md)), reused by the web `ImageRenderer` in **v2.1**.
-- Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.12**.
+- Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.13**.
 - Mood / temperament (daily, horoscope-derived; colors tone, never competence) — **v0.6** (core; see [ARCHITECTURE.md](ARCHITECTURE.md) §Mood and temperament).
 - Per-user memory records (`ShortSummary`, `LongTermFact`, with `user_id`) — **v0.2**.
 - User-scoping + the per-user isolation invariant — data-level in **v0.2**, enforced & tested at the auth boundary in **v1.3** (and gated as a security test in **v1.2**).
 - Core API (`reply(...)`, memory commands) — **v0.1**; exposed over the client/server API (TUI + CLI clients) in **v1.1**; web client in **v1.4**.
 - Auth — a local client token in **v1.1**; full accounts, registration/invite codes, allowlist, argon2id in **v1.3**; security testing + CI/CD (deploy, TLS, dep/secret scans) in **v1.2**; admin panel in **v1.5**.
 - Multi-user + multi-session — **v1.3**.
-- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.10** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
-- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.11** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
+- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.11** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
+- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.12** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
 - Image — **v2.1**; web voice output — **v2.2**; shared memory (`SharedMemoryItem`) + cross-pollination — **v2.3**; web dictation — **v2.4**.
 - Animation — **v3.1**.
 - MCP client + `web_search` service (`web.search`/`web.fetch`, off by default, untrusted content) — **v3.2** (see [WEB_SEARCH.md](features/WEB_SEARCH.md)).
