@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.8.0 (2026-06-08)
+---------------------------
+- v0.8 — Biorhythms merged into the daily mood (LUMI-031…033): three COMPUTED sine cycles — physical (23d) / emotional (28d) / intellectual (33d) — from her natal birth date, with high/low/rising/falling/critical labels. Deterministic (unlike the model-written horoscope), unit-tested. Fed into the v0.6 mood call so the daily reading + resolution blend horoscope + biorhythms. Cached once per local day; colors tone/energy, never competence. /biorhythm command; LUMI_BIORHYTHMS toggle (on by default).
+- Hormonal (menstrual) cycle: a fourth, PHASED body rhythm — менструація → фолікулярна → овуляція → лютеїнова → ПМС — computed from an authored anchor ("Цикл: день 1 — DD.MM.YYYY, довжина NN" in core/natal.md) + the injected clock. Merged into the SAME daily mood under a shared "integrate these body rhythms … reflect in the RESOLUTION" directive; colors tone/energy/sensitivity, never competence. Part of her embodied self-image, not a medical claim. Shown in /biorhythm; LUMI_CYCLE toggle (on by default).
+- Mood: the biorhythm/cycle merge is an explicit integration directive (weave into the reading together with the transits, reconcile conflicts, reflect in the resolution) — not a separate appended block.
+- Fix: strip a leading [YYYY-MM-DD …] date-stamp from a reply even when the model drops the closing "]" (kept normal text that merely starts with "[" or a number).
+- Roadmap: moved the face wardrobe to after closeness (v0.9 → v0.11); generated/uploaded/executed the v0.8 issues.
+
 Version 0.7.2 (2026-06-08)
 ---------------------------
 - TUI send/receive sound: a short blip on send (Tink) + receive (Glass). Backend chain — macOS afplay + system sounds (primary; this pygame build has no mixer module), pygame.mixer synth fallback, else silent. OFF by default (LUMI_SOUND); Ctrl+S toggles at runtime; the status line shows sound:on/off. Never sounds the idle nudge; degrades to a no-op with no audio device.

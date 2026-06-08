@@ -12,29 +12,25 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.7.2 — v0.7 Local emotion viewer.** Лілі's face as a real **image**, locally, without a
-server: a separate desktop window shows a portrait for her current emotion and changes as the
-conversation does. Another **renderer of the locked v0.3 emotion channel** (alongside the v0.5
-emoji) — no contract change.
+**0.8.0 — v0.8 Biorhythms (a second daily-mood layer).** Лілі's daily temperament gains a
+**computed** layer beside the v0.6 horoscope: three biorhythm cycles — and a hormonal cycle —
+blended into the **same daily mood**, so her resolution reflects all of them at once. Computed in
+code (exact, deterministic), they color her **tone, energy and sensitivity — never her competence**.
 
-- **Emotion signal** — the core writes her current emotion to `.lumi/face.txt` each turn; the
-  viewer is linked only through that file (LUMI-028).
-- **Face resolver** — `emotion → faces/<emotion>.png`, total over the enum, `calm` fallback,
-  optional `_low`/`_high` intensity variants (LUMI-029).
-- **The window** — a pygame face window (`./lumi-viewer`) + a placeholder pack so it runs before
-  art; drop your own `viewer/faces/*.png` in (prompts in `viewer/faces/PROMPTS.md`) (LUMI-030).
+- **Biorhythms** — physical (23 d) / emotional (28 d) / intellectual (33 d) as
+  `sin(2π·days_since_birth/period)` from her natal birth date, with
+  `high/low/rising/falling/critical` labels; fed into the v0.6 mood call so the reading blends
+  horoscope + cycles (LUMI-031…033).
+- **Hormonal cycle** — a phased rhythm (менструація → фолікулярна → овуляція → лютеїнова → ПМС)
+  from an authored anchor in `core/natal.md`, merged into the same mood under a shared
+  "integrate these body rhythms" directive.
+- **See them** — `/biorhythm` shows today's cycles + phase; `/mood` shows the blended resolution.
+  Toggle with `LUMI_BIORHYTHMS` / `LUMI_CYCLE` (both on by default).
 
-_0.7.1 fixes:_ the face **relaxes to `calm` after an idle period** (`LUMI_FACE_IDLE_SECONDS`,
-default 120s; the next emotion wakes it); the signal carries **date+time** so every turn's line is
-unique; the **TUI input box locks while Лілі replies** and re-enables on your turn.
+_Also:_ a leading `[date-stamp]` is now stripped from replies even when the model drops the
+closing `]`; the roadmap moved the face wardrobe after closeness (v0.9 → v0.11).
 
-_0.7.2 fixes:_ **TUI send/receive sound** — a blip on send + receive (macOS `afplay`; off by
-default, **Ctrl+S** toggles, status shows `sound:on/off`; never the idle nudge); and **auto-style** —
-Лілі now **chooses her own answer style** each turn (prefers "mega"/meta-styles) and declares it,
-**`/style` is a recommendation** not a switch, and the status bar shows the style **+ who picked
-it** (`(Лілі)` / `(ти)`).
-
-See [RELEASE.txt](RELEASE.txt) for the full changelog.
+See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 
 ## Run
 
