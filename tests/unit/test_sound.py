@@ -1,5 +1,8 @@
-"""Unit tests for the TUI send/receive sound (v0.7.x) — synthesis + graceful no-op."""
+"""Unit tests for the TUI send/receive sound (v0.7.x) — backend choice, no real playback."""
 
+import sys
+
+import tui.sound as sound
 from tui.sound import SoundPlayer, synth_tone
 
 
@@ -10,23 +13,29 @@ def test_synth_tone_length_and_format():
     assert isinstance(data, bytes)
 
 
-def test_player_is_silent_until_a_device_is_available():
-    # Without a working mixer, send/receive must never raise (best-effort no-op).
+def test_silent_no_op_when_no_backend(monkeypatch):
+    # Non-macOS + this build has no pygame.mixer → no backend; must never raise.
+    monkeypatch.setattr(sys, "platform", "linux")
     player = SoundPlayer()
+    assert player.ensure() is False
     player.send()
-    player.receive()  # no exception even if ensure() fails
+    player.receive()  # silent no-op
 
 
-def test_ensure_with_dummy_audio_driver(monkeypatch):
-    # The SDL dummy audio driver lets the mixer init headlessly — exercises the
-    # synth → Sound → play path without making noise.
+def test_afplay_backend_on_macos(monkeypatch):
+    # On darwin the player uses afplay + system sounds; mock Popen so nothing plays.
     import pytest
 
-    monkeypatch.setenv("SDL_AUDIODRIVER", "dummy")
-    monkeypatch.setenv("PYGAME_HIDE_SUPPORT_PROMPT", "1")
-    pytest.importorskip("pygame")
+    if sys.platform != "darwin":
+        pytest.skip("afplay backend is macOS-only")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(sound.subprocess, "Popen", lambda args, **kw: calls.append(args))
     player = SoundPlayer()
-    if player.ensure():  # available under the dummy driver
-        player.send()
-        player.receive()
-    assert player.ensure() in (True, False)  # idempotent, never raises
+    assert player.ensure() is True
+    assert player._backend == "afplay"
+    player.send()
+    player.receive()
+    assert len(calls) == 2
+    assert all(c[0].endswith("afplay") for c in calls)  # the afplay binary
+    assert calls[0][1].endswith("Tink.aiff")  # send
+    assert calls[1][1].endswith("Glass.aiff")  # receive
