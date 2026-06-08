@@ -140,6 +140,7 @@ def load_canon(path: str | Path) -> str:
 def build_system_prompt(
     canon: str,
     summaries: Sequence[str] | None = None,
+    gists: Sequence[str] | None = None,
     facts: Sequence[str] | None = None,
     digest: str | None = None,
     style: str | None = None,
@@ -172,6 +173,10 @@ def build_system_prompt(
         parts.append(
             "Памʼять про попередні розмови з цією людиною:\n"
             + "\n".join(f"- {s}" for s in summaries)
+        )
+    if gists:  # v0.9: the last few days at a glance (one-line gists)
+        parts.append(
+            "Останні дні з цією людиною (стисло):\n" + "\n".join(f"- {g}" for g in gists)
         )
     if facts:
         parts.append(

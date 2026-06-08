@@ -143,3 +143,59 @@ def test_summaries_since_is_isolated_by_user(tmp_path):
     repo.add_summary(ShortSummary("alice", "a1", "A", "g", "2026-06-08T10:00:00+00:00"))
     assert len(repo.summaries_since("alice", "2026-06-01")) == 1
     assert repo.summaries_since("bob", "2026-06-01") == []  # B never sees A's records
+
+
+# --- v0.9 (LUMI-036): two-tier short-memory injection --------------------
+from datetime import UTC, datetime  # noqa: E402
+
+from core.clock import fixed_clock  # noqa: E402
+
+
+def _ss(sid, detail, gist, ts):
+    return ShortSummary("owner", sid, detail, gist, ts)
+
+
+def test_two_tier_injection_detail_then_day_gists(tmp_path):
+    repo = JsonRepository(tmp_path / "s.json")
+    # Inserted chronologically (as sessions end). N=5, D=5 → window since 2026-06-03.
+    repo.add_summary(_ss("old", "OLDDETAIL", "OLDGIST", "2026-05-20T10:00:00+00:00"))  # beyond window
+    repo.add_summary(_ss("empty", "EMPTYDETAIL", "", "2026-06-04T10:00:00+00:00"))     # empty gist
+    repo.add_summary(_ss("g0", "G0DETAIL", "GIST0", "2026-06-04T11:00:00+00:00"))      # in window, has gist
+    for i in range(5):  # the recent N (newest)
+        repo.add_summary(_ss(f"r{i}", f"RDETAIL{i}", f"RGIST{i}", "2026-06-08T10:00:00+00:00"))
+
+    core = Core(
+        llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
+        repository=repo, canon="C", model="m",
+        clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
+    )
+    core.reply("привіт", core.start_session())
+    sysp = core.last_prompt["system"]
+
+    # Detailed tier: the last N=5 conversations, dated.
+    assert "Памʼять про попередні розмови" in sysp
+    for i in range(5):
+        assert f"RDETAIL{i}" in sysp
+    # Gist tier: in-window conversations NOT in the recent N (g0 only), dated.
+    assert "Останні дні з цією людиною (стисло)" in sysp
+    assert "GIST0" in sysp
+    # Dedup: the recent N are not repeated as gists.
+    for i in range(5):
+        assert f"RGIST{i}" not in sysp
+    # Beyond the D-day window → nowhere; empty-gist record → omitted from the gist tier.
+    assert "OLDDETAIL" not in sysp and "OLDGIST" not in sysp
+    assert "EMPTYDETAIL" not in sysp
+
+
+def test_no_gists_when_window_is_empty(tmp_path):
+    repo = JsonRepository(tmp_path / "s.json")
+    repo.add_summary(_ss("r", "RDETAIL", "RGIST", "2026-06-08T10:00:00+00:00"))  # the only one (recent)
+    core = Core(
+        llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
+        repository=repo, canon="C", model="m",
+        clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
+    )
+    core.reply("привіт", core.start_session())
+    sysp = core.last_prompt["system"]
+    assert "RDETAIL" in sysp  # detailed tier
+    assert "Останні дні з цією людиною" not in sysp  # the only summary is in the recent N → no gist tier
