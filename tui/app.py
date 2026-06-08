@@ -197,8 +197,8 @@ class LumiApp(App[None]):
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
         self._connected: bool = True
-        # True while a turn (or session save) is in flight — you can type, but
-        # can only send when it's your turn (not busy).
+        # True while a turn (or session save) is in flight — the input box is locked
+        # (disabled) until it's your turn again. Toggled via _set_busy.
         self._busy: bool = False
 
     def compose(self) -> ComposeResult:
@@ -272,7 +272,7 @@ class LumiApp(App[None]):
     async def action_quit(self) -> None:
         """Quit — but summarize the current session first, then exit when done."""
         if self._session is not None:
-            self._busy = True
+            self._set_busy(True)
             note = "Saving session before exit (summary + facts)…"
             self._emit(note, Text(note, style=f"bold {SYSTEM_COLOR}"))
             await self._process_current_session()
@@ -378,11 +378,10 @@ class LumiApp(App[None]):
     async def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         prompt = self.query_one("#prompt", ChatInput)
 
-        # You can keep typing while Лілі responds, but can only *send* on your
-        # turn. A premature submit keeps the draft (no clear, no send).
+        # The input box is locked while Лілі replies (see _set_busy); this guard is a
+        # safety net for any submit that slips through before the lock applies — it
+        # keeps the draft (no clear, no send).
         if self._busy:
-            self.notify("Лілі is still replying — send when it's your turn.",
-                        severity="warning", timeout=2)
             return
 
         text = event.value.strip()
@@ -420,10 +419,19 @@ class LumiApp(App[None]):
         self._last_activity = self._core.clock()  # real input resets the idle timer
         await self._run_turn(text)
 
+    def _set_busy(self, busy: bool) -> None:
+        """Toggle the working state and **lock the input box** while Лілі replies — the
+        box is disabled until it's your turn, then re-enabled and refocused."""
+        self._busy = busy
+        prompt = self.query_one("#prompt", ChatInput)
+        prompt.disabled = busy
+        if not busy:
+            prompt.focus()
+
     async def _run_turn(self, text: str, *, hidden: bool = False) -> None:
         """Run one model turn. A ``hidden`` turn (the idle nudge) suppresses the user
         line entirely — only Лілі's reply is shown — so she appears to speak first."""
-        self._busy = True
+        self._set_busy(True)
         if not hidden:
             self._say(USER_LABEL, text, USER_COLOR)
         self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
@@ -451,10 +459,9 @@ class LumiApp(App[None]):
             self._connected = False
             self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
         finally:
-            self._busy = False
+            self._set_busy(False)  # unlock + refocus the input — your turn again
             self._render_status()
             self._render_stats()
-            self.query_one("#prompt", ChatInput).focus()
 
     def _maybe_nudge(self) -> None:
         """Idle-timer tick: after a long silence, run a hidden nudge so Лілі speaks first.

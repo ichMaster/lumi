@@ -239,19 +239,22 @@ async def test_prompt_command_shows_last_turn_prompt(tmp_path):
         assert "] привіт" in joined  # the (timestamped, v0.4) user line
 
 
-async def test_can_type_but_cannot_send_while_busy(tmp_path):
+async def test_input_is_locked_while_busy(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
     async with app.run_test() as pilot:
-        app._busy = True  # simulate a turn in flight
         prompt = app.query_one("#prompt", ChatInput)
-        # The input is never disabled — you can keep typing.
-        assert prompt.disabled is False
+        assert prompt.disabled is False  # your turn → unlocked
+
+        app._set_busy(True)  # a turn in flight → the box locks
+        assert prompt.disabled is True
+        # A submit that slips through the lock is ignored — no send, draft kept.
         prompt.text = "моя наступна думка"
         await pilot.press("enter")
         await pilot.pause()
-        # Nothing was sent and the draft is kept.
         assert not any(line.startswith("You:") for line in app.transcript)
-        assert prompt.text == "моя наступна думка"
+
+        app._set_busy(False)  # her reply done → unlocked, your turn again
+        assert prompt.disabled is False
 
 
 async def test_send_works_again_once_free(tmp_path):
