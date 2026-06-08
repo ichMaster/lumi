@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Лілі's local emotion-face window (v0.7). Run alongside ./lumi.
+# (Named lumi-viewer, not ./viewer — the viewer/ package dir would collide.)
+cd "$(dirname "$0")" && exec uv run python -m viewer "$@"

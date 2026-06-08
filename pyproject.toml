@@ -9,6 +9,8 @@ dependencies = [
     "anthropic>=0.40",
     "textual>=0.80",
     "python-dotenv>=1.0",
+    "pillow>=11",   # v0.7 viewer: placeholder face generation
+    "pygame>=2.6",  # v0.7 viewer: the local face window
 ]
 
 [project.optional-dependencies]

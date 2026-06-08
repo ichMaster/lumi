@@ -229,3 +229,6 @@ chat-export.md
 
 # Local Лілі chat export (not for the repo)
 lili-chat-export.md
+
+# v0.7 generated placeholder faces (real art added with `git add -f`)
+viewer/faces/*.png
