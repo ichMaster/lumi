@@ -21,7 +21,7 @@ the two-phase split, and how it reuses signals Lumi already produces.
 | Concept source | Built on |
 |---|---|
 | Facts layer (precision) | the existing **`LongTermFact{user_id, fact, meta, confidence, ts}`** — kept as-is |
-| "what she felt / what she sensed he felt" | the **v0.3 per-turn emotion** (hers) + the **v0.11 closeness relational read** (his warmth/vulnerability/…) |
+| "what she felt / what she sensed he felt" | the **v0.3 per-turn emotion** (hers) + the **v0.10 closeness relational read** (his warmth/vulnerability/…) |
 | "mood / tone of the meeting" | **v0.6 mood + v0.8 biorhythms** |
 | session-close generator | the existing **end-of-session extractor seam** — same hook, diary prompt |
 | pairs with the inner life | **v0.12–v0.13** writes her own days (session-start); this writes you (session-close) |
@@ -68,7 +68,7 @@ Replaces the dry fact-extractor's prompt with, roughly:
 So instead of *"Vitalii is studying DevOps"* it produces *"He lit up today talking about that
 pipeline — I rarely see him like that. That thing is more than work to him, I think."*
 
-- **Seeds:** the conversation + her per-turn emotions (v0.3) + the closeness reads (v0.11) + the
+- **Seeds:** the conversation + her per-turn emotions (v0.3) + the closeness reads (v0.10) + the
   day's mood (v0.6/v0.8). One model call (the `LLMClient` seam; mocked in tests).
 - **Output:** a few impressions (restraint — not a transcript), each with `emotion`, `weight`,
   and an `about_user` seed; the seed promotes into the facts layer.
@@ -105,5 +105,5 @@ pipeline — I rarely see him like that. That thing is more than work to him, I 
 ## Mapping to the roadmap
 
 **v0.14 + v0.15 — Emotional memory**, right after the inner life (v0.12–v0.13). Depends on **v0.3**
-(emotion), **v0.11** (closeness), **v0.6/v0.8** (mood), **v0.2** (the memory layers), and **v0.4**
+(emotion), **v0.10** (closeness), **v0.6/v0.8** (mood), **v0.2** (the memory layers), and **v0.4**
 (the clock, for fading). Per-user, isolated; the session-close half of her subjective memory.

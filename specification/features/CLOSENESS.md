@@ -3,7 +3,7 @@
 Лілі is **one being with a private relationship per user** — and a relationship is not flat. She
 grows **closer to (or cooler with) each person over time**, read from *how* you talk to her and
 *how often*. A per-user **closeness level (1–5)** modulates how **open** she is — warmth, teasing,
-initiative, vulnerability — **never her competence**. It lands as **v0.11**.
+initiative, vulnerability — **never her competence**. It lands as **v0.10**.
 
 > Like the v0.6 mood, closeness shapes **tone and openness, never capability or willingness to
 > help.** It is **per-user and isolated** (the same invariant as summaries/facts) — your closeness
@@ -82,7 +82,7 @@ status-line glyph. The raw dimension scores and the numeric value stay internal.
 
 ## Mapping to the roadmap
 
-**v0.11 — Closeness (relationship level)**, right after the v0.10 short-memory enhancement.
+**v0.10 — Closeness (relationship level)**, right after the v0.9 short-memory enhancement.
 **Depends on** v0.3 (emotion / structured output — the read rides the same call), v0.2 (per-user
 memory + isolation), and v0.4 (the injected clock for time decay). Per-user, persisted, never
 crosses users.

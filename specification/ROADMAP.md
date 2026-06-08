@@ -8,7 +8,7 @@ Arc of the two axes: capabilities grow text+memory → emotion (emoji) → daily
 
 ---
 
-## v0 — TUI: core, memory, emotion, emoji, mood (+ biorhythms), local face (+ wardrobe), closeness, inner life, emotional memory, semantic recall (RAG), voice, dictation
+## v0 — TUI: core, memory, emotion, emoji, mood (+ biorhythms), local face, closeness, face wardrobe, inner life, emotional memory, semantic recall (RAG), voice, dictation
 
 The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.20 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.18, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
 
@@ -158,28 +158,7 @@ See [BIORHYTHMS.md](features/BIORHYTHMS.md). Depends on: v0.6 (the mood it merge
 
 **Tests:** unit — the biorhythm math (known days-since-birth → exact values + labels; critical-day detection) against a fixed clock; the merge feeds the mood call (mock model — the biorhythm state appears in the mood prompt); cached once per local day; `/biorhythm` renders. No paid calls.
 
-### v0.9 — Face variants & mood themes
-
-**Goal:** Лілі's image face stops repeating and dresses for the day — **several pictures per emotion** picked at random, and a **themed outfit** chosen by her **mood of the day**.
-
-Two additions over the v0.7 viewer, reusing the locked emotion channel, the v0.7 signal/fallback, and the v0.6 mood — **no contract change**:
-- **Variants (variety).** Each emotion is a *folder* of images (`faces/<theme>/<emotion>/…`); the viewer picks one at **random** (no immediate repeat) so she isn't predictable. A flat `<emotion>.png` still works (one variant).
-- **Themes (wardrobe).** Each theme is a full face pack with different clothes (`faces/<theme>/…`); the **daily mood (v0.6) picks the theme** that fits the day, cached per local day and recomputed at local midnight. The core writes the theme into the face signal; the viewer renders `faces/<theme>/<emotion>/…`.
-
-With no themes/variants present it behaves exactly like v0.7 (single image + `calm` fallback) — nothing ever breaks. See [FACE_THEMES.md](features/FACE_THEMES.md). Depends on: v0.7 (the viewer + signal) and v0.6 (the mood).
-
-**Tasks:**
-- **Variant resolver.** Extend the v0.7 resolver: for `(theme, emotion)`, gather `faces/<theme>/<emotion>/*.png` and pick one at **random, no immediate repeat**; re-pick on emotion change (optional coarse interval for liveliness). Total over the enum; calm / default-theme fallback.
-- **Theme manifest.** An editable `faces/themes.md`: each theme name + a one-line description (for the mood to choose) + the **default theme**; auto-discover theme folders.
-- **Mood picks the theme (v0.6 coupling).** The daily mood call also returns a **theme** from the manifest that fits the day; `MoodState` gains `theme`; cached per local day, recomputed at local midnight; graceful (no/failed mood → default theme).
-- **Signal + viewer.** The core writes `<theme> <emotion> <intensity>` to the face signal; the viewer parses the theme and shows a random `faces/<theme>/<emotion>/*.png`. A bare `<emotion> <intensity>` still works → default theme.
-- **Authoring.** Extend `viewer/faces/PROMPTS.md` for per-emotion variants + per-theme wardrobes (same identity/framing, different clothes/setting).
-
-**DoD:** the viewer shows a **different picture among several** for the same emotion (no immediate repeat), and the **outfit/theme changes with the mood of the day** (stable within a day, re-picked at local midnight); with no themes/variants present it behaves like v0.7; nothing breaks.
-
-**Tests:** unit — the variant picker (random, no immediate repeat, total over the enum, calm/default-theme fallback) against a fake faces tree; the theme-manifest loader; the mood→theme selection (mock model + fixed clock; cached per day, recompute across midnight; default on failure); the extended signal parse (`theme emotion intensity`).
-
-### v0.10 — Richer short memory (recent detail + days at a glance)
+### v0.9 — Richer short memory (recent detail + days at a glance)
 
 **Goal:** Лілі recalls **recent conversations in detail** and **the past few days at a glance** — a richer *short* memory, without touching long-term facts.
 
@@ -199,7 +178,7 @@ It is a memory-record shape change — `ShortSummary` gains a `gist` (the `summa
 
 **Tests:** unit — the two-tier assembly (last N detailed + D-day gists, dedup, cap) against a fake store + fixed clock; the one-call summarizer returns both fields (mock model); the "since date" / local-day window selection; old-summary migration (no `gist`). Contract — the updated `ShortSummary` shape.
 
-### v0.11 — Closeness (relationship level)
+### v0.10 — Closeness (relationship level)
 
 **Goal:** Лілі grows **closer to (or cooler with) each person over time** — a per-user closeness level that modulates how *open* she is, **never her competence**.
 
@@ -223,6 +202,27 @@ It is a contract addition (`Closeness` record + the relational-read field) → u
 **DoD:** the same user gets warmer, more open behavior as warmth/vulnerability/playfulness accrue and cooler/more reserved (but **never unhelpful**) on harm/manipulation; the level is stable within a session (inertia), **decays over days of silence** and rebuilds with contact; per-user, never crossing users; `/closeness` shows the level.
 
 **Tests:** unit — the dimension→delta math + bucketing/inertia; time decay across days (fixed clock); the level→behavior-block assembly; the relational-read validation/clamp. Contract — the `Closeness` shape + **per-user isolation** (A's closeness never visible to B); **competence-unaffected** (a low-closeness turn still answers fully, against a mock model). No paid calls.
+
+### v0.11 — Face variants & mood themes
+
+**Goal:** Лілі's image face stops repeating and dresses for the day — **several pictures per emotion** picked at random, and a **themed outfit** chosen by her **mood of the day**.
+
+Two additions over the v0.7 viewer, reusing the locked emotion channel, the v0.7 signal/fallback, and the v0.6 mood — **no contract change**:
+- **Variants (variety).** Each emotion is a *folder* of images (`faces/<theme>/<emotion>/…`); the viewer picks one at **random** (no immediate repeat) so she isn't predictable. A flat `<emotion>.png` still works (one variant).
+- **Themes (wardrobe).** Each theme is a full face pack with different clothes (`faces/<theme>/…`); the **daily mood (v0.6) picks the theme** that fits the day, cached per local day and recomputed at local midnight. The core writes the theme into the face signal; the viewer renders `faces/<theme>/<emotion>/…`.
+
+With no themes/variants present it behaves exactly like v0.7 (single image + `calm` fallback) — nothing ever breaks. See [FACE_THEMES.md](features/FACE_THEMES.md). Depends on: v0.7 (the viewer + signal) and v0.6 (the mood).
+
+**Tasks:**
+- **Variant resolver.** Extend the v0.7 resolver: for `(theme, emotion)`, gather `faces/<theme>/<emotion>/*.png` and pick one at **random, no immediate repeat**; re-pick on emotion change (optional coarse interval for liveliness). Total over the enum; calm / default-theme fallback.
+- **Theme manifest.** An editable `faces/themes.md`: each theme name + a one-line description (for the mood to choose) + the **default theme**; auto-discover theme folders.
+- **Mood picks the theme (v0.6 coupling).** The daily mood call also returns a **theme** from the manifest that fits the day; `MoodState` gains `theme`; cached per local day, recomputed at local midnight; graceful (no/failed mood → default theme).
+- **Signal + viewer.** The core writes `<theme> <emotion> <intensity>` to the face signal; the viewer parses the theme and shows a random `faces/<theme>/<emotion>/*.png`. A bare `<emotion> <intensity>` still works → default theme.
+- **Authoring.** Extend `viewer/faces/PROMPTS.md` for per-emotion variants + per-theme wardrobes (same identity/framing, different clothes/setting).
+
+**DoD:** the viewer shows a **different picture among several** for the same emotion (no immediate repeat), and the **outfit/theme changes with the mood of the day** (stable within a day, re-picked at local midnight); with no themes/variants present it behaves like v0.7; nothing breaks.
+
+**Tests:** unit — the variant picker (random, no immediate repeat, total over the enum, calm/default-theme fallback) against a fake faces tree; the theme-manifest loader; the mood→theme selection (mock model + fixed clock; cached per day, recompute across midnight; default on failure); the extended signal parse (`theme emotion intensity`).
 
 ### v0.12 — Inner life I: plans & state (intentions she carries)
 
@@ -277,12 +277,12 @@ See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v0.12 (the plans & stor
 **Two layers, per-user and isolated** (her impressions of *this* person — never cross users):
 - **Facts layer (kept).** The existing `LongTermFact` — names, dates, agreements, stable preferences. **Precision.**
 - **Impressions layer (new).** `Impression{user_id, when, impression, emotion, about_user, weight, ts}` — her diary lines, first person ("He lit up talking about that pipeline — I rarely see him like that"). **Voice.**
-- **Session-close generator.** Swaps the dry fact-extractor's prompt for the **diary prompt**, seeded by the conversation + her per-turn emotions (v0.3) + the closeness reads (v0.11 — what she sensed *he* felt) + the day's mood (v0.6/v0.8). A few impressions (restraint), each with an `emotion`, a `weight` (how much it struck her), and an `about_user` **seed**.
+- **Session-close generator.** Swaps the dry fact-extractor's prompt for the **diary prompt**, seeded by the conversation + her per-turn emotions (v0.3) + the closeness reads (v0.10 — what she sensed *he* felt) + the day's mood (v0.6/v0.8). A few impressions (restraint), each with an `emotion`, a `weight` (how much it struck her), and an `about_user` **seed**.
 - **Facts as seeds.** Each `about_user` seed promotes into the facts layer — she **speaks from impressions, pulls facts** to "not forget" specifics.
 - **Startup injection.** Rehydrate with a first-person "what I remember & feel about you" block (top-weighted, capped) **alongside** the facts block.
 - **Boundary honesty + subjectivity (hard).** "Don't remember this" / painful topics → **not recorded, or marked `care` — never savored**. It is **her view** — she may misread; on a direct check she **clarifies, doesn't insist** (a canon rule).
 
-See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v0.3 (emotion), v0.11 (closeness), v0.6/v0.8 (mood), v0.2 (the memory layers).
+See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v0.3 (emotion), v0.10 (closeness), v0.6/v0.8 (mood), v0.2 (the memory layers).
 
 **Tasks:**
 - A per-user **`Impression` store** behind the `Repository` (keyed by `user_id`): `{when, impression, emotion, about_user, weight, ts}`; the facts layer (`LongTermFact`) stays.

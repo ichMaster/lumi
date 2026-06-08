@@ -16,7 +16,7 @@ retrieved by meaning** — explicitly (`/recall`) and automatically (RAG in the 
 | Layer | Holds | Its gap |
 |---|---|---|
 | session window | recent turns, verbatim | only recent |
-| short memory (v0.10) | compressed recent + last 5 days | lossy |
+| short memory (v0.9) | compressed recent + last 5 days | lossy |
 | long-term: facts + impressions (v0.14) | durable understanding | not verbatim, not exhaustive |
 | **semantic recall (v0.16–v0.17)** | **every message embedded → searched by meaning** | **exact recall of anything, anytime** |
 

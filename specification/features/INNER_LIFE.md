@@ -101,6 +101,6 @@ slots; by default they're the soft skeleton. The hobby bank is `core/inner/hobbi
 
 ## Mapping to the roadmap
 
-**v0.12 + v0.13 — Inner life**, right after closeness (v0.11). Depends on **v0.6** (mood),
+**v0.12 + v0.13 — Inner life**, right after closeness (v0.10). Depends on **v0.6** (mood),
 **v0.4** (clock), **v0.2** (the Repository). Global to Лілі (not per-user); the creative layer
 (v4) later turns her inner life into real artifacts.
