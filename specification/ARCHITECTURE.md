@@ -32,7 +32,7 @@ The full enum, the `EmotionState` contract, the `IEmotionRenderer` interface and
 - **Visible on demand.** A `/mood` command shows the current day's resolution.
 - **World context feeds it (v3.3).** When the optional world-context tools are enabled, weather/moon/date add ambient inputs to the same mood block alongside the horoscope (§MCP tools, [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md)).
 
-## Closeness (relationship level, from v0.9)
+## Closeness (relationship level, from v0.10)
 
 Лілі grows **closer to or cooler with each person over time** — a per-user **closeness level (1–5)** that modulates how *open* she is (warmth, teasing, initiative, vulnerability), **never her competence**. **Per-user and isolated** (§Identity, users, and memory scopes), on by default. See [CLOSENESS.md](features/CLOSENESS.md).
 
@@ -46,8 +46,8 @@ The full enum, the `EmotionState` contract, the `IEmotionRenderer` interface and
 The three layers are all **per-user (relationship) memory** — private to one person's relationship with Лілі. They sit alongside a separate **shared experience** layer (§Identity, users, and memory scopes).
 
 - **Session history** — the current conversation in context, held in RAM on the live session and trimmed to a rolling window (last N turns or a token budget) before each model call.
-- **Short memory** — at the end of a session the model compresses it (one call) into **two tiers**: a **detailed** summary and a one-line **gist** (`ShortSummary{user_id, session_id, summary, gist, ts}`). From **v0.8** the prompt injects the **last N conversations in detail** (`summary`) plus **all conversations in the last D local days as gists** — the recent N not repeated, dated, and capped — so Лілі recalls recent chats vividly and the past few days at a glance. (Before v0.8 there is only the detailed `summary`; old records load with an empty `gist`.)
-- **Long-term memory** — durable facts about *that user* that accumulate and persist across sessions, injected at startup. (Unchanged by v0.8 — the short-memory enhancement does not touch the facts list.)
+- **Short memory** — at the end of a session the model compresses it (one call) into **two tiers**: a **detailed** summary and a one-line **gist** (`ShortSummary{user_id, session_id, summary, gist, ts}`). From **v0.9** the prompt injects the **last N conversations in detail** (`summary`) plus **all conversations in the last D local days as gists** — the recent N not repeated, dated, and capped — so Лілі recalls recent chats vividly and the past few days at a glance. (Before v0.9 there is only the detailed `summary`; old records load with an empty `gist`.)
+- **Long-term memory** — durable facts about *that user* that accumulate and persist across sessions, injected at startup. (Unchanged by v0.9 — the short-memory enhancement does not touch the facts list.)
 
 Persistence goes through the `Repository` interface (§Storage), always keyed by `user_id`. Audio is never persisted. See §Sessions and history for the lifecycle and trimming policy.
 

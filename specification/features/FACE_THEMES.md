@@ -3,7 +3,7 @@
 Builds on the **v0.7 local emotion viewer**. Two things make her face feel alive instead of
 mechanical: she stops repeating the same picture (**several variants per emotion**, picked at
 random), and she **dresses for the day** (themed outfit packs, the theme chosen by her **mood
-of the day**). It lands as **v0.10**.
+of the day**). It lands as **v0.8**.
 
 > Both features are **renderer + mood-side**. The model still emits only `{reply, emotion,
 > intensity}` (EMOTION.md §3) — the v0.3 contract is untouched. They reuse the v0.7 signal +
@@ -41,7 +41,7 @@ works — it's the implicit single/default theme. So v0.7 packs keep running unc
   theme → the default theme; an empty set → the v0.7 single image. The window never breaks.
 - **Intensity:** v0.7 used it to pick `_low`/`_high`; here variety is the chosen axis, so
   intensity is **not** required to vary the picture. (It may later narrow the random pick — an
-  optional refinement, not part of v0.10's must-have.)
+  optional refinement, not part of v0.8's must-have.)
 
 ## 2. Themes — the wardrobe, chosen by mood
 
@@ -87,6 +87,6 @@ renderer + mood-side.
 
 ## Mapping to the Lumi roadmap
 
-**v0.10 — Face variants & mood themes**, right after the v0.7 viewer: variety + a wardrobe that
+**v0.8 — Face variants & mood themes**, right after the v0.7 viewer: variety + a wardrobe that
 follows her mood. **Depends on v0.7** (the viewer + the signal) and **v0.6** (the mood). The web
 portrait (v2.1) reuses the same packs.
