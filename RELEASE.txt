@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.7.0 (2026-06-08)
+---------------------------
+- v0.7 — Local emotion viewer (LUMI-028…030): Лілі's face as a real image, locally, without a server — a separate window shows a portrait for her current emotion and changes as the conversation does. Another renderer of the locked v0.3 emotion channel (no contract change).
+- Emotion signal (LUMI-028): the core writes "<emotion> <intensity>" to a one-word file each turn (LUMI_FACE_SIGNAL, default .lumi/face.txt); seeds calm at session start; best-effort. The viewer is linked only through this file.
+- Face resolver + signal reader (LUMI-029): emotion(+intensity) → faces/<…>.png, total over the enum with a calm fallback; optional <emotion>_low/_high variants by file presence; FaceSwitcher redraws only on change. Pure, no GUI.
+- Viewer window + faces pack + launcher (LUMI-030): a pygame window (./lumi-viewer) polling the signal; a Pillow placeholder generator so it runs before real art; real PNGs in viewer/faces/ override (prompts in viewer/faces/PROMPTS.md). pillow + pygame added (Tkinter isn't in the uv Python). PNGs decoded via Pillow (this pygame build lacks PNG support).
+
 Version 0.6.1 (2026-06-08)
 ---------------------------
 - clock: system_clock now returns LOCAL time, not UTC — the mood "day" (and per-message timestamps + the ambient "now") were keyed on UTC, so just after local midnight they were a day behind.

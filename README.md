@@ -12,22 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.6.1 — v0.6 Mood of the day.** Лілі now has a **daily temperament** — a model-generated,
-horoscope-flavoured mood that colors her tone and the emotions she leans toward, **never her
-competence**. Computed once per local day from her natal chart; an experiment for daily
-variation, not an astrological claim. (A real-ephemeris test settled the design: the model
-writes a vivid daily reading but can't compute precise transits — and variation, not precision,
-is the point.)
+**0.7.0 — v0.7 Local emotion viewer.** Лілі's face as a real **image**, locally, without a
+server: a separate desktop window shows a portrait for her current emotion and changes as the
+conversation does. Another **renderer of the locked v0.3 emotion channel** (alongside the v0.5
+emoji) — no contract change.
 
-- **Daily mood engine** — once per local day a mood call writes a reading from `core/natal.md`
-  + today's date; the **full reading is logged**, only a short **resolution** is held; cached,
-  recomputed at local midnight, on by default (`LUMI_MOOD`) (LUMI-025).
-- **Prominent in the prompt** — only the resolution rides in the system prompt, as a prioritized
-  block that biases her tone + emotion, never competence (LUMI-026).
-- **`/mood`** — see her mood of the day on demand (LUMI-027).
-
-_0.6.1 fixes:_ the day is now **local** (not UTC); the full reading is saved to `.lumi/mood.log`;
-the resolution is **honest/objective** (not always positive) and **describes her state, no advice**.
+- **Emotion signal** — the core writes her current emotion to `.lumi/face.txt` each turn; the
+  viewer is linked only through that file (LUMI-028).
+- **Face resolver** — `emotion → faces/<emotion>.png`, total over the enum, `calm` fallback,
+  optional `_low`/`_high` intensity variants (LUMI-029).
+- **The window** — a pygame face window (`./lumi-viewer`) + a placeholder pack so it runs before
+  art; drop your own `viewer/faces/*.png` in (prompts in `viewer/faces/PROMPTS.md`) (LUMI-030).
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog.
 
