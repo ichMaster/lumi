@@ -11,10 +11,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PIL import Image
+
 from core.emotion import DEFAULT_EMOTION
 from viewer.face import FaceSwitcher
 
 POLL_MS = 700  # re-read the signal ~every 0.7 s
+
+
+def png_to_surface(path: str | Path, size: tuple[int, int]):
+    """Load a PNG via **Pillow** → a pygame ``Surface`` scaled to ``size``.
+
+    pygame's bundled image loader only handles BMP in this build (no SDL_image), so
+    PNGs are decoded with Pillow and handed to pygame as raw RGB bytes.
+    """
+    import pygame
+
+    with Image.open(path) as im:
+        rgb = im.convert("RGB")
+        surface = pygame.image.frombytes(rgb.tobytes(), rgb.size, "RGB")
+    return pygame.transform.smoothscale(surface, size)
 
 
 def run(
@@ -34,8 +50,8 @@ def run(
     def show(path: Path) -> None:
         nonlocal surface
         try:
-            surface = pygame.transform.smoothscale(pygame.image.load(str(path)), size)
-        except (pygame.error, FileNotFoundError, OSError):
+            surface = png_to_surface(path, size)
+        except (pygame.error, FileNotFoundError, OSError, ValueError):
             surface = None
 
     # Draw the first frame immediately (calm if the signal isn't resolvable yet).

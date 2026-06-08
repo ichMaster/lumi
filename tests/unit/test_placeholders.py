@@ -22,3 +22,22 @@ def test_keeps_existing_art_unless_overwrite(tmp_path):
     assert (tmp_path / "calm.png") not in written          # not clobbered
     assert (tmp_path / "calm.png").read_bytes() == b"real-art"
     assert (tmp_path / "calm.png") in generate_placeholders(tmp_path, overwrite=True)
+
+
+def test_png_to_surface_loads_a_png_via_pillow(tmp_path, monkeypatch):
+    # pygame's bundled loader only does BMP here; the viewer decodes PNGs with Pillow.
+    import pytest
+
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")  # headless
+    monkeypatch.setenv("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+    pygame = pytest.importorskip("pygame")
+    pygame.init()
+    pygame.display.set_mode((32, 32))
+    try:
+        from viewer.app import png_to_surface
+
+        generate_placeholders(tmp_path)
+        surf = png_to_surface(tmp_path / "calm.png", (32, 32))
+        assert surf.get_size() == (32, 32)
+    finally:
+        pygame.quit()
