@@ -1,15 +1,17 @@
 # Answer styles — how Лілі shapes the *form* of a reply (implementation reference)
 
 A **style** changes *how* Лілі answers — length, structure, expressiveness, register —
-**never what she knows or how warm she is**. It's the manual, form‑shaping sibling of the
-future v0.6 daily **mood** (which colors tone automatically). This document describes the
-**implemented** behavior; the design note lives in
+**never what she knows or how warm she is**. It's the form‑shaping sibling of the daily
+**mood** (which colors tone automatically). This document describes the **implemented**
+behavior; the design note lives in
 [../specification/ARCHITECTURE.md](../specification/ARCHITECTURE.md) §Configuration.
 
-> TL;DR — Styles are named text **overlays** authored in [../core/styles.md](../core/styles.md).
-> The active style is injected at the **end** of the system prompt as a prioritized
-> directive. Pick one with **`/style <name>`**; several **stack**; a **meta‑style** expands
-> to several base styles. The selection is **per‑session** (resets to `normal`).
+> TL;DR — Styles are authored in [../core/styles.md](../core/styles.md). The **whole palette
+> is offered in the system prompt each turn and Лілі picks the style that fits** (preferring
+> **meta‑styles**), writes in it, and **declares it as `<style>name</style>`** (parsed and
+> stripped, like the emotion tag). **`/style <name>`** is a **soft recommendation** (she still
+> decides); **`/style auto`** clears it. The status line shows her chosen style and **who
+> picked it** — `(Лілі)`, or `(ти)` when she followed your recommendation. Per‑session.
 
 ---
 

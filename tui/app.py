@@ -573,22 +573,28 @@ class LumiApp(App[None]):
             self._busy = False
 
     def _style_command(self, text: str) -> None:
-        """`/style` lists styles + current; `/style <name> [<name>…]` switches (combinable).
-
-        A name can be a meta-style (expands to several) or a base style; they stack.
+        """Лілі picks her own style each turn. `/style` lists the palette + who chose;
+        `/style <name>` *recommends* a style (a soft hint, she still decides);
+        `/style auto` clears the recommendation.
         """
         arg = text[len("/style"):].strip()
         if not arg:
             metas = ", ".join(self._core.meta_names()) or "—"
             bases = ", ".join(self._core.base_names())
+            rec = self._core.recommendation or "—"
             line = (
-                f"Meta-styles: {metas}  (current: {self._core.style})\n"
-                f"Base: normal, {bases}  ·  combine: /style коротко офіційно"
+                f"Лілі обирає стиль сама (зараз: {self._core.style} · рекомендація: {rec}).\n"
+                f"Мега-стилі: {metas}\nБазові: {bases}\n"
+                "/style <назва> — порадити · /style auto — без поради"
             )
             self._emit(line, Text(line, style=SYSTEM_COLOR))
             return
         if self._core.set_style(arg):
-            line = f"Style → {self._core.style}"
+            rec = self._core.recommendation
+            line = (
+                f"Рекомендація стилю → {rec}. Лілі врахує (вирішує сама)."
+                if rec else "Стиль → авто. Лілі обирає сама."
+            )
             self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
             self._render_status()
         else:

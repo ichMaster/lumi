@@ -39,6 +39,7 @@ from core.prompt import (
     load_canon,
     split_emotion,
     split_reasoning,
+    split_style,
 )
 from core.repository import (
     LongTermFact,
@@ -49,7 +50,7 @@ from core.repository import (
     make_message,
     now_iso,
 )
-from core.styles import DEFAULT_STYLE, load_meta_styles, load_styles
+from core.styles import load_meta_styles, load_styles
 from core.user import DEFAULT_USER_ID
 from core.worldcontext import WorldContext, ambient_line
 
@@ -120,11 +121,13 @@ class Core:
         self._face_signal = face_signal
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
-        # Answer styles (overlays) + meta-styles (presets → several base styles) +
-        # the active selection (per-session; combinable). Empty = "normal".
+        # Answer styles + meta-styles (presets → several base styles). Лілі picks her
+        # own style each turn from this palette (preferring meta-styles) and declares
+        # it; `/style <name>` sets a soft per-session *recommendation*, not a switch.
         self._styles = styles or {}
         self._meta = meta_styles or {}
-        self._active: list[str] = []
+        self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
+        self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
         self.last_emotion: EmotionState | None = None
         # The model's reasoning summary from the last turn (None when thinking is
@@ -171,8 +174,21 @@ class Core:
 
     @property
     def style(self) -> str:
-        """The active answer style(s), combined for display ('short+formal')."""
-        return "+".join(self._active) if self._active else DEFAULT_STYLE
+        """The style for the status line: Лілі's last choice + **who** picked it.
+
+        ``"<name> (Лілі)"`` when she chose it herself; ``"<name> (ти)"`` when her
+        choice matches your standing recommendation (so you can see whether she
+        followed it). Before her first reply: ``"авто"`` (+ your recommendation, if any).
+        """
+        if self.last_style is None:
+            return f"авто · радиш: {'+'.join(self._recommendation)}" if self._recommendation else "авто"
+        who = "ти" if (self._recommendation and self.last_style in self._recommendation) else "Лілі"
+        return f"{self.last_style} ({who})"
+
+    @property
+    def recommendation(self) -> str:
+        """The active style recommendation for display ('' when none)."""
+        return "+".join(self._recommendation)
 
     def base_names(self) -> list[str]:
         """The authored base style names."""
@@ -183,54 +199,52 @@ class Core:
         return sorted(self._meta)
 
     def style_names(self) -> list[str]:
-        """All selectable names (``normal`` + meta-styles + base styles)."""
-        return [DEFAULT_STYLE, *sorted(self._meta), *sorted(self._styles)]
+        """All names a recommendation may use (``auto`` + meta-styles + base styles)."""
+        return ["auto", *sorted(self._meta), *sorted(self._styles)]
 
     def set_style(self, spec: str) -> bool:
-        """Set the active answer style(s) from a spec — base styles and/or meta-styles.
+        """Set a soft style **recommendation** (not a switch) — Лілі still chooses.
 
-        Names are separated by spaces, commas, or ``+`` (e.g. ``"коротко офіційно"``
-        or a meta-style like ``"лагідна"``); they stack (each overlay is appended, in
-        order). A **meta-style** expands to its base styles. ``normal`` clears the
-        overlay. Returns ``False`` (and changes nothing) if **any** name is
-        unknown — the switch is all-or-nothing.
+        Names are separated by spaces/commas/``+``. ``auto``/``normal``/empty clears
+        the recommendation (she chooses freely). Returns ``False`` (changing nothing)
+        if any name is unknown.
         """
         names = [n for n in re.split(r"[\s,+]+", spec.strip().lower()) if n]
-        if not names:
-            return False
-        valid = {DEFAULT_STYLE, *self._styles, *self._meta}
+        if not names or names == ["auto"] or names == ["normal"]:
+            self._recommendation = []
+            return True
+        valid = {*self._styles, *self._meta}
         if any(n not in valid for n in names):
             return False
-        active: list[str] = []
-        for n in names:  # drop 'normal' (no overlay) and dedupe, keep order
-            if n != DEFAULT_STYLE and n not in active:
-                active.append(n)
-        self._active = active
+        self._recommendation = list(dict.fromkeys(names))  # dedupe, keep order
         return True
 
-    def _expand(self) -> list[str]:
-        """Resolve the active selection to an ordered, deduped list of base styles.
-
-        Meta-styles expand to their base styles; base styles map to themselves.
-        Unknown base references (e.g. a typo in a meta alias) are skipped.
-        """
-        out: list[str] = []
-        for token in self._active:
-            for base in self._meta.get(token, [token]):
-                if base in self._styles and base not in out:
-                    out.append(base)
-        return out
-
-    def _style_overlay(self) -> str | None:
-        """The combined overlay text for the active (expanded) style(s), or ``None``."""
-        return "\n\n".join(self._styles[b] for b in self._expand()) or None
+    def _style_directive(self) -> str | None:
+        """The auto-style palette: every meta + base style (so Лілі can choose), plus
+        the user's soft recommendation if set. ``None`` when no styles are authored."""
+        if not self._styles and not self._meta:
+            return None
+        lines: list[str] = []
+        if self._meta:
+            lines.append("Мега-стилі (обирай переважно з них) — кожен поєднує базові:")
+            lines += [f"- {name} = {', '.join(self._meta[name])}" for name in sorted(self._meta)]
+        if self._styles:
+            lines.append("Базові стилі:")
+            lines += [f"- {name}: {self._styles[name]}" for name in sorted(self._styles)]
+        if self._recommendation:
+            lines.append(
+                f"(Користувач радить: {', '.join(self._recommendation)} — "
+                "врахуй, якщо доречно; ти все одно вирішуєш.)"
+            )
+        return "\n".join(lines)
 
     def start_session(self) -> Session:
         """Open a fresh session for the active user (persisted).
 
-        The answer style is per-session — it resets to ``normal`` here.
+        The style recommendation + Лілі's last choice are per-session — reset here.
         """
-        self._active = []
+        self._recommendation = []
+        self.last_style = None
         self._write_face_signal(DEFAULT_EMOTION.value, DEFAULT_INTENSITY)  # calm before the first turn
         return self._repo.create_session(self._user_id)
 
@@ -271,7 +285,7 @@ class Core:
             summaries=summaries,
             facts=facts,
             digest=digest.summary if digest else None,
-            style=self._style_overlay(),
+            style=self._style_directive(),
             emotion=True,
             ambient=ambient_line(self._world, self._clock),
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
@@ -401,6 +415,10 @@ class Core:
         # inline reasoning; fall back to the provider's summarized thinking channel.
         inline_thinking, reply_text = split_reasoning(str(raw.get("reply") or ""))
         tag_emotion, reply_text = split_emotion(reply_text)
+        # Лілі's self-chosen answer style — record it (for the status "who") and strip it.
+        tag_style, reply_text = split_style(reply_text)
+        if tag_style:
+            self.last_style = tag_style
         # Strip a leading [date-time] the model may echo from the timestamped history.
         reply_text = strip_leading_stamp(reply_text)
         self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None)

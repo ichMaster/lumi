@@ -46,12 +46,35 @@ def split_reasoning(text: str) -> tuple[str | None, str]:
     reply = _STRAY_THINK_RE.sub("", _THINK_RE.sub("", text)).strip()
     return thinking, reply
 
-# Framing that makes the answer-style overlay a prioritized directive. Placed at
-# the very end of the system prompt (last thing the model reads before the turn).
+# Framing for the auto-style palette — placed at the very end of the system prompt.
+# Лілі picks her own answer style (preferring mega/meta-styles), writes in it, and
+# declares it as <style>name</style> (parsed + stripped by split_style). A `/style`
+# recommendation, if set, rides inside the palette text as a soft bias.
 STYLE_HEADER = (
-    "ВАЖЛИВО — ФОРМАТ І ДОВЖИНА ТВОЄЇ ВІДПОВІДІ. Дотримуйся цього СУВОРО; "
-    "це має пріоритет над типовою багатослівністю та іншими вказівками щодо форми:"
+    "ВАЖЛИВО — СТИЛЬ ВІДПОВІДІ. Сама обери стиль, що найкраще пасує цьому моменту, "
+    "з палітри нижче, і пиши САМЕ в ньому. Віддавай перевагу МЕГА-стилям (вони "
+    "цілісніші); базовий бери, лише якщо жоден мега не пасує. Це впливає тільки на "
+    "форму, не на компетентність чи теплоту. Наприкінці познач свій вибір тегом "
+    "<style>назва</style> (сам тег не коментуй)."
 )
+
+# Inline style tag: <style>лагідна</style> — Лілі's declared answer style for the turn.
+_STYLE_TAG_RE = re.compile(r"<style>\s*([^<>]+?)\s*</style>", re.IGNORECASE)
+_STRAY_STYLE_RE = re.compile(r"</?style\b[^>]*>", re.IGNORECASE)
+
+
+def split_style(text: str) -> tuple[str | None, str]:
+    """Extract Лілі's inline ``<style>name</style>`` choice from a reply.
+
+    Returns ``(name, clean_text)`` (name lowercased/stripped) when present, else
+    ``(None, text.strip())``. The tag and any stray ``<style>`` markers are removed
+    so they never show in the reply — mirror of :func:`split_emotion`.
+    """
+    match = _STYLE_TAG_RE.search(text)
+    clean = _STRAY_STYLE_RE.sub("", _STYLE_TAG_RE.sub("", text)).strip()
+    if not match:
+        return None, clean
+    return match.group(1).strip().lower(), clean
 
 # Framing for the v0.6 daily mood resolution — a prominent, prioritized block that
 # colors her tone and the emotions she leans toward, never her competence.
