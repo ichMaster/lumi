@@ -105,3 +105,19 @@ def test_no_idle_timeout_holds_the_face(tmp_path):
     sw = FaceSwitcher(sig, FACES, exists=_present("calm.png", "joy_high.png"))  # idle off
     assert sw.poll(now=0) == FACES / "joy_high.png"
     assert sw.poll(now=10_000) is None                # never relaxes
+
+
+def test_parse_signal_ignores_trailing_datetime():
+    from viewer.face import parse_signal
+
+    assert parse_signal("joy 0.80 2026-06-08 14:30:00") == ("joy", 0.80)
+
+
+def test_idle_relax_wakes_on_a_repeated_emotion_with_a_new_timestamp(tmp_path):
+    sig = tmp_path / "face.txt"
+    sig.write_text("joy 0.9 2026-06-08 14:00:00", encoding="utf-8")
+    sw = FaceSwitcher(sig, FACES, exists=_present("calm.png", "joy_high.png"), idle_timeout=60)
+    assert sw.poll(now=0) == FACES / "joy_high.png"
+    assert sw.poll(now=60) == FACES / "calm.png"  # idled to calm
+    sig.write_text("joy 0.9 2026-06-08 14:05:00", encoding="utf-8")  # SAME emotion, new time
+    assert sw.poll(now=70) == FACES / "joy_high.png"  # the changed line wakes it

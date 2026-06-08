@@ -66,15 +66,15 @@ def face_for(
     return calm
 
 
-def read_signal(path: str | Path) -> tuple[str, float | None]:
-    """Read the one-word (+ optional intensity) signal. Missing/garbled → ``('calm', None)``."""
-    try:
-        raw = Path(path).read_text(encoding="utf-8").strip()
-    except OSError:
-        return DEFAULT_EMOTION.value, None
-    if not raw:
-        return DEFAULT_EMOTION.value, None
+def parse_signal(raw: str) -> tuple[str, float | None]:
+    """Parse a signal line ``<emotion> [intensity] [date time]`` → ``(emotion, intensity)``.
+
+    Tokens after the intensity (the per-turn date-time the core writes) are ignored for the
+    face; the raw line is what :class:`FaceSwitcher` uses to detect a new turn.
+    """
     parts = raw.split()
+    if not parts:
+        return DEFAULT_EMOTION.value, None
     emotion = _normalize(parts[0])
     intensity: float | None = None
     if len(parts) > 1:
@@ -83,6 +83,14 @@ def read_signal(path: str | Path) -> tuple[str, float | None]:
         except ValueError:
             intensity = None
     return emotion, intensity
+
+
+def read_signal(path: str | Path) -> tuple[str, float | None]:
+    """Read the signal file → ``(emotion, intensity)``. Missing/garbled → ``('calm', None)``."""
+    try:
+        return parse_signal(Path(path).read_text(encoding="utf-8").strip())
+    except OSError:
+        return DEFAULT_EMOTION.value, None
 
 
 class FaceSwitcher:
@@ -113,7 +121,7 @@ class FaceSwitcher:
         self._clock = clock
         self._default = face_for(DEFAULT_EMOTION.value, None, self._faces, exists=exists)
         self._shown: Path | None = None
-        self._last_read: tuple[str, float | None] | None = None
+        self._last_raw: str | None = None  # the full signal line (incl. timestamp) — change key
         self._last_change: float = 0.0
 
     @property
@@ -127,10 +135,14 @@ class FaceSwitcher:
         past ``idle_timeout`` relaxes to the default (`calm`).
         """
         now = self._clock() if now is None else now
-        read = read_signal(self._signal)
-        path = face_for(read[0], read[1], self._faces, exists=self._exists)
-        if read != self._last_read:  # the signal changed → a new emotion/turn
-            self._last_read = read
+        try:
+            raw = self._signal.read_text(encoding="utf-8").strip()
+        except OSError:
+            raw = ""
+        emotion, intensity = parse_signal(raw)
+        path = face_for(emotion, intensity, self._faces, exists=self._exists)
+        if raw != self._last_raw:  # the signal line changed (incl. its timestamp) → a new turn
+            self._last_raw = raw
             self._last_change = now
             if path != self._shown:
                 self._shown = path

@@ -38,3 +38,14 @@ def test_signal_write_error_degrades_silently(tmp_path):
 def test_no_signal_path_is_a_noop(tmp_path):
     core = _core(tmp_path, None)            # signal off
     core.reply("привіт", core.start_session())  # no write, no error
+
+
+def test_signal_line_includes_a_datetime(tmp_path):
+    import re
+
+    sig = tmp_path / "face.txt"
+    core = _core(tmp_path, sig)
+    core.reply("привіт", core.start_session())
+    text = sig.read_text(encoding="utf-8")
+    assert text.startswith("joy 0.80 ")  # emotion + intensity, then the timestamp
+    assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$", text)

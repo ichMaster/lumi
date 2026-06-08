@@ -244,7 +244,8 @@ class Core:
             return
         try:
             self._face_signal.parent.mkdir(parents=True, exist_ok=True)
-            self._face_signal.write_text(f"{emotion} {intensity:.2f}", encoding="utf-8")
+            stamp = self._clock().strftime("%Y-%m-%d %H:%M:%S")  # makes every turn's line unique
+            self._face_signal.write_text(f"{emotion} {intensity:.2f} {stamp}", encoding="utf-8")
         except OSError:
             pass  # best-effort; the viewer falls back to calm
 
