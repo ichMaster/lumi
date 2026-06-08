@@ -14,7 +14,15 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 # A leading "[YYYY-MM-DD …]" the model sometimes echoes from the timestamped history.
-_LEADING_STAMP_RE = re.compile(r"^\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*")
+# Tolerates a missing closing "]" (the model occasionally drops it): after the date it
+# consumes either the rest up to a "]" (closed), or a bare "HH:MM[:SS]" time, or nothing —
+# then any trailing whitespace/newline. Requires a real "[YYYY-MM-DD" so it never eats
+# normal text that merely starts with "[".
+_LEADING_STAMP_RE = re.compile(
+    r"^\s*\[\s*\d{4}-\d{2}-\d{2}"
+    r"(?:[^\]\n]*\]|[ T]\d{2}:\d{2}(?::\d{2})?)?"
+    r"\s*"
+)
 
 # A clock is just a callable returning an aware datetime.
 Clock = Callable[[], datetime]
