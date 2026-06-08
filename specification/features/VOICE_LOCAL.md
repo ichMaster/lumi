@@ -2,7 +2,7 @@
 
 A separate console voicing app that runs fully locally, without a server. It **reads Лілі's replies from a log**, voices them with the ElevenLabs voice, and **writes the `id` of voiced messages to another log**. The core and the voicer are fully decoupled: the core only appends replies, the voicer catches up and marks what's done.
 
-It is **another decoupled local renderer** of the core's output — the sibling of the v0.7 emotion viewer (the viewer needs only the emotion word; the voicer needs the reply text) — and the **local-stage sibling of the web voice (v2.2)**: both use the **same ElevenLabs TTS adapter** in `/voice`. It lands as **v0.16**.
+It is **another decoupled local renderer** of the core's output — the sibling of the v0.7 emotion viewer (the viewer needs only the emotion word; the voicer needs the reply text) — and the **local-stage sibling of the web voice (v2.2)**: both use the **same ElevenLabs TTS adapter** in `/voice`. It lands as **v0.18**.
 
 ## Essence
 
@@ -62,7 +62,7 @@ The voicer works linearly: take the smallest new `id` (not in `spoken`) → voic
 ## Connection to the rest of Lumi
 
 - **Another local renderer** of the core's output, alongside the v0.7 emotion viewer. The viewer needs only the emotion word; the voicer needs the text — so it reads `outbox` (text + id), not just the emotion signal.
-- **The local-stage sibling of the web voice (v2.2):** both use the same `/voice` ElevenLabs TTS adapter; v0.16 voices locally from the log, v2.2 voices server-side in the browser.
+- **The local-stage sibling of the web voice (v2.2):** both use the same `/voice` ElevenLabs TTS adapter; v0.18 voices locally from the log, v2.2 voices server-side in the browser.
 - **A second cloud dependency.** The model is already cloud (Claude Haiku from v0.1); the voicer adds **ElevenLabs (cloud synthesis)** on top — it needs `ELEVENLABS_API_KEY` + internet, and is **optional/toggle-able**. The offline alternative is **Piper (uk)**, but that is not her signature voice.
 
 ## Contract
@@ -73,5 +73,5 @@ The voicer works linearly: take the smallest new `id` (not in `spoken`) → voic
 
 ## Where it lives in the Lumi roadmap
 
-**v0.16 — Local voice (ElevenLabs)**, after the v0.7 emotion viewer: real spoken replies locally, without a server. Stack — a simple console Python app + the ElevenLabs SDK (the shared `/voice` adapter) + local audio playback. Depends on: v0.1 (the core appends replies) and v0.3 (the emotion field). The web sibling is v2.2.
+**v0.18 — Local voice (ElevenLabs)**, after the v0.7 emotion viewer: real spoken replies locally, without a server. Stack — a simple console Python app + the ElevenLabs SDK (the shared `/voice` adapter) + local audio playback. Depends on: v0.1 (the core appends replies) and v0.3 (the emotion field). The web sibling is v2.2.
 </content>

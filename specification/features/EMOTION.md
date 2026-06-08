@@ -200,7 +200,7 @@ Asset packs live in `/web` (or `/assets`) — see §10.
 ## 8. Validation and fallback
 
 The core never trusts raw model output:
-- **Schema enforcement first.** Use the model's constrained output — **Anthropic tool/structured output** for Claude Haiku (v0.1); for the models added in v0.18, each provider's mechanism (OpenAI/DeepSeek JSON-schema, MiniMax JSON) — to force `emotion` to the enum and `intensity` to a 0–1 number so invalid values are rare by construction. (The gate below is still the real safety net.)
+- **Schema enforcement first.** Use the model's constrained output — **Anthropic tool/structured output** for Claude Haiku (v0.1); for the models added in v0.20, each provider's mechanism (OpenAI/DeepSeek JSON-schema, MiniMax JSON) — to force `emotion` to the enum and `intensity` to a 0–1 number so invalid values are rare by construction. (The gate below is still the real safety net.)
 - **Validation gate.** On parse: an unknown/missing `emotion` → `calm`; `intensity` clamped to `[0,1]`, missing → `0.5`; a missing `reply` is an error surfaced to the interface (not a silent empty turn).
 - **Log every repair** keyed by `session_id`/turn so drift in model behavior is visible (ARCHITECTURE §Observability).
 
