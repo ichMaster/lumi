@@ -8,14 +8,18 @@ from core.repository import LongTermFact, SessionDigest, ShortSummary
 
 
 def test_short_summary_shape():
+    # v0.9: two tiers — detailed `summary` + one-line `gist`.
     fields = set(ShortSummary.__dataclass_fields__)
-    assert fields == {"user_id", "session_id", "summary", "ts"}
+    assert fields == {"user_id", "session_id", "summary", "gist", "ts"}
 
 
 def test_short_summary_is_per_user():
     # Every short-memory record carries the owning user_id (no cross-user leak).
-    s = ShortSummary(user_id="owner", session_id="s1", summary="gist", ts="2026-06-06T00:00:00+00:00")
-    assert s.user_id == "owner"
+    s = ShortSummary(
+        user_id="owner", session_id="s1", summary="детальний", gist="стисло",
+        ts="2026-06-06T00:00:00+00:00",
+    )
+    assert s.user_id == "owner" and s.gist == "стисло"
 
 
 def test_long_term_fact_shape():

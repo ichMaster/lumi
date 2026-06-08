@@ -81,11 +81,16 @@ def make_message(
 
 @dataclass(frozen=True)
 class ShortSummary:
-    """The compressed gist of a finished session. Per-user (private)."""
+    """A finished session compressed in **two tiers** (v0.9). Per-user (private).
+
+    ``summary`` — the detailed recall (length-scaled); ``gist`` — a one-line headline
+    for the "days at a glance" tier. Pre-v0.9 records have no ``gist`` (loaded as "").
+    """
 
     user_id: str
     session_id: str
     summary: str
+    gist: str
     ts: str
 
 

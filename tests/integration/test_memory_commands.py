@@ -9,7 +9,7 @@ from tui.app import CANCELLED_LINE, CLEARED_LINE, LumiApp
 
 def _seeded_repo(tmp_path, user_id="owner"):
     repo = JsonRepository(tmp_path / "store.json")
-    repo.add_summary(ShortSummary(user_id, "s1", "Говорили про гори.", "2026-06-06T10:00:00+00:00"))
+    repo.add_summary(ShortSummary(user_id, "s1", "Говорили про гори.", "гори", "2026-06-06T10:00:00+00:00"))
     repo.add_fact(LongTermFact(user_id, "Любить каву", "", 0.5, "2026-06-06T10:00:00+00:00"))
     return repo
 

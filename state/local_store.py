@@ -52,7 +52,8 @@ class JsonRepository:
                 msgs.append(Message(**raw))
             self._messages[sid] = msgs
         for uid, raws in data.get("summaries", {}).items():
-            self._summaries[uid] = [ShortSummary(**raw) for raw in raws]
+            # Migration: pre-v0.9 records have no `gist` → default it to "".
+            self._summaries[uid] = [ShortSummary(**{"gist": "", **raw}) for raw in raws]
         for uid, raws in data.get("facts", {}).items():
             self._facts[uid] = [LongTermFact(**raw) for raw in raws]
         for sid, raw in data.get("digests", {}).items():

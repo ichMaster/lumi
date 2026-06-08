@@ -38,6 +38,7 @@ from core.memory import (
     digest_request,
     facts_request,
     parse_facts,
+    parse_summary,
     summary_request,
     trim_history,
 )
@@ -532,10 +533,13 @@ class Core:
             return None
         if not summary_text:
             return None
+        # v0.9: one call → both the detailed summary and a one-line gist.
+        detailed, gist = parse_summary(summary_text)
         summary = ShortSummary(
             user_id=self._user_id,
             session_id=session.id,
-            summary=summary_text,
+            summary=detailed,
+            gist=gist,
             ts=self._clock().isoformat(),
         )
         self._repo.add_summary(summary)

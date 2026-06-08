@@ -61,7 +61,7 @@ def test_model_failure_writes_no_summary_and_does_not_raise(tmp_path):
 
 def test_summaries_are_isolated_by_user(tmp_path):
     repo = JsonRepository(tmp_path / "store.json")
-    repo.add_summary(ShortSummary("alice", "s1", "Alice's gist", "2026-06-06T10:00:00+00:00"))
+    repo.add_summary(ShortSummary("alice", "s1", "Alice's gist", "g", "2026-06-06T10:00:00+00:00"))
     assert [s.summary for s in repo.recent_summaries("alice")] == ["Alice's gist"]
     assert repo.recent_summaries("bob") == []  # isolation invariant
 
@@ -69,6 +69,59 @@ def test_summaries_are_isolated_by_user(tmp_path):
 def test_recent_summaries_caps_at_limit(tmp_path):
     repo = JsonRepository(tmp_path / "store.json")
     for i in range(7):
-        repo.add_summary(ShortSummary("owner", f"s{i}", f"gist {i}", "2026-06-06T10:00:00+00:00"))
+        repo.add_summary(ShortSummary("owner", f"s{i}", f"gist {i}", f"g{i}", "2026-06-06T10:00:00+00:00"))
     recent = repo.recent_summaries("owner", limit=3)
     assert [s.summary for s in recent] == ["gist 4", "gist 5", "gist 6"]
+
+
+# --- v0.9 (LUMI-034): two-tier summary (detailed + gist) + migration -----
+from core.memory import parse_summary  # noqa: E402
+
+
+def test_parse_summary_splits_detailed_and_gist():
+    detailed, gist = parse_summary("Детальний підсумок про гори й каву.\n\nСТИСЛО: говорили про гори.")
+    assert detailed == "Детальний підсумок про гори й каву."
+    assert gist == "говорили про гори."
+
+
+def test_parse_summary_falls_back_to_first_sentence_when_no_marker():
+    detailed, gist = parse_summary("Перше речення тут. Друге речення.")
+    assert detailed == "Перше речення тут. Друге речення."  # the whole text stays detailed
+    assert gist == "Перше речення тут."  # first sentence → fallback gist
+
+
+def test_end_session_writes_both_tiers(tmp_path):
+    llm = MockLLMClient(["вітаю", "Детальний підсумок розмови.\nСТИСЛО: коротка суть."])
+    core = _core(tmp_path, llm)
+    session = core.start_session()
+    core.reply("привіт", session)
+    summary = core.end_session(session)
+    assert summary.summary == "Детальний підсумок розмови."  # detailed tier
+    assert summary.gist == "коротка суть."  # gist tier (one call)
+
+
+def test_old_summary_without_gist_loads_migrated(tmp_path):
+    import json
+
+    p = tmp_path / "store.json"
+    p.write_text(
+        json.dumps(
+            {  # an old-shape record — no `gist`
+                "summaries": {
+                    "owner": [
+                        {
+                            "user_id": "owner",
+                            "session_id": "s1",
+                            "summary": "стара памʼять",
+                            "ts": "2026-06-06T10:00:00+00:00",
+                        }
+                    ]
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    recent = JsonRepository(p).recent_summaries("owner")
+    assert len(recent) == 1
+    assert recent[0].summary == "стара памʼять" and recent[0].gist == ""  # migrated

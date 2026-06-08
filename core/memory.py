@@ -6,6 +6,7 @@ window (history trimming); LUMI-009/010 add summary/fact assembly here.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, TypeVar
 
@@ -22,8 +23,13 @@ RECENT_SUMMARIES = 5
 # to the session size — a longer conversation earns a fuller summary.
 SUMMARY_SYSTEM = (
     "Ти стискаєш діалог у підсумок для памʼяті Лілі — від третьої особи, по суті: "
-    "про що говорили й важливе про співрозмовника. Без вступів і звертань — лише підсумок."
+    "про що говорили й важливе про співрозмовника. Без вступів і звертань. "
+    "СПЕРШУ — детальний підсумок (орієнтовний обсяг нижче). А В КІНЦІ окремим рядком "
+    "«СТИСЛО:» — одне коротке речення-суть (до ~15 слів) для швидкого пригадування."
 )
+
+# Pulls the trailing one-line gist ("СТИСЛО: …") off the summary reply.
+_GIST_RE = re.compile(r"(?im)^[ \t]*стисло[ \t]*:[ \t]*(.+?)[ \t]*$")
 
 # Summary length bounds (sentences), scaled by message count.
 _SUMMARY_MIN_SENTENCES = 1
@@ -80,8 +86,30 @@ def summary_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, st
     """
     transcript = "\n".join(f"{m.role}: {m.text}" for m in messages)
     target = summary_sentences(len(messages))
-    system = f"{SUMMARY_SYSTEM} Орієнтовний обсяг: {target} речень."
+    system = f"{SUMMARY_SYSTEM} Орієнтовний обсяг детальної частини: {target} речень."
     return system, [{"role": "user", "content": transcript}]
+
+
+def parse_summary(text: str) -> tuple[str, str]:
+    """Split a summary reply into ``(detailed, gist)`` — the v0.9 two tiers.
+
+    The trailing «СТИСЛО: …» line is the **gist**; everything before it is the
+    **detailed** summary. When the model omits the gist, fall back to the first
+    sentence of the detailed summary (so a gist always exists).
+    """
+    text = text.strip()
+    match = _GIST_RE.search(text)
+    if match:
+        gist = match.group(1).strip()
+        detailed = text[: match.start()].strip()
+    else:
+        gist, detailed = "", text
+    if not detailed:
+        detailed = text
+    if not gist:
+        first = re.split(r"(?<=[.!?])\s", detailed, maxsplit=1)[0].strip()
+        gist = first if len(first) <= 120 else detailed[:120].rstrip() + "…"
+    return detailed, gist
 
 
 def facts_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, str]]]:

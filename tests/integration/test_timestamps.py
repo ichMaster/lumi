@@ -37,6 +37,7 @@ def test_recalled_summaries_are_dated_in_the_prompt(tmp_path):
             user_id="owner",
             session_id="old",
             summary="Говорили про гори.",
+            gist="гори",
             ts="2026-06-01T10:00:00+00:00",
         )
     )
