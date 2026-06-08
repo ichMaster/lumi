@@ -22,8 +22,9 @@ behavior; the design note lives in
 | **Base style** | one overlay — a concrete instruction with a length limit | `коротко` → "2–3 sentences, ≤40 words" |
 | **Meta‑style** | a preset that expands to **several** base styles | `лагідна` → `поясни + просто + приклад` |
 
-`normal` is the default — **no overlay** (Лілі's plain self). Names are **Ukrainian**; base
-styles are adverbs/nouns, meta‑styles are adjectives in Лілі's voice.
+The default is **auto** — Лілі picks her own style each turn (preferring meta‑styles);
+`auto`/`normal` just means *no recommendation*. Names are **Ukrainian**; base styles are
+adverbs/nouns, meta‑styles are adjectives in Лілі's voice.
 
 ---
 
@@ -70,58 +71,60 @@ adjectives in Лілі's voice. Authored as `= a, b, c` alias lines in
 
 ---
 
-## 4. Using `/style` (TUI)
+## 4. Using `/style` (TUI) — a recommendation, not a switch
+
+Лілі **picks her own style every turn** (see §5). `/style` only *recommends*:
 
 | Command | Effect |
 |---|---|
-| `/style` | lists meta‑styles + base styles, and the current selection |
-| `/style лагідна` | switch to a meta‑style (expands to its base styles) |
-| `/style коротко офіційно` | **stack** several styles (space‑, comma‑, or `+`‑separated) |
-| `/style лірична невимушено` | mix a meta‑style with a base style |
-| `/style normal` | clear back to the default (no overlay) |
+| `/style` | lists meta‑styles + base styles, her current pick, and your recommendation |
+| `/style лагідна` | **recommend** a style — a soft hint she leans toward (she still decides) |
+| `/style лірична невимушено` | recommend several (space‑, comma‑, or `+`‑separated) |
+| `/style auto` (or `/style normal`) | clear the recommendation — she chooses freely |
 
 Rules:
-- **Stacking** — selected overlays are concatenated **in order**, under one directive header.
-- **All‑or‑nothing** — if *any* name is unknown (`/style коротко xxx`), nothing changes and
-  you get `Unknown style in '…'`.
-- **`normal`** anywhere clears the overlay; duplicates are de‑duped; order is preserved.
-- The **status line** shows the active selection (e.g. `… · style: коротко+офіційно`); a
-  meta‑style shows its own name (`style: лагідна`).
-- **Per‑session** — the selection resets to `normal` on `/new` and on restart (it is *not*
-  persisted).
+- **It's a hint, not a switch** — the recommendation rides in the prompt as *«Користувач
+  радить: … — врахуй, якщо доречно; ти все одно вирішуєш.»* Лілі may follow it or not.
+- **All‑or‑nothing** — if *any* name is unknown (`/style коротко xxx`), the recommendation is
+  unchanged and you get `Unknown style in '…'`.
+- **`auto`/`normal`/empty** clears it; duplicates are de‑duped; order is preserved.
+- The **status line** shows her chosen style and **who picked it**: `style: лагідна (Лілі)`
+  (her own), `style: коротко (ти)` (she followed your recommendation), or `style: авто` before
+  her first reply (`· радиш: …` if you've recommended one).
+- **Per‑session** — the recommendation and her last pick reset on `/new` and on restart.
 
 ---
 
-## 5. How a style reaches the model
+## 5. How a style reaches the model — and comes back
 
-Every turn, `Core._system_prompt(session)` ([../core/agent.py](../core/agent.py)) resolves the
-active selection to overlay text and passes it to the assembler. The style is the **last**
-block of the system prompt, framed by an importance header:
+Every turn, `Core._system_prompt(session)` ([../core/agent.py](../core/agent.py)) builds the
+**palette** (every meta + base style) and passes it as the **last** block of the system prompt,
+framed by a header that asks Лілі to choose:
 
 ```
 system = canon
-       + past-session summaries
-       + long-term facts
-       + session digest (in-session compaction)
-       + ── STYLE_HEADER ──            ← prioritized directive, the last thing the model reads
-         <overlay text of the active style(s)>
+       + …emotion instruction / ambient / memory / digest / mood…
+       + ── STYLE_HEADER ──        ← "choose a style (prefer mega), write in it, declare it"
+         Мега-стилі (обирай переважно з них) — кожен поєднує базові:
+         - лагідна = поясни, просто, приклад
+         …
+         Базові стилі:
+         - коротко: <text>
+         …
+         (Користувач радить: <recommendation> — врахуй, якщо доречно.)   ← only if set
 messages = [ …live tail… ] + your new line
 ```
 
-`build_system_prompt(…, style=…)` ([../core/prompt.py](../core/prompt.py)) appends:
+`build_system_prompt(…, style=…)` ([../core/prompt.py](../core/prompt.py)) appends
+`f"{STYLE_HEADER}\n{style}"` at the very end (unchanged). The new `STYLE_HEADER` asks her to
+**choose** the fitting style, **prefer mega‑styles**, write in it, and **declare** it.
 
-```python
-if style:
-    parts.append(f"{STYLE_HEADER}\n{style}")   # at the very end
-```
+She replies **in** the chosen style and tags it: `… <style>лагідна</style>`. `split_style`
+parses the name, **strips the tag** (so it never shows), and `Core` records it as `last_style`
+— which drives the status‑line «who». A mirror of the `<emotion>` channel.
 
-`STYLE_HEADER` makes it a **prioritized directive** — paraphrased: *"ВАЖЛИВО — ФОРМАТ І
-ДОВЖИНА ТВОЄЇ ВІДПОВІДІ. Дотримуйся цього СУВОРО; це має пріоритет над типовою
-багатослівністю…"*. Placing it last (recency) and emphasizing it is what makes a short
-style actually override Лілі's default verbosity.
-
-> The overlay is **prompt text only** — there is no code that truncates the reply. The model
-> follows the instruction; the limits are guidance, not hard enforcement.
+> The palette is **prompt text only** — no code truncates the reply. Лілі follows the
+> instruction; the limits are guidance, not hard enforcement.
 
 ---
 
@@ -132,33 +135,35 @@ style actually override Лілі's default verbosity.
 | [../core/styles.md](../core/styles.md) | the authored styles — `## name` + body; `= a, b, c` for a meta‑style; `#` comments / category headers |
 | [../core/styles.py](../core/styles.py) | `load_styles` (base, prose), `load_meta_styles` (`=` aliases), `_sections` parser, `DEFAULT_STYLE` |
 | [../core/config.py](../core/config.py) | `styles_path` (default `core/styles.md`, env `LUMI_STYLES_PATH`) |
-| [../core/agent.py](../core/agent.py) | `Core._styles`/`_meta`/`_active`; `set_style` (parse + validate, all‑or‑nothing), `_expand` (meta→base), `_style_overlay`, `style`/`style_names`/`base_names`/`meta_names`; `start_session` resets; `build_core` loads both |
-| [../core/prompt.py](../core/prompt.py) | `STYLE_HEADER`, `build_system_prompt(…, style)` — appends the overlay last |
-| [../tui/app.py](../tui/app.py) | the `/style` command (`_style_command`), the status‑line style display |
+| [../core/agent.py](../core/agent.py) | `Core._styles`/`_meta`/`_recommendation`/`last_style`; `set_style` (recommendation; `auto`/`normal`/empty clears; all‑or‑nothing), `_style_directive` (builds the palette + recommendation), `style` (chosen + who) / `recommendation` / `style_names` / `base_names` / `meta_names`; `start_session` resets; `reply` parses `<style>`; `build_core` loads both |
+| [../core/prompt.py](../core/prompt.py) | `STYLE_HEADER` (choose + declare), `split_style` (parse/strip the `<style>` tag), `build_system_prompt(…, style)` — appends the palette last |
+| [../tui/app.py](../tui/app.py) | the `/style` command (`_style_command` — recommend / clear), the status‑line style + «who» display |
 
 ### The resolution flow
 
 ```
 core/styles.md
-   │  load_styles ─────────▶ Core._styles  (base: name → overlay text)
+   │  load_styles ─────────▶ Core._styles  (base: name → text)
    │  load_meta_styles ────▶ Core._meta    (meta: name → [base names])
    ▼
-/style <spec>  →  set_style(spec)
-                    split on space/comma/+, lowercase
-                    validate ALL against {normal} ∪ base ∪ meta   (else reject)
-                    → Core._active = [tokens]            (per-session)
-                    │
-Core._system_prompt → _style_overlay → _expand (meta→base, dedupe, order)
-                    → "\n\n".join(base overlay texts)
-                    → build_system_prompt(style=…)  → STYLE_HEADER + overlay (at the end)
+/style <spec>  →  set_style(spec)            (auto/normal/empty → clear)
+                    validate ALL against base ∪ meta   (else reject)
+                    → Core._recommendation = [tokens]   (per-session, a hint)
+
+Core._system_prompt → _style_directive
+                    → the full palette (every meta + base) + the recommendation
+                    → build_system_prompt(style=…)  → STYLE_HEADER + palette (at the end)
                     → model
+
+model reply "…<style>лагідна</style>"
+                    → split_style → Core.last_style = "лагідна"   (tag stripped)
+                    → status: «style: лагідна (Лілі | ти)»
 ```
 
-`set_style` parses one or several names (a base style or a meta‑style); validation is
-**all‑or‑nothing**. `_expand` turns the active tokens into an ordered, de‑duped list of base
-styles (a meta expands to its members; a base maps to itself; unknown alias members are
-skipped). `style` returns the display name — `"+".join(active)` (e.g. `лагідна`,
-`коротко+офіційно`), or `normal` when empty.
+`set_style` stores a soft recommendation (all‑or‑nothing validation); `auto`/`normal`/empty
+clears it. `_style_directive` lists the whole palette so Лілі can choose. `style` returns her
+last pick + who chose it — `(Лілі)`, or `(ти)` when it matches your recommendation — or `авто`
+before her first reply.
 
 ---
 
@@ -186,8 +191,8 @@ Notes:
 - A meta‑style is anything whose body starts with `=`; otherwise the section is a base style.
 - Category headers and any `#`‑prefixed line are **comments** (skipped by the loader); only
   `## name` starts a section. `normal` and empty bodies are dropped.
-- Meta alias members should reference **real** base style names (a typo'd member is silently
-  skipped at expansion).
+- Meta alias members should reference **real** base style names — they're shown to Лілі as the
+  meta's composition (`лагідна = поясни, просто, приклад`) so she knows what choosing it means.
 
 Point at a different file with `LUMI_STYLES_PATH` in `.env`.
 
@@ -201,31 +206,36 @@ mock model (no paid calls):
 - **loader** — the authored file yields the 16 Ukrainian base styles + the 6 meta‑styles;
   every meta expands to ≥2 real base styles; category headers never leak into a body; a
   missing file → `{}`.
-- **core** — `normal` has no overlay; a single style injects its overlay **last**, with the
-  importance header; unknown is rejected; per‑session reset on `start_session`.
-- **stacking & metas** — several styles stack in order; comma/`+` separators; all‑or‑nothing
-  on an unknown name; `normal` clears; a meta‑style expands to its base overlays; metas and
-  base styles combine (`_expand` order); names list separately.
+- **`<style>` parser** — `split_style` extracts the declared name (lowercased) and strips the
+  tag (and stray markers) from the reply.
+- **auto‑style palette** — every turn the prompt offers the **whole palette** (all base texts +
+  meta compositions) and asks her to choose (prefer mega) and declare it; no styles → no palette.
+- **her choice + who** — a declared `<style>` is recorded as `last_style` and stripped from the
+  reply; `style` shows `(Лілі)`, or `(ти)` when her pick matches the recommendation; `авто`
+  before her first reply.
+- **recommendation** — `/style <name>` puts a soft recommendation in the prompt; `auto`/`normal`/
+  empty clears it; unknown is rejected (all‑or‑nothing); dedupe/order; per‑session reset.
 - **prompt assembly** — `build_system_prompt` places the style block last with `STYLE_HEADER`.
-- **TUI** — `/style` lists; `/style <name>` switches and updates the status line; unknown
-  rejected.
+- **TUI** — `/style` lists + shows who's choosing; `/style <name>` recommends and updates the
+  status line; `/style auto` clears; unknown rejected.
 
 ---
 
 ## 9. Known limitations / notes
 
-1. **Prompt‑only.** The limits are instructions the model follows, not hard truncation —
-   a style nudges length/form, it doesn't guarantee it.
-2. **Conflicting combos are allowed.** `/style коротко докладно` (one caps length, the other
-   removes the cap) or `суть + поясни` send contradictory instructions; the model lands
-   somewhere in between. There is no conflict guard yet.
-3. **Per‑session, not persisted.** Each session starts at `normal`; the choice doesn't carry
-   across restarts. (The future daily **mood** is the persistent, automatic sibling.)
-4. **Single‑token names.** Multi‑word names would break spec parsing.
+1. **Prompt‑only.** The limits are instructions Лілі follows, not hard truncation — a style
+   nudges length/form, it doesn't guarantee it.
+2. **She chooses, not you.** `/style` only *recommends*; Лілі may follow it or pick another.
+   Watch the status «who» (`(Лілі)` vs `(ти)`) to see whether she took the hint. There is no
+   way to force a style — that's the design (cf. her self‑emitted emotion).
+3. **Per‑session, not persisted.** The recommendation and her last pick reset each session; they
+   don't carry across restarts. (The daily **mood** is the persistent, automatic sibling.)
+4. **Single‑token names.** A recommendation splits on spaces/commas/`+`, so each style name is
+   one token.
 5. **Shapes form, never competence** — by design. A style never changes what Лілі knows, her
    canon, or her memory; it only re‑shapes the reply.
 
 ---
 
-*Reflects the implementation as of the v0.2.x style work. When the style seam changes, update
+*Reflects the implementation as of the v0.7.x auto‑style work. When the style seam changes, update
 this file alongside the code and [../tests/integration/test_styles.py](../tests/integration/test_styles.py).*
