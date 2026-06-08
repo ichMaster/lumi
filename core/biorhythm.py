@@ -70,16 +70,9 @@ def biorhythms(birth_date: date, today: date) -> Biorhythms:
     return Biorhythms(cycles["physical"], cycles["emotional"], cycles["intellectual"])
 
 
-def load_birth_date(natal_path: str | Path) -> date | None:
-    """Parse ``Народження: DD.MM.YYYY`` from the natal file → a ``date`` (else ``None``).
-
-    ``None`` (missing file / no parseable line / invalid date) → biorhythms simply off,
-    so the v0.6 mood runs horoscope-only.
-    """
-    p = Path(natal_path)
-    if not p.is_file():
-        return None
-    match = _BIRTH_RE.search(p.read_text(encoding="utf-8"))
+def parse_birth_date(natal_text: str) -> date | None:
+    """Parse ``Народження: DD.MM.YYYY`` from the natal **text** → a ``date`` (else ``None``)."""
+    match = _BIRTH_RE.search(natal_text or "")
     if not match:
         return None
     day, month, year = (int(g) for g in match.groups())
@@ -87,6 +80,18 @@ def load_birth_date(natal_path: str | Path) -> date | None:
         return date(year, month, day)
     except ValueError:
         return None
+
+
+def load_birth_date(natal_path: str | Path) -> date | None:
+    """Read the natal **file** and parse the birth date → a ``date`` (else ``None``).
+
+    ``None`` (missing file / no parseable line / invalid date) → biorhythms simply off,
+    so the v0.6 mood runs horoscope-only.
+    """
+    p = Path(natal_path)
+    if not p.is_file():
+        return None
+    return parse_birth_date(p.read_text(encoding="utf-8"))
 
 
 def format_biorhythms(b: Biorhythms) -> str:

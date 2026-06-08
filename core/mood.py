@@ -53,9 +53,21 @@ def load_natal(path: str | Path) -> str:
     return "\n".join(lines).strip()
 
 
-def mood_request(natal: str, date_str: str) -> tuple[str, list[dict[str, str]]]:
-    """Build the ``(system, messages)`` for the daily mood call."""
+def mood_request(
+    natal: str, date_str: str, biorhythms: str | None = None
+) -> tuple[str, list[dict[str, str]]]:
+    """Build the ``(system, messages)`` for the daily mood call.
+
+    ``biorhythms`` (v0.8, optional) is a rendered line of the day's computed cycles —
+    when present it rides in alongside the natal chart so the reading **blends** the
+    horoscope with the biorhythms (still coloring tone/energy, never competence).
+    """
     content = f"Натальна карта:\n{natal}\n\nДата: {date_str}."
+    if biorhythms:
+        content += (
+            "\n\nБіоритми на сьогодні (ТОЧНО обчислені цикли — впусти їх у читання нарівні "
+            f"з транзитами, нехай теж фарбують енергію й настрій): {biorhythms}."
+        )
     return MOOD_SYSTEM, [{"role": "user", "content": content}]
 
 
