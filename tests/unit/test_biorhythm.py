@@ -154,3 +154,34 @@ def test_reply_still_answers_fully_with_biorhythms_merged(tmp_path):
     out = core.reply("поясни рекурсію", core.start_session())
     assert out.reply == "Звісно, поясню."
     assert core.biorhythms is not None
+
+
+# --- LUMI-033: /biorhythm command (TUI) ----------------------------------
+async def test_biorhythm_command_shows_the_cycles(tmp_path):
+    from tui.app import ChatInput, LumiApp
+
+    llm = MockLLMClient(
+        replies=_READING, states={"reply": "ок", "emotion": "calm", "intensity": 0.5}
+    )
+    core = _mood_core(tmp_path, llm)
+    core.ensure_mood()  # compute + cache today's biorhythms
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        app.query_one("#prompt", ChatInput).text = "/biorhythm"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert any("Біоритми Лілі" in line for line in app.transcript)
+        assert any("фізичний" in line for line in app.transcript)
+
+
+async def test_biorhythm_command_off_shows_a_note(tmp_path):
+    from tui.app import ChatInput, LumiApp
+
+    core = _mood_core(tmp_path, MockLLMClient(_READING), bio=False)  # biorhythms off
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        app.query_one("#prompt", ChatInput).text = "/biorhythm"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert any(("вимкнені" in line or "немає дати" in line) for line in app.transcript)
+        assert core.biorhythms is None

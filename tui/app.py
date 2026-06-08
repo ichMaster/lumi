@@ -25,6 +25,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
 from core.agent import Core
+from core.biorhythm import format_biorhythms
 from core.config import load_config
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
@@ -38,6 +39,7 @@ LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is Eng
 ERROR_LINE = "Лілі is unavailable right now. Try again in a moment."
 MEMORY_EMPTY = "_Memory is empty so far._"
 MOOD_PENDING = "_Лілі ще не визначила настрій сьогодні — напиши їй, і він складеться._"
+BIORHYTHM_OFF = "_Біоритми вимкнені або немає дати народження — напиши їй, щоб порахувати._"
 CLEARED_LINE = "Memory cleared (short- and long-term)."
 CANCELLED_LINE = "Cancelled."
 
@@ -218,7 +220,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -418,6 +420,10 @@ class LumiApp(App[None]):
             self._show_mood()
             prompt.focus()
             return
+        if text == "/biorhythm":
+            self._show_biorhythm()
+            prompt.focus()
+            return
         if text == "/new":
             await self._new_session()
             prompt.focus()
@@ -521,6 +527,12 @@ class LumiApp(App[None]):
         """Show Лілі's mood of the day — the `/mood` command (v0.6)."""
         resolution = self._core.mood
         body = f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING
+        self._emit(body, Markdown(body))
+
+    def _show_biorhythm(self) -> None:
+        """Show today's computed biorhythm cycles — the `/biorhythm` command (v0.8)."""
+        b = self._core.biorhythms
+        body = f"**Біоритми Лілі сьогодні:**\n\n{format_biorhythms(b)}" if b else BIORHYTHM_OFF
         self._emit(body, Markdown(body))
 
     def _forget(self) -> None:
