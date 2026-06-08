@@ -115,6 +115,10 @@ class JsonRepository:
     def recent_summaries(self, user_id: str, limit: int = 5) -> list[ShortSummary]:
         return list(self._summaries.get(user_id, []))[-limit:]
 
+    def summaries_since(self, user_id: str, since_date: str) -> list[ShortSummary]:
+        # Compare on the date prefix (YYYY-MM-DD) of the stored ISO ts; user-scoped.
+        return [s for s in self._summaries.get(user_id, []) if s.ts[:10] >= since_date]
+
     def add_fact(self, fact: LongTermFact) -> None:
         self._facts.setdefault(fact.user_id, []).append(fact)
         self._persist()

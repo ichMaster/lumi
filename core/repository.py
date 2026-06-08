@@ -160,6 +160,14 @@ class Repository(Protocol):
         """The user's most recent short summaries (newest last), capped at ``limit``."""
         ...
 
+    def summaries_since(self, user_id: str, since_date: str) -> list[ShortSummary]:
+        """The user's summaries whose ``ts`` date is on/after ``since_date`` (YYYY-MM-DD).
+
+        For the v0.9 "days at a glance" gist tier. Newest last; user-scoped (never
+        crosses users). ``since_date`` is a local date string (``YYYY-MM-DD``).
+        """
+        ...
+
     def add_fact(self, fact: LongTermFact) -> None:
         """Persist a durable fact about a user (per-user)."""
         ...

@@ -125,3 +125,21 @@ def test_old_summary_without_gist_loads_migrated(tmp_path):
     recent = JsonRepository(p).recent_summaries("owner")
     assert len(recent) == 1
     assert recent[0].summary == "стара памʼять" and recent[0].gist == ""  # migrated
+
+
+# --- v0.9 (LUMI-035): summaries within the last D local days -------------
+def test_summaries_since_returns_on_or_after_the_date(tmp_path):
+    repo = JsonRepository(tmp_path / "store.json")
+    repo.add_summary(ShortSummary("owner", "old", "стара", "g", "2026-06-01T10:00:00+00:00"))
+    repo.add_summary(ShortSummary("owner", "mid", "середня", "g", "2026-06-05T23:00:00+00:00"))
+    repo.add_summary(ShortSummary("owner", "new", "нова", "g", "2026-06-08T08:00:00+00:00"))
+    since = repo.summaries_since("owner", "2026-06-05")
+    assert [s.session_id for s in since] == ["mid", "new"]  # on/after, newest last
+    assert repo.summaries_since("owner", "2026-06-09") == []  # none in range
+
+
+def test_summaries_since_is_isolated_by_user(tmp_path):
+    repo = JsonRepository(tmp_path / "store.json")
+    repo.add_summary(ShortSummary("alice", "a1", "A", "g", "2026-06-08T10:00:00+00:00"))
+    assert len(repo.summaries_since("alice", "2026-06-01")) == 1
+    assert repo.summaries_since("bob", "2026-06-01") == []  # B never sees A's records
