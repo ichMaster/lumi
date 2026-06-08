@@ -140,7 +140,7 @@ class LumiApp(App[None]):
         Binding("ctrl+o", "copy_all", "Copy all", priority=True),
         Binding("ctrl+l", "clear", "Clear screen", priority=True),
         Binding("ctrl+t", "toggle_mouse", "Mouse select", priority=True),
-        Binding("f2", "toggle_sound", "Sound", priority=True),
+        Binding("ctrl+s", "toggle_sound", "Sound", priority=True),
     ]
     CSS = """
     #thinking {
@@ -202,7 +202,7 @@ class LumiApp(App[None]):
         # True while a turn (or session save) is in flight — the input box is locked
         # (disabled) until it's your turn again. Toggled via _set_busy.
         self._busy: bool = False
-        # v0.7.x send/receive sound — off by default, toggled with F2 (lazy mixer init).
+        # v0.7.x send/receive sound — off by default, toggled with Ctrl+S (lazy init).
         self._sound = SoundPlayer()
         self._sound_on: bool = False
 
@@ -427,7 +427,7 @@ class LumiApp(App[None]):
         await self._run_turn(text)
 
     def action_toggle_sound(self) -> None:
-        """Toggle the send/receive sound (F2). Turning it on probes the audio device."""
+        """Toggle the send/receive sound (Ctrl+S). Turning it on probes the audio device."""
         if not self._sound_on:
             if not self._sound.ensure():  # lazily init the mixer; False → no audio device
                 self.notify("No audio device — sound unavailable.",

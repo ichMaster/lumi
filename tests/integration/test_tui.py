@@ -499,17 +499,17 @@ async def test_sound_on_send_and_receive_but_never_on_the_nudge(tmp_path):
         assert (spy.sends, spy.receives) == (1, 1)  # unchanged
 
 
-async def test_f2_toggles_sound_and_shows_in_status(tmp_path):
+async def test_ctrl_s_toggles_sound_and_shows_in_status(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("ок")))
     async with app.run_test() as pilot:
         app._sound = _SpySound()  # ensure() True so the toggle can turn on
         assert app._sound_on is False
         assert "sound:off" in app._status_text()
 
-        await pilot.press("f2")
+        await pilot.press("ctrl+s")
         assert app._sound_on is True
         assert "sound:on" in app._status_text()
 
-        await pilot.press("f2")
+        await pilot.press("ctrl+s")
         assert app._sound_on is False
         assert "sound:off" in app._status_text()

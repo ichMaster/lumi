@@ -95,7 +95,7 @@ class Config:
     idle_seconds: int = 240
     nudge_path: Path = DEFAULT_NUDGE_PATH
     quiet_hours: tuple[int, int] | None = None
-    # v0.7.x TUI send/receive sound — off by default; toggled at runtime (F2).
+    # v0.7.x TUI send/receive sound — off by default; toggled at runtime (Ctrl+S).
     sound: bool = False
     emoji_path: Path = DEFAULT_EMOJI_PATH
     # v0.6 mood of the day — on by default.
