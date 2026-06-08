@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.7.1 (2026-06-08)
+---------------------------
+- Viewer idle-relax: the face eases to calm after LUMI_FACE_IDLE_SECONDS of an unchanged signal (default 120s; 0 = off); the next emotion wakes it. Honors EMOTION.md's ttl_ms for the static tier. Injected clock — tested without a display.
+- Timestamped face signal: the core writes "<emotion> <intensity> <YYYY-MM-DD HH:MM:SS>" each turn, so every turn's line is unique; the viewer detects new turns by the full line (idle-relax wakes even on a repeated emotion). PNGs decoded via Pillow (this pygame build lacks PNG support).
+- TUI input lock: the input box is disabled while Лілі replies (a turn or the save-on-exit) and re-enabled + refocused when it's your turn — no more typing into a box that won't send.
+- Idle nudges: user-editable openers in core/nudges.md; the nudge-file test is now content-agnostic (asserts loading behaviour, not specific lines).
+- Roadmap (planning only, no code): specced upcoming v0 phases — biorhythms merged into the mood (v0.8), face wardrobe (v0.9), richer short memory (v0.10), closeness (v0.11), inner life (v0.12-13), emotional memory (v0.14-15), semantic recall / RAG (v0.16-17).
+
 Version 0.7.0 (2026-06-08)
 ---------------------------
 - v0.7 — Local emotion viewer (LUMI-028…030): Лілі's face as a real image, locally, without a server — a separate window shows a portrait for her current emotion and changes as the conversation does. Another renderer of the locked v0.3 emotion channel (no contract change).

@@ -12,7 +12,7 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.7.0 — v0.7 Local emotion viewer.** Лілі's face as a real **image**, locally, without a
+**0.7.1 — v0.7 Local emotion viewer.** Лілі's face as a real **image**, locally, without a
 server: a separate desktop window shows a portrait for her current emotion and changes as the
 conversation does. Another **renderer of the locked v0.3 emotion channel** (alongside the v0.5
 emoji) — no contract change.
@@ -23,6 +23,10 @@ emoji) — no contract change.
   optional `_low`/`_high` intensity variants (LUMI-029).
 - **The window** — a pygame face window (`./lumi-viewer`) + a placeholder pack so it runs before
   art; drop your own `viewer/faces/*.png` in (prompts in `viewer/faces/PROMPTS.md`) (LUMI-030).
+
+_0.7.1 fixes:_ the face **relaxes to `calm` after an idle period** (`LUMI_FACE_IDLE_SECONDS`,
+default 120s; the next emotion wakes it); the signal carries **date+time** so every turn's line is
+unique; the **TUI input box locks while Лілі replies** and re-enables on your turn.
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog.
 
