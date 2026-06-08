@@ -1,6 +1,6 @@
 # Local dictation — voice input as a TUI add-on (STT)
 
-A separate local dictation process, **the mirror of the voicer ([VOICE_LOCAL.md](VOICE_LOCAL.md), v0.13)**: the voicer reads Лілі's replies and speaks them; the dictator **listens to the microphone, recognizes Ukrainian, and writes your line into the input log** — the same channel the TUI keyboard uses. The core can't tell typed from dictated. Fully local, a separate process, no server and no desktop GUI. It lands as **v0.14**.
+A separate local dictation process, **the mirror of the voicer ([VOICE_LOCAL.md](VOICE_LOCAL.md), v0.14)**: the voicer reads Лілі's replies and speaks them; the dictator **listens to the microphone, recognizes Ukrainian, and writes your line into the input log** — the same channel the TUI keyboard uses. The core can't tell typed from dictated. Fully local, a separate process, no server and no desktop GUI. It lands as **v0.15**.
 
 ## Control — a toggle key in the TUI
 
@@ -63,7 +63,7 @@ The TUI learns the recognized text from `inbox.jsonl` — the same place it writ
 TUI → listen.flag → dictator (when to listen)
 ```
 
-Four independent pieces around the core, coupled by a few files: the TUI, the dictator (voice in, v0.14), the voicer (voice out, v0.13), and the core.
+Four independent pieces around the core, coupled by a few files: the TUI, the dictator (voice in, v0.15), the voicer (voice out, v0.14), and the core.
 
 ## Details and boundaries
 
@@ -82,5 +82,5 @@ Four independent pieces around the core, coupled by a few files: the TUI, the di
 
 ## Where it lives in the Lumi roadmap
 
-**v0.14 — Local dictation (STT)**, right after the v0.13 voicer: voice *in* to mirror voice *out*, locally, no server. Stack — a simple console Python app + microphone capture + the shared `/voice` STT adapter. Depends on: v0.1 (the core consumes user turns) and v0.13 (the local-process + shared-file pattern). The web sibling is **v2.4** (both use the same STT adapter).
+**v0.15 — Local dictation (STT)**, right after the v0.14 voicer: voice *in* to mirror voice *out*, locally, no server. Stack — a simple console Python app + microphone capture + the shared `/voice` STT adapter. Depends on: v0.1 (the core consumes user turns) and v0.14 (the local-process + shared-file pattern). The web sibling is **v2.4** (both use the same STT adapter).
 </content>

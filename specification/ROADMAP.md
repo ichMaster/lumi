@@ -8,15 +8,15 @@ Arc of the two axes: capabilities grow text+memory → emotion (emoji) → daily
 
 ---
 
-## v0 — TUI: core, memory, emotion, emoji, mood, local face (+ wardrobe), closeness, inner life, voice, dictation
+## v0 — TUI: core, memory, emotion, emoji, mood (+ biorhythms), local face (+ wardrobe), closeness, inner life, voice, dictation
 
-The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.15 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.13, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
+The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.16 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.14, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
 
 ### v0.1 — Skeleton and canon
 
 **Goal:** a working text chat with Лілі's character in the terminal.
 
-Stand up the project skeleton and the `core` package, an **Anthropic client (Claude Haiku)** behind a thin **`LLMClient`** seam the core depends on (mockable in tests; model id from config, default Haiku), Лілі's authored canon loaded as the system prompt, a TUI loop with input and scrollable history, and the `Repository` interface with a local store behind it. The core exposes one `reply(...)` contract the TUI calls — no interface logic leaks into the core. **Claude Haiku is the only model to start**; more models are added behind the same seam in v0.15.
+Stand up the project skeleton and the `core` package, an **Anthropic client (Claude Haiku)** behind a thin **`LLMClient`** seam the core depends on (mockable in tests; model id from config, default Haiku), Лілі's authored canon loaded as the system prompt, a TUI loop with input and scrollable history, and the `Repository` interface with a local store behind it. The core exposes one `reply(...)` contract the TUI calls — no interface logic leaks into the core. **Claude Haiku is the only model to start**; more models are added behind the same seam in v0.16.
 
 **Tasks:**
 - Create the repo skeleton and the `core` package; wire `pyproject.toml` (ruff + pytest) and `.env` loading for `ANTHROPIC_API_KEY`.
@@ -54,7 +54,7 @@ Add the three (per-user) memory layers: session history trimmed to a rolling win
 Lock the emotion channel. The model emits `{reply, emotion, intensity}` as structured output; the core validates it against the fixed 9-value enum and the 0–1 range, repairs/falls back on invalid output, and logs the field. The `IEmotionRenderer` interface and the `LogRenderer` (plus an optional small TUI status line) land here. **This is the contract every later render tier reuses** — see [EMOTION.md](features/EMOTION.md).
 
 **Tasks:**
-- Structured output `{reply, emotion, intensity}`; constrain `emotion` to the enum and `intensity` to 0–1 via Anthropic's tool/structured output (Claude Haiku) — EMOTION.md §8. (Other models' structured output is handled per-provider when they arrive in v0.15.)
+- Structured output `{reply, emotion, intensity}`; constrain `emotion` to the enum and `intensity` to 0–1 via Anthropic's tool/structured output (Claude Haiku) — EMOTION.md §8. (Other models' structured output is handled per-provider when they arrive in v0.16.)
 - The validation/fallback gate (unknown emotion → `calm`; clamp/default intensity; missing reply → error) — EMOTION.md §8.
 - Log the emotion field per turn (the "logged" render tier); structured logs keyed by `session_id`.
 - `IEmotionRenderer` interface + `LogRenderer`; optional small TUI status line showing the current state.
@@ -136,7 +136,29 @@ Add a small **separate local desktop window** (e.g. Python/Tkinter) that shows a
 
 **Tests:** unit — the emotion→image-path resolver is total over the enum and falls back to `calm`; the signal read/poll logic (against a fake signal file); intensity-variant selection when variants exist.
 
-### v0.8 — Face variants & mood themes
+### v0.8 — Biorhythms (merged into the daily mood)
+
+**Goal:** Лілі's daily temperament gains a second, **computed** layer — three biorhythm cycles from her birth date — **merged with the v0.6 horoscope into one daily reading**.
+
+Unlike the horoscope (the model writes it; it can't compute transits), biorhythms are **exact deterministic math** — sine waves from the natal birth date — so the core computes them and hands them to the mood:
+- **Engine (in code, not the model).** Physical (23 d), Emotional (28 d), Intellectual (33 d), each `sin(2π · days_since_birth / period)` from the natal birth date (`core/natal.md`) + today (the v0.4 injected clock). Each → a value (−1…+1) + a label (high / low / rising / falling / **critical** near a zero-crossing). Pure, unit-tested.
+- **Merged with the astrology forecast (v0.6).** The biorhythm state is added to the **mood call's** inputs, so the daily **reading + resolution blend horoscope + biorhythms** into one temperament (e.g. "emotional cycle low + a tense transit → a quiet, sensitive day"). The v0.6 contract is unchanged otherwise: the **full reading is logged**, only the **resolution** is injected, and it **biases tone/energy, never competence**.
+- **Once per local day**, cached with the mood, recomputed at local midnight. A `/biorhythm` command shows today's three values; `/mood` shows the merged resolution.
+
+See [BIORHYTHMS.md](features/BIORHYTHMS.md). Depends on: v0.6 (the mood it merges into), v0.4 (the clock), and the natal birth date.
+
+**Tasks:**
+- A pure `core/biorhythm.py`: `biorhythms(birth_date, today) → {physical, emotional, intellectual}`, each a value + phase label (incl. **critical** near zero); the birth date is read from `core/natal.md`.
+- **Merge into the mood:** pass the biorhythm state into the v0.6 mood call so the reading/resolution blends horoscope + biorhythms; full reading logged, resolution injected (the rest of v0.6 unchanged).
+- Compute once per local day, cached with the mood (injected clock; recompute across midnight).
+- A `/biorhythm` command (the three values + labels); the merged resolution stays in `/mood`.
+- **Guardrail:** the merge colors tone/energy, **never competence** (the mood's hard rule).
+
+**DoD:** each local day the mood reading **blends the horoscope with the three computed biorhythm cycles** into one resolution; the cycles are exact (deterministic sine from the birth date, including critical-day detection); `/biorhythm` shows today's values; the merge never affects competence; cached per local day.
+
+**Tests:** unit — the biorhythm math (known days-since-birth → exact values + labels; critical-day detection) against a fixed clock; the merge feeds the mood call (mock model — the biorhythm state appears in the mood prompt); cached once per local day; `/biorhythm` renders. No paid calls.
+
+### v0.9 — Face variants & mood themes
 
 **Goal:** Лілі's image face stops repeating and dresses for the day — **several pictures per emotion** picked at random, and a **themed outfit** chosen by her **mood of the day**.
 
@@ -157,7 +179,7 @@ With no themes/variants present it behaves exactly like v0.7 (single image + `ca
 
 **Tests:** unit — the variant picker (random, no immediate repeat, total over the enum, calm/default-theme fallback) against a fake faces tree; the theme-manifest loader; the mood→theme selection (mock model + fixed clock; cached per day, recompute across midnight; default on failure); the extended signal parse (`theme emotion intensity`).
 
-### v0.9 — Richer short memory (recent detail + days at a glance)
+### v0.10 — Richer short memory (recent detail + days at a glance)
 
 **Goal:** Лілі recalls **recent conversations in detail** and **the past few days at a glance** — a richer *short* memory, without touching long-term facts.
 
@@ -177,7 +199,7 @@ It is a memory-record shape change — `ShortSummary` gains a `gist` (the `summa
 
 **Tests:** unit — the two-tier assembly (last N detailed + D-day gists, dedup, cap) against a fake store + fixed clock; the one-call summarizer returns both fields (mock model); the "since date" / local-day window selection; old-summary migration (no `gist`). Contract — the updated `ShortSummary` shape.
 
-### v0.10 — Closeness (relationship level)
+### v0.11 — Closeness (relationship level)
 
 **Goal:** Лілі grows **closer to (or cooler with) each person over time** — a per-user closeness level that modulates how *open* she is, **never her competence**.
 
@@ -202,7 +224,7 @@ It is a contract addition (`Closeness` record + the relational-read field) → u
 
 **Tests:** unit — the dimension→delta math + bucketing/inertia; time decay across days (fixed clock); the level→behavior-block assembly; the relational-read validation/clamp. Contract — the `Closeness` shape + **per-user isolation** (A's closeness never visible to B); **competence-unaffected** (a low-closeness turn still answers fully, against a mock model). No paid calls.
 
-### v0.11 — Inner life I: plans & state (intentions she carries)
+### v0.12 — Inner life I: plans & state (intentions she carries)
 
 **Goal:** Лілі **carries her own intentions** — what she has on today, this week, the weekend — so she can offhandedly mention "the track still isn't done today" or "can't wait for the weekend" even when you didn't ask. The first half of an **inner life that continues between conversations**.
 
@@ -210,7 +232,7 @@ Three planning layers held in a **global** personal store (one Лілі — **no
 - **Weekly intentions** (3–5 soft goals in her voice), **weekend intentions** (a different spirit — water, mountains, music, silence), **today's plan** (1–3, from weekly goals + her routine + carry-overs + the v0.6 mood). Unfinished items carry over.
 - **Boundaries (injected clock):** at the first session of a new local **day** → a fresh today's plan; of a new **week** → fresh weekly/weekend intentions; unfinished carried over. One housekeeping model call per boundary (mocked in tests).
 - **State block** in the system prompt — compact (Today / This week / Weekend ahead / Mood / Unfinished), **tone not report** — so she carries her plans into the conversation.
-- **Authored skeleton:** an editable **hobby bank** + a **7-slot daily routine** (4 fixed / 3 free); the free slots are mood-chosen (filled in v0.12).
+- **Authored skeleton:** an editable **hobby bank** + a **7-slot daily routine** (4 fixed / 3 free); the free slots are mood-chosen (filled in v0.13).
 
 Her inner life is **global** (the same whoever she talks to — one being), distinct from per-user memory/closeness. Reuses v0.6 (mood) + v0.4 (clock). See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v0.6 (mood), v0.4 (clock), v0.2 (the Repository).
 
@@ -225,7 +247,7 @@ Her inner life is **global** (the same whoever she talks to — one being), dist
 
 **Tests:** unit — boundary detection (new day/week via fixed clock); the plan-update call (mock model) carries unfinished; the state-block assembly; the global (not user-keyed) store doesn't leak per-user; `/inner` renders. No paid calls.
 
-### v0.12 — Inner life II: the away-gap (what happened while you were gone)
+### v0.13 — Inner life II: the away-gap (what happened while you were gone)
 
 **Goal:** come back after a while and **something happened to her** — activities, memories, and dreams from the time away, surfacing where it fits, and **honest about being her inner world, not a body**.
 
@@ -235,7 +257,7 @@ At session start the core computes the **away gap** (injected clock) and, when i
 - **Surfacing:** fragments ride into context with "recall to the point, like a person — or not at all; **never a report on the absence**"; a `mention_aloud` restraint; ongoing activities reference a previous entry for continuity.
 - **Honesty boundary (hard):** **inner only** (dreams/thoughts/creativity/practice — never a factual physical-world claim); to a direct "did that really happen?" she calmly admits it's her **imagination**, warmly, without breaking the spell. Encoded as a canon rule + a reminder in the block.
 
-See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v0.11 (the plans & store), v0.6 (mood), v0.4 (clock).
+See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v0.12 (the plans & store), v0.6 (mood), v0.4 (clock).
 
 **Tasks:**
 - **Away-gap** computation (injected clock); the gap→fragment-count curve (soft cap); **dream-iff-night-hours**.
@@ -248,7 +270,7 @@ See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v0.11 (the plans & stor
 
 **Tests:** unit — the gap→count curve + dream-iff-night (fixed clock); the gap-fill call (mock model) seeds + appends; replan threshold/reactivity; surfacing honors `mention_aloud`; the honesty boundary present in the prompt; continuity (a new fragment sees previous). No paid calls.
 
-### v0.13 — Local voice (ElevenLabs)
+### v0.14 — Local voice (ElevenLabs)
 
 **Goal:** hear Лілі — a separate local app that voices her replies, no server.
 
@@ -264,11 +286,11 @@ Add a **separate local console app** that voices Лілі's replies with the Ele
 
 **Tests:** unit — dedup-by-`id` + ascending-order selection (`outbox` minus `spoken`), strictly-sequential playback, retry-on-failure (no `spoken` write); integration — a few `outbox` records voiced via a **mock TTS adapter** (no paid call), `spoken` updated; resumes correctly after a simulated restart.
 
-### v0.14 — Local dictation (STT)
+### v0.15 — Local dictation (STT)
 
-**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.13 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
+**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.14 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
 
-A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.13 (the local-process + shared-file pattern).
+A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.14 (the local-process + shared-file pattern).
 
 **Tasks:**
 - A separate **dictator process**: watch `listen.flag`; record the mic while `on`; on `off`, send audio to the **STT adapter** in `/voice` (`stt(audio_uk) -> text`, provider configurable) → append `{id, text, source:"voice", ts}` to `inbox.jsonl`.
@@ -279,7 +301,7 @@ A separate local process listens to the microphone, recognizes Ukrainian via the
 
 **Tests:** unit — `listen.flag` on/off handling, empty-recognition is dropped (no `inbox` write), dedup by `id`; integration — a recognized line via a **mock STT adapter** (no paid call) lands in `inbox.jsonl` and drives a turn identical to a typed one.
 
-### v0.15 — More models (model & provider switching)
+### v0.16 — More models (model & provider switching)
 
 **Goal:** switch Лілі to a different model beyond the v0.1 Claude Haiku default — other Claude tiers (Opus/Sonnet) or other providers (OpenAI, DeepSeek, MiniMax) — as a config switch with no code change.
 
@@ -609,15 +631,15 @@ At session end Лілі decides whether to write a **literary journal entry** �
 
 - Emotion field `{ reply, emotion, intensity }` + enum + `IEmotionRenderer` — locked in **v0.3** (rendered: log → emoji v0.5 → local image face v0.7 → web portrait + caption v2.1 → animation v3.1). See [EMOTION.md](features/EMOTION.md).
 - Emotion-face asset pack (`emotion → image`) — first used by the local viewer in **v0.7** (see [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md)), reused by the web `ImageRenderer` in **v2.1**.
-- Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.15**.
+- Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.16**.
 - Mood / temperament (daily, horoscope-derived; colors tone, never competence) — **v0.6** (core; see [ARCHITECTURE.md](ARCHITECTURE.md) §Mood and temperament).
 - Per-user memory records (`ShortSummary`, `LongTermFact`, with `user_id`) — **v0.2**.
 - User-scoping + the per-user isolation invariant — data-level in **v0.2**, enforced & tested at the auth boundary in **v1.3** (and gated as a security test in **v1.2**).
 - Core API (`reply(...)`, memory commands) — **v0.1**; exposed over the client/server API (TUI + CLI clients) in **v1.1**; web client in **v1.4**.
 - Auth — a local client token in **v1.1**; full accounts, registration/invite codes, allowlist, argon2id in **v1.3**; security testing + CI/CD (deploy, TLS, dep/secret scans) in **v1.2**; admin panel in **v1.5**.
 - Multi-user + multi-session — **v1.3**.
-- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.13** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
-- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.14** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
+- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.14** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
+- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.15** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
 - Image — **v2.1**; web voice output — **v2.2**; shared memory (`SharedMemoryItem`) + cross-pollination — **v2.3**; web dictation — **v2.4**.
 - Animation — **v3.1**.
 - MCP client + `web_search` service (`web.search`/`web.fetch`, off by default, untrusted content) — **v3.2** (see [WEB_SEARCH.md](features/WEB_SEARCH.md)).

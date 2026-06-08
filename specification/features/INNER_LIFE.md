@@ -7,9 +7,9 @@ switches on at your voice into someone with her own gravity. The full vision is 
 [inner-life-concept-en.md](inner-life-concept-en.md); this is the **Lumi design** — how it's
 built on what already exists, the contracts, and the two-phase split.
 
-- **v0.11 — Inner life I (plans & state):** the three planning layers + boundaries + the global
+- **v0.12 — Inner life I (plans & state):** the three planning layers + boundaries + the global
   store + the state block (she *carries* intentions).
-- **v0.12 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
+- **v0.13 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
   replanning, surfacing, and the honesty boundary (something *happened*).
 
 ## It extends what Lumi already has — not new infrastructure
@@ -101,6 +101,6 @@ slots; by default they're the soft skeleton. The hobby bank is `core/inner/hobbi
 
 ## Mapping to the roadmap
 
-**v0.11 + v0.12 — Inner life**, right after closeness (v0.10). Depends on **v0.6** (mood),
+**v0.12 + v0.13 — Inner life**, right after closeness (v0.11). Depends on **v0.6** (mood),
 **v0.4** (clock), **v0.2** (the Repository). Global to Лілі (not per-user); the creative layer
 (v4) later turns her inner life into real artifacts.
