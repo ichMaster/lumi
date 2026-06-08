@@ -466,3 +466,50 @@ async def test_mood_command_pending_when_no_mood(tmp_path):
         await pilot.press("enter")
         await pilot.pause()
         assert any("ще не визначила настрій" in line for line in app.transcript)
+
+
+class _SpySound:
+    """A stand-in for SoundPlayer that counts plays (no audio)."""
+
+    def __init__(self):
+        self.sends = 0
+        self.receives = 0
+
+    def ensure(self):
+        return True
+
+    def send(self):
+        self.sends += 1
+
+    def receive(self):
+        self.receives += 1
+
+
+async def test_sound_on_send_and_receive_but_never_on_the_nudge(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ок")))
+    async with app.run_test() as pilot:
+        spy = _SpySound()
+        app._sound = spy
+        app._sound_on = True
+
+        await _submit(pilot, app, "привіт")  # a real turn → one send + one receive
+        assert (spy.sends, spy.receives) == (1, 1)
+
+        await app._run_turn("щось своє", hidden=True)  # the idle nudge — hidden, silent
+        assert (spy.sends, spy.receives) == (1, 1)  # unchanged
+
+
+async def test_f2_toggles_sound_and_shows_in_status(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ок")))
+    async with app.run_test() as pilot:
+        app._sound = _SpySound()  # ensure() True so the toggle can turn on
+        assert app._sound_on is False
+        assert "sound:off" in app._status_text()
+
+        await pilot.press("f2")
+        assert app._sound_on is True
+        assert "sound:on" in app._status_text()
+
+        await pilot.press("f2")
+        assert app._sound_on is False
+        assert "sound:off" in app._status_text()

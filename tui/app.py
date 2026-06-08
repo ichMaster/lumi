@@ -31,6 +31,7 @@ from core.emotion import LogRenderer
 from core.nudge import load_nudges, pick_nudge_index, should_nudge
 from core.repository import Session
 from core.worldcontext import fetch_world_context
+from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
 LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is English
@@ -139,6 +140,7 @@ class LumiApp(App[None]):
         Binding("ctrl+o", "copy_all", "Copy all", priority=True),
         Binding("ctrl+l", "clear", "Clear screen", priority=True),
         Binding("ctrl+t", "toggle_mouse", "Mouse select", priority=True),
+        Binding("f2", "toggle_sound", "Sound", priority=True),
     ]
     CSS = """
     #thinking {
@@ -200,6 +202,9 @@ class LumiApp(App[None]):
         # True while a turn (or session save) is in flight — the input box is locked
         # (disabled) until it's your turn again. Toggled via _set_busy.
         self._busy: bool = False
+        # v0.7.x send/receive sound — off by default, toggled with F2 (lazy mixer init).
+        self._sound = SoundPlayer()
+        self._sound_on: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -231,6 +236,7 @@ class LumiApp(App[None]):
         self._nudge_enabled = cfg.idle_nudge
         self._idle_seconds = cfg.idle_seconds
         self._quiet_hours = cfg.quiet_hours
+        self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
         self._last_activity = self._core.clock()
         if self._nudge_enabled:
             self._nudges = load_nudges(cfg.nudge_path)
@@ -344,10 +350,11 @@ class LumiApp(App[None]):
         """The technical connection/status line (no icons)."""
         model = self._short_model(self._core.model)
         think = f" · thinking:{'on' if self._core.thinking else 'off'}"
+        snd = f" · sound:{'on' if self._sound_on else 'off'}"
         style_part = f" · style: {self._core.style}"  # always show (incl. 'normal')
         emo = self._core.last_emotion
         emo_part = f" · {emo.emotion.value} {emo.intensity:.1f}" if emo else ""
-        meta = f"{model}{think}{style_part}{emo_part}"
+        meta = f"{model}{think}{snd}{style_part}{emo_part}"
         if busy:
             return f"status: [yellow]{busy}[/] · {meta}"
         if not self._connected:
@@ -419,6 +426,19 @@ class LumiApp(App[None]):
         self._last_activity = self._core.clock()  # real input resets the idle timer
         await self._run_turn(text)
 
+    def action_toggle_sound(self) -> None:
+        """Toggle the send/receive sound (F2). Turning it on probes the audio device."""
+        if not self._sound_on:
+            if not self._sound.ensure():  # lazily init the mixer; False → no audio device
+                self.notify("No audio device — sound unavailable.",
+                            severity="warning", timeout=2)
+                return
+            self._sound_on = True
+        else:
+            self._sound_on = False
+        self.notify(f"Sound {'on' if self._sound_on else 'off'}.", timeout=1)
+        self._render_status()
+
     def _set_busy(self, busy: bool) -> None:
         """Toggle the working state and **lock the input box** while Лілі replies — the
         box is disabled until it's your turn, then re-enabled and refocused."""
@@ -434,6 +454,8 @@ class LumiApp(App[None]):
         self._set_busy(True)
         if not hidden:
             self._say(USER_LABEL, text, USER_COLOR)
+            if self._sound_on:
+                self._sound.send()  # your message went out (never on a hidden nudge)
         self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
         try:
             assert self._session is not None
@@ -454,6 +476,8 @@ class LumiApp(App[None]):
             self._render_thinking(getattr(self._core, "last_thinking", None))
             # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
             self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
+            if not hidden and self._sound_on:
+                self._sound.receive()  # her reply arrived (suppressed for the idle nudge)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
             self._render_thinking(None)  # the failed turn has no thinking
             self._connected = False
