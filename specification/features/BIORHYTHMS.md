@@ -27,6 +27,22 @@ Each yields a **value** in −1…+1 and a **phase label**:
 
 Pure function, no model, no I/O beyond reading the birth date — fully unit-tested.
 
+## A fourth, phased cycle — the hormonal (menstrual) cycle
+
+Beside the three sine biorhythms, Лілі carries a **hormonal cycle** — a **phased** (not sine)
+~28-day rhythm: **менструація → фолікулярна → овуляція → лютеїнова → ПМС**. It's computed the same
+way — deterministic, in code (`core/cycle.py`) — from an authored **anchor** (`Цикл: день 1 —
+DD.MM.YYYY, довжина NN` in `core/natal.md`) + the injected clock: `day = (today − anchor) mod
+length + 1`, mapped to a phase (ovulation ≈ `length − 14`, PMS = the last ~5 days). Each phase
+carries a short temperament note (e.g. ПМС → heightened sensitivity/irritability/tiredness;
+ovulation → peak energy, warmth, sociability).
+
+It is **merged into the same daily mood call** alongside the biorhythms, under the shared
+"integrate these computed body rhythms" directive — coloring her **tone, energy and sensitivity,
+never her competence**. Part of her **embodied self-image** (inner, like her inner life), not a
+medical claim. On by default (`LUMI_CYCLE`); off / no anchor → simply omitted. `/biorhythm` shows
+the current phase alongside the cycles.
+
 ## Merged with the astrology forecast (v0.6)
 
 The biorhythm state is **another input to the daily mood call**, exactly like world context

@@ -54,22 +54,29 @@ def load_natal(path: str | Path) -> str:
 
 
 def mood_request(
-    natal: str, date_str: str, biorhythms: str | None = None
+    natal: str,
+    date_str: str,
+    biorhythms: str | None = None,
+    cycle: str | None = None,
 ) -> tuple[str, list[dict[str, str]]]:
     """Build the ``(system, messages)`` for the daily mood call.
 
-    ``biorhythms`` (v0.8, optional) is a rendered line of the day's computed cycles —
-    when present it rides in alongside the natal chart so the reading **blends** the
-    horoscope with the biorhythms (still coloring tone/energy, never competence).
+    ``biorhythms`` (v0.8, optional) is a rendered line of the day's computed sine cycles;
+    ``cycle`` (v0.8, optional) is her hormonal/menstrual phase. When present they ride in
+    alongside the natal chart so the reading **blends** the horoscope with these computed
+    body rhythms (still coloring tone/energy/sensitivity, never competence).
     """
     content = f"Натальна карта:\n{natal}\n\nДата: {date_str}."
     if biorhythms:
+        content += f"\n\nБіоритми (ТОЧНО обчислені цикли): {biorhythms}."
+    if cycle:
+        content += f"\n\nЖіночий гормональний цикл сьогодні: {cycle}."
+    if biorhythms or cycle:
         content += (
-            f"\n\nБіоритми на сьогодні (ТОЧНО обчислені цикли): {biorhythms}.\n"
-            "ІНТЕГРУЙ ці цикли в саме читання настрою РАЗОМ із транзитами — не окремим "
-            "блоком і не списком, а вплетеними в загальну картину дня; де цикл суперечить "
-            "транзиту, примири їх в одному настрої. Нехай вони так само фарбують її "
-            "енергію, почуття й тон, і нехай це відіб'ється в РЕЗОЛЮЦІЇ."
+            "\n\nІНТЕГРУЙ ці обчислені тілесні ритми в саме читання настрою РАЗОМ із "
+            "транзитами — не окремим блоком і не списком, а вплетеними в загальну картину "
+            "дня; де щось суперечить транзитам, примири в одному настрої. Нехай вони "
+            "фарбують її енергію, чутливість і тон, і нехай це відіб'ється в РЕЗОЛЮЦІЇ."
         )
     return MOOD_SYSTEM, [{"role": "user", "content": content}]
 

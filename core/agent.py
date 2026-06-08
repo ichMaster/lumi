@@ -29,6 +29,7 @@ from core.biorhythm import (
 )
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
+from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
@@ -111,6 +112,7 @@ class Core:
         mood_enabled: bool = True,
         mood_log_path: Path | None = None,
         biorhythms_enabled: bool = True,
+        cycle_enabled: bool = True,
         face_signal: Path | None = None,
     ) -> None:
         self._llm = llm
@@ -129,6 +131,9 @@ class Core:
         # v0.8 biorhythms: computed cycles merged into the daily mood + the cached state.
         self._biorhythms_enabled = biorhythms_enabled
         self._biorhythms: Biorhythms | None = None
+        # v0.8 hormonal cycle: the phased body rhythm merged into the mood + the cached phase.
+        self._cycle_enabled = cycle_enabled
+        self._cycle: CyclePhase | None = None
         # v0.7 emotion-face signal: a one-word file the local viewer polls each turn.
         self._face_signal = face_signal
         self._memory_window = memory_window
@@ -179,6 +184,11 @@ class Core:
     def biorhythms(self) -> Biorhythms | None:
         """Today's computed biorhythm cycles (v0.8), cached with the mood; ``None`` when off."""
         return self._biorhythms
+
+    @property
+    def cycle(self) -> CyclePhase | None:
+        """Today's hormonal-cycle phase (v0.8), cached with the mood; ``None`` when off."""
+        return self._cycle
 
     def ensure_mood(self) -> None:
         """Compute today's mood now (idempotent / cached) — a client may call at startup."""
@@ -386,16 +396,24 @@ class Core:
         today = self._clock().strftime("%Y-%m-%d")
         if self._mood and self._mood.date == today:
             return  # already computed for this local day; a turn keeps its mood
-        # v0.8: compute today's biorhythms (exact, deterministic) and merge them in.
+        # v0.8: compute today's body rhythms (exact, deterministic) and merge them in.
         bio_line: str | None = None
+        cycle_line: str | None = None
         self._biorhythms = None
+        self._cycle = None
+        today_date = self._clock().date()
         if self._biorhythms_enabled:
             birth = parse_birth_date(self._natal)
             if birth is not None:
-                self._biorhythms = biorhythm_cycles(birth, self._clock().date())
+                self._biorhythms = biorhythm_cycles(birth, today_date)
                 bio_line = format_biorhythms(self._biorhythms)
+        if self._cycle_enabled:
+            anchor = parse_cycle_anchor(self._natal)
+            if anchor is not None:
+                self._cycle = menstrual_phase(anchor[0], today_date, anchor[1])
+                cycle_line = format_cycle(self._cycle)
         try:
-            system, msgs = mood_request(self._natal, today, biorhythms=bio_line)
+            system, msgs = mood_request(self._natal, today, biorhythms=bio_line, cycle=cycle_line)
             reading = self._housekeeping_reply(system, msgs).strip()
         except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
             return
@@ -597,5 +615,6 @@ def build_core(
         mood_enabled=cfg.mood,
         mood_log_path=cfg.store_path.parent / "mood.log",
         biorhythms_enabled=cfg.biorhythms,
+        cycle_enabled=cfg.cycle,
         face_signal=cfg.face_signal or cfg.store_path.parent / "face.txt",
     )

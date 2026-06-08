@@ -27,6 +27,7 @@ from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 from core.agent import Core
 from core.biorhythm import format_biorhythms
 from core.config import load_config
+from core.cycle import format_cycle
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
 from core.nudge import load_nudges, pick_nudge_index, should_nudge
@@ -530,9 +531,18 @@ class LumiApp(App[None]):
         self._emit(body, Markdown(body))
 
     def _show_biorhythm(self) -> None:
-        """Show today's computed biorhythm cycles — the `/biorhythm` command (v0.8)."""
+        """Show today's computed body rhythms — biorhythms + cycle — the `/biorhythm` command (v0.8)."""
         b = self._core.biorhythms
-        body = f"**Біоритми Лілі сьогодні:**\n\n{format_biorhythms(b)}" if b else BIORHYTHM_OFF
+        c = self._core.cycle
+        if not b and not c:
+            self._emit(BIORHYTHM_OFF, Markdown(BIORHYTHM_OFF))
+            return
+        parts: list[str] = []
+        if b:
+            parts.append(f"**Біоритми Лілі сьогодні:**\n\n{format_biorhythms(b)}")
+        if c:
+            parts.append(f"**Цикл:** {format_cycle(c)}")
+        body = "\n\n".join(parts)
         self._emit(body, Markdown(body))
 
     def _forget(self) -> None:
