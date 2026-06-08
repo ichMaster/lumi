@@ -22,8 +22,11 @@ def test_quiet_hours_suppress_the_nudge():
 
 
 def test_load_nudges_from_the_authored_file():
+    # The nudge file is authored / user-editable, so assert the loading behaviour,
+    # not specific lines: a non-empty list with comments and blanks stripped.
     nudges = load_nudges(load_config(load_env=False).nudge_path)
-    assert "ти тут?" in nudges
+    assert nudges  # at least one opener
+    assert all(n.strip() for n in nudges)  # no blank lines
     assert all(not n.startswith("#") for n in nudges)  # comments skipped
 
 
