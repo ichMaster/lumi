@@ -434,6 +434,17 @@ class LumiApp(App[None]):
             prompt.focus()
             return
 
+        # %directive (v0.12) — her mind acts, not a chat message. Unknown %name → falls through.
+        if text.startswith("%") and self._session is not None:
+            outcome = self._core.run_directive(text, self._session)
+            if outcome.is_directive:
+                if outcome.mode == "open" and outcome.thought is not None:
+                    body = f"💭 {outcome.thought.text}"
+                    self._emit(body, Markdown(body))  # silent → nothing shown
+                self._last_activity = self._core.clock()
+                prompt.focus()
+                return
+
         self._last_activity = self._core.clock()  # real input resets the idle timer
         await self._run_turn(text)
 

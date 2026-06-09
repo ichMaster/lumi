@@ -101,6 +101,8 @@ from core.thoughts import (
     THOUGHTS_INTERVAL_S,
     THOUGHTS_SPOKEN_RATIO,
     THOUGHTS_WINDOW_H,
+    directive_mode,
+    parse_directive,
     parse_thought,
     should_graduate,
     thought_request,
@@ -131,6 +133,21 @@ class MemoryView:
 
     summaries: list[str]
     facts: list[str]
+
+
+@dataclass(frozen=True)
+class DirectiveOutcome:
+    """The result of routing a ``%directive`` input (v0.12).
+
+    ``is_directive`` is ``False`` when the input was **not** a known ``%directive`` (the client
+    treats it as a normal chat message). When ``True``: ``mode`` is ``"silent"``/``"open"`` and
+    ``thought`` is the recorded :class:`Thought` (``None`` if the model produced nothing). The
+    client shows the raw thought (``💭``) only for ``mode == "open"``.
+    """
+
+    is_directive: bool
+    mode: str | None = None
+    thought: Thought | None = None
 
 
 @dataclass
@@ -553,6 +570,28 @@ class Core:
         if not self._thoughts_enabled:
             return None
         return thoughts_diary_block(self.recent_thoughts())
+
+    def run_directive(
+        self,
+        raw: str,
+        session: Session,
+        *,
+        is_owner: bool = True,
+        rng_seed: int = 0,
+    ) -> DirectiveOutcome:
+        """Route a typed ``%directive`` (v0.12): parse → access-gate → fire → record.
+
+        Returns a :class:`DirectiveOutcome`. ``is_directive=False`` means the input wasn't a known
+        ``%directive`` (the client treats it as **plain chat**). Otherwise the thought is recorded
+        (mode ``silent``/``open``); a **non-owner** can never fire silent (forced to ``open``). The
+        topic may carry ``{placeholders}`` (resolved by ``think``).
+        """
+        parsed = parse_directive(raw)
+        if parsed is None:
+            return DirectiveOutcome(is_directive=False)
+        mode = directive_mode(parsed, is_owner=is_owner)
+        thought = self.think(parsed.name, topic=parsed.topic, session=session, rng_seed=rng_seed)
+        return DirectiveOutcome(is_directive=True, mode=mode, thought=thought)
 
     def tick_think(
         self,

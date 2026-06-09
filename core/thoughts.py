@@ -119,6 +119,58 @@ def parse_thought(raw: str) -> tuple[str, str] | None:
     return text, emotion
 
 
+@dataclass(frozen=True)
+class ParsedDirective:
+    """A parsed ``%<name>[!] [connector] [topic]`` input."""
+
+    name: str           # the directive (think / wonder)
+    open: bool          # the `!` flag → print (open) rather than silent
+    topic: str | None   # the optional seed (connector stripped); may contain {placeholders}
+
+
+# Optional connector words stripped from the topic (EN + UK); `:` is handled separately.
+_CONNECTORS = ("about", "про", "на тему", "щодо")
+_DIRECTIVE_RE = re.compile(r"(\w+)(!?)\s*(.*)", re.DOTALL)
+
+
+def parse_directive(raw: str) -> ParsedDirective | None:
+    """Parse a ``%directive`` input, or ``None`` if it isn't one (→ the caller treats it as chat).
+
+    Grammar: ``%<name>[!] [connector] [topic]`` — ``!`` (glued to the name) prints (open); the
+    connector (``about``/``про``/``на тему``/``щодо``/``:``) is optional and stripped; the topic
+    is free text (may carry ``{placeholders}``). An unknown ``%name`` → ``None`` (plain chat).
+    """
+    text = raw.strip()
+    if not text.startswith("%"):
+        return None
+    match = _DIRECTIVE_RE.match(text[1:])
+    if not match:
+        return None
+    name = match.group(1).lower()
+    if name not in REGISTRY:
+        return None  # unknown directive → not handled, falls through to chat
+    topic = match.group(3).strip()
+    low = topic.lower()
+    for connector in _CONNECTORS:
+        if low.startswith(connector + " "):
+            topic = topic[len(connector):].strip()
+            break
+    topic = topic.lstrip(":").strip()  # also drop a leading ":"
+    return ParsedDirective(name=name, open=match.group(2) == "!", topic=topic or None)
+
+
+def directive_mode(parsed: ParsedDirective, *, is_owner: bool) -> str:
+    """The surfacing mode for a manual directive: ``"open"`` or ``"silent"``.
+
+    ``!`` → always open. Without ``!`` it's silent **for the owner** (curating her interior); a
+    **non-owner can't fire silent** — their thought is forced to **surface** (open), never recorded
+    invisibly (the silent-vs-shared access gate).
+    """
+    if parsed.open:
+        return "open"
+    return "silent" if is_owner else "open"
+
+
 def thoughts_diary_block(thoughts: Sequence, *, max_lines: int = THOUGHTS_MAX_LINES) -> str | None:
     """Format dated thoughts into the «за останню добу» block — ``HH:MM — text`` lines, capped.
 
