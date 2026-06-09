@@ -47,20 +47,20 @@ def test_intensity_variant_missing_falls_to_base():
 def test_read_signal_parses_emotion_and_intensity(tmp_path):
     sig = tmp_path / "face.txt"
     sig.write_text("joy 0.80", encoding="utf-8")
-    assert read_signal(sig) == ("joy", 0.80)
+    assert read_signal(sig) == (None, "joy", 0.80)  # (theme, emotion, intensity)
 
 
 def test_read_signal_emotion_only(tmp_path):
     sig = tmp_path / "face.txt"
     sig.write_text("sad", encoding="utf-8")
-    assert read_signal(sig) == ("sad", None)
+    assert read_signal(sig) == (None, "sad", None)
 
 
 def test_read_signal_missing_or_garbled(tmp_path):
-    assert read_signal(tmp_path / "nope.txt") == ("calm", None)  # missing file
+    assert read_signal(tmp_path / "nope.txt") == (None, "calm", None)  # missing file
     sig = tmp_path / "face.txt"
     sig.write_text("bogus xyz", encoding="utf-8")
-    assert read_signal(sig) == ("calm", None)  # unknown emotion, bad intensity
+    assert read_signal(sig) == (None, "calm", None)  # unknown emotion, bad intensity
 
 
 def test_face_switcher_reports_only_on_change(tmp_path):
@@ -110,7 +110,7 @@ def test_no_idle_timeout_holds_the_face(tmp_path):
 def test_parse_signal_ignores_trailing_datetime():
     from viewer.face import parse_signal
 
-    assert parse_signal("joy 0.80 2026-06-08 14:30:00") == ("joy", 0.80)
+    assert parse_signal("joy 0.80 2026-06-08 14:30:00") == (None, "joy", 0.80)
 
 
 def test_idle_relax_wakes_on_a_repeated_emotion_with_a_new_timestamp(tmp_path):
@@ -121,3 +121,76 @@ def test_idle_relax_wakes_on_a_repeated_emotion_with_a_new_timestamp(tmp_path):
     assert sw.poll(now=60) == FACES / "calm.png"  # idled to calm
     sig.write_text("joy 0.9 2026-06-08 14:05:00", encoding="utf-8")  # SAME emotion, new time
     assert sw.poll(now=70) == FACES / "joy_high.png"  # the changed line wakes it
+
+
+# --- v0.11: themed variants + extended signal -----------------------------
+import random  # noqa: E402
+
+from viewer.face import parse_signal, pick_variant, resolve_variants  # noqa: E402
+
+
+def _tree(*paths):
+    """A fake faces tree: a lister returning the given .png paths under each folder."""
+    have = {Path(p) for p in paths}
+
+    def lister(folder):
+        return sorted(p for p in have if p.parent == Path(folder))
+
+    return lister
+
+
+def test_resolve_variants_returns_a_folders_pngs():
+    ls = _tree("faces/cozy/joy/01.png", "faces/cozy/joy/02.png", "faces/cozy/joy/03.png")
+    got = resolve_variants("joy", theme="cozy", faces_dir="faces", lister=ls)
+    assert got == [Path("faces/cozy/joy/01.png"), Path("faces/cozy/joy/02.png"), Path("faces/cozy/joy/03.png")]
+
+
+def test_resolve_variants_missing_emotion_falls_to_theme_calm():
+    ls = _tree("faces/cozy/calm/01.png", "faces/cozy/calm/02.png")  # no cozy/joy/
+    assert resolve_variants("joy", theme="cozy", faces_dir="faces", lister=ls) == [
+        Path("faces/cozy/calm/01.png"), Path("faces/cozy/calm/02.png"),
+    ]
+
+
+def test_resolve_variants_missing_theme_falls_to_default_theme():
+    ls = _tree("faces/base/joy/01.png")  # the "cozy" theme has nothing; "base" is default
+    got = resolve_variants("joy", theme="cozy", default_theme="base", faces_dir="faces", lister=ls)
+    assert got == [Path("faces/base/joy/01.png")]
+
+
+def test_resolve_variants_no_themes_falls_to_flat_v07():
+    # No theme folders at all → the flat faces/<emotion>.png (one-element list).
+    got = resolve_variants("joy", faces_dir="faces", lister=_tree(),
+                           exists=lambda p: p == Path("faces/joy.png"))
+    assert got == [Path("faces/joy.png")]
+
+
+def test_pick_variant_no_immediate_repeat():
+    variants = [Path("a.png"), Path("b.png"), Path("c.png")]
+    rng = random.Random(1)
+    for _ in range(40):  # never returns `previous` when alternatives exist
+        prev = Path("b.png")
+        assert pick_variant(variants, previous=prev, rng=rng) != prev
+    assert pick_variant([Path("only.png")], previous=Path("only.png")) == Path("only.png")  # 1 → itself
+    assert pick_variant([]) is None
+
+
+def test_parse_signal_with_theme():
+    assert parse_signal("cozy sad 0.30") == ("cozy", "sad", 0.30)
+    assert parse_signal("cozy joy 0.80 2026-06-08 14:30:00") == ("cozy", "joy", 0.80)
+    assert parse_signal("joy 0.80") == (None, "joy", 0.80)  # leading emotion → no theme
+
+
+def test_face_switcher_picks_themed_variants_no_repeat(tmp_path):
+    sig = tmp_path / "face.txt"
+    ls = _tree("faces/cozy/joy/01.png", "faces/cozy/joy/02.png")
+    sw = FaceSwitcher(sig, "faces", lister=ls, default_theme="cozy", rng=random.Random(0))
+    seen = []
+    for i in range(6):  # each new turn (new timestamp) re-picks; never an immediate repeat
+        sig.write_text(f"cozy joy 0.5 2026-06-08 14:0{i}:00", encoding="utf-8")
+        got = sw.poll()
+        assert got in (Path("faces/cozy/joy/01.png"), Path("faces/cozy/joy/02.png"))
+        if seen:
+            assert got != seen[-1]  # no immediate repeat
+        seen.append(got)
+    assert set(seen) == {Path("faces/cozy/joy/01.png"), Path("faces/cozy/joy/02.png")}  # both used
