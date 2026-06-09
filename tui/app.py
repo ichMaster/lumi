@@ -32,6 +32,7 @@ from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
 from core.nudge import load_nudges, pick_nudge_index, should_nudge
 from core.repository import Session
+from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
 from tui.sound import SoundPlayer
 
@@ -198,6 +199,11 @@ class LumiApp(App[None]):
         self._nudges: list[str] = []
         self._nudge_idx: int = -1
         self._last_activity = self._core.clock()
+        # v0.12 proactive thinking state (configured in on_mount; on with the thought-stream).
+        self._think_seeds: list[str] = []  # `%`-directive seeds from nudges.md (the A menu)
+        self._seed_idx: int = -1
+        self._think_n: int = 0  # a varying rng_seed + the A/B alternation counter
+        self._think_busy: bool = False  # avoid overlapping proactive thinks
         # When True the app releases the mouse so the terminal can select text.
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
@@ -241,9 +247,16 @@ class LumiApp(App[None]):
         self._quiet_hours = cfg.quiet_hours
         self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
         self._last_activity = self._core.clock()
+        # The nudge file holds two kinds of line: static openers (v0.4) and `%`-directive seeds
+        # (v0.12, the A menu). Route each to its own mechanism.
+        openers = load_nudges(cfg.nudge_path)
+        self._think_seeds = [n for n in openers if n.startswith("%")]
         if self._nudge_enabled:
-            self._nudges = load_nudges(cfg.nudge_path)
+            self._nudges = [n for n in openers if not n.startswith("%")]
             self.set_interval(30, self._maybe_nudge)
+        # v0.12 proactive thinking (B): poll the idle timer; tick_think gates on interval/cap/quiet.
+        if cfg.thoughts:
+            self.set_interval(30, self._maybe_think)
 
     async def _refresh_world(self) -> None:
         """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
@@ -532,6 +545,41 @@ class LumiApp(App[None]):
         self._nudge_idx = pick_nudge_index(len(self._nudges), self._nudge_idx)
         opener = self._nudges[self._nudge_idx]
         self.run_worker(self._run_turn(opener, hidden=True), exclusive=False)
+
+    def _maybe_think(self) -> None:
+        """Idle-timer tick (v0.12): fire a proactive ``%think`` from her own state (B), or — every
+        other fire, when ``nudges.md`` has ``%``-seeds — about a seed from that menu (A). The core
+        ``tick_think`` gates on the idle interval / per-session cap / quiet hours; most thoughts are
+        **silent** (recorded only), a fraction **graduate to spoken** and she speaks first."""
+        if self._busy or self._session is None or self._think_busy:
+            return
+        self._think_n += 1
+        kind, topic = "think", None
+        if self._think_seeds and self._think_n % 2 == 0:  # A: seed from the menu, alternating
+            self._seed_idx = pick_nudge_index(len(self._think_seeds), self._seed_idx)
+            parsed = parse_directive(self._think_seeds[self._seed_idx])
+            if parsed is not None:
+                kind, topic = parsed.name, parsed.topic
+        self.run_worker(self._think_tick(kind, topic, self._think_n), exclusive=False)
+
+    async def _think_tick(self, kind: str, topic: str | None, seed_n: int) -> None:
+        """Run one proactive think off-thread; deliver it aloud only if it graduated to spoken."""
+        self._think_busy = True
+        try:
+            now = self._core.clock()
+            thought = await asyncio.to_thread(
+                self._core.tick_think, self._session, self._last_activity, now,
+                rng_seed=seed_n, kind=kind, topic=topic,
+            )
+            if thought is None:
+                return  # not due / capped / off / nothing made — silent ones end here
+            self._last_activity = now  # a proactive think counts as activity (one per idle gap)
+            if thought.spoken:  # she speaks first, grounded in the thought (the hidden self-turn)
+                seed = (f"(ти щойно подумала: «{thought.text}» — напиши йому перша, "
+                        "коротко поділись цим або почни з цього розмову)")
+                await self._run_turn(seed, hidden=True)
+        finally:
+            self._think_busy = False
 
     # --- memory commands -------------------------------------------------
     def _show_memory(self) -> None:

@@ -72,3 +72,13 @@ def test_silent_vs_spoken_ratio(tmp_path):
 def test_disabled_never_fires(tmp_path):
     core, s = _core(tmp_path, thoughts_enabled=False)
     assert core.tick_think(s, _NOW - timedelta(seconds=601), _NOW) is None
+
+
+def test_tick_think_passes_kind_and_topic(tmp_path):
+    # B = free-muse (kind/topic default); A = a seed from the menu (kind+topic).
+    core, s = _core(tmp_path)
+    idle = _NOW - timedelta(seconds=601)
+    free = core.tick_think(s, idle, _NOW, rng_seed=1)  # B
+    assert free is not None and free.kind == "think" and "topic" not in free.seeds
+    seeded = core.tick_think(s, idle, _NOW, rng_seed=3, kind="wonder", topic="море")  # A
+    assert seeded is not None and seeded.kind == "wonder" and "topic" in seeded.seeds

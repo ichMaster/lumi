@@ -672,12 +672,16 @@ class Core:
         now: datetime,
         *,
         rng_seed: int = 0,
+        kind: str = "think",
+        topic: str | None = None,
         ratio: float | None = None,
     ) -> Thought | None:
-        """The **proactive nudge**: after the idle interval (and not in quiet hours / over the
-        per-session cap), `%think` **silently** into the diary; a configurable fraction **graduate**
-        to a spoken turn (``Thought.spoken`` set — the client delivers those aloud via the hidden
-        self-turn). Returns the Thought, or ``None`` (not due / capped / off / nothing made)."""
+        """The **proactive nudge** (B + A): after the idle interval (and not in quiet hours / over
+        the per-session cap), fire a directive **silently** into the diary; a configurable fraction
+        **graduate** to a spoken turn (``Thought.spoken`` — the client delivers those via the hidden
+        self-turn). ``kind``/``topic`` let the client **free-muse** (B, no topic) or fire a **seed**
+        from a menu (A, e.g. ``%think {recent}``). Returns the Thought, or ``None`` (not due /
+        capped / off / nothing made)."""
         if not self._thoughts_enabled:
             return None
         if not should_nudge(last_activity, now, self._thoughts_interval_s, self._quiet_hours):
@@ -687,7 +691,7 @@ class Core:
         spoken = should_graduate(
             rng_seed, self._thoughts_spoken_ratio if ratio is None else ratio
         )
-        thought = self.think("think", session=session, rng_seed=rng_seed, spoken=spoken)
+        thought = self.think(kind, topic=topic, session=session, rng_seed=rng_seed, spoken=spoken)
         if thought is None:
             return None
         self._think_count += 1
