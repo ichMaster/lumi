@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 0.10.0 (2026-06-09)
+---------------------------
+- v0.10 — Closeness / relationship level (LUMI-037…041): Лілі grows closer to or cooler with each person over time. A per-user closeness modulates how OPEN she is — never her competence.
+- Relational read (additive): each turn the model scores YOUR message on warmth / vulnerability / playful / harm / manipulation (0–1), emitted alongside {reply, emotion, intensity}. The structured-output tool gains an OPTIONAL `relation` block; `required` stays [reply, emotion, intensity] — the locked v0.3 emotion contract is untouched. Core validates/clamps it (missing/garbage → 0.0; never blocks the turn).
+- Closeness engine: a weighted delta (+warmth/vulnerability/playful − harm/manipulation) moves a per-user value (0–100); it DECAYS toward a baseline over days of silence (exp, injected clock + last_ts) and re-buckets into 5 levels with INERTIA (hysteresis — no turn-to-turn flapping). A fresh user starts at the baseline. Deterministic; config knobs are module constants.
+- Persistence: Closeness{user_id, value, level, last_ts} behind the Repository (a `closeness` store section), keyed by user_id; per-user isolated (never crosses users). clear_memory drops it.
+- Authored levels + guardrail: an editable core/closeness.md (1 Ввічлива → 2 Привітна → 3 Тепла → 4 Близька → 5 Найрідніша) with behavior directives; the active level injects a system-prompt block (like mood/style) shaping warmth/openness/initiative. HARD RULE (same as the mood): it never changes competence or willingness to help — a low level / harm turn never refuses. LUMI_CLOSENESS_PATH config.
+- Surface: a /closeness command shows the current level BY NAME (raw value + dimension scores stay internal). Contract tests pin the Closeness shape, per-user isolation, the unchanged emotion field, and competence-unaffected. 333 tests green; mocked model (no paid calls).
+
 Version 0.9.0 (2026-06-09)
 ---------------------------
 - v0.9 — Richer short memory (LUMI-034…036): each finished session is summarized in ONE call into two tiers — a detailed summary plus a one-line gist (ShortSummary gains `gist`; «СТИСЛО:» line, with a first-sentence fallback; pre-v0.9 records migrate to ""). New Repository.summaries_since(user, since_date) window query (per-user isolated). The prompt's short-memory block becomes two tiers: the last 5 conversations in detail + the recent days at a glance.

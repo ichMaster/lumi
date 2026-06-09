@@ -12,18 +12,20 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.9.0 — v0.9 Richer short memory (recent detail + days at a glance).** Лілі now recalls
-**recent conversations in detail and the past few days at a glance**, without ballooning the prompt.
+**0.10.0 — v0.10 Closeness (relationship level).** Лілі grows **closer to or cooler with each
+person over time** — a per-user closeness level that modulates how *open* she is, **never her
+competence**.
 
-- **Two-tier session summary** — at session close, **one** call writes both a **detailed** summary
-  and a one-line **gist** (`ShortSummary` gains `gist`; old records migrate to `""`) (LUMI-034…036).
-- **Per-day digests** — each day's gists are consolidated into **one cohesive ≤4-sentence day
-  summary** (`DaySummary{user_id, date, summary, count, ts}`, a new `day_summaries` store section),
-  **regenerated lazily at prompt time, count-based** — a day refreshes only when its session count
-  changes (today as it accrues; a past day only when it gains sessions).
-- **Prompt order** — the day digests ("Памʼять про розмови в останні дні") come **first**, then the
-  **last 5 conversations in detail**. No raw per-session gists are injected (the gist is only the
-  input to the day consolidation). Long-term facts untouched; per-user isolation holds.
+- **Relational read** — each turn the model scores *your* message on `warmth / vulnerability /
+  playful / harm / manipulation` (0–1), emitted **alongside** `{reply, emotion, intensity}` —
+  **additive**; the locked v0.3 emotion contract is untouched (LUMI-037…041).
+- **Closeness engine** — a weighted delta moves a per-user value (0–100), **decays toward a
+  baseline over days of silence** (injected clock + `last_ts`), and re-buckets into **5 levels with
+  inertia** (no turn-to-turn flapping). `Closeness{user_id, value, level, last_ts}`, per-user isolated.
+- **Authored levels + guardrail** — an editable `core/closeness.md` (Ввічлива → Найрідніша); the
+  active level injects a behavior block (warmth/openness/initiative). **Hard rule (like the mood):
+  it never changes her competence or willingness to help** — a low level / harm turn never refuses.
+- **See it** — `/closeness` shows the level **by name** (raw scores stay internal).
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 
