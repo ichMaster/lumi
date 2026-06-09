@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -69,6 +70,7 @@ from core.mood import (
     split_theme,
     strip_theme,
 )
+from core.placeholders import resolve_placeholders
 from core.prompt import (
     REASONING_DIRECTIVE,
     build_system_prompt,
@@ -462,6 +464,8 @@ class Core:
         directive = REGISTRY.get(kind)
         if directive is None:
             return None
+        if topic:  # a topic may carry {placeholders} (e.g. %think about {last_thought})
+            topic = self.resolve(topic, session=session)
         seeds: list[str] = []
         mood = self.mood
         if mood:
@@ -512,6 +516,32 @@ class Core:
         if not recent:
             return None
         return "\n".join(f"- {t.text}" for t in recent)
+
+    # --- Prompt placeholders (v0.12) ------------------------------------
+    def resolve(self, text: str, *, session: Session | None = None) -> str:
+        """Expand ``{name}`` placeholders in ``text`` from live state (ARCHITECTURE §Prompt
+        placeholders) — unknown tokens stay literal; ``{last_thought}``/``{thoughts}`` are
+        isolation-aware (this user's surfacing read)."""
+        return resolve_placeholders(text, self._placeholder_resolvers(session))
+
+    def _placeholder_resolvers(self, session: Session | None) -> dict[str, Callable[[], str]]:
+        """The fixed registry of token → live-value getters (lazy, isolation-aware)."""
+        def last_thought() -> str:
+            mine = self._repo.thoughts_for(self._user_id, "")
+            return mine[-1].text if mine else ""
+
+        return {
+            "last_thought": last_thought,
+            "thoughts": lambda: self._recent_thoughts_text() or "",
+            "mood": lambda: self.mood or "",
+            "closeness": lambda: self.closeness_status()[1] or "",
+            "plan": lambda: "",  # v0.13 inner life
+            "need": lambda: "",  # v0.13 needs
+            "recent": lambda: (self._recent_tail(session) if session is not None else "") or "",
+            "now": lambda: self._clock().strftime("%Y-%m-%d %H:%M"),
+            "today": lambda: self._clock().strftime("%Y-%m-%d"),
+            "user": lambda: self._user_id,
+        }
 
     def _system_prompt(self, session: Session) -> str:
         """Assemble the system prompt for this turn, rehydrated for the user.
