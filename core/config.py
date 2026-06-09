@@ -26,6 +26,7 @@ from core.memory import (
     SESSION_DAYS,
     WEEK_DAYS,
 )
+from core.thoughts import THOUGHTS_WINDOW_H
 from core.worldcontext import DEFAULT_WEATHER_URL
 
 # Repo root = the parent of this ``core/`` package.
@@ -128,6 +129,7 @@ class Config:
     closeness: bool = True  # v0.10 relationship level on/off
     closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
     thoughts: bool = True  # v0.12 thought-stream on/off
+    thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -253,6 +255,7 @@ def load_config(*, load_env: bool = True) -> Config:
         faces_dir=Path(fd) if (fd := os.getenv("LUMI_FACES_DIR")) else DEFAULT_FACES_DIR,
         closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
+        thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,

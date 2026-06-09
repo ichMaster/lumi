@@ -65,19 +65,26 @@ def mood_request(
     biorhythms: str | None = None,
     cycle: str | None = None,
     themes: dict[str, str] | None = None,
+    thoughts: str | None = None,
 ) -> tuple[str, list[dict[str, str]]]:
     """Build the ``(system, messages)`` for the daily mood call.
 
     ``biorhythms`` (v0.8, optional) is a rendered line of the day's computed sine cycles;
     ``cycle`` (v0.8, optional) is her hormonal/menstrual phase. When present they ride in
     alongside the natal chart so the reading **blends** the horoscope with these computed
-    body rhythms (still coloring tone/energy/sensitivity, never competence).
+    body rhythms (still coloring tone/energy/sensitivity, never competence). ``thoughts``
+    (v0.12, optional) is a few of her recent musings — a soft nudge so the day's tone reflects
+    what's been on her mind (tone only, never competence).
     """
     content = f"Натальна карта:\n{natal}\n\nДата: {date_str}."
     if biorhythms:
         content += f"\n\nБіоритми (ТОЧНО обчислені цикли): {biorhythms}."
     if cycle:
         content += f"\n\nЖіночий гормональний цикл сьогодні: {cycle}."
+    if thoughts:
+        content += (
+            f"\n\nОстаннім часом тебе займало (нехай це м'яко фарбує тон дня, не зміст):\n{thoughts}"
+        )
     if biorhythms or cycle:
         content += (
             "\n\nІНТЕГРУЙ ці обчислені тілесні ритми в саме читання настрою РАЗОМ із "

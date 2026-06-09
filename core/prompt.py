@@ -158,6 +158,7 @@ def build_system_prompt(
     ambient: str | None = None,
     mood: str | None = None,
     closeness: str | None = None,
+    thoughts: str | None = None,
 ) -> str:
     """Assemble the system prompt: the canon (persona) as prose, then the overlays as
     **markdown sections** so they stay distinct.
@@ -208,6 +209,8 @@ def build_system_prompt(
         parts.append("# Настрій дня\n\n" + f"{MOOD_HEADER}\n{mood}")
     if closeness:  # v0.10: the active relationship level's authored behavior block
         parts.append("# Близькість\n\n" + closeness)
+    if thoughts:  # v0.12: the last-24h dated diary — what's been on her mind (tone, not a report)
+        parts.append("# Що в мене на думці (за останню добу)\n\n" + thoughts)
     if style:
         parts.append("# Стиль відповіді\n\n" + f"{STYLE_HEADER}\n{style}")
     return "\n\n".join(parts)

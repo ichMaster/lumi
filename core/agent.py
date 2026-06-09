@@ -94,7 +94,13 @@ from core.repository import (
     now_iso,
 )
 from core.styles import load_meta_descriptions, load_meta_styles, load_styles
-from core.thoughts import REGISTRY, parse_thought, thought_request
+from core.thoughts import (
+    REGISTRY,
+    THOUGHTS_WINDOW_H,
+    parse_thought,
+    thought_request,
+    thoughts_diary_block,
+)
 from core.user import DEFAULT_USER_ID
 from core.worldcontext import WorldContext, ambient_line
 
@@ -171,6 +177,7 @@ class Core:
         cycle_enabled: bool = True,
         face_signal: Path | None = None,
         thoughts_enabled: bool = True,
+        thoughts_window_h: int = THOUGHTS_WINDOW_H,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -196,8 +203,10 @@ class Core:
         self._cycle: CyclePhase | None = None
         # v0.7 emotion-face signal: a one-word file the local viewer polls each turn.
         self._face_signal = face_signal
-        # v0.12 thought-stream: her mind acts on its own (%think/%wonder) into the global diary.
+        # v0.12 thought-stream: her mind acts on its own (%think/%wonder) into the global diary;
+        # the last `thoughts_window_h` hours feed back into the prompt.
         self._thoughts_enabled = thoughts_enabled
+        self._thoughts_window_h = thoughts_window_h
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
         # date-based recall date-based short-memory windows (config/env-tunable): session/day/week spans + caps.
@@ -517,6 +526,18 @@ class Core:
             return None
         return "\n".join(f"- {t.text}" for t in recent)
 
+    def recent_thoughts(self, *, window_h: int | None = None) -> list[Thought]:
+        """This user's surfaceable thoughts within the last ``window_h`` hours (dated, oldest first)."""
+        hours = self._thoughts_window_h if window_h is None else window_h
+        since = (self._clock() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M")
+        return self._repo.thoughts_for(self._user_id, since)
+
+    def _thoughts_block(self) -> str | None:
+        """The last-24h **dated diary** slice for the prompt (per-user, capped). ``None`` when off/empty."""
+        if not self._thoughts_enabled:
+            return None
+        return thoughts_diary_block(self.recent_thoughts())
+
     # --- Prompt placeholders (v0.12) ------------------------------------
     def resolve(self, text: str, *, session: Session | None = None) -> str:
         """Expand ``{name}`` placeholders in ``text`` from live state (ARCHITECTURE §Prompt
@@ -596,6 +617,7 @@ class Core:
             ambient=ambient_line(self._world, self._clock),
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
             closeness=closeness,  # the active relationship level's block (v0.10)
+            thoughts=self._thoughts_block(),  # the last-24h dated diary (v0.12)
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:
@@ -696,6 +718,7 @@ class Core:
             system, msgs = mood_request(
                 self._natal, today, biorhythms=bio_line, cycle=cycle_line,
                 themes=self._theme_descriptions or None,  # v0.11: also pick a face theme
+                thoughts=self._recent_thoughts_text() if self._thoughts_enabled else None,  # v0.12
             )
             reading = self._housekeeping_reply(system, msgs).strip()
         except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
@@ -943,4 +966,5 @@ def build_core(
         cycle_enabled=cfg.cycle,
         face_signal=cfg.face_signal or cfg.store_path.parent / "face.txt",
         thoughts_enabled=cfg.thoughts,
+        thoughts_window_h=cfg.thoughts_window_h,
     )

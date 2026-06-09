@@ -13,7 +13,13 @@ the emotion, and records a ``Thought`` (see ``core.agent.Core.think``).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
+
+# The feedback window: the prompt injects thoughts from the last N hours (config-overridable),
+# capped by a hard line backstop for a busy day (ARCHITECTURE / THOUGHT_STREAM.md).
+THOUGHTS_WINDOW_H = 24
+THOUGHTS_MAX_LINES = 12
 
 
 @dataclass(frozen=True)
@@ -96,3 +102,15 @@ def parse_thought(raw: str) -> tuple[str, str] | None:
     if not text:
         return None
     return text, emotion
+
+
+def thoughts_diary_block(thoughts: Sequence, *, max_lines: int = THOUGHTS_MAX_LINES) -> str | None:
+    """Format dated thoughts into the «за останню добу» block — ``HH:MM — text`` lines, capped.
+
+    ``None`` when empty. Items are taken in time order; a hard ``max_lines`` cap keeps a busy
+    day from flooding the prompt (the newest are kept). Each item needs ``.when`` + ``.text``.
+    """
+    if not thoughts:
+        return None
+    kept = list(thoughts)[-max_lines:]  # newest within the window (the window itself is the filter)
+    return "\n".join(f"- {t.when[11:16]} — {t.text}" for t in kept)
