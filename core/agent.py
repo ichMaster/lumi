@@ -61,7 +61,14 @@ from core.memory import (
     trim_history,
     week_summary_request,
 )
-from core.mood import MoodState, load_natal, mood_request, split_resolution
+from core.mood import (
+    MoodState,
+    load_natal,
+    mood_request,
+    split_resolution,
+    split_theme,
+    strip_theme,
+)
 from core.prompt import (
     REASONING_DIRECTIVE,
     build_system_prompt,
@@ -150,6 +157,8 @@ class Core:
         natal: str = "",
         mood_enabled: bool = True,
         mood_log_path: Path | None = None,
+        theme_descriptions: dict[str, str] | None = None,
+        default_theme: str | None = None,
         biorhythms_enabled: bool = True,
         cycle_enabled: bool = True,
         face_signal: Path | None = None,
@@ -167,6 +176,9 @@ class Core:
         self._mood_enabled = mood_enabled
         self._mood_log_path = mood_log_path  # the full reading is appended here (readable)
         self._mood: MoodState | None = None
+        # v0.11 face themes: the mood picks one per day; the signal carries it. Off → default/None.
+        self._theme_descriptions = theme_descriptions or {}
+        self._default_theme = default_theme
         # v0.8 biorhythms: computed cycles merged into the daily mood + the cached state.
         self._biorhythms_enabled = biorhythms_enabled
         self._biorhythms: Biorhythms | None = None
@@ -234,6 +246,13 @@ class Core:
     def mood(self) -> str | None:
         """Today's mood **resolution** (v0.6), or ``None`` when off / not yet computed."""
         return self._mood.resolution if self._mood else None
+
+    @property
+    def theme(self) -> str | None:
+        """Today's face **theme** (v0.11) — the mood's pick, else the default, else ``None``."""
+        if self._mood and self._mood.theme:
+            return self._mood.theme
+        return self._default_theme
 
     @property
     def closeness(self) -> Closeness | None:
@@ -394,9 +413,10 @@ class Core:
         return self._repo.create_session(self._user_id)
 
     def _write_face_signal(self, emotion: str, intensity: float) -> None:
-        """Write the current emotion (one word + intensity) to the viewer signal (v0.7).
+        """Write the viewer signal (v0.7 + v0.11): ``[<theme>] <emotion> <intensity> <stamp>``.
 
-        Best-effort: a separate viewer process polls this file. A write failure never
+        The day's face **theme** (v0.11) rides in front when set; with no theme it's the bare
+        v0.7 line. Best-effort: a separate viewer process polls this file; a write failure never
         affects the turn.
         """
         if self._face_signal is None:
@@ -404,7 +424,10 @@ class Core:
         try:
             self._face_signal.parent.mkdir(parents=True, exist_ok=True)
             stamp = self._clock().strftime("%Y-%m-%d %H:%M:%S")  # makes every turn's line unique
-            self._face_signal.write_text(f"{emotion} {intensity:.2f} {stamp}", encoding="utf-8")
+            prefix = f"{self.theme} " if self.theme else ""  # v0.11 theme, when set
+            self._face_signal.write_text(
+                f"{prefix}{emotion} {intensity:.2f} {stamp}", encoding="utf-8"
+            )
         except OSError:
             pass  # best-effort; the viewer falls back to calm
 
@@ -558,13 +581,23 @@ class Core:
                 self._cycle = menstrual_phase(anchor[0], today_date, anchor[1])
                 cycle_line = format_cycle(self._cycle)
         try:
-            system, msgs = mood_request(self._natal, today, biorhythms=bio_line, cycle=cycle_line)
+            system, msgs = mood_request(
+                self._natal, today, biorhythms=bio_line, cycle=cycle_line,
+                themes=self._theme_descriptions or None,  # v0.11: also pick a face theme
+            )
             reading = self._housekeeping_reply(system, msgs).strip()
         except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
             return
         if not reading:
             return
-        self._mood = MoodState(date=today, resolution=split_resolution(reading), reading=reading)
+        # v0.11: pull the «ТЕМА: …» pick (validated against the manifest, else default/None) and
+        # keep it off the resolution.
+        known = {n.lower(): n for n in self._theme_descriptions}
+        theme = known.get(split_theme(reading) or "")
+        self._mood = MoodState(
+            date=today, resolution=split_resolution(strip_theme(reading)), reading=reading,
+            theme=theme,
+        )
         _mood_log.info("mood %s:\n%s", today, reading, extra={"date": today})
         if self._mood_log_path is not None:  # also persist the full reading, readable
             try:
@@ -764,6 +797,11 @@ def build_core(
         )
 
     canon = load_canon(cfg.canon_path)
+    # v0.11 face themes: load the manifest here (the composition root), so the Core class
+    # itself stays interface-independent — it only receives the theme data.
+    from viewer.themes import load_themes  # local import: keep core/ free of a viewer dependency
+
+    _faces_themes = load_themes(cfg.faces_dir)
     return Core(
         llm=llm,
         repository=repository,
@@ -787,6 +825,8 @@ def build_core(
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
         mood_log_path=cfg.store_path.parent / "mood.log",
+        theme_descriptions={n: d for n, d in _faces_themes.descriptions.items() if d},
+        default_theme=_faces_themes.default,
         biorhythms_enabled=cfg.biorhythms,
         cycle_enabled=cfg.cycle,
         face_signal=cfg.face_signal or cfg.store_path.parent / "face.txt",

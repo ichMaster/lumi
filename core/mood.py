@@ -11,6 +11,7 @@ daily *variation* is. It colors tone + the emotion she emits, **never competence
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +40,11 @@ class MoodState:
     date: str        # local date key, e.g. "2026-06-07"
     resolution: str  # the short paragraph injected into the prompt / shown by /mood
     reading: str     # the full reading — logged, never injected or shown
+    theme: str | None = None  # v0.11 face theme the mood chose for the day (None → default)
+
+
+# The face-theme line the mood call appends ("ТЕМА: <name>") — parsed out, never injected.
+_THEME_RE = re.compile(r"(?im)^[ \t]*тема[ \t]*:[ \t]*(.+?)[ \t]*$")
 
 
 def load_natal(path: str | Path) -> str:
@@ -58,6 +64,7 @@ def mood_request(
     date_str: str,
     biorhythms: str | None = None,
     cycle: str | None = None,
+    themes: dict[str, str] | None = None,
 ) -> tuple[str, list[dict[str, str]]]:
     """Build the ``(system, messages)`` for the daily mood call.
 
@@ -78,7 +85,25 @@ def mood_request(
             "дня; де щось суперечить транзитам, примири в одному настрої. Нехай вони "
             "фарбують її енергію, чутливість і тон, і нехай це відіб'ється в РЕЗОЛЮЦІЇ."
         )
+    if themes:  # v0.11: also pick a face theme (wardrobe) that fits the day
+        options = "\n".join(f"- {name}: {desc}" for name, desc in sorted(themes.items()))
+        content += (
+            "\n\nДоступні теми обличчя Лілі (її образ/вбрання на день) — вибери ОДНУ, що "
+            "найкраще пасує настрою цього дня, і В САМОМУ КІНЦІ (після резолюції) додай "
+            f"окремий рядок «ТЕМА: <назва>» — лише назву зі списку:\n{options}"
+        )
     return MOOD_SYSTEM, [{"role": "user", "content": content}]
+
+
+def split_theme(reading: str) -> str | None:
+    """Extract the «ТЕМА: <name>» face theme the mood chose (lowercased), or ``None``."""
+    match = _THEME_RE.search(reading)
+    return match.group(1).strip().lower() if match else None
+
+
+def strip_theme(reading: str) -> str:
+    """The reading with the trailing «ТЕМА: …» line removed (so it doesn't leak into the resolution)."""
+    return _THEME_RE.sub("", reading).strip()
 
 
 def split_resolution(reading: str) -> str:

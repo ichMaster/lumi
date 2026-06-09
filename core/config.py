@@ -52,6 +52,9 @@ DEFAULT_NATAL_PATH = _REPO_ROOT / "core" / "natal.md"
 # Лілі's authored closeness levels (v0.10); editable like styles.
 DEFAULT_CLOSENESS_PATH = _REPO_ROOT / "core" / "closeness.md"
 
+# Face image packs + theme manifest (v0.7 + v0.11 themes); the viewer renders from here.
+DEFAULT_FACES_DIR = _REPO_ROOT / "viewer" / "faces"
+
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
@@ -121,6 +124,7 @@ class Config:
     mood: bool = True
     natal_path: Path = DEFAULT_NATAL_PATH
     closeness_path: Path = DEFAULT_CLOSENESS_PATH
+    faces_dir: Path = DEFAULT_FACES_DIR  # v0.11 face packs + themes.md
     closeness: bool = True  # v0.10 relationship level on/off
     closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
@@ -245,6 +249,7 @@ def load_config(*, load_env: bool = True) -> Config:
         closeness_path=(
             Path(cl_env) if (cl_env := os.getenv("LUMI_CLOSENESS_PATH")) else DEFAULT_CLOSENESS_PATH
         ),
+        faces_dir=Path(fd) if (fd := os.getenv("LUMI_FACES_DIR")) else DEFAULT_FACES_DIR,
         closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,

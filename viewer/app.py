@@ -47,11 +47,16 @@ def run(
     """
     import pygame
 
+    from viewer.themes import load_themes
+
     faces = Path(faces_dir)
+    default_theme = load_themes(faces).default  # v0.11: the fallback wardrobe pack (None → flat)
     pygame.init()
     screen = pygame.display.set_mode(size)
     pygame.display.set_caption("Лілі")
-    switcher = FaceSwitcher(signal_path, faces, idle_timeout=idle_timeout)
+    switcher = FaceSwitcher(
+        signal_path, faces, default_theme=default_theme, idle_timeout=idle_timeout
+    )
     clock = pygame.time.Clock()
     surface = None
 
