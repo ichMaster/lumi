@@ -167,6 +167,51 @@ class SessionDigest:
     ts: str
 
 
+@dataclass(frozen=True)
+class Thought:
+    """One mental act in Лілі's dated **diary** (v0.12). **GLOBAL — not user-keyed.**
+
+    Every act is stamped with the local ``when`` (the injected clock) and appended in
+    order, so the stream reads as a diary. ``kind`` is the directive that made it
+    (``think``/``wonder``); ``seeds`` are which states fed it; ``spoken`` records whether
+    it graduated to a spoken turn. ``user_id`` is the **originating** user — carried for
+    the **surfacing filter only** (a thought sparked with A never surfaces to B), never
+    for storage scoping (the store is one global list, not keyed by ``user_id``).
+    """
+
+    when: str               # local diary stamp (injected clock), e.g. "2026-06-09T14:30"
+    kind: str               # "think" | "wonder" | …
+    text: str               # her thought, her voice
+    emotion: str            # the locked base-9 enum (for tone/face)
+    seeds: tuple[str, ...]  # which states fed it, e.g. ("mood", "need:creation")
+    user_id: str            # originating user — for surfacing only, not storage scoping
+    spoken: bool = False    # did it graduate to a spoken turn?
+    ts: str = ""            # write time (audit)
+
+    def __post_init__(self) -> None:
+        # JSON round-trips tuples as lists; coerce back so equality/round-trip hold.
+        if not isinstance(self.seeds, tuple):
+            object.__setattr__(self, "seeds", tuple(self.seeds))
+
+
+def make_thought(
+    when: str,
+    kind: str,
+    text: str,
+    emotion: str,
+    seeds: tuple[str, ...] | list[str],
+    user_id: str,
+    *,
+    spoken: bool = False,
+    ts: str | None = None,
+) -> Thought:
+    """Build a :class:`Thought`, stamping the audit ``ts`` now unless one is given."""
+    return Thought(
+        when=when, kind=kind, text=text, emotion=emotion,
+        seeds=tuple(seeds), user_id=user_id, spoken=spoken, ts=ts or now_iso(),
+    )
+
+
 @runtime_checkable
 class Repository(Protocol):
     """The storage seam — keyed by ``user_id`` (ARCHITECTURE §Storage).
@@ -270,4 +315,24 @@ class Repository(Protocol):
 
     def set_digest(self, digest: SessionDigest) -> None:
         """Persist (replace) a session's compaction digest."""
+        ...
+
+    # --- Thought-stream (v0.12) — GLOBAL, not user-keyed ----------------
+    def add_thought(self, thought: Thought) -> None:
+        """Append one thought to the **global** dated diary (not keyed by ``user_id``)."""
+        ...
+
+    def thoughts_since(self, since_iso: str) -> list[Thought]:
+        """All thoughts with ``when`` >= ``since_iso`` (the raw global stream, oldest first)."""
+        ...
+
+    def thoughts_for(self, user_id: str, since_iso: str) -> list[Thought]:
+        """Thoughts since ``since_iso`` **surfaceable to** ``user_id`` (the isolation read).
+
+        A thought sparked under user A is never returned for user B. Oldest first.
+        """
+        ...
+
+    def prune_thoughts(self, before_iso: str) -> None:
+        """Drop thoughts older than ``before_iso`` — the soft age cap (the core supplies the cutoff)."""
         ...

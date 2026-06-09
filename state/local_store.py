@@ -21,6 +21,7 @@ from core.repository import (
     Session,
     SessionDigest,
     ShortSummary,
+    Thought,
     WeekSummary,
     now_iso,
 )
@@ -40,6 +41,7 @@ class JsonRepository:
         self._facts: dict[str, list[LongTermFact]] = {}  # by user_id
         self._closeness: dict[str, Closeness] = {}  # by user_id (v0.10)
         self._digests: dict[str, SessionDigest] = {}  # by session_id
+        self._thoughts: list[Thought] = []  # v0.12: GLOBAL diary — a list, NOT keyed by user_id
         self._load()
 
     # --- persistence -----------------------------------------------------
@@ -70,6 +72,8 @@ class JsonRepository:
             self._closeness[uid] = Closeness(**raw)
         for sid, raw in data.get("digests", {}).items():
             self._digests[sid] = SessionDigest(**raw)
+        # v0.12: a flat list (global), not a dict-by-user — that's what makes it global.
+        self._thoughts = [Thought(**raw) for raw in data.get("thoughts", [])]
 
     def _persist(self) -> None:
         data = {
@@ -93,6 +97,7 @@ class JsonRepository:
             },
             "closeness": {uid: asdict(c) for uid, c in self._closeness.items()},
             "digests": {sid: asdict(d) for sid, d in self._digests.items()},
+            "thoughts": [asdict(t) for t in self._thoughts],  # global list
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(self._path.suffix + ".tmp")
@@ -190,3 +195,24 @@ class JsonRepository:
     def set_digest(self, digest: SessionDigest) -> None:
         self._digests[digest.session_id] = digest
         self._persist()
+
+    # --- Thought-stream (v0.12) — GLOBAL, not user-keyed ----------------
+    def add_thought(self, thought: Thought) -> None:
+        self._thoughts.append(thought)
+        self._persist()
+
+    def thoughts_since(self, since_iso: str) -> list[Thought]:
+        return sorted((t for t in self._thoughts if t.when >= since_iso), key=lambda t: t.when)
+
+    def thoughts_for(self, user_id: str, since_iso: str) -> list[Thought]:
+        # Surfacing isolation: only thoughts sparked under this user (A→B never leaks).
+        return sorted(
+            (t for t in self._thoughts if t.when >= since_iso and t.user_id == user_id),
+            key=lambda t: t.when,
+        )
+
+    def prune_thoughts(self, before_iso: str) -> None:
+        kept = [t for t in self._thoughts if t.when >= before_iso]
+        if len(kept) != len(self._thoughts):
+            self._thoughts = kept
+            self._persist()
