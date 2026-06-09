@@ -34,7 +34,6 @@ from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_an
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
-    GIST_CAP,
     GIST_DAYS,
     RECENT_SUMMARIES,
     compaction_plan,
@@ -303,18 +302,17 @@ class Core:
         Isolation holds — only this ``user_id``'s records are read.
         """
         # v0.9 two-tier short memory: the last N conversations in DETAIL, plus all
-        # conversations in the last D local days as one-line GISTS (recent N not repeated,
-        # capped). Both dated so past sessions are placed in time (v0.4).
+        # conversations in the last D local days as one-line GISTS (recent N not repeated).
+        # Bounded by the day window only — no row cap. Both dated (v0.4).
         recent = self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
         recent_ids = {s.session_id for s in recent}
         summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
         since = (self._clock().date() - timedelta(days=GIST_DAYS)).isoformat()
-        gist_rows = [
-            s
+        gists = [
+            f"[{format_date(s.ts)}] {s.gist}"
             for s in self._repo.summaries_since(self._user_id, since)
             if s.session_id not in recent_ids and s.gist  # dedup recent N; skip empty (old) gists
-        ][-GIST_CAP:]
-        gists = [f"[{format_date(s.ts)}] {s.gist}" for s in gist_rows]
+        ]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
         # Append the reasoning directive to the canon so any pre-answer reasoning is

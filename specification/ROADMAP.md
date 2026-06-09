@@ -164,7 +164,7 @@ See [BIORHYTHMS.md](features/BIORHYTHMS.md). Depends on: v0.6 (the mood it merge
 
 Today short memory keeps the last 5 conversation summaries (one detailed summary each) and injects them; **long-term memory stays the facts list** (`LongTermFact`, unchanged — this is purely a short-memory enhancement). This phase makes each session's summary **two-tiered** and widens the recall window:
 - At session end, **one** summarization call (extended thinking off, as today) returns **both** a **detailed** summary (the current size-scaled one) and a one-line **gist**; both persist on the `ShortSummary`.
-- The short-memory block in the prompt becomes two tiers: the **last N=5 conversations** as **detailed** summaries, plus **all conversations within the last D=5 local days** as **gists** — the recent N shown only as detail (no repeat), dated. `N` and `D` are config, with a **max-count / token cap** so the prompt can't balloon.
+- The short-memory block in the prompt becomes two tiers: the **last N=5 conversations** as **detailed** summaries, plus **all conversations within the last D=5 local days** as **gists** — the recent N shown only as detail (no repeat), dated. `N` and `D` are config; the gist tier is **bounded by the day window** (no row cap).
 
 It is a memory-record shape change — `ShortSummary` gains a `gist` (the `summary` field stays the detailed one) — so it updates ARCHITECTURE §Memory + the `ShortSummary` contract test, with a **migration** for existing summaries (no `gist` → omitted from / truncated in the gist tier). "Last D days" uses the **injected clock** (local day). Depends on: v0.2 (the memory layers).
 
@@ -174,7 +174,7 @@ It is a memory-record shape change — `ShortSummary` gains a `gist` (the `summa
 - **Repository window query.** Add "summaries since `<date>`" (or load + filter by the injected-clock local-day window); the recent-N stays a recency query.
 - **Migration + contract.** Existing `ShortSummary`s (no `gist`) load fine and are omitted from / truncated in the gist tier; update ARCHITECTURE §Memory + the `ShortSummary` contract test. Long-term facts untouched.
 
-**DoD:** the prompt carries the **last 5 conversations in detail** and the **last 5 days' conversations as gists** (no duplication, dated, capped); long-term facts unchanged; old summaries still load and inject.
+**DoD:** the prompt carries the **last 5 conversations in detail** and the **last 5 days' conversations as gists** (no duplication, dated; bounded by the day window); long-term facts unchanged; old summaries still load and inject.
 
 **Tests:** unit — the two-tier assembly (last N detailed + D-day gists, dedup, cap) against a fake store + fixed clock; the one-call summarizer returns both fields (mock model); the "since date" / local-day window selection; old-summary migration (no `gist`). Contract — the updated `ShortSummary` shape.
 

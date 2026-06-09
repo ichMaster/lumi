@@ -15,11 +15,10 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
-# Short-memory recall (v0.9). N = last conversations injected in DETAIL; D = days whose
-# conversations are injected as one-line GISTS; CAP = max gists (so the prompt can't balloon).
+# Short-memory recall (v0.9). N = last conversations injected in DETAIL; D = the day window
+# whose conversations are injected as one-line GISTS (no row cap — bounded by the window).
 RECENT_SUMMARIES = 5  # N
 GIST_DAYS = 5  # D — the "days at a glance" window (local days)
-GIST_CAP = 20  # max gist lines
 
 # Instruction for end-of-session summarization (an internal memory note, not Лілі
 # speaking). The target length is appended per-session (summary_request), scaled
