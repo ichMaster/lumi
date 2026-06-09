@@ -1,6 +1,19 @@
 Lumi — Release notes
 ====================
 
+Version 0.12.0 (2026-06-09)
+---------------------------
+- v0.12 — Thought-stream (LUMI-046…052): Лілі's mind acts on its own. Between and around your messages she muses (%think / %wonder) into a private, dated diary — mostly silently — and only occasionally says one aloud. A new three-layer vocabulary: %directives (her mind acts, internal/never-typed) vs /commands (read a state) vs plain chat she speaks. NO emotion-contract change; builds on shipped phases (v0.4 nudge, v0.6 mood, v0.10 closeness, v0.2 repository); 415 tests (mock model + fixed clock + injected seed, no paid calls).
+- The mental-act engine (LUMI-047): one reusable shape — trigger → seed → generate (one thinking-off call) → record → maybe surface — with a directive registry (%think musing, %wonder curiosity; %dream/%reflect/%recall retrofit later). thought_request seeds from mood/closeness/recent/last-thoughts + topic + an injected seed; the emotion is validated to the locked base-9; malformed output records nothing.
+- The Thought store (LUMI-046): a GLOBAL dated diary behind the Repository — a flat list, NOT keyed by user_id (her one mind). Each thought is date-time stamped (the injected clock). Surfacing is per-conversation: a thought sparked under user A is never returned for user B (contract test). Rolling soft cap by age.
+- Feedback loop (LUMI-049): the last 24h (LUMI_THOUGHTS_WINDOW_H) of dated thoughts ride into the prompt as "# Що в мене на думці (за останню добу)" — she remembers her day — capped, per-user filtered, empty → no block; a recurring thought also softly colors the v0.6 mood (tone, never competence).
+- Proactive nudge (LUMI-050): generalizes the v0.4 idle nudge — on the timer she %thinks mostly SILENTLY (paced: interval + quiet hours + a per-session cap), and a configurable fraction graduate to a SPOKEN turn via the hidden self-turn.
+- {name} placeholders (LUMI-048): one resolver expands {last_thought} / {thoughts} / {mood} / {closeness} / {plan} / {need} / {recent} / {now} / {today} / {user} in authored prompts and directive topics; unknown {token} stays literal; per-user tokens are isolation-aware. So "%think about {last_thought}" continues a train of thought.
+- Input router + access gate (LUMI-051): the input line routes / (command) · % (directive) · else (chat). Grammar: %<name>[!] [connector] [topic] — ! prints (open, shown as 💭), the connector (about/про/на тему/щодо/:) is optional, the topic may carry {placeholders}; unknown %name falls through to chat. Access is silent-vs-shared (not blanket owner-only): anyone may invite a surfaced thought; only the owner fires silent / reads the raw cross-user stream.
+- /thoughts + policy (LUMI-052): a read command showing the recent dated diary (per-user filtered) + the thoughts_show policy (hidden / admin / off). The raw stream is logged (lumi.thoughts) and never written to long-term memory.
+- Config (.env): LUMI_THOUGHTS (on/off), LUMI_THOUGHTS_WINDOW_H (24), LUMI_THOUGHTS_INTERVAL_S (600), LUMI_THOUGHTS_CAP (6), LUMI_THOUGHTS_SPOKEN_RATIO (0.2), LUMI_THOUGHTS_SHOW (hidden).
+- Faces: four mood themes now ship full 9-emotion packs (3am, day-after, quiet-collapse, vigil); the rest ship a themed calm portrait.
+
 Version 0.11.0 (2026-06-09)
 ---------------------------
 - v0.11 — Face variants & mood themes (LUMI-042…045): Лілі's image face stops repeating and dresses for the day. Two additions over the v0.7 viewer, reusing the locked emotion channel + the v0.7 signal/fallback + the v0.6 mood — NO contract change; fully backward-compatible (no themes → behaves exactly like v0.7).

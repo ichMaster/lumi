@@ -12,22 +12,24 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.11.0 — v0.11 Face variants & mood themes.** Лілі's image face stops repeating and **dresses
-for the day** — several pictures per emotion, and a themed outfit chosen by her mood.
+**0.12.0 — v0.12 Thought-stream.** Лілі's mind **acts on its own**: between and around your
+messages she muses into a private **dated diary**, mostly silently, and only occasionally says one
+aloud.
 
-- **Variants** — each emotion is a *folder* of images; the viewer shows a **random** one (no
-  immediate repeat), re-picked each turn, so she isn't predictable (LUMI-042).
-- **Themes** — each theme is a wardrobe pack (`faces/<theme>/<emotion>/…`); an editable
-  `faces/themes.md` manifest + auto-discovered folders (LUMI-043). The **daily mood (v0.6) picks the
-  theme** that fits the day (`MoodState.theme`, cached per local day); the core writes
-  `<theme> <emotion> <intensity>` to the face signal (LUMI-044).
-- **Graceful + backward-compatible** — fallback chain `theme/emotion → theme/calm → default → flat
-  v0.7`; with no themes it behaves exactly like v0.7. **No contract change** (reuses the locked
-  emotion channel, the v0.7 signal, and the v0.6 mood).
-- **Ten "Honest Moods" themes** authored (3am / day-after / furious / … / calm-before): `day-after`
-  & `quiet-collapse` ship full 9-emotion packs; the other eight ship a themed `calm` portrait.
+- **`%directives`** — her mind *acts* (internal, never typed): **`%think`** (everyday musing) +
+  **`%wonder`** (curiosity), over one reusable **mental-act engine** (`trigger → seed → generate →
+  record → maybe surface`). Distinct from `/commands` that *read* state and plain chat she speaks.
+- **A global, dated diary** — a `Thought` store (her one mind, **not** per-user); the **last 24h**
+  of dated thoughts feed back into the prompt (`# Що в мене на думці…`) so she **remembers her
+  day**, and softly color the daily mood.
+- **Proactive nudge** — on the idle timer she thinks **mostly silently** (paced: interval + quiet
+  hours + a per-session cap); a configurable fraction **graduate to a spoken turn**.
+- **Manual + placeholders** — type `%think[!] [about] {topic}` (`!` shows the raw `💭` thought);
+  `{last_thought}` / `{mood}` / … resolve in the topic. A **`/thoughts`** command shows the diary.
+- **Isolation + invariants** — a thought sparked with user A **never** surfaces to B (contract
+  test); logged, **never** written to long-term memory; **never competence**. **No contract change.**
 
-_(Previous: **0.10.1 — Date-based memory, leaner prompt, more config** — see RELEASE.txt.)_
+_(Previous: **0.11.0 — v0.11 Face variants & mood themes** — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 
