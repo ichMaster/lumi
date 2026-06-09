@@ -60,3 +60,16 @@ def test_low_closeness_still_answers_fully(tmp_path):
     state = core.reply("допоможи мені з кодом", core.start_session())
     assert state.reply == "Звісно, ось відповідь."  # full help — closeness never refuses
     assert "Ввічлива" in core.last_prompt["system"]  # the L1 (reserved-but-helpful) block rode along
+
+
+# --- /closeness surface (LUMI-041) ----------------------------------------
+def test_closeness_status_defaults_when_no_record(tmp_path):
+    core = _core(tmp_path, {"reply": "ок", "emotion": "calm", "intensity": 0.5})
+    level, name = core.closeness_status()  # no record yet → the default level, by name
+    assert level == DEFAULT_LEVEL and name == LEVELS[DEFAULT_LEVEL][0]
+
+
+def test_closeness_status_reads_the_record_by_name(tmp_path):
+    core = _core(tmp_path, {"reply": "ок", "emotion": "calm", "intensity": 0.5})
+    core._repo.set_closeness(Closeness("owner", 85.0, 5, "2026-06-09T10:00:00+00:00"))
+    assert core.closeness_status() == (5, "Найрідніша")  # level + name only (no raw value)

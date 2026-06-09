@@ -33,6 +33,7 @@ from core.closeness import (
     DEFAULT_LEVEL,
     RelationRead,
     closeness_block,
+    level_name,
     load_levels,
     update_closeness,
     validate_relation,
@@ -204,6 +205,16 @@ class Core:
     def closeness(self) -> Closeness | None:
         """The active user's relationship-closeness record (v0.10), or ``None`` if none yet."""
         return self._repo.get_closeness(self._user_id)
+
+    def closeness_status(self) -> tuple[int, str | None]:
+        """The active relationship **level** (1–5) + its authored **name** (for ``/closeness``).
+
+        A fresh user (no record yet) sits at the default level. The raw value / dimension
+        scores stay internal — only the level + its name are surfaced.
+        """
+        existing = self._repo.get_closeness(self._user_id)
+        level = existing.level if existing else DEFAULT_LEVEL
+        return level, level_name(self._closeness_levels, level)
 
     @property
     def biorhythms(self) -> Biorhythms | None:

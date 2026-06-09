@@ -221,7 +221,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -425,6 +425,10 @@ class LumiApp(App[None]):
             self._show_biorhythm()
             prompt.focus()
             return
+        if text == "/closeness":
+            self._show_closeness()
+            prompt.focus()
+            return
         if text == "/new":
             await self._new_session()
             prompt.focus()
@@ -528,6 +532,16 @@ class LumiApp(App[None]):
         """Show Лілі's mood of the day — the `/mood` command (v0.6)."""
         resolution = self._core.mood
         body = f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING
+        self._emit(body, Markdown(body))
+
+    def _show_closeness(self) -> None:
+        """Show the current relationship level by name — the `/closeness` command (v0.10).
+
+        Only the level + its name; the raw value / dimension scores stay internal.
+        """
+        level, name = self._core.closeness_status()
+        label = name or f"рівень {level}"
+        body = f"**Близькість:** {label} (рівень {level} з 5)"
         self._emit(body, Markdown(body))
 
     def _show_biorhythm(self) -> None:
