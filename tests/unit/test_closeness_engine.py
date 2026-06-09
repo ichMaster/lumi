@@ -4,7 +4,13 @@ from datetime import UTC, datetime
 
 from core.agent import Core
 from core.clock import fixed_clock
-from core.closeness import BASELINE, RelationRead, naive_level, update_closeness
+from core.closeness import (
+    BASELINE,
+    ClosenessTuning,
+    RelationRead,
+    naive_level,
+    update_closeness,
+)
 from core.llm import MockLLMClient
 from core.repository import Closeness
 from state.local_store import JsonRepository
@@ -62,6 +68,18 @@ def test_value_decays_toward_baseline_over_days_of_silence():
 def test_no_decay_within_the_same_moment():
     c = update_closeness(_at(70.0, 4), RelationRead(), NOW, "owner")  # last_ts == now
     assert c.value == 70.0  # no time elapsed, neutral read → unchanged
+
+
+# --- tuning knobs (config/.env-driven) ------------------------------------
+def test_tuning_sets_a_new_user_baseline():
+    c = update_closeness(None, RelationRead(), NOW, "owner", ClosenessTuning(baseline=80.0))
+    assert c.value == 80.0 and c.level == naive_level(80.0)
+
+
+def test_tuning_delta_scale_amplifies_moves():
+    c = update_closeness(_at(30.0, 2), RelationRead(warmth=0.5), NOW, "owner",
+                         ClosenessTuning(delta_scale=20.0))
+    assert c.value == 40.0  # 30 + 20 * 0.5
 
 
 # --- the reply turn wires it -----------------------------------------------

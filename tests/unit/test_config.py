@@ -53,6 +53,20 @@ def test_recall_knobs_default_and_override(monkeypatch):
     assert (o.recent_summaries, o.gist_days, o.max_day_rows) == (8, 14, 3)
 
 
+def test_closeness_toggle_and_tuning_from_env(monkeypatch):
+    for key in ("LUMI_CLOSENESS", "LUMI_CLOSENESS_BASELINE", "LUMI_CLOSENESS_INERTIA"):
+        monkeypatch.delenv(key, raising=False)
+    d = load_config(load_env=False)
+    assert d.closeness is True and d.closeness_tuning.baseline == 30.0  # defaults
+
+    monkeypatch.setenv("LUMI_CLOSENESS", "off")
+    monkeypatch.setenv("LUMI_CLOSENESS_BASELINE", "12")
+    monkeypatch.setenv("LUMI_CLOSENESS_INERTIA", "7")
+    o = load_config(load_env=False)
+    assert o.closeness is False
+    assert o.closeness_tuning.baseline == 12.0 and o.closeness_tuning.inertia == 7.0
+
+
 def test_api_key_absent_is_none(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     cfg = load_config(load_env=False)

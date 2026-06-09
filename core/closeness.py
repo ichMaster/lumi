@@ -68,6 +68,21 @@ DELTA_SCALE = 5.0  # value points per unit of weighted relational signal
 INERTIA = 3.0     # dead-zone (points) around a band edge before the level flips
 
 
+@dataclass(frozen=True)
+class ClosenessTuning:
+    """The engine's behavioral knobs (config/.env-tunable). Defaults = the constants above."""
+
+    baseline: float = BASELINE
+    decay_retained: float = DECAY_RETAINED
+    w_pos: float = W_POS
+    w_neg: float = W_NEG
+    delta_scale: float = DELTA_SCALE
+    inertia: float = INERTIA
+
+
+_DEFAULT_TUNING = ClosenessTuning()  # shared immutable default (avoids a call in arg defaults)
+
+
 def _clamp_value(value: float) -> float:
     return min(VALUE_MAX, max(VALUE_MIN, value))
 
@@ -77,13 +92,13 @@ def naive_level(value: float) -> int:
     return min(LEVELS, max(1, int(value // BAND) + 1))
 
 
-def _bucket_with_inertia(value: float, current_level: int) -> int:
+def _bucket_with_inertia(value: float, current_level: int, inertia: float) -> int:
     """Re-bucket with hysteresis: the level flips only when the value is clearly into a
-    new band (``INERTIA`` past the edge), so a single sharp turn doesn't flap the level."""
+    new band (``inertia`` past the edge), so a single sharp turn doesn't flap the level."""
     target = naive_level(value)
-    if target > current_level and value >= BAND * (target - 1) + INERTIA:
+    if target > current_level and value >= BAND * (target - 1) + inertia:
         return target  # promote: clearly inside the higher band
-    if target < current_level and value <= BAND * target - INERTIA:
+    if target < current_level and value <= BAND * target - inertia:
         return target  # demote: clearly inside the lower band
     return current_level
 
@@ -97,7 +112,11 @@ def _days_between(then: str, now: datetime) -> float:
 
 
 def update_closeness(
-    current: Closeness | None, read: RelationRead, now: datetime, user_id: str
+    current: Closeness | None,
+    read: RelationRead,
+    now: datetime,
+    user_id: str,
+    tuning: ClosenessTuning = _DEFAULT_TUNING,
 ) -> Closeness:
     """Advance a user's closeness one turn: **decay** toward the baseline over days of
     silence, apply the relational **delta**, clamp, and **re-bucket** with inertia.
@@ -106,18 +125,18 @@ def update_closeness(
     baseline (friendly). It biases warmth/openness only — **never competence**.
     """
     if current is None:
-        value, level = BASELINE, naive_level(BASELINE)
+        value, level = tuning.baseline, naive_level(tuning.baseline)
     else:
         # decay the value toward the baseline by the days elapsed since last contact
         days = _days_between(current.last_ts, now)
-        value = BASELINE + (current.value - BASELINE) * (DECAY_RETAINED**days)
+        value = tuning.baseline + (current.value - tuning.baseline) * (tuning.decay_retained**days)
         level = current.level
     # the per-turn relational delta: warmth/vulnerability/playful raise, harm/manipulation lower
-    signal = W_POS * (read.warmth + read.vulnerability + read.playful) - W_NEG * (
+    signal = tuning.w_pos * (read.warmth + read.vulnerability + read.playful) - tuning.w_neg * (
         read.harm + read.manipulation
     )
-    value = _clamp_value(value + DELTA_SCALE * signal)
-    level = _bucket_with_inertia(value, level)
+    value = _clamp_value(value + tuning.delta_scale * signal)
+    level = _bucket_with_inertia(value, level, tuning.inertia)
     return Closeness(user_id=user_id, value=value, level=level, last_ts=now.isoformat())
 
 

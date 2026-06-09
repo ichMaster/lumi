@@ -17,6 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from core.closeness import ClosenessTuning
 from core.memory import GIST_DAYS, MAX_DAY_ROWS, RECENT_SUMMARIES
 from core.worldcontext import DEFAULT_WEATHER_URL
 
@@ -110,6 +111,8 @@ class Config:
     mood: bool = True
     natal_path: Path = DEFAULT_NATAL_PATH
     closeness_path: Path = DEFAULT_CLOSENESS_PATH
+    closeness: bool = True  # v0.10 relationship level on/off
+    closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -155,6 +158,17 @@ def load_config(*, load_env: bool = True) -> Config:
     gist_days = int(gist_days_env) if gist_days_env else GIST_DAYS
     max_day_rows_env = os.getenv("LUMI_MAX_DAY_ROWS")
     max_day_rows = int(max_day_rows_env) if max_day_rows_env else MAX_DAY_ROWS
+
+    # v0.10 closeness engine knobs (defaults from ClosenessTuning; each overridable via .env).
+    _ct = ClosenessTuning()
+    closeness_tuning = ClosenessTuning(
+        baseline=float(os.getenv("LUMI_CLOSENESS_BASELINE") or _ct.baseline),
+        decay_retained=float(os.getenv("LUMI_CLOSENESS_DECAY") or _ct.decay_retained),
+        w_pos=float(os.getenv("LUMI_CLOSENESS_W_POS") or _ct.w_pos),
+        w_neg=float(os.getenv("LUMI_CLOSENESS_W_NEG") or _ct.w_neg),
+        delta_scale=float(os.getenv("LUMI_CLOSENESS_DELTA") or _ct.delta_scale),
+        inertia=float(os.getenv("LUMI_CLOSENESS_INERTIA") or _ct.inertia),
+    )
 
     max_tokens_env = os.getenv("LUMI_MAX_TOKENS")
     max_tokens = int(max_tokens_env) if max_tokens_env else DEFAULT_MAX_TOKENS
@@ -217,6 +231,8 @@ def load_config(*, load_env: bool = True) -> Config:
         closeness_path=(
             Path(cl_env) if (cl_env := os.getenv("LUMI_CLOSENESS_PATH")) else DEFAULT_CLOSENESS_PATH
         ),
+        closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
+        closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
         api_key=os.getenv("ANTHROPIC_API_KEY"),

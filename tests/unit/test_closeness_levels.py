@@ -73,3 +73,20 @@ def test_closeness_status_reads_the_record_by_name(tmp_path):
     core = _core(tmp_path, {"reply": "ок", "emotion": "calm", "intensity": 0.5})
     core._repo.set_closeness(Closeness("owner", 85.0, 5, "2026-06-09T10:00:00+00:00"))
     assert core.closeness_status() == (5, "Найрідніша")  # level + name only (no raw value)
+
+
+# --- the on/off toggle (LUMI_CLOSENESS) -----------------------------------
+def test_closeness_off_skips_read_update_and_block(tmp_path):
+    core = Core(
+        llm=MockLLMClient(states={
+            "reply": "ок", "emotion": "calm", "intensity": 0.5, "relation": {"warmth": 0.9},
+        }),
+        repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="m",
+        closeness_levels=LEVELS, closeness_enabled=False,
+        mood_enabled=False, biorhythms_enabled=False, cycle_enabled=False,
+    )
+    core.reply("привіт", core.start_session())
+    assert core.closeness is None  # off → no closeness record written
+    sysp = core.last_prompt["system"]
+    assert "Рівень близькості" not in sysp  # off → no level block
+    assert "поле relation" not in sysp  # off → no relational-read instruction

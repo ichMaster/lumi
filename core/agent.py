@@ -30,11 +30,12 @@ from core.biorhythm import (
 )
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
 from core.closeness import (
-    DEFAULT_LEVEL,
+    ClosenessTuning,
     RelationRead,
     closeness_block,
     level_name,
     load_levels,
+    naive_level,
     update_closeness,
     validate_relation,
 )
@@ -128,6 +129,8 @@ class Core:
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
         closeness_levels: dict[int, tuple[str, str]] | None = None,
+        closeness_enabled: bool = True,
+        closeness_tuning: ClosenessTuning | None = None,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -170,6 +173,10 @@ class Core:
         self._meta = meta_styles or {}
         # v0.10 closeness: authored level → (name, behavior) blocks, injected by active level.
         self._closeness_levels = closeness_levels or {}
+        self._closeness_enabled = closeness_enabled
+        self._closeness_tuning = closeness_tuning or ClosenessTuning()
+        # The level a fresh user (no record) sits at — derived from the configured baseline.
+        self._default_level = naive_level(self._closeness_tuning.baseline)
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -221,7 +228,7 @@ class Core:
         scores stay internal — only the level + its name are surfaced.
         """
         existing = self._repo.get_closeness(self._user_id)
-        level = existing.level if existing else DEFAULT_LEVEL
+        level = existing.level if existing else self._default_level
         return level, level_name(self._closeness_levels, level)
 
     @property
@@ -386,11 +393,13 @@ class Core:
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
         # v0.10: inject the active relationship level's authored block (warmth/openness, never
-        # competence). Use the prior turn's level (a fresh user sits at the default level).
-        existing = self._repo.get_closeness(self._user_id)
-        closeness = closeness_block(
-            self._closeness_levels, existing.level if existing else DEFAULT_LEVEL
-        )
+        # competence). Use the prior turn's level (a fresh user sits at the default level). Off → none.
+        closeness = None
+        if self._closeness_enabled:
+            existing = self._repo.get_closeness(self._user_id)
+            closeness = closeness_block(
+                self._closeness_levels, existing.level if existing else self._default_level
+            )
         # Append the reasoning directive to the canon so any pre-answer reasoning is
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         return build_system_prompt(
@@ -401,7 +410,7 @@ class Core:
             digest=digest.summary if digest else None,
             style=self._style_directive(),
             emotion=True,
-            relation=True,  # v0.10: ask for the additive relational read
+            relation=self._closeness_enabled,  # v0.10: ask for the relational read (off → skip)
             ambient=ambient_line(self._world, self._clock),
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
             closeness=closeness,  # the active relationship level's block (v0.10)
@@ -580,14 +589,16 @@ class Core:
         # v0.10: the additive relational read of the user's message (internal; feeds closeness).
         self.last_relation = validate_relation(raw.get("relation"))
         # Advance the per-user closeness: decay over silence + this turn's relational delta.
-        self._repo.set_closeness(
-            update_closeness(
-                self._repo.get_closeness(self._user_id),
-                self.last_relation,
-                self._clock(),
-                self._user_id,
+        if self._closeness_enabled:
+            self._repo.set_closeness(
+                update_closeness(
+                    self._repo.get_closeness(self._user_id),
+                    self.last_relation,
+                    self._clock(),
+                    self._user_id,
+                    self._closeness_tuning,
+                )
             )
-        )
         self._write_face_signal(state.emotion.value, state.intensity)  # update the viewer (v0.7)
 
         self._repo.append_message(
@@ -719,6 +730,8 @@ def build_core(
         styles=load_styles(cfg.styles_path),
         meta_styles=load_meta_styles(cfg.styles_path),
         closeness_levels=load_levels(cfg.closeness_path),
+        closeness_enabled=cfg.closeness,
+        closeness_tuning=cfg.closeness_tuning,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
         mood_log_path=cfg.store_path.parent / "mood.log",
