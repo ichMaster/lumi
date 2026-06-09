@@ -41,7 +41,7 @@ from core.closeness import (
 )
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
-from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
+from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
     DAY_DAYS,
@@ -85,13 +85,19 @@ from core.repository import (
     Session,
     SessionDigest,
     ShortSummary,
+    Thought,
     WeekSummary,
     make_message,
+    make_thought,
     now_iso,
 )
 from core.styles import load_meta_descriptions, load_meta_styles, load_styles
+from core.thoughts import REGISTRY, parse_thought, thought_request
 from core.user import DEFAULT_USER_ID
 from core.worldcontext import WorldContext, ambient_line
+
+# The locked base-9 emotion set, used to validate a generated thought's emotion (v0.12).
+_EMOTION_VALUES = frozenset(e.value for e in Emotion)
 
 # The full daily mood reading is logged here (only the resolution rides in the prompt).
 _mood_log = logging.getLogger("lumi.mood")
@@ -162,6 +168,7 @@ class Core:
         biorhythms_enabled: bool = True,
         cycle_enabled: bool = True,
         face_signal: Path | None = None,
+        thoughts_enabled: bool = True,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -187,6 +194,8 @@ class Core:
         self._cycle: CyclePhase | None = None
         # v0.7 emotion-face signal: a one-word file the local viewer polls each turn.
         self._face_signal = face_signal
+        # v0.12 thought-stream: her mind acts on its own (%think/%wonder) into the global diary.
+        self._thoughts_enabled = thoughts_enabled
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
         # date-based recall date-based short-memory windows (config/env-tunable): session/day/week spans + caps.
@@ -430,6 +439,79 @@ class Core:
             )
         except OSError:
             pass  # best-effort; the viewer falls back to calm
+
+    # --- Thought-stream (v0.12) — the mental-act engine ------------------
+    def think(
+        self,
+        kind: str = "think",
+        *,
+        topic: str | None = None,
+        session: Session | None = None,
+        rng_seed: int = 0,
+        spoken: bool = False,
+    ) -> Thought | None:
+        """Run one ``%directive`` — seed → generate → validate → record — into the dated diary.
+
+        Returns the recorded :class:`Thought`, or ``None`` (off / unknown directive / malformed
+        output). **Best-effort**: a model failure or an empty thought records nothing, never raises.
+        The model call is **thinking-off** housekeeping (mocked in tests); the diary stamp comes
+        from the injected clock; the emotion is validated to the locked base-9 set.
+        """
+        if not self._thoughts_enabled:
+            return None
+        directive = REGISTRY.get(kind)
+        if directive is None:
+            return None
+        seeds: list[str] = []
+        mood = self.mood
+        if mood:
+            seeds.append("mood")
+        _, closeness = self.closeness_status()
+        if closeness:
+            seeds.append("closeness")
+        recent = self._recent_tail(session) if session is not None else None
+        if recent:
+            seeds.append("recent")
+        last = self._recent_thoughts_text()
+        if last:
+            seeds.append("last_thoughts")
+        if topic:
+            seeds.append("topic")
+        try:
+            system, msgs = thought_request(
+                directive, mood=mood, closeness=closeness, recent=recent,
+                last_thoughts=last, topic=topic, rng_seed=rng_seed,
+            )
+            raw = self._housekeeping_reply(system, msgs).strip()
+        except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
+            return None
+        parsed = parse_thought(raw)
+        if parsed is None:
+            return None  # empty / malformed → record nothing (never corrupt the stream)
+        text, emo = parsed
+        emotion = emo if emo in _EMOTION_VALUES else DEFAULT_EMOTION.value
+        thought = make_thought(
+            when=self._clock().strftime("%Y-%m-%dT%H:%M"),
+            kind=kind, text=text, emotion=emotion, seeds=seeds,
+            user_id=self._user_id, spoken=spoken,
+        )
+        self._repo.add_thought(thought)
+        return thought
+
+    def _recent_tail(self, session: Session, n: int = 6) -> str | None:
+        """The last ``n`` messages of the session, compact — a seed for a thought."""
+        msgs = self._repo.load_messages(session.id)[-n:]
+        if not msgs:
+            return None
+        speaker = {"user": "Він", "lili": "Я"}
+        return "\n".join(f"{speaker.get(m.role, m.role)}: {m.text}" for m in msgs)
+
+    def _recent_thoughts_text(self, n: int = 5) -> str | None:
+        """The last ``n`` of her own (surfaceable) thoughts — continuity seed."""
+        recent = self._repo.thoughts_for(self._user_id, "")[-n:]
+        if not recent:
+            return None
+        return "\n".join(f"- {t.text}" for t in recent)
 
     def _system_prompt(self, session: Session) -> str:
         """Assemble the system prompt for this turn, rehydrated for the user.
@@ -830,4 +912,5 @@ def build_core(
         biorhythms_enabled=cfg.biorhythms,
         cycle_enabled=cfg.cycle,
         face_signal=cfg.face_signal or cfg.store_path.parent / "face.txt",
+        thoughts_enabled=cfg.thoughts,
     )
