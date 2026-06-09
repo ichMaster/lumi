@@ -12,6 +12,11 @@ built on what already exists, the contracts, and the two-phase split.
 - **v0.13 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
   replanning, surfacing, and the honesty boundary (something *happened*).
 
+> **Needs ride along.** Under the plans sits the **motivational substrate** — her **needs** (the
+> drives that *pull* her from inside) — woven into the same two phases: in **v0.12** they exist,
+> decay, feed the mood + tilt the plan; in **v0.13** they **close** from what she actually did in
+> the away-gap. Full spec: [NEEDS_full.md](NEEDS_full.md).
+
 ## It extends what Lumi already has — not new infrastructure
 
 | Concept piece | Built on |

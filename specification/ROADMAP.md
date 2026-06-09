@@ -226,15 +226,16 @@ With no themes/variants present it behaves exactly like v0.7 (single image + `ca
 
 ### v0.12 — Inner life I: plans & state (intentions she carries)
 
-**Goal:** Лілі **carries her own intentions** — what she has on today, this week, the weekend — so she can offhandedly mention "the track still isn't done today" or "can't wait for the weekend" even when you didn't ask. The first half of an **inner life that continues between conversations**.
+**Goal:** Лілі **carries her own intentions** — what she has on today, this week, the weekend — so she can offhandedly mention "the track still isn't done today" or "can't wait for the weekend" even when you didn't ask. The first half of an **inner life that continues between conversations** — and, under it, the first half of her **needs** (the drives that *pull* her from inside).
 
 Three planning layers held in a **global** personal store (one Лілі — **not** per-user) and updated **lazily at boundaries** (no background process):
-- **Weekly intentions** (3–5 soft goals in her voice), **weekend intentions** (a different spirit — water, mountains, music, silence), **today's plan** (1–3, from weekly goals + her routine + carry-overs + the v0.6 mood). Unfinished items carry over.
+- **Weekly intentions** (3–5 soft goals in her voice), **weekend intentions** (a different spirit — water, mountains, music, silence), **today's plan** (1–3, from weekly goals + her routine + carry-overs + the v0.6 mood **+ the hungriest need**). Unfinished items carry over.
 - **Boundaries (injected clock):** at the first session of a new local **day** → a fresh today's plan; of a new **week** → fresh weekly/weekend intentions; unfinished carried over. One housekeeping model call per boundary (mocked in tests).
 - **State block** in the system prompt — compact (Today / This week / Weekend ahead / Mood / Unfinished), **tone not report** — so she carries her plans into the conversation.
 - **Authored skeleton:** an editable **hobby bank** + a **7-slot daily routine** (4 fixed / 3 free); the free slots are mood-chosen (filled in v0.13).
+- **Needs I — the drives exist & pull (see [NEEDS_full.md](features/NEEDS_full.md)).** A small authored set of **6 core drives** (creation / solitude / connection / freedom / meaning / novelty) in `core/needs.md`, each with a decay rate / weight / satisfied-by / deficit voice. Their **levels** (0..1) live in a **global `Needs` store** (beside `InnerLife`, also not per-user), **decay** over the injected clock and **drift** to a calm middle. The hungriest need **joins the daily mood call** (beside biorhythms — the v0.8 merge pattern) and **tilts today's plan**; `connection` is replenished **mid-turn** from the closeness warmth read (`RelationRead.warmth`, v0.10). **Never competence; inner, not a demand on you.** (Closing from what she *did* is v0.13.)
 
-Her inner life is **global** (the same whoever she talks to — one being), distinct from per-user memory/closeness. Reuses v0.6 (mood) + v0.4 (clock). See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v0.6 (mood), v0.4 (clock), v0.2 (the Repository).
+Her inner life is **global** (the same whoever she talks to — one being), distinct from per-user memory/closeness. Reuses v0.6 (mood) + v0.8 (the biorhythm-merge pattern) + v0.10 (the warmth read) + v0.4 (clock). See [INNER_LIFE.md](features/INNER_LIFE.md) + [NEEDS_full.md](features/NEEDS_full.md). Depends on: v0.6 (mood), v0.4 (clock), v0.2 (the Repository).
 
 **Tasks:**
 - A **global `InnerLife` store** behind the `Repository` (not user-keyed): `{intentions_week, intentions_weekend, plan_today, unfinished, log}`.
@@ -242,33 +243,36 @@ Her inner life is **global** (the same whoever she talks to — one being), dist
 - The **inner-state block** in `build_system_prompt` (compact; Today/This week/Weekend/Mood/Unfinished); the v0.6 mood resolution feeds today's plan.
 - Authored `core/inner/hobbies.md` + `core/inner/routine.md` (the bank + the 7 slots); editable.
 - A `/inner` (or `/plan`) command to show the current state.
+- **Needs:** a global `Needs{levels:{6 drives}, last_ts}` store (not user-keyed) + authored `core/needs.md`; **decay + drift** (pure math over the injected clock); the hungriest need **fed into the mood call** + **tilting the plan**; `connection` replenished mid-turn from the closeness warmth read. Contract test (global, not per-user). **No closing-from-activities yet (v0.13).**
 
-**DoD:** Лілі carries day/week/weekend intentions every turn (the state block), updated at local day/week boundaries with unfinished carried over, fed by the daily mood; the inner-life store is **global (not per-user)**; `/inner` shows it. **No background process.**
+**DoD:** Лілі carries day/week/weekend intentions every turn (the state block), updated at local day/week boundaries with unfinished carried over, fed by the daily mood; **her 6 needs decay over time, color the mood + plan (hungriest first), and `connection` lifts after a warm turn**; both the inner-life and needs stores are **global (not per-user)**; `/inner` shows it. **No background process. Never competence.**
 
-**Tests:** unit — boundary detection (new day/week via fixed clock); the plan-update call (mock model) carries unfinished; the state-block assembly; the global (not user-keyed) store doesn't leak per-user; `/inner` renders. No paid calls.
+**Tests:** unit — boundary detection (new day/week via fixed clock); the plan-update call (mock model) carries unfinished; the state-block assembly; the global (not user-keyed) stores don't leak per-user; **needs decay/drift = exact levels under a fixed clock; the hungriest-need selection; needs feed the mood request; `connection` rises from the warmth read**; `/inner` renders. No paid calls.
 
 ### v0.13 — Inner life II: the away-gap (what happened while you were gone)
 
-**Goal:** come back after a while and **something happened to her** — activities, memories, and dreams from the time away, surfacing where it fits, and **honest about being her inner world, not a body**.
+**Goal:** come back after a while and **something happened to her** — activities, memories, and dreams from the time away, surfacing where it fits, and **honest about being her inner world, not a body**. And the second half of her **needs**: they **close** from what she actually did, so the drives roll forward in time.
 
 At session start the core computes the **away gap** (injected clock) and, when it's non-trivial, generates her life across it — rooted in seeds, capped by gap length, replanned by a strong mood:
 - **Gap-fill (one quiet call):** N fragments (≈1 per day of absence, **soft cap**) — activities/thoughts, and a **dream** only if the gap spanned night hours — rooted in the **seeds** (character, plans, mood, gap, previous entries, an **injected** random seed) so they're recognizable and don't contradict the past. A tiny gap (<~1–2 h) generates nothing.
 - **Replan under the mood (v0.6):** if the day's mood is strong / conflicts with the plan, some intentions drop, others appear to match the mood; a memory is minted as the **gap between plan and what the mood did** (the most alive fragments). **Threshold** (mild days follow the plan); **reactivity is a character trait** (her watery Pisces nature weighs heavily); **unfinished accumulates**.
 - **Surfacing:** fragments ride into context with "recall to the point, like a person — or not at all; **never a report on the absence**"; a `mention_aloud` restraint; ongoing activities reference a previous entry for continuity.
 - **Honesty boundary (hard):** **inner only** (dreams/thoughts/creativity/practice — never a factual physical-world claim); to a direct "did that really happen?" she calmly admits it's her **imagination**, warmly, without breaking the spell. Encoded as a canon rule + a reminder in the block.
+- **Needs II — close from reality (see [NEEDS_full.md](features/NEEDS_full.md)).** The gap-fill returns **structured records** (`serves` from the closed 6-need list / `intensity` / `feeling`); an authored **activity→need map** guides them. **Code owns the ledger** — `level += gain × intensity` per valid `serves` (clamped) — so needs rise from what *actually happened*, not the plan (planned a talk but "no one there" → `connection` stays hungry). A free slot is **filled toward the hungriest need** and then replenishes it (closing the loop). **Threshold-5** per-day generation (gap < 5 → per-day full mood; gap ≥ 5 → one call with per-day biorhythms only). Malformed / out-of-set records are dropped (levels stay post-decay).
 
-See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v0.12 (the plans & store), v0.6 (mood), v0.4 (clock).
+See [INNER_LIFE.md](features/INNER_LIFE.md) + [NEEDS_full.md](features/NEEDS_full.md). Depends on: v0.12 (the plans & needs store), v0.6 (mood), v0.4 (clock).
 
 **Tasks:**
 - **Away-gap** computation (injected clock); the gap→fragment-count curve (soft cap); **dream-iff-night-hours**.
-- The **gap-fill** housekeeping call (seeds = character/plans/mood/gap/previous + injected seed); append fragments to the `log` with `{when, type, text, mood, mention_aloud}`.
+- The **gap-fill** housekeeping call (seeds = character/plans/mood/gap/previous + injected seed); append fragments to the `log` with `{when, type, text, mood, mention_aloud}` **+ `serves`/`intensity`/`feeling`** (needs).
 - **Mood replanning** (threshold + reactivity trait): drop/replace intentions, mint the plan-vs-reality memory, accumulate unfinished.
 - **Surfacing:** feed relevant fragments + the "to the point, never a report" instruction; honor `mention_aloud`.
 - The **honesty boundary**: canon rule (`core/canon/lili.md`) + a reminder line; admits imagination on a direct challenge, never claims a body.
+- **Needs-closing:** authored **activity→need map** (`core/inner/activities.md`); the gap-fill emits structured `serves`/`intensity`; **replenish** (`level += gain × intensity`, clamped) + validation (drop out-of-set/malformed); the **free-slot fill** biased to the hungriest need then replenishing it; the **threshold-5** per-day rule (config).
 
-**DoD:** after a multi-day gap Лілі has new activities/memories (and a **dream** if the gap covered night), rooted in her plans + mood, not contradicting past entries, **surfaced naturally (not a report)**; a strong mood **replans** the day and mints a plan-vs-reality memory; she stays **honest about it being inner/imagination**; a tiny gap generates nothing.
+**DoD:** after a multi-day gap Лілі has new activities/memories (and a **dream** if the gap covered night), rooted in her plans + mood, not contradicting past entries, **surfaced naturally (not a report)**; a strong mood **replans** the day and mints a plan-vs-reality memory; **her needs rise from what she actually did (not what was planned), the free slot fills toward the hungriest need, and the loop rolls forward**; she stays **honest about it being inner/imagination**; a tiny gap generates nothing.
 
-**Tests:** unit — the gap→count curve + dream-iff-night (fixed clock); the gap-fill call (mock model) seeds + appends; replan threshold/reactivity; surfacing honors `mention_aloud`; the honesty boundary present in the prompt; continuity (a new fragment sees previous). No paid calls.
+**Tests:** unit — the gap→count curve + dream-iff-night (fixed clock); the gap-fill call (mock model) seeds + appends; replan threshold/reactivity; surfacing honors `mention_aloud`; the honesty boundary present in the prompt; continuity (a new fragment sees previous); **needs replenish from `serves`/`intensity` (exact levels), validation drops out-of-set serves, the free-slot fill targets the hungriest need, the threshold-5 / no-duplication window**. No paid calls.
 
 ### v0.14 — Emotional memory I: impressions (diary, not stenographer)
 

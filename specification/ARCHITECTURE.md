@@ -53,6 +53,15 @@ The full enum, the `EmotionState` contract, the `IEmotionRenderer` interface and
 - **Honesty boundary (hard).** Her life is **inner** — dreams/thoughts/creativity/practice — **never a factual physical-world claim** (there is no body); to a direct "did that really happen?" she calmly admits it's her imagination, without breaking the warmth. A canon rule + a reminder in the block.
 - **Deterministic.** Clock and random seed are injected; the model is mocked in tests; no real sleeps, no paid calls. Composes with the v0.4 idle nudge and seeds the v4 creative layer.
 
+## Needs (motivational substrate, from v0.12)
+
+Under the mood and the plans sits the **why** — a few core **drives** that push Лілі from *inside* (where the horoscope/biorhythms push from outside). Not a new background loop: needs are **another computed input** to the existing seams, and they **close from what she actually did**. Woven into the inner-life phases (v0.12 = exist & pull; v0.13 = close from reality). **Global to Лілі (not per-user)**; **never competence; inner, not a demand on the user.** See [NEEDS_full.md](features/NEEDS_full.md).
+
+- **Set vs level.** The **set** is stable and authored in `core/needs.md` — **6 drives** (creation / solitude / connection / freedom / meaning / novelty), each with a decay-rate / weight / satisfied-by / deficit voice. The **level** (0..1 each) **breathes**: it decays over time, is replenished by what served it, and drifts to a calm middle.
+- **Store (global).** `Needs{levels:{the 6}, last_ts}` behind the `Repository`, **not keyed by `user_id`** (beside `InnerLife`). Pinned by a contract test (shape + global, not per-user).
+- **v0.12 — exist & pull.** Decay + drift are **pure functions of the levels + the injected clock** (deterministic, unit-tested). The **hungriest** need joins the daily **mood call** (beside biorhythms — the v0.8 merge pattern; resolution only, never competence) and **tilts today's plan** (1–2 items). `connection` is also replenished **mid-turn** from the closeness **warmth read** (`RelationRead.warmth`, v0.10) — no new reply field.
+- **v0.13 — close from reality.** The away-gap's structured records carry `serves` (from the closed 6-need list, guided by an authored **activity→need map**) + `intensity` + `feeling`; **code owns the ledger** — `level += gain × intensity` (clamped) per valid `serves`, so needs rise from what *actually happened*, not the plan. A **free slot fills toward the hungriest** need then replenishes it. Malformed / out-of-set records are dropped (levels stay post-decay). The `log` entry gains `serves`/`intensity`/`feeling` (a contract-test update); the emotion/closeness contracts are **untouched** (`emotion` reuses the locked 9-enum).
+
 ## Memory (three layers)
 
 The three layers are all **per-user (relationship) memory** — private to one person's relationship with Лілі. They sit alongside a separate **shared experience** layer (§Identity, users, and memory scopes).
