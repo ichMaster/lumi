@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.10.1 (2026-06-09)
+---------------------------
+- Date-based 3-layer short memory: recall shifts from session-count to DATE windows (cumulative, coarse→fine) — (1) every session summary from the last SESSION_DAYS (2) days in DETAIL; (2) a per-day DaySummary digest for the last DAY_DAYS (7) days; (3) a NEW per Mon–Sun WeekSummary{user_id, week_start, summary, count, ts} digest for the last WEEK_DAYS (14) days, keyed by the week's Monday. Day AND week digests consolidate from the session SUMMARIES (not the gist), lazily at prompt-build time, regenerated only when the period's summary count changes. New week_summaries store section; per-user isolated; WeekSummary contract test.
+- Structured prompt: the appended overlays are now markdown sections (# Як відповідати, # Зараз, # Памʼять про цю людину grouping the three memory tiers + facts + digest, # Настрій дня, # Близькість, # Стиль відповіді). The canon (persona) stays natural prose at the top; directives unchanged.
+- Leaner style palette: the auto-style block now offers only the mega-styles, each with a concise authored DESCRIPTION (line after the "= a, b, c" alias), instead of dumping all 16 base styles — far shorter (~7 lines vs ~23), but richer per style. Base styles stay authored + recommendable via /style.
+- More .env config: short-memory recall windows (LUMI_SESSION_DAYS / LUMI_DAY_DAYS / LUMI_WEEK_DAYS / LUMI_MAX_DAY_ROWS / LUMI_MAX_WEEK_ROWS) and closeness (LUMI_CLOSENESS on/off + engine tuning LUMI_CLOSENESS_BASELINE/DECAY/W_POS/W_NEG/DELTA/INERTIA + LUMI_CLOSENESS_PATH) are all tunable from .env.
+- 346 tests green; mocked model (no paid calls). The emotion-field, memory-isolation, and competence-unaffected contracts hold.
+
 Version 0.10.0 (2026-06-09)
 ---------------------------
 - v0.10 — Closeness / relationship level (LUMI-037…041): Лілі grows closer to or cooler with each person over time. A per-user closeness modulates how OPEN she is — never her competence.

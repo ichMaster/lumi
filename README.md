@@ -12,20 +12,23 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.10.0 — v0.10 Closeness (relationship level).** Лілі grows **closer to or cooler with each
-person over time** — a per-user closeness level that modulates how *open* she is, **never her
-competence**.
+**0.10.1 — Date-based memory, leaner prompt, more config.** A post-v0.10 round refining how Лілі
+remembers and how the system prompt reads.
 
-- **Relational read** — each turn the model scores *your* message on `warmth / vulnerability /
-  playful / harm / manipulation` (0–1), emitted **alongside** `{reply, emotion, intensity}` —
-  **additive**; the locked v0.3 emotion contract is untouched (LUMI-037…041).
-- **Closeness engine** — a weighted delta moves a per-user value (0–100), **decays toward a
-  baseline over days of silence** (injected clock + `last_ts`), and re-buckets into **5 levels with
-  inertia** (no turn-to-turn flapping). `Closeness{user_id, value, level, last_ts}`, per-user isolated.
-- **Authored levels + guardrail** — an editable `core/closeness.md` (Ввічлива → Найрідніша); the
-  active level injects a behavior block (warmth/openness/initiative). **Hard rule (like the mood):
-  it never changes her competence or willingness to help** — a low level / harm turn never refuses.
-- **See it** — `/closeness` shows the level **by name** (raw scores stay internal).
+- **Date-based 3-layer short memory** — recall shifts from session-count to **date windows**
+  (cumulative, coarse→fine): every session summary from the **last 2 days** (detail), per-day
+  digests for the **last 7 days**, and a **new per Mon–Sun week digest** (`WeekSummary`) for the
+  **last 14 days**. Day **and** week digests consolidate from the **session summaries**, lazily +
+  count-based. All windows `.env`-tunable.
+- **Structured prompt** — the appended overlays are now **markdown sections** (`# Як відповідати`,
+  `# Зараз`, `# Памʼять про цю людину` grouping the memory tiers, `# Настрій дня`, `# Близькість`,
+  `# Стиль відповіді`); the canon stays natural prose.
+- **Leaner style palette** — the prompt now offers only the **mega-styles, each with a concise
+  description** (not the full 16 base styles) — shorter, but richer per-style.
+- **More `.env` config** — short-memory windows and closeness (on/off + engine tuning + levels
+  path) are now all tunable from `.env`.
+
+_(Previous: **0.10.0 — v0.10 Closeness**, the per-user relationship level — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 
