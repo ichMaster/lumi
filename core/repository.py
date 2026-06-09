@@ -100,11 +100,14 @@ class DaySummary:
 
     Built from that day's per-session ``ShortSummary.gist``s; the "days at a glance"
     tier injects these compact daily digests instead of raw per-session gists.
+    ``count`` is how many session-gists it consolidated — when the day's session count
+    grows (incl. today), the digest is stale and gets **regenerated** (lazily, at prompt time).
     """
 
     user_id: str
     date: str       # local day, "YYYY-MM-DD"
     summary: str    # ≤4 lines (newline-separated)
+    count: int      # number of session-gists consolidated (staleness check)
     ts: str         # when it was consolidated
 
 

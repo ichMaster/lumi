@@ -38,9 +38,9 @@ def test_clamp_day_summary_keeps_at_most_4_rows_and_strips_bullets():
 # --- store ----------------------------------------------------------------
 def test_day_summary_upsert_window_and_isolation(tmp_path):
     repo = JsonRepository(tmp_path / "s.json")
-    repo.set_day_summary(DaySummary("owner", "2026-06-05", "д5", "t"))
-    repo.set_day_summary(DaySummary("owner", "2026-06-07", "д7", "t"))
-    repo.set_day_summary(DaySummary("owner", "2026-06-07", "д7-новий", "t2"))  # upsert by date
+    repo.set_day_summary(DaySummary("owner", "2026-06-05", "д5", 1, "t"))
+    repo.set_day_summary(DaySummary("owner", "2026-06-07", "д7", 1, "t"))
+    repo.set_day_summary(DaySummary("owner", "2026-06-07", "д7-новий", 2, "t2"))  # upsert by date
     assert repo.get_day_summary("owner", "2026-06-07").summary == "д7-новий"
     assert [d.date for d in repo.day_summaries_since("owner", "2026-06-06")] == ["2026-06-07"]
     assert repo.day_summaries_since("bob", "2026-06-01") == []  # isolation
@@ -48,25 +48,42 @@ def test_day_summary_upsert_window_and_isolation(tmp_path):
 
 def test_day_summary_survives_a_reload(tmp_path):
     p = tmp_path / "s.json"
-    JsonRepository(p).set_day_summary(DaySummary("owner", "2026-06-06", "рядок1\nрядок2", "t"))
-    assert JsonRepository(p).get_day_summary("owner", "2026-06-06").summary == "рядок1\nрядок2"
+    JsonRepository(p).set_day_summary(DaySummary("owner", "2026-06-06", "рядок1\nрядок2", 3, "t"))
+    reloaded = JsonRepository(p).get_day_summary("owner", "2026-06-06")
+    assert reloaded.summary == "рядок1\nрядок2" and reloaded.count == 3
 
 
-# --- ensure_day_summaries -------------------------------------------------
-def test_ensure_consolidates_a_completed_day_from_its_gists(tmp_path):
+# --- ensure_day_summaries (count-based, lazy) -----------------------------
+def test_ensure_consolidates_a_day_and_records_the_count(tmp_path):
     core = _core(tmp_path, MockLLMClient("Підсумок дня 6."))
     core._repo.add_summary(_ss("a", "gist a", "2026-06-06T09:00:00+00:00"))
     core._repo.add_summary(_ss("b", "gist b", "2026-06-06T18:00:00+00:00"))
+    core.ensure_day_summaries()
+    d6 = core._repo.get_day_summary("owner", "2026-06-06")
+    assert d6.summary == "Підсумок дня 6." and d6.count == 2  # consolidated 2 gists
+    content = core._llm.calls[0]["messages"][0]["content"]
+    assert "gist a" in content and "gist b" in content
+
+
+def test_ensure_includes_today(tmp_path):
+    core = _core(tmp_path, MockLLMClient("Підсумок сьогодні."))
     core._repo.add_summary(_ss("t", "gist today", "2026-06-08T10:00:00+00:00"))  # today
     core.ensure_day_summaries()
-    # Jun 6 (completed) consolidated from its gists; today (Jun 8) is NOT consolidated.
-    assert core._repo.get_day_summary("owner", "2026-06-06").summary == "Підсумок дня 6."
-    assert core._repo.get_day_summary("owner", "2026-06-08") is None
-    content = core._llm.calls[0]["messages"][0]["content"]
-    assert "gist a" in content and "gist b" in content and "gist today" not in content
+    assert core._repo.get_day_summary("owner", "2026-06-08").count == 1  # today consolidated too
 
 
-def test_ensure_is_idempotent(tmp_path):
+def test_ensure_regenerates_when_the_day_gains_a_session(tmp_path):
+    core = _core(tmp_path, MockLLMClient("підсумок"))
+    core._repo.add_summary(_ss("a", "gist a", "2026-06-06T09:00:00+00:00"))
+    core.ensure_day_summaries()
+    assert len(core._llm.calls) == 1 and core._repo.get_day_summary("owner", "2026-06-06").count == 1
+    # a new session that day → count changes → regenerate
+    core._repo.add_summary(_ss("b", "gist b", "2026-06-06T20:00:00+00:00"))
+    core.ensure_day_summaries()
+    assert len(core._llm.calls) == 2 and core._repo.get_day_summary("owner", "2026-06-06").count == 2
+
+
+def test_ensure_is_idempotent_when_count_matches(tmp_path):
     core = _core(tmp_path, MockLLMClient("підсумок"))
     core._repo.add_summary(_ss("a", "gist a", "2026-06-06T09:00:00+00:00"))
     core.ensure_day_summaries()

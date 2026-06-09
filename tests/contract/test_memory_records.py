@@ -8,8 +8,8 @@ from core.repository import DaySummary, LongTermFact, SessionDigest, ShortSummar
 
 
 def test_day_summary_shape():
-    # v0.9.x: a local day consolidated into ≤4 rows, per-user.
-    assert set(DaySummary.__dataclass_fields__) == {"user_id", "date", "summary", "ts"}
+    # v0.9.x: a local day consolidated into ≤4 rows, per-user; `count` drives staleness.
+    assert set(DaySummary.__dataclass_fields__) == {"user_id", "date", "summary", "count", "ts"}
 
 
 def test_short_summary_shape():

@@ -163,16 +163,15 @@ def test_detail_tier_plus_day_summary_injection(tmp_path):
         repo.add_summary(_ss(f"r{i}", f"RDETAIL{i}", f"RGIST{i}", "2026-06-08T10:00:00+00:00"))
     # a completed-day digest in the window (≤4 rows), and one beyond it
     repo.set_day_summary(DaySummary("owner", "2026-06-06", "День теплий.\nГоворили про гори.",
-                                    "2026-06-06T23:00:00+00:00"))
-    repo.set_day_summary(DaySummary("owner", "2026-05-20", "Старий день.", "2026-05-20T23:00:00+00:00"))
+                                    2, "2026-06-06T23:00:00+00:00"))
+    repo.set_day_summary(DaySummary("owner", "2026-05-20", "Старий день.", 1, "2026-05-20T23:00:00+00:00"))
 
     core = Core(
         llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
         repository=repo, canon="C", model="m",
         clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
     )
-    core.reply("привіт", core.start_session())
-    sysp = core.last_prompt["system"]
+    sysp = core._system_prompt(core.start_session())
 
     # Detailed tier: the last N=5 conversations.
     assert "Памʼять про попередні розмови" in sysp
@@ -196,7 +195,6 @@ def test_no_day_tier_when_no_day_summaries(tmp_path):
         repository=repo, canon="C", model="m",
         clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
     )
-    core.reply("привіт", core.start_session())
-    sysp = core.last_prompt["system"]
+    sysp = core._system_prompt(core.start_session())
     assert "RDETAIL" in sysp  # detailed tier
     assert "Останні дні з цією людиною" not in sysp  # no day summaries yet → no day tier

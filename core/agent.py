@@ -201,15 +201,14 @@ class Core:
         self._ensure_mood()
 
     def ensure_day_summaries(self) -> None:
-        """Consolidate each **completed** day in the recall window (the last D days, before
-        today) into a ≤4-row digest — once. Built from that day's per-session gists. Lazy +
-        best-effort (a client calls this at startup, off-thread); never blocks a turn.
+        """Bring each day in the recall window (today … D days back) up to date — lazily, at
+        prompt time. A day's digest is (re)built from its per-session gists **only when stale**:
+        no digest yet, or the day gained sessions (its gist count changed — incl. today, which
+        keeps accruing). ≤4 rows. Best-effort; a model error on one day never blocks the turn.
         """
         today = self._clock().date()
-        for n in range(1, GIST_DAYS + 1):  # yesterday … D days back (completed days)
+        for n in range(GIST_DAYS + 1):  # today (0) … D days back
             day = (today - timedelta(days=n)).isoformat()
-            if self._repo.get_day_summary(self._user_id, day) is not None:
-                continue  # completed days don't change → consolidate once
             day_gists = [
                 s.gist
                 for s in self._repo.summaries_since(self._user_id, day)
@@ -217,15 +216,19 @@ class Core:
             ]
             if not day_gists:
                 continue
+            existing = self._repo.get_day_summary(self._user_id, day)
+            if existing is not None and existing.count == len(day_gists):
+                continue  # count matches the day's sessions → up to date
             try:
                 system, msgs = day_summary_request(day_gists)
                 summary = clamp_day_summary(self._housekeeping_reply(system, msgs))
-            except Exception:  # noqa: BLE001 — best-effort; never block
+                if summary:
+                    self._repo.set_day_summary(
+                        DaySummary(self._user_id, day, summary, len(day_gists),
+                                   self._clock().isoformat())
+                    )
+            except Exception:  # noqa: BLE001 — best-effort; never block the turn
                 continue
-            if summary:
-                self._repo.set_day_summary(
-                    DaySummary(self._user_id, day, summary, self._clock().isoformat())
-                )
 
     @property
     def thinking(self) -> bool:
@@ -479,6 +482,7 @@ class Core:
         new line, and persists both messages. The full history stays stored.
         """
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
+        self.ensure_day_summaries()  # refresh the day digests the prompt will inject (v0.9.x)
         history = self._repo.load_messages(session.id)
         digest = self._maybe_compact(session, history)
         compacted = digest.compacted_count if digest else 0
