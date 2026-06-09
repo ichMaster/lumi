@@ -21,6 +21,21 @@ from dataclasses import dataclass
 THOUGHTS_WINDOW_H = 24
 THOUGHTS_MAX_LINES = 12
 
+# The proactive nudge: how long idle before a %think, a per-session cap (restraint), and the
+# fraction of thinks that graduate to a spoken turn (the rest stay silent).
+THOUGHTS_INTERVAL_S = 600
+THOUGHTS_CAP = 6
+THOUGHTS_SPOKEN_RATIO = 0.2
+
+
+def should_graduate(rng_seed: int, ratio: float) -> bool:
+    """Deterministically decide if a thought graduates to a spoken turn (~``ratio`` of the time)."""
+    if ratio <= 0:
+        return False
+    if ratio >= 1:
+        return True
+    return (rng_seed % 100) < round(ratio * 100)
+
 
 @dataclass(frozen=True)
 class Directive:

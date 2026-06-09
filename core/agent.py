@@ -18,7 +18,7 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from core.biorhythm import (
@@ -70,6 +70,7 @@ from core.mood import (
     split_theme,
     strip_theme,
 )
+from core.nudge import should_nudge
 from core.placeholders import resolve_placeholders
 from core.prompt import (
     REASONING_DIRECTIVE,
@@ -96,8 +97,12 @@ from core.repository import (
 from core.styles import load_meta_descriptions, load_meta_styles, load_styles
 from core.thoughts import (
     REGISTRY,
+    THOUGHTS_CAP,
+    THOUGHTS_INTERVAL_S,
+    THOUGHTS_SPOKEN_RATIO,
     THOUGHTS_WINDOW_H,
     parse_thought,
+    should_graduate,
     thought_request,
     thoughts_diary_block,
 )
@@ -178,6 +183,10 @@ class Core:
         face_signal: Path | None = None,
         thoughts_enabled: bool = True,
         thoughts_window_h: int = THOUGHTS_WINDOW_H,
+        thoughts_interval_s: int = THOUGHTS_INTERVAL_S,
+        thoughts_cap: int = THOUGHTS_CAP,
+        thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO,
+        quiet_hours: tuple[int, int] | None = None,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -207,6 +216,12 @@ class Core:
         # the last `thoughts_window_h` hours feed back into the prompt.
         self._thoughts_enabled = thoughts_enabled
         self._thoughts_window_h = thoughts_window_h
+        # v0.12 proactive nudge: idle interval, a per-session cap, and the spoken fraction.
+        self._thoughts_interval_s = thoughts_interval_s
+        self._thoughts_cap = thoughts_cap
+        self._thoughts_spoken_ratio = thoughts_spoken_ratio
+        self._quiet_hours = quiet_hours
+        self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
         # date-based recall date-based short-memory windows (config/env-tunable): session/day/week spans + caps.
@@ -429,6 +444,7 @@ class Core:
         """
         self._recommendation = []
         self.last_style = None
+        self._think_count = 0  # v0.12: the proactive-think cap is per session
         self._write_face_signal(DEFAULT_EMOTION.value, DEFAULT_INTENSITY)  # calm before the first turn
         return self._repo.create_session(self._user_id)
 
@@ -537,6 +553,34 @@ class Core:
         if not self._thoughts_enabled:
             return None
         return thoughts_diary_block(self.recent_thoughts())
+
+    def tick_think(
+        self,
+        session: Session,
+        last_activity: datetime,
+        now: datetime,
+        *,
+        rng_seed: int = 0,
+        ratio: float | None = None,
+    ) -> Thought | None:
+        """The **proactive nudge**: after the idle interval (and not in quiet hours / over the
+        per-session cap), `%think` **silently** into the diary; a configurable fraction **graduate**
+        to a spoken turn (``Thought.spoken`` set — the client delivers those aloud via the hidden
+        self-turn). Returns the Thought, or ``None`` (not due / capped / off / nothing made)."""
+        if not self._thoughts_enabled:
+            return None
+        if not should_nudge(last_activity, now, self._thoughts_interval_s, self._quiet_hours):
+            return None
+        if self._think_count >= self._thoughts_cap:
+            return None
+        spoken = should_graduate(
+            rng_seed, self._thoughts_spoken_ratio if ratio is None else ratio
+        )
+        thought = self.think("think", session=session, rng_seed=rng_seed, spoken=spoken)
+        if thought is None:
+            return None
+        self._think_count += 1
+        return thought
 
     # --- Prompt placeholders (v0.12) ------------------------------------
     def resolve(self, text: str, *, session: Session | None = None) -> str:
@@ -967,4 +1011,8 @@ def build_core(
         face_signal=cfg.face_signal or cfg.store_path.parent / "face.txt",
         thoughts_enabled=cfg.thoughts,
         thoughts_window_h=cfg.thoughts_window_h,
+        thoughts_interval_s=cfg.thoughts_interval_s,
+        thoughts_cap=cfg.thoughts_cap,
+        thoughts_spoken_ratio=cfg.thoughts_spoken_ratio,
+        quiet_hours=cfg.quiet_hours,
     )
