@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 0.11.0 (2026-06-09)
+---------------------------
+- v0.11 — Face variants & mood themes (LUMI-042…045): Лілі's image face stops repeating and dresses for the day. Two additions over the v0.7 viewer, reusing the locked emotion channel + the v0.7 signal/fallback + the v0.6 mood — NO contract change; fully backward-compatible (no themes → behaves exactly like v0.7).
+- Variants: each emotion is a folder (faces/<theme>/<emotion>/*.png); the viewer picks one at RANDOM with no immediate repeat, re-picked each turn. resolve_variants + pick_variant; FaceSwitcher gains lister/default_theme/rng.
+- Themes: each theme is a wardrobe pack; an editable faces/themes.md manifest (one-line description per theme + an optional default) + auto-discovered theme folders (a faces/ subdir with a calm/). Fallback chain: theme/emotion → theme/calm → default theme → flat v0.7 single image — it never breaks.
+- Mood picks the theme (v0.6 coupling): the daily mood call also chooses a theme from the manifest that fits the day, appended as a «ТЕМА: <name>» line; MoodState gains `theme` (validated against the manifest, unknown → default), cached per local day, recomputed at midnight. The core's face signal extends to "<theme> <emotion> <intensity>". LUMI_FACES_DIR config; the Core class stays viewer-independent (the manifest is loaded in build_core, the composition root).
+- Authoring: viewer/faces/PROMPTS.md gains a v0.11 section (the <theme>/<emotion>/NN.png layout, the variant recipe, the theme/wardrobe recipe = constant FACE block + per-theme WARDROBE & ATMOSPHERE block, the themes.md format) + MOODBOARD.md (the ten authored "Honest Moods").
+- Theme content: the 10 "Honest Moods" themes are scaffolded (3am / day-after / furious / dissociation / last-memory / quiet-collapse / im-fine / drowning / vigil / calm-before). day-after & quiet-collapse ship FULL 9-emotion packs (768×768); the other eight ship a themed calm/ portrait (the in-theme fallback) until their other emotions are generated. No theme falls back to the flat everyday face. The flat v0.7 pack stays the neutral everyday default (no `default:` line).
+- 366 tests green; mocked model + a fake faces tree (no paid calls, no real images in CI).
+
 Version 0.10.1 (2026-06-09)
 ---------------------------
 - Date-based 3-layer short memory: recall shifts from session-count to DATE windows (cumulative, coarse→fine) — (1) every session summary from the last SESSION_DAYS (2) days in DETAIL; (2) a per-day DaySummary digest for the last DAY_DAYS (7) days; (3) a NEW per Mon–Sun WeekSummary{user_id, week_start, summary, count, ts} digest for the last WEEK_DAYS (14) days, keyed by the week's Monday. Day AND week digests consolidate from the session SUMMARIES (not the gist), lazily at prompt-build time, regenerated only when the period's summary count changes. New week_summaries store section; per-user isolated; WeekSummary contract test.

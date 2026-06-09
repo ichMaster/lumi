@@ -12,23 +12,22 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.10.1 — Date-based memory, leaner prompt, more config.** A post-v0.10 round refining how Лілі
-remembers and how the system prompt reads.
+**0.11.0 — v0.11 Face variants & mood themes.** Лілі's image face stops repeating and **dresses
+for the day** — several pictures per emotion, and a themed outfit chosen by her mood.
 
-- **Date-based 3-layer short memory** — recall shifts from session-count to **date windows**
-  (cumulative, coarse→fine): every session summary from the **last 2 days** (detail), per-day
-  digests for the **last 7 days**, and a **new per Mon–Sun week digest** (`WeekSummary`) for the
-  **last 14 days**. Day **and** week digests consolidate from the **session summaries**, lazily +
-  count-based. All windows `.env`-tunable.
-- **Structured prompt** — the appended overlays are now **markdown sections** (`# Як відповідати`,
-  `# Зараз`, `# Памʼять про цю людину` grouping the memory tiers, `# Настрій дня`, `# Близькість`,
-  `# Стиль відповіді`); the canon stays natural prose.
-- **Leaner style palette** — the prompt now offers only the **mega-styles, each with a concise
-  description** (not the full 16 base styles) — shorter, but richer per-style.
-- **More `.env` config** — short-memory windows and closeness (on/off + engine tuning + levels
-  path) are now all tunable from `.env`.
+- **Variants** — each emotion is a *folder* of images; the viewer shows a **random** one (no
+  immediate repeat), re-picked each turn, so she isn't predictable (LUMI-042).
+- **Themes** — each theme is a wardrobe pack (`faces/<theme>/<emotion>/…`); an editable
+  `faces/themes.md` manifest + auto-discovered folders (LUMI-043). The **daily mood (v0.6) picks the
+  theme** that fits the day (`MoodState.theme`, cached per local day); the core writes
+  `<theme> <emotion> <intensity>` to the face signal (LUMI-044).
+- **Graceful + backward-compatible** — fallback chain `theme/emotion → theme/calm → default → flat
+  v0.7`; with no themes it behaves exactly like v0.7. **No contract change** (reuses the locked
+  emotion channel, the v0.7 signal, and the v0.6 mood).
+- **Ten "Honest Moods" themes** authored (3am / day-after / furious / … / calm-before): `day-after`
+  & `quiet-collapse` ship full 9-emotion packs; the other eight ship a themed `calm` portrait.
 
-_(Previous: **0.10.0 — v0.10 Closeness**, the per-user relationship level — see RELEASE.txt.)_
+_(Previous: **0.10.1 — Date-based memory, leaner prompt, more config** — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 
