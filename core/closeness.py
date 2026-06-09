@@ -9,8 +9,10 @@ The closeness engine (delta + bucketing + decay) and the authored levels build o
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from core.repository import Closeness
 
@@ -117,3 +119,60 @@ def update_closeness(
     value = _clamp_value(value + DELTA_SCALE * signal)
     level = _bucket_with_inertia(value, level)
     return Closeness(user_id=user_id, value=value, level=level, last_ts=now.isoformat())
+
+
+# The level a user sits at before any closeness record exists (the engine's starting point).
+DEFAULT_LEVEL = naive_level(BASELINE)
+
+# Framing for the active level's authored behavior block — prominent, like the mood header.
+# It shapes warmth/openness/initiative ONLY; the guardrail (never competence) is in the text.
+CLOSENESS_HEADER = (
+    "Рівень близькості з цією людиною зараз — «{name}». Він задає лише теплоту, відкритість, "
+    "ініціативу й грайливість — НІКОЛИ не твою компетентність, чесність чи готовність допомогти "
+    "(ти однаково уважна й корисна на будь-якому рівні):"
+)
+
+# A level header: "## 1. Ввічлива" → (1, "Ввічлива").
+_LEVEL_RE = re.compile(r"^##\s*(\d+)\.\s*(.+?)\s*$")
+
+
+def load_levels(path: str | Path) -> dict[int, tuple[str, str]]:
+    """Parse the authored ``core/closeness.md`` into ``{level: (name, behavior_text)}``.
+
+    A missing/empty file yields ``{}`` (the closeness block is then simply not injected).
+    """
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    levels: dict[int, tuple[str, str]] = {}
+    level: int | None = None
+    name = ""
+    buf: list[str] = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        match = _LEVEL_RE.match(line)
+        if match:
+            if level is not None:
+                levels[level] = (name, "\n".join(buf).strip())
+            level, name, buf = int(match.group(1)), match.group(2), []
+        elif line.startswith("#"):
+            continue  # comment / file header
+        elif level is not None:
+            buf.append(line)
+    if level is not None:
+        levels[level] = (name, "\n".join(buf).strip())
+    return {lv: (nm, body) for lv, (nm, body) in levels.items() if body}
+
+
+def closeness_block(levels: dict[int, tuple[str, str]], level: int) -> str | None:
+    """Build the system-prompt block for ``level`` (header + authored behavior), or ``None``."""
+    entry = levels.get(level)
+    if entry is None:
+        return None
+    name, behavior = entry
+    return f"{CLOSENESS_HEADER.format(name=name)}\n{behavior}"
+
+
+def level_name(levels: dict[int, tuple[str, str]], level: int) -> str | None:
+    """The authored name for ``level`` (for ``/closeness``), or ``None``."""
+    entry = levels.get(level)
+    return entry[0] if entry else None

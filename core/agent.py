@@ -29,7 +29,14 @@ from core.biorhythm import (
     biorhythms as biorhythm_cycles,
 )
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
-from core.closeness import RelationRead, update_closeness, validate_relation
+from core.closeness import (
+    DEFAULT_LEVEL,
+    RelationRead,
+    closeness_block,
+    load_levels,
+    update_closeness,
+    validate_relation,
+)
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
@@ -115,6 +122,7 @@ class Core:
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
+        closeness_levels: dict[int, tuple[str, str]] | None = None,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -151,6 +159,8 @@ class Core:
         # it; `/style <name>` sets a soft per-session *recommendation*, not a switch.
         self._styles = styles or {}
         self._meta = meta_styles or {}
+        # v0.10 closeness: authored level → (name, behavior) blocks, injected by active level.
+        self._closeness_levels = closeness_levels or {}
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -356,6 +366,12 @@ class Core:
         summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
+        # v0.10: inject the active relationship level's authored block (warmth/openness, never
+        # competence). Use the prior turn's level (a fresh user sits at the default level).
+        existing = self._repo.get_closeness(self._user_id)
+        closeness = closeness_block(
+            self._closeness_levels, existing.level if existing else DEFAULT_LEVEL
+        )
         # Append the reasoning directive to the canon so any pre-answer reasoning is
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         return build_system_prompt(
@@ -369,6 +385,7 @@ class Core:
             relation=True,  # v0.10: ask for the additive relational read
             ambient=ambient_line(self._world, self._clock),
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
+            closeness=closeness,  # the active relationship level's block (v0.10)
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:
@@ -679,6 +696,7 @@ def build_core(
         compaction_batch=cfg.compaction_batch,
         styles=load_styles(cfg.styles_path),
         meta_styles=load_meta_styles(cfg.styles_path),
+        closeness_levels=load_levels(cfg.closeness_path),
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
         mood_log_path=cfg.store_path.parent / "mood.log",

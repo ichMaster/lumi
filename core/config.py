@@ -40,6 +40,9 @@ DEFAULT_EMOJI_PATH = _REPO_ROOT / "core" / "emoji.md"
 # Лілі's natal snapshot (v0.6 mood); editable. Empty file → mood off.
 DEFAULT_NATAL_PATH = _REPO_ROOT / "core" / "natal.md"
 
+# Лілі's authored closeness levels (v0.10); editable like styles.
+DEFAULT_CLOSENESS_PATH = _REPO_ROOT / "core" / "closeness.md"
+
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
@@ -101,6 +104,7 @@ class Config:
     # v0.6 mood of the day — on by default.
     mood: bool = True
     natal_path: Path = DEFAULT_NATAL_PATH
+    closeness_path: Path = DEFAULT_CLOSENESS_PATH
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -195,6 +199,9 @@ def load_config(*, load_env: bool = True) -> Config:
         biorhythms=(os.getenv("LUMI_BIORHYTHMS") or "on").strip().lower() in _TRUTHY,  # on by default
         cycle=(os.getenv("LUMI_CYCLE") or "on").strip().lower() in _TRUTHY,  # on by default
         natal_path=Path(natal_env) if (natal_env := os.getenv("LUMI_NATAL_PATH")) else DEFAULT_NATAL_PATH,
+        closeness_path=(
+            Path(cl_env) if (cl_env := os.getenv("LUMI_CLOSENESS_PATH")) else DEFAULT_CLOSENESS_PATH
+        ),
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
         api_key=os.getenv("ANTHROPIC_API_KEY"),

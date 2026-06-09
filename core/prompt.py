@@ -157,6 +157,7 @@ def build_system_prompt(
     relation: bool = False,
     ambient: str | None = None,
     mood: str | None = None,
+    closeness: str | None = None,
 ) -> str:
     """Assemble the system prompt: canon + the user's memory + an answer style.
 
@@ -200,6 +201,8 @@ def build_system_prompt(
         parts.append("Раніше в цій розмові (стисло):\n" + digest)
     if mood:
         parts.append(f"{MOOD_HEADER}\n{mood}")
+    if closeness:  # v0.10: the active relationship level's authored behavior block
+        parts.append(closeness)
     if style:
         parts.append(f"{STYLE_HEADER}\n{style}")
     return "\n\n".join(parts)
