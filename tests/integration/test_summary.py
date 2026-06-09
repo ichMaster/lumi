@@ -177,20 +177,22 @@ def test_three_date_based_tiers_injection(tmp_path):
     )
     sysp = core._system_prompt(core.start_session())
 
+    # Grouped under one markdown memory section, coarse → fine.
+    assert "# Памʼять про цю людину" in sysp
     # Tier 1 — sessions in the last 2 days (detailed), dated.
-    assert "Памʼять про останні розмови (детально)" in sysp
+    assert "## Останні розмови (детально)" in sysp
     for i in range(3):
         assert f"[2026-06-07] RDETAIL{i}" in sysp
     # Tier 2 — day digest in the 7-day window; the older one excluded.
-    assert "Памʼять про розмови в останні дні" in sysp
+    assert "## Останні дні" in sysp
     assert "[2026-06-03] День теплий. Говорили про гори." in sysp
     assert "Старий день." not in sysp
     # Tier 3 — week digest in the 14-day window; the older one excluded.
-    assert "Памʼять про останні тижні" in sysp
+    assert "## Останні тижні" in sysp
     assert "[тиждень з 2026-06-01] Тиждень про гори й каву." in sysp
     assert "Дуже старий тиждень." not in sysp
     # Order: weeks → days → sessions (coarse to fine).
-    assert sysp.index("останні тижні") < sysp.index("в останні дні") < sysp.index("(детально)")
+    assert sysp.index("Останні тижні") < sysp.index("Останні дні") < sysp.index("Останні розмови")
 
 
 def test_no_tiers_when_no_summaries(tmp_path):
@@ -201,5 +203,4 @@ def test_no_tiers_when_no_summaries(tmp_path):
         clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
     )
     sysp = core._system_prompt(core.start_session())
-    assert "Памʼять про розмови в останні дні" not in sysp
-    assert "Памʼять про останні тижні" not in sysp
+    assert "# Памʼять про цю людину" not in sysp  # no memory at all → no section

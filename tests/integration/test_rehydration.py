@@ -55,5 +55,4 @@ def test_fresh_user_has_no_memory_in_prompt(tmp_path):
     # answer-only directive), with nothing user-specific.
     system = llm.calls[-1]["system"]
     assert system.startswith("Ти — Лілі.")
-    assert "Памʼять про останні розмови" not in system
-    assert "Що ти памʼятаєш про цю людину" not in system
+    assert "# Памʼять про цю людину" not in system  # no memory section with nothing to recall

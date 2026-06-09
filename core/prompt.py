@@ -159,56 +159,55 @@ def build_system_prompt(
     mood: str | None = None,
     closeness: str | None = None,
 ) -> str:
-    """Assemble the system prompt: canon + the user's memory + an answer style.
+    """Assemble the system prompt: the canon (persona) as prose, then the overlays as
+    **markdown sections** so they stay distinct.
 
-    The canon always rides at the base; ``emotion=True`` adds the v0.3
-    emotion-output instruction (:data:`EMOTION_INSTRUCTION`) right after it; then
-    the optional ``ambient`` "now / here" block (v0.4 — background that colors tone,
-    never competence), then the three date-based memory layers coarse→fine
-    (``week_summaries`` → ``day_summaries`` → detailed ``summaries``) and long-term ``facts``,
-    then the in-session ``digest``, and finally — at the very **end** — an optional ``style`` overlay
-    (which shapes the *form* of the reply, never competence), framed as a
-    prioritized directive (:data:`STYLE_HEADER`) so it's the last, most salient
-    instruction. Assembly order: canon → emotion → week_summaries → day_summaries → summaries → facts → digest →
-    **style**. With no overlays the result is the canon verbatim (the v0.1
-    behavior). v0.5 adds a ``mood`` block the same way.
+    The canon rides at the base; then `# Як відповідати` (emotion + relational read), `# Зараз`
+    (ambient now/here), `# Памʼять про цю людину` — one section grouping the three date-based
+    memory layers coarse→fine (`## Останні тижні` → `## Останні дні` → `## Останні розмови`),
+    `## Факти`, `## Раніше в цій розмові` — then `# Настрій дня`, `# Близькість`, and finally —
+    at the very **end** — `# Стиль відповіді` (the prioritized :data:`STYLE_HEADER` overlay,
+    last + most salient; shapes *form*, never competence). With no overlays the result is the
+    canon verbatim (the v0.1 behavior).
 
     All overlay args are plain strings so this stays a pure string assembler,
     decoupled from the record types (the core passes the text).
     """
+    # The canon (persona) rides as natural prose at the top; the appended overlays are
+    # structured into markdown sections so they stay distinct and easy to scan.
     parts = [canon]
+
+    fmt = []
     if emotion:
-        parts.append(EMOTION_INSTRUCTION)
+        fmt.append(EMOTION_INSTRUCTION)
     if relation:  # v0.10: the additive per-turn relational read of the user's message
-        parts.append(RELATION_INSTRUCTION)
+        fmt.append(RELATION_INSTRUCTION)
+    if fmt:
+        parts.append("# Як відповідати\n\n" + "\n\n".join(fmt))
+
     if ambient:
-        parts.append(ambient)
-    # date-based recall short memory, coarse → fine: weeks → days → recent sessions (detailed).
+        parts.append("# Зараз\n\n" + ambient)
+
+    # Short memory grouped under one section, coarse → fine: weeks → days → recent sessions,
+    # then long-term facts and the in-session digest.
+    mem = []
     if week_summaries:
-        parts.append(
-            "Памʼять про останні тижні (стисло):\n"
-            + "\n".join(f"- {w}" for w in week_summaries)
-        )
+        mem.append("## Останні тижні\n" + "\n".join(f"- {w}" for w in week_summaries))
     if day_summaries:
-        parts.append(
-            "Памʼять про розмови в останні дні:\n"
-            + "\n".join(f"- {d}" for d in day_summaries)
-        )
+        mem.append("## Останні дні\n" + "\n".join(f"- {d}" for d in day_summaries))
     if summaries:
-        parts.append(
-            "Памʼять про останні розмови (детально):\n"
-            + "\n".join(f"- {s}" for s in summaries)
-        )
+        mem.append("## Останні розмови (детально)\n" + "\n".join(f"- {s}" for s in summaries))
     if facts:
-        parts.append(
-            "Що ти памʼятаєш про цю людину:\n" + "\n".join(f"- {f}" for f in facts)
-        )
+        mem.append("## Факти\n" + "\n".join(f"- {f}" for f in facts))
     if digest:
-        parts.append("Раніше в цій розмові (стисло):\n" + digest)
+        mem.append("## Раніше в цій розмові\n" + digest)
+    if mem:
+        parts.append("# Памʼять про цю людину\n\n" + "\n\n".join(mem))
+
     if mood:
-        parts.append(f"{MOOD_HEADER}\n{mood}")
+        parts.append("# Настрій дня\n\n" + f"{MOOD_HEADER}\n{mood}")
     if closeness:  # v0.10: the active relationship level's authored behavior block
-        parts.append(closeness)
+        parts.append("# Близькість\n\n" + closeness)
     if style:
-        parts.append(f"{STYLE_HEADER}\n{style}")
+        parts.append("# Стиль відповіді\n\n" + f"{STYLE_HEADER}\n{style}")
     return "\n\n".join(parts)
