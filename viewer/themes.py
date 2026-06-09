@@ -82,15 +82,17 @@ def _parse_manifest(path: Path) -> tuple[dict[str, str], str | None]:
 def load_themes(faces_dir: str | Path) -> Themes:
     """Load the theme manifest + auto-discovered folders into a :class:`Themes`.
 
-    The manifest describes themes and names the default; discovered folders without a manifest
-    entry are included with an empty description. The default is the manifest's (if it's a known
-    theme), else the first discovered theme, else ``None`` (→ the flat v0.7 behavior).
+    The manifest describes themes and may name the default; discovered folders without a manifest
+    entry are included with an empty description. The default is: the manifest's named one (if it's
+    a known theme); else, when the manifest **names** an unknown default, the first discovered
+    theme; else (**no** ``default:`` line) ``None`` — so an unnamed default falls back to the flat
+    v0.7 pack (the neutral everyday), not to an arbitrary theme.
     """
     faces = Path(faces_dir)
     descs, default = _parse_manifest(faces / "themes.md")
     discovered = discover_themes(faces)
     names = set(discovered) | set(descs)
     descriptions = {n: descs.get(n, "") for n in names}
-    if default not in descriptions:
-        default = discovered[0] if discovered else None
+    if default is not None and default not in descriptions:
+        default = discovered[0] if discovered else None  # named but unknown → first discovered
     return Themes(descriptions=descriptions, default=default)

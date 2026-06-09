@@ -53,3 +53,12 @@ def test_load_themes_unknown_default_falls_back_to_first_discovered(tmp_path):
     (faces / "themes.md").write_text("default: ghost\n\n## aaa\nA.\n", encoding="utf-8")
     themes = load_themes(faces)
     assert themes.default == "aaa"  # 'ghost' isn't a real theme → first discovered
+
+
+def test_load_themes_no_default_line_is_none(tmp_path):
+    # Themes exist but the manifest names no default → None → the flat v0.7 neutral everyday.
+    faces = tmp_path / "faces"
+    _mk(faces, ("3am", "calm"), ("vigil", "calm"))
+    (faces / "themes.md").write_text("## 3am\nLonely.\n\n## vigil\nWaiting.\n", encoding="utf-8")
+    themes = load_themes(faces)
+    assert themes.default is None and set(themes.names) == {"3am", "vigil"}

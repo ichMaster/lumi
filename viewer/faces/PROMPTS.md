@@ -136,7 +136,7 @@ Split the IDENTITY BLOCK into two parts and swap only the second per theme:
 
 The ten authored mood themes (3am / day‑after / furious / dissociation / last‑memory /
 quiet‑collapse / im‑fine / drowning / vigil / calm‑before) and their full mood/visual direction
-live in [THEMES.md](THEMES.md) — lift each theme's description into the wardrobe block, and its
+live in [MOODBOARD.md](MOODBOARD.md) — lift each theme's description into the wardrobe block, and its
 one‑line summary into the manifest below.
 
 ## `themes.md` manifest
