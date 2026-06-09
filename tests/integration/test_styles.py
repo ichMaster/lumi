@@ -4,12 +4,13 @@ from core.agent import Core
 from core.config import load_config
 from core.llm import MockLLMClient
 from core.prompt import build_system_prompt, split_style
-from core.styles import load_meta_styles, load_styles
+from core.styles import load_meta_descriptions, load_meta_styles, load_styles
 from state.local_store import JsonRepository
 from tui.app import ChatInput, LumiApp
 
 STYLES = {"short": "Be brief.", "emotional": "Be warm.", "formal": "Be formal."}
 METAS = {"combo": ["short", "emotional"]}
+META_DESC = {"combo": "Швидко й тепло, по суті."}
 
 
 def _core(tmp_path, llm=None):
@@ -20,6 +21,7 @@ def _core(tmp_path, llm=None):
         model="m",
         styles=STYLES,
         meta_styles=METAS,
+        meta_descriptions=META_DESC,
     )
 
 
@@ -50,9 +52,19 @@ def test_load_meta_styles_from_the_authored_file():
         assert all(m in base for m in members), name
 
 
+def test_load_meta_descriptions_from_the_authored_file():
+    cfg = load_config(load_env=False)
+    descs = load_meta_descriptions(cfg.styles_path)
+    metas = load_meta_styles(cfg.styles_path)
+    assert set(descs) == set(metas)  # every mega-style has a description
+    assert "стисло" in descs["блискавична"].lower()  # the prose description, not the alias
+    assert all(not d.startswith("=") for d in descs.values())
+
+
 def test_load_styles_missing_file_is_empty(tmp_path):
     assert load_styles(tmp_path / "nope.md") == {}
     assert load_meta_styles(tmp_path / "nope.md") == {}
+    assert load_meta_descriptions(tmp_path / "nope.md") == {}
 
 
 # --- the <style> parser ---------------------------------------------------
@@ -64,16 +76,17 @@ def test_split_style_extracts_and_strips_the_tag():
     assert split_style("текст <style/>")[1] == "текст"  # stray marker stripped
 
 
-# --- auto-style: the palette is always offered ----------------------------
-def test_every_turn_offers_the_full_palette_and_asks_her_to_choose(tmp_path):
+# --- auto-style: only the mega-styles (with descriptions) are offered ------
+def test_every_turn_offers_the_mega_styles_with_descriptions(tmp_path):
     llm = MockLLMClient("ок")
     core = _core(tmp_path, llm)
     core.reply("привіт", core.start_session())
     system = llm.calls[-1]["system"]
     assert system.startswith("Ти — Лілі.")  # canon still first
-    assert all(t in system for t in ("Be brief.", "Be warm.", "Be formal."))
-    assert "combo = short, emotional" in system
-    assert "СТИЛЬ ВІДПОВІДІ" in system and "МЕГА" in system  # prefer mega-styles
+    assert "combo: Швидко й тепло, по суті." in system  # the mega + its description
+    assert not any(t in system for t in ("Be brief.", "Be warm.", "Be formal."))  # no base bodies
+    assert "Базові стилі" not in system  # the long base list is gone
+    assert "СТИЛЬ ВІДПОВІДІ" in system and "МЕГА" in system
     assert "<style>назва</style>" in system  # asked to declare her choice
     assert "ВАЖЛИВО" in system  # a prioritized directive, placed last
 

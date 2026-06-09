@@ -82,7 +82,7 @@ from core.repository import (
     make_message,
     now_iso,
 )
-from core.styles import load_meta_styles, load_styles
+from core.styles import load_meta_descriptions, load_meta_styles, load_styles
 from core.user import DEFAULT_USER_ID
 from core.worldcontext import WorldContext, ambient_line
 
@@ -142,6 +142,7 @@ class Core:
         max_week_rows: int = MAX_WEEK_ROWS,
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
+        meta_descriptions: dict[str, str] | None = None,
         closeness_levels: dict[int, tuple[str, str]] | None = None,
         closeness_enabled: bool = True,
         closeness_tuning: ClosenessTuning | None = None,
@@ -188,6 +189,7 @@ class Core:
         # it; `/style <name>` sets a soft per-session *recommendation*, not a switch.
         self._styles = styles or {}
         self._meta = meta_styles or {}
+        self._meta_desc = meta_descriptions or {}  # concise per-mega description for the palette
         # v0.10 closeness: authored level → (name, behavior) blocks, injected by active level.
         self._closeness_levels = closeness_levels or {}
         self._closeness_enabled = closeness_enabled
@@ -365,17 +367,15 @@ class Core:
         return True
 
     def _style_directive(self) -> str | None:
-        """The auto-style palette: every meta + base style (so Лілі can choose), plus
-        the user's soft recommendation if set. ``None`` when no styles are authored."""
-        if not self._styles and not self._meta:
+        """The auto-style palette — just the **mega-styles** with a concise description each
+        (so the prompt stays short), plus the user's soft recommendation if set. ``None`` when
+        no mega-styles are authored. Base styles are no longer dumped into the prompt."""
+        if not self._meta:
             return None
-        lines: list[str] = []
-        if self._meta:
-            lines.append("Мега-стилі (обирай переважно з них) — кожен поєднує базові:")
-            lines += [f"- {name} = {', '.join(self._meta[name])}" for name in sorted(self._meta)]
-        if self._styles:
-            lines.append("Базові стилі:")
-            lines += [f"- {name}: {self._styles[name]}" for name in sorted(self._styles)]
+        lines = ["Мега-стилі — обери один, що найкраще пасує:"]
+        for name in sorted(self._meta):
+            desc = self._meta_desc.get(name) or ", ".join(self._meta[name])
+            lines.append(f"- {name}: {desc}")
         if self._recommendation:
             lines.append(
                 f"(Користувач радить: {', '.join(self._recommendation)} — "
@@ -780,6 +780,7 @@ def build_core(
         max_week_rows=cfg.max_week_rows,
         styles=load_styles(cfg.styles_path),
         meta_styles=load_meta_styles(cfg.styles_path),
+        meta_descriptions=load_meta_descriptions(cfg.styles_path),
         closeness_levels=load_levels(cfg.closeness_path),
         closeness_enabled=cfg.closeness,
         closeness_tuning=cfg.closeness_tuning,

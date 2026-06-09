@@ -6,9 +6,10 @@ A **style** changes *how* Лілі answers — length, structure, expressiveness
 behavior; the design note lives in
 [../specification/ARCHITECTURE.md](../specification/ARCHITECTURE.md) §Configuration.
 
-> TL;DR — Styles are authored in [../core/styles.md](../core/styles.md). The **whole palette
-> is offered in the system prompt each turn and Лілі picks the style that fits** (preferring
-> **meta‑styles**), writes in it, and **declares it as `<style>name</style>`** (parsed and
+> TL;DR — Styles are authored in [../core/styles.md](../core/styles.md). The **mega‑styles
+> (each with a short description) are offered in the system prompt each turn and Лілі picks the
+> one that fits** (the base styles stay authored but are no longer dumped into the prompt),
+> writes in it, and **declares it as `<style>name</style>`** (parsed and
 > stripped, like the emotion tag). **`/style <name>`** is a **soft recommendation** (she still
 > decides); **`/style auto`** clears it. The status line shows her chosen style and **who
 > picked it** — `(Лілі)`, or `(ти)` when she followed your recommendation. Per‑session.
@@ -57,8 +58,9 @@ is enforceable. Authored in [../core/styles.md](../core/styles.md).
 ## 3. The meta‑styles (6, presets)
 
 A meta‑style is a **bundle** — choosing it selects several base styles at once. Named as
-adjectives in Лілі's voice. Authored as `= a, b, c` alias lines in
-[../core/styles.md](../core/styles.md).
+adjectives in Лілі's voice. Authored in [../core/styles.md](../core/styles.md) as a `= a, b, c`
+alias line **plus a one‑line description** on the next line — and it's that **description** (not
+the base list) that rides in the prompt's style palette, so it can be as detailed as you like.
 
 | `/style` | expands to | the vibe |
 |---|---|---|
@@ -98,7 +100,7 @@ Rules:
 ## 5. How a style reaches the model — and comes back
 
 Every turn, `Core._system_prompt(session)` ([../core/agent.py](../core/agent.py)) builds the
-**palette** (every meta + base style) and passes it as the **last** block of the system prompt,
+**palette** (the mega‑styles + their descriptions) and passes it as the **last** block of the system prompt,
 framed by a header that asks Лілі to choose:
 
 ```

@@ -52,9 +52,26 @@ def load_styles(path: str | Path) -> dict[str, str]:
 
 
 def load_meta_styles(path: str | Path) -> dict[str, list[str]]:
-    """Meta-styles ``{name: [base style names]}`` — the ``= a, b, c`` alias sections."""
+    """Meta-styles ``{name: [base style names]}`` — the **first** ``= a, b, c`` line of each
+    alias section (a following description line, if any, is ignored here)."""
     metas: dict[str, list[str]] = {}
     for name, body in _sections(path).items():
         if body.startswith("="):
-            metas[name] = [n for n in re.split(r"[\s,+]+", body[1:].strip()) if n]
+            alias = body.splitlines()[0]
+            metas[name] = [n for n in re.split(r"[\s,+]+", alias[1:].strip()) if n]
     return metas
+
+
+def load_meta_descriptions(path: str | Path) -> dict[str, str]:
+    """Meta-style descriptions ``{name: text}`` — the line(s) AFTER the ``= a, b, c`` alias.
+
+    This concise per-mega description is what rides in the prompt's style palette (the base
+    styles themselves are no longer dumped there). Metas without a description are omitted.
+    """
+    descs: dict[str, str] = {}
+    for name, body in _sections(path).items():
+        if body.startswith("="):
+            desc = "\n".join(body.splitlines()[1:]).strip()
+            if desc:
+                descs[name] = desc
+    return descs
