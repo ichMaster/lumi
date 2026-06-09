@@ -433,6 +433,10 @@ class LumiApp(App[None]):
             self._show_thoughts()
             prompt.focus()
             return
+        if text == "/theme" or text.startswith("/theme "):
+            self._theme_command(text)
+            prompt.focus()
+            return
         if text == "/new":
             await self._new_session()
             prompt.focus()
@@ -547,6 +551,23 @@ class LumiApp(App[None]):
         """Show Лілі's mood of the day — the `/mood` command (v0.6)."""
         resolution = self._core.mood
         body = f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING
+        self._emit(body, Markdown(body))
+
+    def _theme_command(self, text: str) -> None:
+        """Manually set / clear the face theme — `/theme <name>` and `/theme auto` (v0.11)."""
+        arg = text[len("/theme"):].strip()
+        available = ", ".join(self._core.themes) or "(жодної)"
+        if not arg:
+            current = self._core.theme or "(плоский v0.7)"
+            body = (f"**Тема обличчя:** {current}\nДоступні: {available}\n"
+                    "`/theme <назва>` — поставити, `/theme auto` — за настроєм дня.")
+        elif arg.lower() == "auto":
+            self._core.set_theme(None)
+            body = "Тема обличчя: **авто** (за настроєм дня)."
+        elif self._core.set_theme(arg):
+            body = f"Тема обличчя: **{arg}**."
+        else:
+            body = f"Невідома тема «{arg}». Доступні: {available}"
         self._emit(body, Markdown(body))
 
     def _show_thoughts(self) -> None:

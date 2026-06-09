@@ -225,6 +225,9 @@ class Core:
         # v0.11 face themes: the mood picks one per day; the signal carries it. Off → default/None.
         self._theme_descriptions = theme_descriptions or {}
         self._default_theme = default_theme
+        self._force_theme: str | None = None  # /theme override — beats the mood's pick (session)
+        self._last_emotion = DEFAULT_EMOTION.value  # last face state (re-emitted on a theme change)
+        self._last_intensity = DEFAULT_INTENSITY
         # v0.8 biorhythms: computed cycles merged into the daily mood + the cached state.
         self._biorhythms_enabled = biorhythms_enabled
         self._biorhythms: Biorhythms | None = None
@@ -306,10 +309,31 @@ class Core:
 
     @property
     def theme(self) -> str | None:
-        """Today's face **theme** (v0.11) — the mood's pick, else the default, else ``None``."""
+        """The active face **theme** (v0.11): a ``/theme`` override, else the mood's pick, else the
+        default, else ``None``. The override wins so the daily mood can't clobber a manual choice."""
+        if self._force_theme is not None:
+            return self._force_theme
         if self._mood and self._mood.theme:
             return self._mood.theme
         return self._default_theme
+
+    @property
+    def themes(self) -> list[str]:
+        """The known face themes (the manifest-described ones the mood / ``/theme`` choose from)."""
+        return sorted(self._theme_descriptions)
+
+    def set_theme(self, name: str | None) -> bool:
+        """Manually override the face theme (``/theme``). ``None``/``"auto"`` clears it (back to the
+        mood). Returns ``False`` for an unknown theme (override unchanged); on success re-emits the
+        face signal so the viewer updates at once."""
+        if not name or name.strip().lower() == "auto":
+            self._force_theme = None
+        elif name in self._theme_descriptions:
+            self._force_theme = name
+        else:
+            return False
+        self._write_face_signal(self._last_emotion, self._last_intensity)
+        return True
 
     @property
     def closeness(self) -> Closeness | None:
@@ -477,6 +501,7 @@ class Core:
         v0.7 line. Best-effort: a separate viewer process polls this file; a write failure never
         affects the turn.
         """
+        self._last_emotion, self._last_intensity = emotion, intensity  # for a /theme re-emit
         if self._face_signal is None:
             return
         try:
