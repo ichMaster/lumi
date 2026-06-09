@@ -155,14 +155,16 @@ def _ss(sid, detail, gist, ts):
     return ShortSummary("owner", sid, detail, gist, ts)
 
 
-def test_two_tier_injection_detail_then_day_gists(tmp_path):
+def test_detail_tier_plus_day_summary_injection(tmp_path):
+    from core.repository import DaySummary
+
     repo = JsonRepository(tmp_path / "s.json")
-    # Inserted chronologically (as sessions end). N=5, D=5 → window since 2026-06-03.
-    repo.add_summary(_ss("old", "OLDDETAIL", "OLDGIST", "2026-05-20T10:00:00+00:00"))  # beyond window
-    repo.add_summary(_ss("empty", "EMPTYDETAIL", "", "2026-06-04T10:00:00+00:00"))     # empty gist
-    repo.add_summary(_ss("g0", "G0DETAIL", "GIST0", "2026-06-04T11:00:00+00:00"))      # in window, has gist
-    for i in range(5):  # the recent N (newest)
+    for i in range(5):  # detailed tier: the recent N (today)
         repo.add_summary(_ss(f"r{i}", f"RDETAIL{i}", f"RGIST{i}", "2026-06-08T10:00:00+00:00"))
+    # a completed-day digest in the window (≤4 rows), and one beyond it
+    repo.set_day_summary(DaySummary("owner", "2026-06-06", "День теплий.\nГоворили про гори.",
+                                    "2026-06-06T23:00:00+00:00"))
+    repo.set_day_summary(DaySummary("owner", "2026-05-20", "Старий день.", "2026-05-20T23:00:00+00:00"))
 
     core = Core(
         llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
@@ -172,24 +174,23 @@ def test_two_tier_injection_detail_then_day_gists(tmp_path):
     core.reply("привіт", core.start_session())
     sysp = core.last_prompt["system"]
 
-    # Detailed tier: the last N=5 conversations, dated.
+    # Detailed tier: the last N=5 conversations.
     assert "Памʼять про попередні розмови" in sysp
     for i in range(5):
         assert f"RDETAIL{i}" in sysp
-    # Gist tier: in-window conversations NOT in the recent N (g0 only), dated.
+    # Day tier: the in-window day digest, one row per line, dated by day.
     assert "Останні дні з цією людиною (стисло)" in sysp
-    assert "GIST0" in sysp
-    # Dedup: the recent N are not repeated as gists.
+    assert "[2026-06-06] День теплий." in sysp
+    assert "[2026-06-06] Говорили про гори." in sysp
+    # Beyond the D-day window → not injected; raw per-session gists are no longer injected.
+    assert "Старий день." not in sysp
     for i in range(5):
         assert f"RGIST{i}" not in sysp
-    # Beyond the D-day window → nowhere; empty-gist record → omitted from the gist tier.
-    assert "OLDDETAIL" not in sysp and "OLDGIST" not in sysp
-    assert "EMPTYDETAIL" not in sysp
 
 
-def test_no_gists_when_window_is_empty(tmp_path):
+def test_no_day_tier_when_no_day_summaries(tmp_path):
     repo = JsonRepository(tmp_path / "s.json")
-    repo.add_summary(_ss("r", "RDETAIL", "RGIST", "2026-06-08T10:00:00+00:00"))  # the only one (recent)
+    repo.add_summary(_ss("r", "RDETAIL", "RGIST", "2026-06-08T10:00:00+00:00"))
     core = Core(
         llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
         repository=repo, canon="C", model="m",
@@ -198,4 +199,4 @@ def test_no_gists_when_window_is_empty(tmp_path):
     core.reply("привіт", core.start_session())
     sysp = core.last_prompt["system"]
     assert "RDETAIL" in sysp  # detailed tier
-    assert "Останні дні з цією людиною" not in sysp  # the only summary is in the recent N → no gist tier
+    assert "Останні дні з цією людиною" not in sysp  # no day summaries yet → no day tier

@@ -36,7 +36,9 @@ from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
     GIST_DAYS,
     RECENT_SUMMARIES,
+    clamp_day_summary,
     compaction_plan,
+    day_summary_request,
     digest_request,
     facts_request,
     parse_facts,
@@ -54,6 +56,7 @@ from core.prompt import (
     split_style,
 )
 from core.repository import (
+    DaySummary,
     LongTermFact,
     Repository,
     Session,
@@ -197,6 +200,33 @@ class Core:
         """Compute today's mood now (idempotent / cached) — a client may call at startup."""
         self._ensure_mood()
 
+    def ensure_day_summaries(self) -> None:
+        """Consolidate each **completed** day in the recall window (the last D days, before
+        today) into a ≤4-row digest — once. Built from that day's per-session gists. Lazy +
+        best-effort (a client calls this at startup, off-thread); never blocks a turn.
+        """
+        today = self._clock().date()
+        for n in range(1, GIST_DAYS + 1):  # yesterday … D days back (completed days)
+            day = (today - timedelta(days=n)).isoformat()
+            if self._repo.get_day_summary(self._user_id, day) is not None:
+                continue  # completed days don't change → consolidate once
+            day_gists = [
+                s.gist
+                for s in self._repo.summaries_since(self._user_id, day)
+                if s.ts[:10] == day and s.gist
+            ]
+            if not day_gists:
+                continue
+            try:
+                system, msgs = day_summary_request(day_gists)
+                summary = clamp_day_summary(self._housekeeping_reply(system, msgs))
+            except Exception:  # noqa: BLE001 — best-effort; never block
+                continue
+            if summary:
+                self._repo.set_day_summary(
+                    DaySummary(self._user_id, day, summary, self._clock().isoformat())
+                )
+
     @property
     def thinking(self) -> bool:
         """Whether extended thinking is enabled on the model (for a status indicator)."""
@@ -301,17 +331,17 @@ class Core:
         per turn, so a restart recalls prior context and new memory takes effect.
         Isolation holds — only this ``user_id``'s records are read.
         """
-        # v0.9 two-tier short memory: the last N conversations in DETAIL, plus all
-        # conversations in the last D local days as one-line GISTS (recent N not repeated).
-        # Bounded by the day window only — no row cap. Both dated (v0.4).
+        # v0.9 two-tier short memory: the last N conversations in DETAIL, plus the last D
+        # local days as compact per-day digests (≤4 rows each, consolidated from that day's
+        # gists by ensure_day_summaries). Both dated (v0.4).
         recent = self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
-        recent_ids = {s.session_id for s in recent}
         summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
         since = (self._clock().date() - timedelta(days=GIST_DAYS)).isoformat()
         gists = [
-            f"[{format_date(s.ts)}] {s.gist}"
-            for s in self._repo.summaries_since(self._user_id, since)
-            if s.session_id not in recent_ids and s.gist  # dedup recent N; skip empty (old) gists
+            f"[{ds.date}] {line.strip()}"
+            for ds in self._repo.day_summaries_since(self._user_id, since)
+            for line in ds.summary.splitlines()
+            if line.strip()
         ]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)

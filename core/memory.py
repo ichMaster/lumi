@@ -16,9 +16,10 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 # Short-memory recall (v0.9). N = last conversations injected in DETAIL; D = the day window
-# whose conversations are injected as one-line GISTS (no row cap — bounded by the window).
+# whose conversations are consolidated into per-day digests (≤ MAX_DAY_ROWS rows each).
 RECENT_SUMMARIES = 5  # N
 GIST_DAYS = 5  # D — the "days at a glance" window (local days)
+MAX_DAY_ROWS = 4  # a day's consolidated summary is at most this many rows
 
 # Instruction for end-of-session summarization (an internal memory note, not Лілі
 # speaking). The target length is appended per-session (summary_request), scaled
@@ -90,6 +91,26 @@ def summary_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, st
     target = summary_sentences(len(messages))
     system = f"{SUMMARY_SYSTEM} Орієнтовний обсяг детальної частини: {target} речень."
     return system, [{"role": "user", "content": transcript}]
+
+
+DAY_SUMMARY_SYSTEM = (
+    "Ти стискаєш кілька стислих заміток за ОДИН день у спільний підсумок дня для памʼяті Лілі — "
+    "від третьої особи, по суті. МАКСИМУМ 4 короткі рядки, кожен з нового рядка, без нумерації й "
+    "маркерів. Обʼєднай повторюване, прибери дрібниці, залиш головне про цю людину й цей день. "
+    "Без вступів — лише рядки."
+)
+
+
+def day_summary_request(gists: Sequence[str]) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to consolidate a day's per-session gists into ≤4 rows."""
+    content = "Стислі замітки за день:\n" + "\n".join(f"- {g}" for g in gists)
+    return DAY_SUMMARY_SYSTEM, [{"role": "user", "content": content}]
+
+
+def clamp_day_summary(text: str, max_rows: int = MAX_DAY_ROWS) -> str:
+    """Keep at most ``max_rows`` non-empty lines, stripped of leading bullets."""
+    rows = [ln.strip().lstrip("-•*").strip() for ln in text.strip().splitlines() if ln.strip()]
+    return "\n".join(rows[:max_rows])
 
 
 def parse_summary(text: str) -> tuple[str, str]:

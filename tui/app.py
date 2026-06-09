@@ -233,6 +233,8 @@ class LumiApp(App[None]):
         self.query_one("#prompt", ChatInput).focus()
         self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
         self.run_worker(asyncio.to_thread(self._core.ensure_mood), exclusive=False)  # mood (v0.6)
+        # v0.9.x: consolidate completed days into ≤4-row digests (off-thread, best-effort).
+        self.run_worker(asyncio.to_thread(self._core.ensure_day_summaries), exclusive=False)
         # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
         cfg = load_config()
         self._emoji = EmojiRenderer(load_emoji_map(cfg.emoji_path))  # authored map (v0.5)
@@ -581,6 +583,8 @@ class LumiApp(App[None]):
         try:
             await self._process_current_session()
             self._session = self._core.start_session()
+            # A new session may cross a day boundary → consolidate any newly-completed day.
+            self.run_worker(asyncio.to_thread(self._core.ensure_day_summaries), exclusive=False)
             # Fresh session → fresh screen (memory is kept in the store).
             self.query_one("#history", RichLog).clear()
             self._render_thinking(None)  # clear the Thinking box too

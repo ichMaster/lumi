@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.repository import (
+    DaySummary,
     LongTermFact,
     Message,
     Session,
@@ -32,6 +33,7 @@ class JsonRepository:
         self._sessions: dict[str, Session] = {}
         self._messages: dict[str, list[Message]] = {}
         self._summaries: dict[str, list[ShortSummary]] = {}  # by user_id
+        self._day_summaries: dict[str, dict[str, DaySummary]] = {}  # user_id -> date -> DaySummary
         self._facts: dict[str, list[LongTermFact]] = {}  # by user_id
         self._digests: dict[str, SessionDigest] = {}  # by session_id
         self._load()
@@ -54,6 +56,8 @@ class JsonRepository:
         for uid, raws in data.get("summaries", {}).items():
             # Migration: pre-v0.9 records have no `gist` → default it to "".
             self._summaries[uid] = [ShortSummary(**{"gist": "", **raw}) for raw in raws]
+        for uid, byday in data.get("day_summaries", {}).items():
+            self._day_summaries[uid] = {d: DaySummary(**raw) for d, raw in byday.items()}
         for uid, raws in data.get("facts", {}).items():
             self._facts[uid] = [LongTermFact(**raw) for raw in raws]
         for sid, raw in data.get("digests", {}).items():
@@ -67,6 +71,10 @@ class JsonRepository:
             },
             "summaries": {
                 uid: [asdict(s) for s in items] for uid, items in self._summaries.items()
+            },
+            "day_summaries": {
+                uid: {d: asdict(ds) for d, ds in byday.items()}
+                for uid, byday in self._day_summaries.items()
             },
             "facts": {
                 uid: [asdict(f) for f in items] for uid, items in self._facts.items()
@@ -119,6 +127,17 @@ class JsonRepository:
         # Compare on the date prefix (YYYY-MM-DD) of the stored ISO ts; user-scoped.
         return [s for s in self._summaries.get(user_id, []) if s.ts[:10] >= since_date]
 
+    def set_day_summary(self, day_summary: DaySummary) -> None:
+        self._day_summaries.setdefault(day_summary.user_id, {})[day_summary.date] = day_summary
+        self._persist()
+
+    def get_day_summary(self, user_id: str, date: str) -> DaySummary | None:
+        return self._day_summaries.get(user_id, {}).get(date)
+
+    def day_summaries_since(self, user_id: str, since_date: str) -> list[DaySummary]:
+        byday = self._day_summaries.get(user_id, {})
+        return [byday[d] for d in sorted(byday) if d >= since_date]
+
     def add_fact(self, fact: LongTermFact) -> None:
         self._facts.setdefault(fact.user_id, []).append(fact)
         self._persist()
@@ -128,6 +147,7 @@ class JsonRepository:
 
     def clear_memory(self, user_id: str) -> None:
         self._summaries.pop(user_id, None)
+        self._day_summaries.pop(user_id, None)
         self._facts.pop(user_id, None)
         self._persist()
 

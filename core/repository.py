@@ -95,6 +95,20 @@ class ShortSummary:
 
 
 @dataclass(frozen=True)
+class DaySummary:
+    """One local day consolidated into ≤4 rows (v0.9.x). Per-user (private).
+
+    Built from that day's per-session ``ShortSummary.gist``s; the "days at a glance"
+    tier injects these compact daily digests instead of raw per-session gists.
+    """
+
+    user_id: str
+    date: str       # local day, "YYYY-MM-DD"
+    summary: str    # ≤4 lines (newline-separated)
+    ts: str         # when it was consolidated
+
+
+@dataclass(frozen=True)
 class LongTermFact:
     """A durable fact about a user, accumulated across sessions. Per-user (private)."""
 
@@ -163,9 +177,21 @@ class Repository(Protocol):
     def summaries_since(self, user_id: str, since_date: str) -> list[ShortSummary]:
         """The user's summaries whose ``ts`` date is on/after ``since_date`` (YYYY-MM-DD).
 
-        For the v0.9 "days at a glance" gist tier. Newest last; user-scoped (never
+        Source for building per-day consolidations. Newest last; user-scoped (never
         crosses users). ``since_date`` is a local date string (``YYYY-MM-DD``).
         """
+        ...
+
+    def set_day_summary(self, day_summary: DaySummary) -> None:
+        """Upsert a day's consolidated summary (per-user, keyed by date)."""
+        ...
+
+    def get_day_summary(self, user_id: str, date: str) -> DaySummary | None:
+        """The user's consolidated summary for ``date`` (YYYY-MM-DD), or ``None``."""
+        ...
+
+    def day_summaries_since(self, user_id: str, since_date: str) -> list[DaySummary]:
+        """The user's day summaries with ``date`` on/after ``since_date``, oldest first."""
         ...
 
     def add_fact(self, fact: LongTermFact) -> None:

@@ -4,7 +4,12 @@ Pins ARCHITECTURE §Data model / §Contracts. Changing a record shape must chang
 this test.
 """
 
-from core.repository import LongTermFact, SessionDigest, ShortSummary
+from core.repository import DaySummary, LongTermFact, SessionDigest, ShortSummary
+
+
+def test_day_summary_shape():
+    # v0.9.x: a local day consolidated into ≤4 rows, per-user.
+    assert set(DaySummary.__dataclass_fields__) == {"user_id", "date", "summary", "ts"}
 
 
 def test_short_summary_shape():
