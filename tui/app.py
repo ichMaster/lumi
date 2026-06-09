@@ -429,6 +429,10 @@ class LumiApp(App[None]):
             self._show_closeness()
             prompt.focus()
             return
+        if text == "/thoughts":
+            self._show_thoughts()
+            prompt.focus()
+            return
         if text == "/new":
             await self._new_session()
             prompt.focus()
@@ -543,6 +547,15 @@ class LumiApp(App[None]):
         """Show Лілі's mood of the day — the `/mood` command (v0.6)."""
         resolution = self._core.mood
         body = f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING
+        self._emit(body, Markdown(body))
+
+    def _show_thoughts(self) -> None:
+        """Show the recent dated thought-stream — the `/thoughts` command (v0.12)."""
+        if self._core.thoughts_show == "off":
+            body = "Перегляд думок вимкнено."
+        else:
+            view = self._core.thoughts_view()
+            body = f"**Що в мене на думці:**\n\n{view}" if view else "Поки що жодних думок."
         self._emit(body, Markdown(body))
 
     def _show_closeness(self) -> None:

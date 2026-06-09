@@ -117,6 +117,9 @@ _EMOTION_VALUES = frozenset(e.value for e in Emotion)
 # The full daily mood reading is logged here (only the resolution rides in the prompt).
 _mood_log = logging.getLogger("lumi.mood")
 
+# Every recorded thought is logged here (the v0.3 logged tier) — never persisted to long-term memory.
+_thoughts_log = logging.getLogger("lumi.thoughts")
+
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
 
@@ -203,6 +206,7 @@ class Core:
         thoughts_interval_s: int = THOUGHTS_INTERVAL_S,
         thoughts_cap: int = THOUGHTS_CAP,
         thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO,
+        thoughts_show: str = "hidden",
         quiet_hours: tuple[int, int] | None = None,
     ) -> None:
         self._llm = llm
@@ -237,6 +241,7 @@ class Core:
         self._thoughts_interval_s = thoughts_interval_s
         self._thoughts_cap = thoughts_cap
         self._thoughts_spoken_ratio = thoughts_spoken_ratio
+        self._thoughts_show = thoughts_show  # hidden (default) / admin / off — the /thoughts policy
         self._quiet_hours = quiet_hours
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
@@ -542,6 +547,7 @@ class Core:
             user_id=self._user_id, spoken=spoken,
         )
         self._repo.add_thought(thought)
+        _thoughts_log.info("%s [%s] %s", thought.when, thought.kind, thought.text)  # logged tier
         return thought
 
     def _recent_tail(self, session: Session, n: int = 6) -> str | None:
@@ -570,6 +576,16 @@ class Core:
         if not self._thoughts_enabled:
             return None
         return thoughts_diary_block(self.recent_thoughts())
+
+    @property
+    def thoughts_show(self) -> str:
+        """The ``/thoughts`` view policy: ``hidden`` (default) / ``admin`` / ``off`` (v0.12)."""
+        return self._thoughts_show
+
+    def thoughts_view(self, *, days: int = 7, max_lines: int = 20) -> str | None:
+        """The recent dated diary for ``/thoughts`` — this user's surfaceable thoughts over the
+        last ``days``, dated, capped. **Per-user filtered** (never the cross-user stream)."""
+        return thoughts_diary_block(self.recent_thoughts(window_h=days * 24), max_lines=max_lines)
 
     def run_directive(
         self,
@@ -1053,5 +1069,6 @@ def build_core(
         thoughts_interval_s=cfg.thoughts_interval_s,
         thoughts_cap=cfg.thoughts_cap,
         thoughts_spoken_ratio=cfg.thoughts_spoken_ratio,
+        thoughts_show=cfg.thoughts_show,
         quiet_hours=cfg.quiet_hours,
     )
