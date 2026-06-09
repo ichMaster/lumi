@@ -106,9 +106,25 @@ class DaySummary:
 
     user_id: str
     date: str       # local day, "YYYY-MM-DD"
-    summary: str    # ≤4 lines (newline-separated)
-    count: int      # number of session-gists consolidated (staleness check)
+    summary: str    # ≤MAX_DAY_ROWS lines (newline-separated)
+    count: int      # number of session summaries consolidated (staleness check)
     ts: str         # when it was consolidated
+
+
+@dataclass(frozen=True)
+class WeekSummary:
+    """One Mon–Sun week consolidated for memory (date-based recall). Per-user (private).
+
+    Built from that week's per-session ``ShortSummary.summary`` texts — the coarsest of the
+    three date-based recall layers (sessions → days → weeks). ``week_start`` is that week's
+    Monday ("YYYY-MM-DD"); ``count`` is how many session summaries it consolidated (staleness).
+    """
+
+    user_id: str
+    week_start: str  # the week's Monday, "YYYY-MM-DD"
+    summary: str     # ≤MAX_WEEK_ROWS lines
+    count: int       # number of session summaries consolidated (staleness check)
+    ts: str          # when it was consolidated
 
 
 @dataclass(frozen=True)
@@ -210,6 +226,18 @@ class Repository(Protocol):
 
     def day_summaries_since(self, user_id: str, since_date: str) -> list[DaySummary]:
         """The user's day summaries with ``date`` on/after ``since_date``, oldest first."""
+        ...
+
+    def set_week_summary(self, week_summary: WeekSummary) -> None:
+        """Upsert a week's consolidated summary (per-user, keyed by Monday ``week_start``)."""
+        ...
+
+    def get_week_summary(self, user_id: str, week_start: str) -> WeekSummary | None:
+        """The user's consolidated summary for the week starting ``week_start``, or ``None``."""
+        ...
+
+    def week_summaries_since(self, user_id: str, since_week: str) -> list[WeekSummary]:
+        """The user's week summaries with ``week_start`` on/after ``since_week``, oldest first."""
         ...
 
     def add_fact(self, fact: LongTermFact) -> None:

@@ -10,12 +10,20 @@ from core.repository import (
     LongTermFact,
     SessionDigest,
     ShortSummary,
+    WeekSummary,
 )
 
 
 def test_day_summary_shape():
     # v0.9.x: a local day consolidated into ≤4 rows, per-user; `count` drives staleness.
     assert set(DaySummary.__dataclass_fields__) == {"user_id", "date", "summary", "count", "ts"}
+
+
+def test_week_summary_shape():
+    # date-based recall: a Mon–Sun week consolidated, per-user; keyed by the Monday `week_start`.
+    assert set(WeekSummary.__dataclass_fields__) == {
+        "user_id", "week_start", "summary", "count", "ts",
+    }
 
 
 def test_closeness_shape():

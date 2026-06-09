@@ -150,6 +150,7 @@ def build_system_prompt(
     canon: str,
     summaries: Sequence[str] | None = None,
     day_summaries: Sequence[str] | None = None,
+    week_summaries: Sequence[str] | None = None,
     facts: Sequence[str] | None = None,
     digest: str | None = None,
     style: str | None = None,
@@ -164,12 +165,12 @@ def build_system_prompt(
     The canon always rides at the base; ``emotion=True`` adds the v0.3
     emotion-output instruction (:data:`EMOTION_INSTRUCTION`) right after it; then
     the optional ``ambient`` "now / here" block (v0.4 — background that colors tone,
-    never competence), then the recent-days ``day_summaries`` digests followed by the
-    detailed ``summaries`` and long-term ``facts``,
+    never competence), then the three date-based memory layers coarse→fine
+    (``week_summaries`` → ``day_summaries`` → detailed ``summaries``) and long-term ``facts``,
     then the in-session ``digest``, and finally — at the very **end** — an optional ``style`` overlay
     (which shapes the *form* of the reply, never competence), framed as a
     prioritized directive (:data:`STYLE_HEADER`) so it's the last, most salient
-    instruction. Assembly order: canon → emotion → day_summaries → summaries → facts → digest →
+    instruction. Assembly order: canon → emotion → week_summaries → day_summaries → summaries → facts → digest →
     **style**. With no overlays the result is the canon verbatim (the v0.1
     behavior). v0.5 adds a ``mood`` block the same way.
 
@@ -183,14 +184,20 @@ def build_system_prompt(
         parts.append(RELATION_INSTRUCTION)
     if ambient:
         parts.append(ambient)
-    if day_summaries:  # v0.9: the last few days as compact per-day digests (first)
+    # date-based recall short memory, coarse → fine: weeks → days → recent sessions (detailed).
+    if week_summaries:
+        parts.append(
+            "Памʼять про останні тижні (стисло):\n"
+            + "\n".join(f"- {w}" for w in week_summaries)
+        )
+    if day_summaries:
         parts.append(
             "Памʼять про розмови в останні дні:\n"
             + "\n".join(f"- {d}" for d in day_summaries)
         )
-    if summaries:  # then the last N conversations in detail
+    if summaries:
         parts.append(
-            "Памʼять про останні розмови з цією людиною:\n"
+            "Памʼять про останні розмови (детально):\n"
             + "\n".join(f"- {s}" for s in summaries)
         )
     if facts:

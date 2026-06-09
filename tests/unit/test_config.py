@@ -39,18 +39,21 @@ def test_env_overrides(monkeypatch):
     assert cfg.api_key == "sk-test-not-real"
 
 
-def test_recall_knobs_default_and_override(monkeypatch):
-    # v0.9 short-memory recall is now .env-tunable (defaults 5 / 5 / 4).
-    for key in ("LUMI_RECENT_SUMMARIES", "LUMI_GIST_DAYS", "LUMI_MAX_DAY_ROWS"):
+def test_recall_windows_default_and_override(monkeypatch):
+    # date-based recall short-memory recall: 3 date-based windows, .env-tunable (defaults 2 / 7 / 14 + 4 / 6).
+    for key in ("LUMI_SESSION_DAYS", "LUMI_DAY_DAYS", "LUMI_WEEK_DAYS",
+                "LUMI_MAX_DAY_ROWS", "LUMI_MAX_WEEK_ROWS"):
         monkeypatch.delenv(key, raising=False)
     d = load_config(load_env=False)
-    assert (d.recent_summaries, d.gist_days, d.max_day_rows) == (5, 5, 4)
+    assert (d.session_days, d.day_days, d.week_days) == (2, 7, 14)
+    assert (d.max_day_rows, d.max_week_rows) == (4, 6)
 
-    monkeypatch.setenv("LUMI_RECENT_SUMMARIES", "8")
-    monkeypatch.setenv("LUMI_GIST_DAYS", "14")
-    monkeypatch.setenv("LUMI_MAX_DAY_ROWS", "3")
+    monkeypatch.setenv("LUMI_SESSION_DAYS", "3")
+    monkeypatch.setenv("LUMI_DAY_DAYS", "10")
+    monkeypatch.setenv("LUMI_WEEK_DAYS", "28")
+    monkeypatch.setenv("LUMI_MAX_WEEK_ROWS", "8")
     o = load_config(load_env=False)
-    assert (o.recent_summaries, o.gist_days, o.max_day_rows) == (8, 14, 3)
+    assert (o.session_days, o.day_days, o.week_days, o.max_week_rows) == (3, 10, 28, 8)
 
 
 def test_closeness_toggle_and_tuning_from_env(monkeypatch):

@@ -18,7 +18,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from core.closeness import ClosenessTuning
-from core.memory import GIST_DAYS, MAX_DAY_ROWS, RECENT_SUMMARIES
+from core.memory import (
+    DAY_DAYS,
+    MAX_DAY_ROWS,
+    MAX_WEEK_ROWS,
+    RECENT_SUMMARIES,
+    SESSION_DAYS,
+    WEEK_DAYS,
+)
 from core.worldcontext import DEFAULT_WEATHER_URL
 
 # Repo root = the parent of this ``core/`` package.
@@ -85,10 +92,13 @@ class Config:
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     compaction_batch: int = DEFAULT_COMPACTION_BATCH
-    # Cross-session short-memory recall (v0.9): N detailed convos, D-day digest window, rows/day.
+    # Short-memory recall: 3 date-based windows + the /memory quick-view count + row caps.
     recent_summaries: int = RECENT_SUMMARIES
-    gist_days: int = GIST_DAYS
+    session_days: int = SESSION_DAYS
+    day_days: int = DAY_DAYS
+    week_days: int = WEEK_DAYS
     max_day_rows: int = MAX_DAY_ROWS
+    max_week_rows: int = MAX_WEEK_ROWS
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking: bool = DEFAULT_THINKING
     effort: str | None = DEFAULT_EFFORT
@@ -154,10 +164,11 @@ def load_config(*, load_env: bool = True) -> Config:
 
     recent_env = os.getenv("LUMI_RECENT_SUMMARIES")
     recent_summaries = int(recent_env) if recent_env else RECENT_SUMMARIES
-    gist_days_env = os.getenv("LUMI_GIST_DAYS")
-    gist_days = int(gist_days_env) if gist_days_env else GIST_DAYS
-    max_day_rows_env = os.getenv("LUMI_MAX_DAY_ROWS")
-    max_day_rows = int(max_day_rows_env) if max_day_rows_env else MAX_DAY_ROWS
+    session_days = int(sd) if (sd := os.getenv("LUMI_SESSION_DAYS")) else SESSION_DAYS
+    day_days = int(dd) if (dd := os.getenv("LUMI_DAY_DAYS")) else DAY_DAYS
+    week_days = int(wd) if (wd := os.getenv("LUMI_WEEK_DAYS")) else WEEK_DAYS
+    max_day_rows = int(mdr) if (mdr := os.getenv("LUMI_MAX_DAY_ROWS")) else MAX_DAY_ROWS
+    max_week_rows = int(mwr) if (mwr := os.getenv("LUMI_MAX_WEEK_ROWS")) else MAX_WEEK_ROWS
 
     # v0.10 closeness engine knobs (defaults from ClosenessTuning; each overridable via .env).
     _ct = ClosenessTuning()
@@ -207,8 +218,11 @@ def load_config(*, load_env: bool = True) -> Config:
         memory_window=memory_window,
         compaction_batch=compaction_batch,
         recent_summaries=recent_summaries,
-        gist_days=gist_days,
+        session_days=session_days,
+        day_days=day_days,
+        week_days=week_days,
         max_day_rows=max_day_rows,
+        max_week_rows=max_week_rows,
         max_tokens=max_tokens,
         thinking=thinking,
         effort=effort,

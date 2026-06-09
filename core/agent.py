@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from core.biorhythm import (
@@ -44,10 +44,13 @@ from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_an
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
-    GIST_DAYS,
+    DAY_DAYS,
     MAX_DAY_ROWS,
+    MAX_WEEK_ROWS,
     RECENT_SUMMARIES,
-    clamp_day_summary,
+    SESSION_DAYS,
+    WEEK_DAYS,
+    clamp_rows,
     compaction_plan,
     day_summary_request,
     digest_request,
@@ -56,6 +59,7 @@ from core.memory import (
     parse_summary,
     summary_request,
     trim_history,
+    week_summary_request,
 )
 from core.mood import MoodState, load_natal, mood_request, split_resolution
 from core.prompt import (
@@ -74,6 +78,7 @@ from core.repository import (
     Session,
     SessionDigest,
     ShortSummary,
+    WeekSummary,
     make_message,
     now_iso,
 )
@@ -86,6 +91,12 @@ _mood_log = logging.getLogger("lumi.mood")
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
+
+
+def _monday_of(date_str: str) -> str:
+    """The Monday ("YYYY-MM-DD") of the Mon–Sun week containing ``date_str`` (date-based recall weeks)."""
+    d = date.fromisoformat(date_str)
+    return (d - timedelta(days=d.weekday())).isoformat()
 
 
 @dataclass(frozen=True)
@@ -124,8 +135,11 @@ class Core:
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
         recent_summaries: int = RECENT_SUMMARIES,
-        gist_days: int = GIST_DAYS,
+        session_days: int = SESSION_DAYS,
+        day_days: int = DAY_DAYS,
+        week_days: int = WEEK_DAYS,
         max_day_rows: int = MAX_DAY_ROWS,
+        max_week_rows: int = MAX_WEEK_ROWS,
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
         closeness_levels: dict[int, tuple[str, str]] | None = None,
@@ -162,10 +176,13 @@ class Core:
         self._face_signal = face_signal
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
-        # v0.9 short-memory recall knobs (config/env-tunable): N detailed, D-day window, rows/day.
-        self._recent_summaries = recent_summaries
-        self._gist_days = gist_days
+        # date-based recall date-based short-memory windows (config/env-tunable): session/day/week spans + caps.
+        self._recent_summaries = recent_summaries  # /memory quick-view count
+        self._session_days = session_days  # tier 1: detailed session summaries window
+        self._day_days = day_days  # tier 2: per-day digests window
+        self._week_days = week_days  # tier 3: per-week digests window
         self._max_day_rows = max_day_rows
+        self._max_week_rows = max_week_rows
         # Answer styles + meta-styles (presets → several base styles). Лілі picks her
         # own style each turn from this palette (preferring meta-styles) and declares
         # it; `/style <name>` sets a soft per-session *recommendation*, not a switch.
@@ -246,31 +263,51 @@ class Core:
         self._ensure_mood()
 
     def ensure_day_summaries(self) -> None:
-        """Bring each day in the recall window (today … D days back) up to date — lazily, at
-        prompt time. A day's digest is (re)built from its per-session gists **only when stale**:
-        no digest yet, or the day gained sessions (its gist count changed — incl. today, which
-        keeps accruing). ≤4 rows. Best-effort; a model error on one day never blocks the turn.
+        """Bring each day in the recall window (last ``day_days``) up to date — lazily, at prompt
+        time. A day's ≤``max_day_rows``-row digest is (re)built from that day's **session
+        summaries** **only when stale** (no digest yet, or the day gained sessions — its summary
+        count changed, incl. today). Best-effort; a model error on one day never blocks the turn.
         """
-        today = self._clock().date()
-        for n in range(self._gist_days + 1):  # today (0) … D days back
-            day = (today - timedelta(days=n)).isoformat()
-            day_gists = [
-                s.gist
-                for s in self._repo.summaries_since(self._user_id, day)
-                if s.ts[:10] == day and s.gist
-            ]
-            if not day_gists:
-                continue
+        since = (self._clock().date() - timedelta(days=self._day_days)).isoformat()
+        by_day: dict[str, list[str]] = {}
+        for s in self._repo.summaries_since(self._user_id, since):
+            if s.summary.strip():
+                by_day.setdefault(s.ts[:10], []).append(s.summary)
+        for day, texts in by_day.items():
             existing = self._repo.get_day_summary(self._user_id, day)
-            if existing is not None and existing.count == len(day_gists):
+            if existing is not None and existing.count == len(texts):
                 continue  # count matches the day's sessions → up to date
             try:
-                system, msgs = day_summary_request(day_gists)
-                summary = clamp_day_summary(self._housekeeping_reply(system, msgs), self._max_day_rows)
+                system, msgs = day_summary_request(texts)
+                summary = clamp_rows(self._housekeeping_reply(system, msgs), self._max_day_rows)
                 if summary:
                     self._repo.set_day_summary(
-                        DaySummary(self._user_id, day, summary, len(day_gists),
-                                   self._clock().isoformat())
+                        DaySummary(self._user_id, day, summary, len(texts), self._clock().isoformat())
+                    )
+            except Exception:  # noqa: BLE001 — best-effort; never block the turn
+                continue
+
+    def ensure_week_summaries(self) -> None:
+        """Bring each Mon–Sun week in the recall window (last ``week_days``) up to date — lazily.
+        A week's ≤``max_week_rows``-row digest is (re)built from that week's **session summaries**
+        only when its summary count changed. Weeks are keyed by their Monday. Best-effort.
+        """
+        since = (self._clock().date() - timedelta(days=self._week_days)).isoformat()
+        by_week: dict[str, list[str]] = {}
+        for s in self._repo.summaries_since(self._user_id, since):
+            if s.summary.strip():
+                by_week.setdefault(_monday_of(s.ts[:10]), []).append(s.summary)
+        for week_start, texts in by_week.items():
+            existing = self._repo.get_week_summary(self._user_id, week_start)
+            if existing is not None and existing.count == len(texts):
+                continue
+            try:
+                system, msgs = week_summary_request(texts)
+                summary = clamp_rows(self._housekeeping_reply(system, msgs), self._max_week_rows)
+                if summary:
+                    self._repo.set_week_summary(
+                        WeekSummary(self._user_id, week_start, summary, len(texts),
+                                    self._clock().isoformat())
                     )
             except Exception:  # noqa: BLE001 — best-effort; never block the turn
                 continue
@@ -379,17 +416,26 @@ class Core:
         per turn, so a restart recalls prior context and new memory takes effect.
         Isolation holds — only this ``user_id``'s records are read.
         """
-        # v0.9 two-tier short memory: the last D local days as compact per-day digests
-        # (≤4 rows each, consolidated from that day's gists by ensure_day_summaries) — shown
-        # FIRST — then the last N conversations in DETAIL. Both dated (v0.4). No raw gists.
-        since = (self._clock().date() - timedelta(days=self._gist_days)).isoformat()
+        # date-based recall three date-based layers (cumulative): per-WEEK digests (last week_days) →
+        # per-DAY digests (last day_days) → per-SESSION detail (last session_days). Coarse → fine.
+        today = self._clock().date()
+        week_since = _monday_of((today - timedelta(days=self._week_days)).isoformat())
+        week_summaries = []
+        for ws in self._repo.week_summaries_since(self._user_id, week_since):
+            body = " ".join(ln.strip() for ln in ws.summary.splitlines() if ln.strip())
+            if body:
+                week_summaries.append(f"[тиждень з {ws.week_start}] {body}")
+        day_since = (today - timedelta(days=self._day_days)).isoformat()
         day_summaries = []
-        for ds in self._repo.day_summaries_since(self._user_id, since):
+        for ds in self._repo.day_summaries_since(self._user_id, day_since):
             body = " ".join(ln.strip() for ln in ds.summary.splitlines() if ln.strip())
-            if body:  # one cohesive summary per day (date + the day's digest)
+            if body:
                 day_summaries.append(f"[{ds.date}] {body}")
-        recent = self._repo.recent_summaries(self._user_id, self._recent_summaries)
-        summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
+        session_since = (today - timedelta(days=self._session_days)).isoformat()
+        summaries = [
+            f"[{format_date(s.ts)}] {s.summary}"
+            for s in self._repo.summaries_since(self._user_id, session_since)
+        ]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
         # v0.10: inject the active relationship level's authored block (warmth/openness, never
@@ -406,6 +452,7 @@ class Core:
             f"{self._canon}\n\n{REASONING_DIRECTIVE}",
             summaries=summaries,
             day_summaries=day_summaries,
+            week_summaries=week_summaries,
             facts=facts,
             digest=digest.summary if digest else None,
             style=self._style_directive(),
@@ -536,7 +583,8 @@ class Core:
         new line, and persists both messages. The full history stays stored.
         """
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
-        self.ensure_day_summaries()  # refresh the day digests the prompt will inject (v0.9.x)
+        self.ensure_day_summaries()  # refresh the day digests the prompt will inject (date-based recall)
+        self.ensure_week_summaries()  # refresh the week digests (date-based recall)
         history = self._repo.load_messages(session.id)
         digest = self._maybe_compact(session, history)
         compacted = digest.compacted_count if digest else 0
@@ -725,8 +773,11 @@ def build_core(
         memory_window=cfg.memory_window,
         compaction_batch=cfg.compaction_batch,
         recent_summaries=cfg.recent_summaries,
-        gist_days=cfg.gist_days,
+        session_days=cfg.session_days,
+        day_days=cfg.day_days,
+        week_days=cfg.week_days,
         max_day_rows=cfg.max_day_rows,
+        max_week_rows=cfg.max_week_rows,
         styles=load_styles(cfg.styles_path),
         meta_styles=load_meta_styles(cfg.styles_path),
         closeness_levels=load_levels(cfg.closeness_path),

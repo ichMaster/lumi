@@ -21,6 +21,7 @@ from core.repository import (
     Session,
     SessionDigest,
     ShortSummary,
+    WeekSummary,
     now_iso,
 )
 from core.user import DEFAULT_USER_ID
@@ -35,6 +36,7 @@ class JsonRepository:
         self._messages: dict[str, list[Message]] = {}
         self._summaries: dict[str, list[ShortSummary]] = {}  # by user_id
         self._day_summaries: dict[str, dict[str, DaySummary]] = {}  # user_id -> date -> DaySummary
+        self._week_summaries: dict[str, dict[str, WeekSummary]] = {}  # user_id -> week_start -> WeekSummary
         self._facts: dict[str, list[LongTermFact]] = {}  # by user_id
         self._closeness: dict[str, Closeness] = {}  # by user_id (v0.10)
         self._digests: dict[str, SessionDigest] = {}  # by session_id
@@ -60,6 +62,8 @@ class JsonRepository:
             self._summaries[uid] = [ShortSummary(**{"gist": "", **raw}) for raw in raws]
         for uid, byday in data.get("day_summaries", {}).items():
             self._day_summaries[uid] = {d: DaySummary(**raw) for d, raw in byday.items()}
+        for uid, byweek in data.get("week_summaries", {}).items():
+            self._week_summaries[uid] = {w: WeekSummary(**raw) for w, raw in byweek.items()}
         for uid, raws in data.get("facts", {}).items():
             self._facts[uid] = [LongTermFact(**raw) for raw in raws]
         for uid, raw in data.get("closeness", {}).items():
@@ -79,6 +83,10 @@ class JsonRepository:
             "day_summaries": {
                 uid: {d: asdict(ds) for d, ds in byday.items()}
                 for uid, byday in self._day_summaries.items()
+            },
+            "week_summaries": {
+                uid: {w: asdict(ws) for w, ws in byweek.items()}
+                for uid, byweek in self._week_summaries.items()
             },
             "facts": {
                 uid: [asdict(f) for f in items] for uid, items in self._facts.items()
@@ -143,6 +151,17 @@ class JsonRepository:
         byday = self._day_summaries.get(user_id, {})
         return [byday[d] for d in sorted(byday) if d >= since_date]
 
+    def set_week_summary(self, week_summary: WeekSummary) -> None:
+        self._week_summaries.setdefault(week_summary.user_id, {})[week_summary.week_start] = week_summary
+        self._persist()
+
+    def get_week_summary(self, user_id: str, week_start: str) -> WeekSummary | None:
+        return self._week_summaries.get(user_id, {}).get(week_start)
+
+    def week_summaries_since(self, user_id: str, since_week: str) -> list[WeekSummary]:
+        byweek = self._week_summaries.get(user_id, {})
+        return [byweek[w] for w in sorted(byweek) if w >= since_week]
+
     def add_fact(self, fact: LongTermFact) -> None:
         self._facts.setdefault(fact.user_id, []).append(fact)
         self._persist()
@@ -160,6 +179,7 @@ class JsonRepository:
     def clear_memory(self, user_id: str) -> None:
         self._summaries.pop(user_id, None)
         self._day_summaries.pop(user_id, None)
+        self._week_summaries.pop(user_id, None)
         self._facts.pop(user_id, None)
         self._closeness.pop(user_id, None)
         self._persist()

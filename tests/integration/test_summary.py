@@ -155,16 +155,20 @@ def _ss(sid, detail, gist, ts):
     return ShortSummary("owner", sid, detail, gist, ts)
 
 
-def test_detail_tier_plus_day_summary_injection(tmp_path):
-    from core.repository import DaySummary
+def test_three_date_based_tiers_injection(tmp_path):
+    from core.repository import DaySummary, WeekSummary
 
+    # Clock = Mon 2026-06-08. Tier windows: sessions ≤2d (≥Jun 6), days ≤7d (≥Jun 1), weeks ≤14d.
     repo = JsonRepository(tmp_path / "s.json")
-    for i in range(5):  # detailed tier: the recent N (today)
-        repo.add_summary(_ss(f"r{i}", f"RDETAIL{i}", f"RGIST{i}", "2026-06-08T10:00:00+00:00"))
-    # a completed-day digest in the window (≤4 rows), and one beyond it
-    repo.set_day_summary(DaySummary("owner", "2026-06-06", "День теплий.\nГоворили про гори.",
-                                    2, "2026-06-06T23:00:00+00:00"))
+    for i in range(3):  # tier 1 (sessions, detailed): within the last 2 days
+        repo.add_summary(_ss(f"r{i}", f"RDETAIL{i}", f"RGIST{i}", "2026-06-07T10:00:00+00:00"))
+    # tier 2 (days): a digest in the 7-day window + one beyond it
+    repo.set_day_summary(DaySummary("owner", "2026-06-03", "День теплий.\nГоворили про гори.",
+                                    2, "2026-06-03T23:00:00+00:00"))
     repo.set_day_summary(DaySummary("owner", "2026-05-20", "Старий день.", 1, "2026-05-20T23:00:00+00:00"))
+    # tier 3 (weeks): a week digest in the 14-day window + one beyond it
+    repo.set_week_summary(WeekSummary("owner", "2026-06-01", "Тиждень про гори й каву.", 9, "t"))
+    repo.set_week_summary(WeekSummary("owner", "2026-05-04", "Дуже старий тиждень.", 3, "t"))
 
     core = Core(
         llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
@@ -173,27 +177,29 @@ def test_detail_tier_plus_day_summary_injection(tmp_path):
     )
     sysp = core._system_prompt(core.start_session())
 
-    # Detailed tier: the last N=5 conversations.
-    assert "Памʼять про останні розмови" in sysp
-    for i in range(5):
-        assert f"RDETAIL{i}" in sysp
-    # Day tier: one cohesive digest per day, dated (the day's rows joined into one line).
+    # Tier 1 — sessions in the last 2 days (detailed), dated.
+    assert "Памʼять про останні розмови (детально)" in sysp
+    for i in range(3):
+        assert f"[2026-06-07] RDETAIL{i}" in sysp
+    # Tier 2 — day digest in the 7-day window; the older one excluded.
     assert "Памʼять про розмови в останні дні" in sysp
-    assert "[2026-06-06] День теплий. Говорили про гори." in sysp
-    # Beyond the D-day window → not injected; raw per-session gists are no longer injected.
+    assert "[2026-06-03] День теплий. Говорили про гори." in sysp
     assert "Старий день." not in sysp
-    for i in range(5):
-        assert f"RGIST{i}" not in sysp
+    # Tier 3 — week digest in the 14-day window; the older one excluded.
+    assert "Памʼять про останні тижні" in sysp
+    assert "[тиждень з 2026-06-01] Тиждень про гори й каву." in sysp
+    assert "Дуже старий тиждень." not in sysp
+    # Order: weeks → days → sessions (coarse to fine).
+    assert sysp.index("останні тижні") < sysp.index("в останні дні") < sysp.index("(детально)")
 
 
-def test_no_day_tier_when_no_day_summaries(tmp_path):
+def test_no_tiers_when_no_summaries(tmp_path):
     repo = JsonRepository(tmp_path / "s.json")
-    repo.add_summary(_ss("r", "RDETAIL", "RGIST", "2026-06-08T10:00:00+00:00"))
     core = Core(
         llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
         repository=repo, canon="C", model="m",
         clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
     )
     sysp = core._system_prompt(core.start_session())
-    assert "RDETAIL" in sysp  # detailed tier
-    assert "Памʼять про розмови в останні дні" not in sysp  # no day summaries yet → no day tier
+    assert "Памʼять про розмови в останні дні" not in sysp
+    assert "Памʼять про останні тижні" not in sysp

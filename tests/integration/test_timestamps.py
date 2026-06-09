@@ -35,12 +35,12 @@ def test_recalled_summaries_are_dated_in_the_prompt(tmp_path):
     repo.add_summary(
         ShortSummary(
             user_id="owner",
-            session_id="old",
+            session_id="recent",
             summary="Говорили про гори.",
             gist="гори",
-            ts="2026-06-01T10:00:00+00:00",
+            ts="2026-06-04T10:00:00+00:00",  # within the 2-day session-detail window (clock = Jun 5)
         )
     )
     core = _core(tmp_path, repo=repo)
     core.reply("привіт", core.start_session())
-    assert "[2026-06-01] Говорили про гори." in core.last_prompt["system"]
+    assert "[2026-06-04] Говорили про гори." in core.last_prompt["system"]

@@ -15,13 +15,15 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
-# Short-memory recall (v0.9) — these are the DEFAULTS; override via .env
-# (LUMI_RECENT_SUMMARIES / LUMI_GIST_DAYS / LUMI_MAX_DAY_ROWS), threaded through Config → Core.
-# N = last conversations injected in DETAIL; D = the day window whose conversations are
-# consolidated into per-day digests (≤ MAX_DAY_ROWS rows each).
-RECENT_SUMMARIES = 5  # N
-GIST_DAYS = 5  # D — the "days at a glance" window (local days)
-MAX_DAY_ROWS = 4  # a day's consolidated summary is at most this many rows
+# Short-memory recall (date-based recall) — three DATE-based layers (cumulative), each a coarser view of a
+# longer span. DEFAULTS; override via .env (LUMI_SESSION_DAYS / LUMI_DAY_DAYS / LUMI_WEEK_DAYS /
+# LUMI_MAX_DAY_ROWS / LUMI_MAX_WEEK_ROWS), threaded through Config → Core.
+SESSION_DAYS = 2  # tier 1: every session summary from the last N days, in DETAIL
+DAY_DAYS = 7      # tier 2: per-day digest (≤MAX_DAY_ROWS lines) for the last N days
+WEEK_DAYS = 14    # tier 3: per Mon–Sun week digest (≤MAX_WEEK_ROWS lines) for the last N days
+MAX_DAY_ROWS = 4  # rows in a day's consolidated digest
+MAX_WEEK_ROWS = 6  # rows in a week's consolidated digest
+RECENT_SUMMARIES = 5  # the /memory quick-view count (not a prompt tier)
 
 # Instruction for end-of-session summarization (an internal memory note, not Лілі
 # speaking). The target length is appended per-session (summary_request), scaled
@@ -96,23 +98,41 @@ def summary_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, st
 
 
 DAY_SUMMARY_SYSTEM = (
-    "Ти стискаєш усі стислі замітки за ОДИН день в ЄДИНИЙ зв'язний підсумок дня для памʼяті Лілі "
+    "Ти стискаєш усі підсумки розмов за ОДИН день в ЄДИНИЙ зв'язний підсумок дня для памʼяті Лілі "
     "— від третьої особи, одним цілісним коротким абзацом (НЕ списком і НЕ окремими пунктами). "
     "Обʼєднай повторюване, прибери дрібниці й залиш головну суть дня: про цю людину та про що "
     "говорили. Не довше за 4 короткі речення. Без вступів, без маркерів і нумерації — лише підсумок."
 )
 
+WEEK_SUMMARY_SYSTEM = (
+    "Ти стискаєш усі підсумки розмов за ОДИН тиждень (понеділок–неділя) в ЄДИНИЙ зв'язний "
+    "підсумок тижня для памʼяті Лілі — від третьої особи, цілісно (НЕ списком). Обʼєднай "
+    "повторюване, виведи головні теми, зміни й важливе про цю людину за тиждень. Не довше за "
+    "6 коротких речень. Без вступів, без маркерів і нумерації — лише підсумок."
+)
 
-def day_summary_request(gists: Sequence[str]) -> tuple[str, list[dict[str, str]]]:
-    """Build the (system, messages) to consolidate a day's per-session gists into ≤4 rows."""
-    content = "Стислі замітки за день:\n" + "\n".join(f"- {g}" for g in gists)
+
+def day_summary_request(summaries: Sequence[str]) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to consolidate a day's session summaries into ≤4 rows."""
+    content = "Підсумки розмов за день:\n" + "\n".join(f"- {s}" for s in summaries)
     return DAY_SUMMARY_SYSTEM, [{"role": "user", "content": content}]
 
 
-def clamp_day_summary(text: str, max_rows: int = MAX_DAY_ROWS) -> str:
+def week_summary_request(summaries: Sequence[str]) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to consolidate a week's session summaries into ≤6 rows."""
+    content = "Підсумки розмов за тиждень:\n" + "\n".join(f"- {s}" for s in summaries)
+    return WEEK_SUMMARY_SYSTEM, [{"role": "user", "content": content}]
+
+
+def clamp_rows(text: str, max_rows: int) -> str:
     """Keep at most ``max_rows`` non-empty lines, stripped of leading bullets."""
     rows = [ln.strip().lstrip("-•*").strip() for ln in text.strip().splitlines() if ln.strip()]
     return "\n".join(rows[:max_rows])
+
+
+def clamp_day_summary(text: str, max_rows: int = MAX_DAY_ROWS) -> str:
+    """Backwards-compatible alias for :func:`clamp_rows`."""
+    return clamp_rows(text, max_rows)
 
 
 def parse_summary(text: str) -> tuple[str, str]:
