@@ -47,12 +47,12 @@ a flavor = a registry entry + an authored prompt, not a new subsystem.
 |---|---|---|---|---|---|---|
 | **`%think`** | everyday grounded musing | idle timer | mood / closeness / recent (+ needs/plan later) | thought-stream | rarely spoken | **this spec** |
 | **`%wonder`** | a curiosity / imaginative leap | idle, novelty high | recent / world (+ novelty need later) | thought-stream | playful aside | **this spec** |
-| `%dream` | a dream — surreal, emotional | night-gap at session start | mood / the gap | away-gap `log` | "to the point" | retrofit **v0.13** |
-| `%reflect` | slow self / relationship reflection | session close | the session's arc + emotions | `Impression` | next-session understanding | retrofit **v0.15** |
-| `%recall` | a memory resurfaces unprompted | resonance mid-turn | current topic → impression/fact | pulls + marks | woven in | retrofit **v0.17/0.15** |
+| `%dream` | a dream — surreal, emotional | night-gap at session start | mood / the gap | away-gap `log` | "to the point" | retrofit **v0.14** |
+| `%reflect` | slow self / relationship reflection | session close | the session's arc + emotions | `Impression` | next-session understanding | retrofit **v0.16** |
+| `%recall` | a memory resurfaces unprompted | resonance mid-turn | current topic → impression/fact | pulls + marks | woven in | retrofit **v0.18/0.16** |
 
 `%think` and `%wonder` ship **now** (they write to the new thought-stream). `%dream`/`%reflect`/
-`%recall` are the **same engine adopted** by v0.13/0.15/0.17 generation when those phases land —
+`%recall` are the **same engine adopted** by v0.14/0.16/0.18 generation when those phases land —
 they cost almost nothing extra; they just take the shared shape and the `%` name. The discipline:
 a directive earns its place only if it answers *when does it fire, and where does it land?*
 differently from the others. Five is plenty.
@@ -64,10 +64,10 @@ differently from the others. Five is plenty.
   call, so it must be paced (interval + quiet hours + cap), never every few minutes for nothing.
 - **Seed.** A `thought_request(seeds, *, rng_seed)` builds the prompt from whatever states exist:
   **mood** (v0.6/0.8), **closeness** (v0.10), the **recent conversation tail**, the **last few
-  thoughts** (continuity), and an **injected random seed** (deterministic in tests). As v0.12–13
+  thoughts** (continuity), and an **injected random seed** (deterministic in tests). As v0.13–14
   land, **needs** (the hungriest drive) and the **plan / away-gap fragment** join the same seed —
   no rework, just a richer prompt.
-- **Voice.** Reuses the "think as Лілі" framing. Until v0.14's `core/inner_voice.md` exists, it
+- **Voice.** Reuses the "think as Лілі" framing. Until v0.15's `core/inner_voice.md` exists, it
   uses the canon voice + the existing reasoning directive; afterward it shares `inner_voice.md`.
 - **Generate + record.** One housekeeping call → a short thought → append a `Thought` to the stream.
 - **Surface.** Usually **nothing shown**. Occasionally (a low probability, or when a thought is
@@ -88,7 +88,7 @@ Thought {                         # one Лілі — NOT user-keyed (like InnerL
 }
 ```
 
-A rolling **log** (soft cap; old thoughts fade — they consolidate into impressions at v0.15, they
+A rolling **log** (soft cap; old thoughts fade — they consolidate into impressions at v0.16, they
 are not a permanent archive). **Global to Лілі** — it's her one mind, the same whoever she talks to
 — persisted via the `Repository`, **not** `user_id`-keyed (pinned by a contract test, like
 `InnerLife` / `Needs`).
@@ -109,7 +109,7 @@ A silent thought no one sees is only worth a model call if it **feeds back**. It
    her mind" block (the same slot mechanism as the mood/closeness blocks) — so she can pick one up
    ("I was just turning that track over…") instead of starting cold.
 2. **Into mood / needs.** A recurring thought nudges the daily mood (v0.6) and the relevant need
-   (v0.12–13) — keeps musing about making something → `creation` surfaces. (Soft; never competence.)
+   (v0.13–14) — keeps musing about making something → `creation` surfaces. (Soft; never competence.)
 
 If it didn't feed back it would be write-only cost. The feedback **is** the feature: it's her
 in-session continuity.
@@ -133,7 +133,7 @@ the raw stream.
   admin-visible / off); only graduated thoughts are spoken, and a spoken one MUST stay in character.
 - **Log:** the stream is logged (the v0.3 logged tier), never audio.
 - **Memory:** thoughts are **ephemeral** — not written to long-term memory raw. What persists is
-  the **digested impression** (v0.15), the same as the inner monologue. The stream fades by soft cap.
+  the **digested impression** (v0.16), the same as the inner monologue. The stream fades by soft cap.
 
 ## Invariants (same family as the rest)
 
@@ -157,7 +157,7 @@ the raw stream.
   right boundary; a malformed thought is dropped; the silent/spoken split honors the ratio; the
   isolation filter blocks A→B; the feedback block carries the last K thoughts.
 
-## Sequencing & roadmap — buildable **before v0.12**
+## Sequencing & roadmap — **v0.12** (before the inner life)
 
 The engine is **mostly self-contained infrastructure** (a store + a generation directive + a
 command + nudge wiring). Its **hard dependencies all exist today** (as of v0.11):
@@ -169,18 +169,16 @@ command + nudge wiring). Its **hard dependencies all exist today** (as of v0.11)
 The inner-life inputs are a **pure enrichment of the seed function**, not a dependency:
 
 - **v0.10** (closeness) — already a seed; ✓
-- **v0.12–13** (needs / plan / away-gap) — richer seeds + `%dream` retrofit; plug in when they land,
-- **v0.14** (`inner_voice.md`) — shares the her-voice framing; until then reuses the canon voice,
-- **v0.15** (impressions) — the consolidation destination; until then the stream simply fades.
+- **v0.13–14** (needs / plan / away-gap) — richer seeds + `%dream` retrofit; plug in when they land,
+- **v0.15** (`inner_voice.md`) — shares the her-voice framing; until then reuses the canon voice,
+- **v0.16** (impressions) — the consolidation destination; until then the stream simply fades.
 
 So it can ship **thin first** (thoughts from mood + closeness + recent + continuity) and **enrich
-automatically** as v0.12–13 add needs/plans/dreams to the seed — no rework. Proposed scope for the
+automatically** as v0.13–14 add needs/plans/dreams to the seed — no rework. Proposed scope for the
 first cut: the **mental-act engine + `%think` (+ `%wonder` flavor) + the `Thought` store + the
 feedback block + `/thoughts` + the nudge mode-switch (silent/spoken)**; `%dream`/`%reflect`/
-`%recall` are noted retrofits for v0.13/0.15/0.17.
+`%recall` are noted retrofits for v0.14/0.16/0.18.
 
-**Roadmap slot (open):** because it's independent, it can be placed **before v0.12** (its own early
-phase) without blocking on the inner life — at the cost of one more phase renumber — **or** built
-as the immediate next module and numbered at issue-upload time. It is the proactive, *visible-when-
-spoken* sibling of the v0.14 inner monologue (reactive, hidden): same voice, different trigger and
-visibility.
+**Roadmap slot:** **v0.12** — its own phase, placed **before the inner life (v0.13–14)** because it's
+independent (only v0.4/v0.6/v0.2). It is the proactive, *visible-when-spoken* sibling of the v0.15
+inner monologue (reactive, hidden): same voice, different trigger and visibility.
