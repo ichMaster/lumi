@@ -189,12 +189,29 @@ required — everything after `%name[!]` is the seed, with a leading connector d
 
 A malformed/unknown `%name` degrades to a **plain chat message** (never an error).
 
-The topic may contain **`{name}` placeholders** (ARCHITECTURE §Prompt placeholders) — `%think about
-{last_thought}` continues a train of thought, `%wonder about {mood}` muses on the day's tone. The
-resolver expands the fixed registry (`{last_thought}`, `{thoughts}`, `{mood}`, `{plan}`, `{need}`,
-`{recent}`, `{now}`, `{user}`, …) — isolation-aware; unknown `{tokens}` are left literal. The same
-placeholders are how `core/inner_voice.md` and `thought_request` reference live state (this spec's
-`{last_thought}`/`{thoughts}` are registry entries).
+### Placeholders in the topic
+
+The topic (and any authored prompt — the canon, `core/inner_voice.md`, `thought_request`,
+`nudges.md`) may contain **`{name}` placeholders** that one resolver expands to live state at
+prompt-build time — so `%think about {last_thought}` continues a train of thought. They're
+**isolation-aware** (a token resolves only to what's surfaceable to *this* user), and an unknown
+`{token}` is **left literal**. The fixed registry (full spec: ARCHITECTURE §Prompt placeholders):
+
+| placeholder | expands to | example |
+|---|---|---|
+| `{last_thought}` | her most recent (surfaceable) thought | `%think about {last_thought}` — go deeper on it |
+| `{thoughts}` | the last-24h dated diary block | `%reflect on {thoughts}` |
+| `{mood}` | today's mood resolution (v0.6/0.8) | `%wonder about {mood}` |
+| `{closeness}` | the closeness level, by name (v0.10) | … |
+| `{plan}` | today's plan (v0.13) | `%think about {plan}` |
+| `{need}` | the hungriest need (v0.13) | `%think about {need}` |
+| `{recent}` | the recent conversation tail | … |
+| `{now}` / `{today}` | the injected clock | … |
+| `{user}` | the user's name | … |
+
+`{last_thought}` and `{thoughts}` are **this feature's** registry entries; the rest come from the
+other state layers. The same tokens are how `core/inner_voice.md` (v0.15) and `thought_request`
+reference live state in their authored prompts — not just directive input.
 
 ### Access — silent‑vs‑shared, not blanket owner‑only
 
