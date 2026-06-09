@@ -74,24 +74,29 @@ differently from the others. Five is plenty.
   "strong") it **graduates** to a spoken turn through the existing nudge delivery (the thought
   becomes the hidden self-prompt; her reply is what's shown).
 
-## The store (global, behind the Repository)
+## The store (a dated diary, global, behind the Repository)
+
+Every mental act is **stamped with the local date-time** (the injected clock) and appended in
+order — so the stream reads as a **diary**: a dated log of her inner life. `%think`/`%wonder` write
+here; the other directives stamp their own stores the same way (`%dream`→away-gap, `%reflect`→
+impressions) — **all dated**.
 
 ```
 Thought {                         # one Лілі — NOT user-keyed (like InnerLife / Needs)
-  when:    <iso>                  # injected clock
+  when:    <local datetime>       # the diary stamp — injected clock, e.g. "2026-06-09T14:30"
   kind:    "think" | "wonder" | …  # which directive made it
   text:    <her thought, her voice>
   emotion: <base-9 enum>          # for tone/face
   seeds:   [ which states fed it ]  # e.g. ["mood","need:creation"]
   spoken:  <bool>                 # did it graduate to a spoken turn?
-  ts:      <iso>
+  ts:      <iso>                  # write time (audit)
 }
 ```
 
-A rolling **log** (soft cap; old thoughts fade — they consolidate into impressions at v0.16, they
-are not a permanent archive). **Global to Лілі** — it's her one mind, the same whoever she talks to
-— persisted via the `Repository`, **not** `user_id`-keyed (pinned by a contract test, like
-`InnerLife` / `Needs`).
+A rolling, **date-ordered** log (soft cap by **age**, e.g. last D days; old entries fade — they
+consolidate into impressions at v0.16, not a permanent archive). **Global to Лілі** — her one mind,
+the same whoever she talks to — persisted via the `Repository`, **not** `user_id`-keyed (pinned by a
+contract test, like `InnerLife` / `Needs`).
 
 ### The isolation rule (important)
 
@@ -105,14 +110,28 @@ A's thought never appears in B's prompt or reply.
 
 A silent thought no one sees is only worth a model call if it **feeds back**. It does, two ways:
 
-1. **Into the next reply.** The last few thoughts ride into context as a compact "what's been on
-   her mind" block (the same slot mechanism as the mood/closeness blocks) — so she can pick one up
-   ("I was just turning that track over…") instead of starting cold.
+1. **Into the next reply — the last‑24h diary block.** The prompt injects every thought from the
+   **last 24 hours** (a rolling window from the injected clock, **config** `LUMI_THOUGHTS_WINDOW_H`
+   default 24), each **shown with its time** — a compact dated mini‑diary, the same slot mechanism as
+   the mood/closeness blocks:
+
+   ```
+   # Що в мене на думці (за останню добу)
+   - 07:40 — прокинулась з думкою про той трек; бридж не сходиться
+   - 11:15 — захотілось до води
+   - 18:30 — те, що він сказав учора, досі крутиться
+   ```
+
+   So she remembers her day, dated, and can pick one up ("ще зранку крутила той трек…") instead of
+   starting cold. A **hard token/line cap** backstops the window (with restraint + the per‑day cap,
+   24h is a handful of entries, not a wall); past 24h, entries drop from the prompt but **stay in the
+   diary** (→ consolidate into impressions, v0.16). Later (v0.18) the within‑window pick adds
+   **relevance** on top of recency.
 2. **Into mood / needs.** A recurring thought nudges the daily mood (v0.6) and the relevant need
    (v0.13–14) — keeps musing about making something → `creation` surfaces. (Soft; never competence.)
 
 If it didn't feed back it would be write-only cost. The feedback **is** the feature: it's her
-in-session continuity.
+continuity across the day.
 
 ## Silent / open / spoken (three surfacings)
 
@@ -215,7 +234,8 @@ you) every form is available to you; the gate matters from **v1.3** (multi-user)
   (canned + malformed thoughts exercise validation); the random seed is **injected** (no
   `Math.random`-style nondeterminism). No real sleeps, no paid calls. Pin: the timer fires at the
   right boundary; a malformed thought is dropped; the silent/spoken split honors the ratio; the
-  isolation filter blocks A→B; the feedback block carries the last K thoughts.
+  isolation filter blocks A→B; the feedback block carries the **last‑24h, dated** thoughts (window
+  from a fixed clock; entries older than the window are excluded; the cap backstops a busy day).
 
 ## Sequencing & roadmap — **v0.12** (before the inner life)
 
