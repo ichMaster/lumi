@@ -86,3 +86,73 @@ Your basis reads as *playful* (the smirk). For the calm anchor, **neutralize the
 - `sad_low.png` — Expression: gaze lowered a little, inner brows just lifting, a faint downturn at the mouth, the eyes a touch heavier.
 - `sad.png` — Expression: downcast eyes, inner brows raised (the "sadness brow"), mouth turned down, a quiet heaviness over the face.
 - `sad_high.png` — Expression: deep sadness; eyes lowered and glistening as if near tears, inner brows strongly lifted and drawn, mouth downturned, head dipped slightly.
+
+---
+
+# v0.11 — Variants & themes (wardrobe packs)
+
+Two additions over the flat v0.7 set, for the **face‑variants & mood‑themes** feature. The
+**face identity never changes** — same Лілі, same hair, eyes, freckles, headphones, framing —
+only the **picture among several** (variants) and the **outfit / light / setting** (themes) change.
+
+## Folder layout
+
+```
+faces/
+  calm.png  joy.png  …            ← the flat v0.7 pack = the implicit default theme (still works)
+  <theme>/                        ← one folder per theme (a wardrobe pack), e.g. cozy/  3am/
+    <emotion>/                    ← one folder per emotion — the 9 enum values
+      01.png  02.png  03.png      ← any number of VARIANTS; the viewer picks one at random
+    calm/                         ← REQUIRED per theme (the in‑theme fallback)
+  themes.md                       ← the manifest: a one‑line description per theme + the default
+```
+
+The viewer (LUMI‑042) shows a **random** `faces/<theme>/<emotion>/*.png` with **no immediate
+repeat**; the mood of the day (LUMI‑044) picks the **theme**. Missing emotion → the theme's
+`calm/`; missing theme → the default theme; nothing → the flat v0.7 image. It never breaks.
+
+## Variants — several pictures per emotion
+
+Reuse the **IDENTITY BLOCK** + the emotion's `Expression:` line, and generate **N images** (e.g.
+3–5) with only **small natural variation** — a slightly different head tilt, a touch more/less
+rain, a small shift in the neon reflections, a breath of motion in the hair. **Keep identical:**
+the face, the framing (head‑and‑shoulders, centered, square 768×768), the lighting and palette,
+and the *strength* of the expression. The goal is "the same moment, a heartbeat apart" — variety,
+not a different mood. Save as `faces/<theme>/<emotion>/01.png`, `02.png`, …
+
+## Themes — a wardrobe pack per mood
+
+Split the IDENTITY BLOCK into two parts and swap only the second per theme:
+
+- **FACE (constant, never changes):** the split‑dyed magenta/cobalt hair, the over‑ear headphones,
+  the misty grey‑blue eyes + long lashes + light freckles, the head‑and‑shoulders framing.
+- **WARDROBE & ATMOSPHERE (per theme):** the clothes, the light, the setting, and the overall mood
+  — this is what makes her *dressed for the day*. Write one **theme block** describing it, then
+  regenerate the whole emotion set (incl. the required `calm`) inside that wardrobe.
+
+> **Theme block template:** `<theme name> — <mood in one line>. Wardrobe: <clothes>. Setting:
+> <where / time / weather>. Light: <quality, color, direction>. Atmosphere: <what the air feels
+> like>.` Keep the FACE block above it **unchanged**.
+
+The ten authored mood themes (3am / day‑after / furious / dissociation / last‑memory /
+quiet‑collapse / im‑fine / drowning / vigil / calm‑before) and their full mood/visual direction
+live in [THEMES.md](THEMES.md) — lift each theme's description into the wardrobe block, and its
+one‑line summary into the manifest below.
+
+## `themes.md` manifest
+
+A `default:` line (the fallback theme when the mood is off/unknown) + one `## <theme>` section
+per theme, the body being the **one‑line description the mood chooses from**:
+
+```
+default: calm-base
+
+## cozy
+Warm, soft, intimate — blankets, low amber light, a quiet evening in.
+
+## 3am
+Rooftop loneliness at 3AM — misty-eyed, headphones on, the indifferent city below, rain.
+```
+
+A neutral, everyday pack (e.g. `calm-base`) makes the best **default** — keep the intense ten for
+when the day actually calls for them.
