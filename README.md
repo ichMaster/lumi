@@ -12,23 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.8.0 — v0.8 Biorhythms (a second daily-mood layer).** Лілі's daily temperament gains a
-**computed** layer beside the v0.6 horoscope: three biorhythm cycles — and a hormonal cycle —
-blended into the **same daily mood**, so her resolution reflects all of them at once. Computed in
-code (exact, deterministic), they color her **tone, energy and sensitivity — never her competence**.
+**0.9.0 — v0.9 Richer short memory (recent detail + days at a glance).** Лілі now recalls
+**recent conversations in detail and the past few days at a glance**, without ballooning the prompt.
 
-- **Biorhythms** — physical (23 d) / emotional (28 d) / intellectual (33 d) as
-  `sin(2π·days_since_birth/period)` from her natal birth date, with
-  `high/low/rising/falling/critical` labels; fed into the v0.6 mood call so the reading blends
-  horoscope + cycles (LUMI-031…033).
-- **Hormonal cycle** — a phased rhythm (менструація → фолікулярна → овуляція → лютеїнова → ПМС)
-  from an authored anchor in `core/natal.md`, merged into the same mood under a shared
-  "integrate these body rhythms" directive.
-- **See them** — `/biorhythm` shows today's cycles + phase; `/mood` shows the blended resolution.
-  Toggle with `LUMI_BIORHYTHMS` / `LUMI_CYCLE` (both on by default).
-
-_Also:_ a leading `[date-stamp]` is now stripped from replies even when the model drops the
-closing `]`; the roadmap moved the face wardrobe after closeness (v0.9 → v0.11).
+- **Two-tier session summary** — at session close, **one** call writes both a **detailed** summary
+  and a one-line **gist** (`ShortSummary` gains `gist`; old records migrate to `""`) (LUMI-034…036).
+- **Per-day digests** — each day's gists are consolidated into **one cohesive ≤4-sentence day
+  summary** (`DaySummary{user_id, date, summary, count, ts}`, a new `day_summaries` store section),
+  **regenerated lazily at prompt time, count-based** — a day refreshes only when its session count
+  changes (today as it accrues; a past day only when it gains sessions).
+- **Prompt order** — the day digests ("Памʼять про розмови в останні дні") come **first**, then the
+  **last 5 conversations in detail**. No raw per-session gists are injected (the gist is only the
+  input to the day consolidation). Long-term facts untouched; per-user isolation holds.
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 

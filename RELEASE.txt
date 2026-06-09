@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.9.0 (2026-06-09)
+---------------------------
+- v0.9 — Richer short memory (LUMI-034…036): each finished session is summarized in ONE call into two tiers — a detailed summary plus a one-line gist (ShortSummary gains `gist`; «СТИСЛО:» line, with a first-sentence fallback; pre-v0.9 records migrate to ""). New Repository.summaries_since(user, since_date) window query (per-user isolated). The prompt's short-memory block becomes two tiers: the last 5 conversations in detail + the recent days at a glance.
+- Days at a glance → per-day digests (DaySummary{user_id, date, summary, count, ts}, a new `day_summaries` store section): instead of injecting every per-session gist (which ballooned with many short sessions/day), each day is consolidated from its gists into ONE cohesive ≤4-sentence day summary. Regenerated LAZILY at prompt-build time and COUNT-BASED — a day refreshes only when its session count changes (today as it accrues; a past day only when it gains sessions). Best-effort: a consolidation error never blocks the turn.
+- Prompt order: the day digests ("Памʼять про розмови в останні дні") come FIRST, then the last-5 detailed ("Памʼять про останні розмови"). No raw per-session gists are injected — the gist is only the input to the day consolidation.
+- Long-term facts (LongTermFact) untouched; per-user isolation holds throughout. Updated the ShortSummary + DaySummary contract tests and ARCHITECTURE §Memory. Mocked-model tests only (no paid calls); 300 tests green.
+
 Version 0.8.0 (2026-06-08)
 ---------------------------
 - v0.8 — Biorhythms merged into the daily mood (LUMI-031…033): three COMPUTED sine cycles — physical (23d) / emotional (28d) / intellectual (33d) — from her natal birth date, with high/low/rising/falling/critical labels. Deterministic (unlike the model-written horoscope), unit-tested. Fed into the v0.6 mood call so the daily reading + resolution blend horoscope + biorhythms. Cached once per local day; colors tone/energy, never competence. /biorhythm command; LUMI_BIORHYTHMS toggle (on by default).
