@@ -35,6 +35,19 @@ _EMOTION_TOOL = {
             "reply": {"type": "string", "description": "Текст відповіді Лілі (лише її слова)."},
             "emotion": {"type": "string", "enum": [e.value for e in Emotion]},
             "intensity": {"type": "number", "minimum": 0, "maximum": 1},
+            # v0.10: an ADDITIVE read of the user's message (not Лілі). Optional — the
+            # emotion contract (`required` below) is untouched; the core validates it.
+            "relation": {
+                "type": "object",
+                "description": "Оцінка ОСТАННЬОГО повідомлення співрозмовника (не Лілі), кожен вимір 0–1.",
+                "properties": {
+                    "warmth": {"type": "number", "minimum": 0, "maximum": 1},
+                    "vulnerability": {"type": "number", "minimum": 0, "maximum": 1},
+                    "playful": {"type": "number", "minimum": 0, "maximum": 1},
+                    "harm": {"type": "number", "minimum": 0, "maximum": 1},
+                    "manipulation": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+            },
         },
         "required": ["reply", "emotion", "intensity"],
     },

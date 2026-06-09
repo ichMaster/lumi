@@ -97,6 +97,15 @@ EMOTION_INSTRUCTION = (
     "set_state — заповни його тими самими значеннями. Сам тег не коментуй."
 )
 
+# v0.10: the per-turn relational read of the USER's message (feeds closeness). Internal.
+RELATION_INSTRUCTION = (
+    "Додатково оціни САМЕ ОСТАННЄ повідомлення співрозмовника (а не свою відповідь) і "
+    "заповни поле relation інструмента set_state — кожен вимір число 0–1: warmth (тепло, "
+    "турбота, прихильність), vulnerability (відкритість, довіра, ділиться чимось справжнім), "
+    "playful (грайливість, гумор), harm (грубість, образа, жорстокість), manipulation (тиск, "
+    "використання, обман). Це внутрішня оцінка — не згадуй і не коментуй її у відповіді."
+)
+
 # Inline emotion tag: <emotion>name</emotion> or <emotion>name 0.8</emotion>.
 _EMOTION_TAG_RE = re.compile(
     r"<emotion>\s*([a-zA-Z]+)\s*([0-9]*\.?[0-9]+)?\s*</emotion>", re.IGNORECASE
@@ -145,6 +154,7 @@ def build_system_prompt(
     digest: str | None = None,
     style: str | None = None,
     emotion: bool = False,
+    relation: bool = False,
     ambient: str | None = None,
     mood: str | None = None,
 ) -> str:
@@ -168,6 +178,8 @@ def build_system_prompt(
     parts = [canon]
     if emotion:
         parts.append(EMOTION_INSTRUCTION)
+    if relation:  # v0.10: the additive per-turn relational read of the user's message
+        parts.append(RELATION_INSTRUCTION)
     if ambient:
         parts.append(ambient)
     if day_summaries:  # v0.9: the last few days as compact per-day digests (first)

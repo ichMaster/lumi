@@ -29,6 +29,7 @@ from core.biorhythm import (
     biorhythms as biorhythm_cycles,
 )
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
+from core.closeness import RelationRead, validate_relation
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
@@ -153,6 +154,8 @@ class Core:
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
         self.last_emotion: EmotionState | None = None
+        # The relational read of the user's last message (v0.10; internal, feeds closeness).
+        self.last_relation: RelationRead = RelationRead()
         # The model's reasoning summary from the last turn (None when thinking is
         # off or absent), for a client to render alongside the reply.
         self.last_thinking: str | None = None
@@ -357,6 +360,7 @@ class Core:
             digest=digest.summary if digest else None,
             style=self._style_directive(),
             emotion=True,
+            relation=True,  # v0.10: ask for the additive relational read
             ambient=ambient_line(self._world, self._clock),
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
         )
@@ -531,6 +535,8 @@ class Core:
             turn=self.totals.turns,
         )
         self.last_emotion = state
+        # v0.10: the additive relational read of the user's message (internal; feeds closeness).
+        self.last_relation = validate_relation(raw.get("relation"))
         self._write_face_signal(state.emotion.value, state.intensity)  # update the viewer (v0.7)
 
         self._repo.append_message(
