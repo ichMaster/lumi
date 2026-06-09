@@ -114,18 +114,78 @@ A silent thought no one sees is only worth a model call if it **feeds back**. It
 If it didn't feed back it would be write-only cost. The feedback **is** the feature: it's her
 in-session continuity.
 
-## Silent vs spoken
+## Silent / open / spoken (three surfacings)
 
-Most fires are **silent** (record only). A small fraction **graduate** to a spoken nudge turn — a
-config ratio (e.g. mostly silent, occasionally aloud), or a "strength" threshold on the thought.
-This is what makes the spoken ones feel earned rather than chatty, and it mirrors a person: many
-thoughts, few said aloud.
+Every thought is **recorded**; what differs is whether — and how — it reaches the chat:
+
+- **silent** — record only, nothing in chat (the default; `/thoughts` to inspect).
+- **open** — the **raw thought** is shown as her inner voice, styled distinctly (e.g. `💭 still
+  turning that track over…`). You see *the thought itself*.
+- **spoken** — the thought **graduates to a normal turn**: it seeds a reply and she *says*
+  something conversational prompted by it. You see *what she'd say*, not the raw thought.
+
+Automatic fires (the nudge timer) are **mostly silent**, occasionally **spoken** — a config ratio /
+a "strength" threshold — so spoken ones feel earned, not chatty (a person has many thoughts, says
+few). A **manual** fire can force **open** (see §Input & access). All three respect the invariants.
 
 ## `/thoughts` (the command)
 
-A thin read, in the `/mood` `/closeness` `/inner` family: shows the recent thought-stream
-(operator/admin by default). The chatting user only ever sees the rare **spoken** thought, never
-the raw stream.
+A thin read, in the `/mood` `/closeness` `/inner` family: shows the recent thought-stream. By
+default operator/admin; a non-owner may get a **per-user-filtered** view ("thoughts from our
+talks") via the same surfacing isolation — never the whole cross-user stream.
+
+## Input & access
+
+The input line routes on the first character — a clean extension of the existing `/` handling:
+
+```
+/command    → read a state          (/mood, /thoughts, …)
+%directive  → fire a mental act      (%think, %wonder, …)
+else        → a normal chat message
+```
+
+### The directive grammar
+
+```
+%<name>[!]  [connector] [topic]
+
+  %name       the directive: think, wonder, …
+  !           PRINT this thought (open) — glued to the name; no ! → silent
+  connector   OPTIONAL sugar, stripped if present: about / про / на тему / щодо / :
+  topic       OPTIONAL free-text seed (any language); absent → muse from current state
+```
+
+The name is English (like `/mood`); the topic may be Ukrainian or English. The connector is never
+required — everything after `%name[!]` is the seed, with a leading connector dropped if found.
+
+| typed | directive | print? | seed |
+|---|---|---|---|
+| `%think` | think | silent | — (current state) |
+| `%think!` | think | open | — |
+| `%think the new track` | think | silent | "the new track" |
+| `%think about the new track` | think | silent | "the new track" |
+| `%think про нову музику` | think | silent | "нову музику" |
+| `%think! us` | think | open | "us" |
+| `%wonder: the sky` | wonder | silent | "the sky" |
+
+A malformed/unknown `%name` degrades to a **plain chat message** (never an error).
+
+### Access — silent‑vs‑shared, not blanket owner‑only
+
+The gate is about **privacy**, not identity. *Inviting* a thought is relational (like asking "what
+are you thinking?"); only the *private* parts are restricted:
+
+- **Anyone may invite a *surfaced* thought** — a non-owner's `%think[…]` always **surfaces** (open
+  or spoken, never silent). It respects **per-user isolation** (her thought to B never references or
+  reaches A), is **rate-limited**, and honors her **agency** (an invitation, not a command — she may
+  deflect; manipulation trips the harm/closeness read).
+- **Owner-only:** firing **silent** (record without surfacing — curating her interior) and reading
+  the **raw cross-user `/thoughts` stream**.
+
+So: **anyone can make her think *out loud*; only the owner can make her think *silently* or read
+her *private* stream.** All of this is **configurable** — the owner sets how open the policy is
+(e.g. allow/deny user `%`, the per-user `/thoughts` view, the rate limit). In **v0** (single owner =
+you) every form is available to you; the gate matters from **v1.3** (multi-user).
 
 ## Show / log / memory policy
 
