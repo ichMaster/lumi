@@ -178,7 +178,7 @@ def test_detail_tier_plus_day_summary_injection(tmp_path):
     for i in range(5):
         assert f"RDETAIL{i}" in sysp
     # Day tier: the in-window day digest, one row per line, dated by day.
-    assert "Останні дні з цією людиною (стисло)" in sysp
+    assert "Памʼять про розмови в останні дні" in sysp
     assert "[2026-06-06] День теплий." in sysp
     assert "[2026-06-06] Говорили про гори." in sysp
     # Beyond the D-day window → not injected; raw per-session gists are no longer injected.
@@ -197,4 +197,4 @@ def test_no_day_tier_when_no_day_summaries(tmp_path):
     )
     sysp = core._system_prompt(core.start_session())
     assert "RDETAIL" in sysp  # detailed tier
-    assert "Останні дні з цією людиною" not in sysp  # no day summaries yet → no day tier
+    assert "Памʼять про розмови в останні дні" not in sysp  # no day summaries yet → no day tier

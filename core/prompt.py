@@ -172,7 +172,7 @@ def build_system_prompt(
         parts.append(ambient)
     if day_summaries:  # v0.9: the last few days as compact per-day digests (first)
         parts.append(
-            "Останні дні з цією людиною (стисло):\n"
+            "Памʼять про розмови в останні дні:\n"
             + "\n".join(f"- {d}" for d in day_summaries)
         )
     if summaries:  # then the last N conversations in detail
