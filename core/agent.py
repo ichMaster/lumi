@@ -338,12 +338,11 @@ class Core:
         # (≤4 rows each, consolidated from that day's gists by ensure_day_summaries) — shown
         # FIRST — then the last N conversations in DETAIL. Both dated (v0.4). No raw gists.
         since = (self._clock().date() - timedelta(days=GIST_DAYS)).isoformat()
-        day_summaries = [
-            f"[{ds.date}] {line.strip()}"
-            for ds in self._repo.day_summaries_since(self._user_id, since)
-            for line in ds.summary.splitlines()
-            if line.strip()
-        ]
+        day_summaries = []
+        for ds in self._repo.day_summaries_since(self._user_id, since):
+            body = " ".join(ln.strip() for ln in ds.summary.splitlines() if ln.strip())
+            if body:  # one cohesive summary per day (date + the day's digest)
+                day_summaries.append(f"[{ds.date}] {body}")
         recent = self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
         summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
