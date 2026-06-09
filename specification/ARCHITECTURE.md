@@ -62,6 +62,16 @@ Under the mood and the plans sits the **why** — a few core **drives** that pus
 - **v0.13 — exist & pull.** Decay + drift are **pure functions of the levels + the injected clock** (deterministic, unit-tested). The **hungriest** need joins the daily **mood call** (beside biorhythms — the v0.8 merge pattern; resolution only, never competence) and **tilts today's plan** (1–2 items). `connection` is also replenished **mid-turn** from the closeness **warmth read** (`RelationRead.warmth`, v0.10) — no new reply field.
 - **v0.14 — close from reality.** The away-gap's structured records carry `serves` (from the closed 6-need list, guided by an authored **activity→need map**) + `intensity` + `feeling`; **code owns the ledger** — `level += gain × intensity` (clamped) per valid `serves`, so needs rise from what *actually happened*, not the plan. A **free slot fills toward the hungriest** need then replenishes it. Malformed / out-of-set records are dropped (levels stay post-decay). The `log` entry gains `serves`/`intensity`/`feeling` (a contract-test update); the emotion/closeness contracts are **untouched** (`emotion` reuses the locked 9-enum).
 
+## Prompt placeholders (`{name}` tokens, from v0.12)
+
+A small, **fixed registry** of `{name}` tokens that **one resolver** expands to live state at prompt-build time — so **authored** text decides *where* a value goes, not the core's hardcoded section order. Used in authored prompts (the canon, `core/inner_voice.md`, directive prompts like `thought_request`, `nudges.md`) and, for resolvable tokens, in directive input (`%think about {last_thought}` — continue a train of thought). It is **additive**: the markdown state blocks (mood/closeness/inner-life/thoughts) stay the default structure; placeholders are a tool for inline references.
+
+- **The registry (extensible, documented):** `{last_thought}`, `{thoughts}` (the last-24h dated diary block), `{mood}`, `{closeness}`, `{plan}`, `{need}`, `{recent}` (the conversation tail), `{now}`/`{today}` (injected clock), `{user}`. Adding one = a registry entry + a resolver function (like the directive registry).
+- **Unknown → literal.** A `{foo}` not in the registry is **left verbatim** (and logged) — never an error. (So literal braces in prose, or a future token, survive untouched.)
+- **Isolation-aware.** A per-user token resolves to what's **surfaceable to that user** — `{last_thought}` for B is never a thought sparked in A's session (the same surfacing filter; pinned by the isolation test).
+- **Access.** In directive input, only resolvable, non-private tokens expand (there is no token for another user's data); the owner gate on silent firing / the raw stream still applies.
+- **Deterministic.** Resolution is a pure function of the (injected clock, repository state, user) — mocked + asserted in tests; the resolver is one seam reused everywhere, never per-call string-building.
+
 ## Memory (three layers)
 
 The three layers are all **per-user (relationship) memory** — private to one person's relationship with Лілі. They sit alongside a separate **shared experience** layer (§Identity, users, and memory scopes).

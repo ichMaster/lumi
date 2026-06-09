@@ -189,6 +189,13 @@ required — everything after `%name[!]` is the seed, with a leading connector d
 
 A malformed/unknown `%name` degrades to a **plain chat message** (never an error).
 
+The topic may contain **`{name}` placeholders** (ARCHITECTURE §Prompt placeholders) — `%think about
+{last_thought}` continues a train of thought, `%wonder about {mood}` muses on the day's tone. The
+resolver expands the fixed registry (`{last_thought}`, `{thoughts}`, `{mood}`, `{plan}`, `{need}`,
+`{recent}`, `{now}`, `{user}`, …) — isolation-aware; unknown `{tokens}` are left literal. The same
+placeholders are how `core/inner_voice.md` and `thought_request` reference live state (this spec's
+`{last_thought}`/`{thoughts}` are registry entries).
+
 ### Access — silent‑vs‑shared, not blanket owner‑only
 
 The gate is about **privacy**, not identity. *Inviting* a thought is relational (like asking "what
