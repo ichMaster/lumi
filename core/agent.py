@@ -44,6 +44,7 @@ from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, valid
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
     GIST_DAYS,
+    MAX_DAY_ROWS,
     RECENT_SUMMARIES,
     clamp_day_summary,
     compaction_plan,
@@ -121,6 +122,9 @@ class Core:
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
+        recent_summaries: int = RECENT_SUMMARIES,
+        gist_days: int = GIST_DAYS,
+        max_day_rows: int = MAX_DAY_ROWS,
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
         closeness_levels: dict[int, tuple[str, str]] | None = None,
@@ -155,6 +159,10 @@ class Core:
         self._face_signal = face_signal
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
+        # v0.9 short-memory recall knobs (config/env-tunable): N detailed, D-day window, rows/day.
+        self._recent_summaries = recent_summaries
+        self._gist_days = gist_days
+        self._max_day_rows = max_day_rows
         # Answer styles + meta-styles (presets → several base styles). Лілі picks her
         # own style each turn from this palette (preferring meta-styles) and declares
         # it; `/style <name>` sets a soft per-session *recommendation*, not a switch.
@@ -237,7 +245,7 @@ class Core:
         keeps accruing). ≤4 rows. Best-effort; a model error on one day never blocks the turn.
         """
         today = self._clock().date()
-        for n in range(GIST_DAYS + 1):  # today (0) … D days back
+        for n in range(self._gist_days + 1):  # today (0) … D days back
             day = (today - timedelta(days=n)).isoformat()
             day_gists = [
                 s.gist
@@ -251,7 +259,7 @@ class Core:
                 continue  # count matches the day's sessions → up to date
             try:
                 system, msgs = day_summary_request(day_gists)
-                summary = clamp_day_summary(self._housekeeping_reply(system, msgs))
+                summary = clamp_day_summary(self._housekeeping_reply(system, msgs), self._max_day_rows)
                 if summary:
                     self._repo.set_day_summary(
                         DaySummary(self._user_id, day, summary, len(day_gists),
@@ -367,13 +375,13 @@ class Core:
         # v0.9 two-tier short memory: the last D local days as compact per-day digests
         # (≤4 rows each, consolidated from that day's gists by ensure_day_summaries) — shown
         # FIRST — then the last N conversations in DETAIL. Both dated (v0.4). No raw gists.
-        since = (self._clock().date() - timedelta(days=GIST_DAYS)).isoformat()
+        since = (self._clock().date() - timedelta(days=self._gist_days)).isoformat()
         day_summaries = []
         for ds in self._repo.day_summaries_since(self._user_id, since):
             body = " ".join(ln.strip() for ln in ds.summary.splitlines() if ln.strip())
             if body:  # one cohesive summary per day (date + the day's digest)
                 day_summaries.append(f"[{ds.date}] {body}")
-        recent = self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
+        recent = self._repo.recent_summaries(self._user_id, self._recent_summaries)
         summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
@@ -642,7 +650,7 @@ class Core:
         """Snapshot the user's relationship memory (summaries + facts)."""
         uid = user_id or self._user_id
         return MemoryView(
-            summaries=[s.summary for s in self._repo.recent_summaries(uid, RECENT_SUMMARIES)],
+            summaries=[s.summary for s in self._repo.recent_summaries(uid, self._recent_summaries)],
             facts=[f.fact for f in self._repo.facts(uid)],
         )
 
@@ -705,6 +713,9 @@ def build_core(
         user_id=user_id,
         memory_window=cfg.memory_window,
         compaction_batch=cfg.compaction_batch,
+        recent_summaries=cfg.recent_summaries,
+        gist_days=cfg.gist_days,
+        max_day_rows=cfg.max_day_rows,
         styles=load_styles(cfg.styles_path),
         meta_styles=load_meta_styles(cfg.styles_path),
         closeness_levels=load_levels(cfg.closeness_path),

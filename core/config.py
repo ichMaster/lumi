@@ -17,6 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from core.memory import GIST_DAYS, MAX_DAY_ROWS, RECENT_SUMMARIES
 from core.worldcontext import DEFAULT_WEATHER_URL
 
 # Repo root = the parent of this ``core/`` package.
@@ -83,6 +84,10 @@ class Config:
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     compaction_batch: int = DEFAULT_COMPACTION_BATCH
+    # Cross-session short-memory recall (v0.9): N detailed convos, D-day digest window, rows/day.
+    recent_summaries: int = RECENT_SUMMARIES
+    gist_days: int = GIST_DAYS
+    max_day_rows: int = MAX_DAY_ROWS
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking: bool = DEFAULT_THINKING
     effort: str | None = DEFAULT_EFFORT
@@ -144,6 +149,13 @@ def load_config(*, load_env: bool = True) -> Config:
     batch_env = os.getenv("LUMI_COMPACTION_BATCH")
     compaction_batch = int(batch_env) if batch_env else DEFAULT_COMPACTION_BATCH
 
+    recent_env = os.getenv("LUMI_RECENT_SUMMARIES")
+    recent_summaries = int(recent_env) if recent_env else RECENT_SUMMARIES
+    gist_days_env = os.getenv("LUMI_GIST_DAYS")
+    gist_days = int(gist_days_env) if gist_days_env else GIST_DAYS
+    max_day_rows_env = os.getenv("LUMI_MAX_DAY_ROWS")
+    max_day_rows = int(max_day_rows_env) if max_day_rows_env else MAX_DAY_ROWS
+
     max_tokens_env = os.getenv("LUMI_MAX_TOKENS")
     max_tokens = int(max_tokens_env) if max_tokens_env else DEFAULT_MAX_TOKENS
 
@@ -180,6 +192,9 @@ def load_config(*, load_env: bool = True) -> Config:
         store_path=store_path,
         memory_window=memory_window,
         compaction_batch=compaction_batch,
+        recent_summaries=recent_summaries,
+        gist_days=gist_days,
+        max_day_rows=max_day_rows,
         max_tokens=max_tokens,
         thinking=thinking,
         effort=effort,

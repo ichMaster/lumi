@@ -39,6 +39,20 @@ def test_env_overrides(monkeypatch):
     assert cfg.api_key == "sk-test-not-real"
 
 
+def test_recall_knobs_default_and_override(monkeypatch):
+    # v0.9 short-memory recall is now .env-tunable (defaults 5 / 5 / 4).
+    for key in ("LUMI_RECENT_SUMMARIES", "LUMI_GIST_DAYS", "LUMI_MAX_DAY_ROWS"):
+        monkeypatch.delenv(key, raising=False)
+    d = load_config(load_env=False)
+    assert (d.recent_summaries, d.gist_days, d.max_day_rows) == (5, 5, 4)
+
+    monkeypatch.setenv("LUMI_RECENT_SUMMARIES", "8")
+    monkeypatch.setenv("LUMI_GIST_DAYS", "14")
+    monkeypatch.setenv("LUMI_MAX_DAY_ROWS", "3")
+    o = load_config(load_env=False)
+    assert (o.recent_summaries, o.gist_days, o.max_day_rows) == (8, 14, 3)
+
+
 def test_api_key_absent_is_none(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     cfg = load_config(load_env=False)

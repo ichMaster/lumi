@@ -15,8 +15,10 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
-# Short-memory recall (v0.9). N = last conversations injected in DETAIL; D = the day window
-# whose conversations are consolidated into per-day digests (≤ MAX_DAY_ROWS rows each).
+# Short-memory recall (v0.9) — these are the DEFAULTS; override via .env
+# (LUMI_RECENT_SUMMARIES / LUMI_GIST_DAYS / LUMI_MAX_DAY_ROWS), threaded through Config → Core.
+# N = last conversations injected in DETAIL; D = the day window whose conversations are
+# consolidated into per-day digests (≤ MAX_DAY_ROWS rows each).
 RECENT_SUMMARIES = 5  # N
 GIST_DAYS = 5  # D — the "days at a glance" window (local days)
 MAX_DAY_ROWS = 4  # a day's consolidated summary is at most this many rows
