@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.repository import (
+    Closeness,
     DaySummary,
     LongTermFact,
     Message,
@@ -35,6 +36,7 @@ class JsonRepository:
         self._summaries: dict[str, list[ShortSummary]] = {}  # by user_id
         self._day_summaries: dict[str, dict[str, DaySummary]] = {}  # user_id -> date -> DaySummary
         self._facts: dict[str, list[LongTermFact]] = {}  # by user_id
+        self._closeness: dict[str, Closeness] = {}  # by user_id (v0.10)
         self._digests: dict[str, SessionDigest] = {}  # by session_id
         self._load()
 
@@ -60,6 +62,8 @@ class JsonRepository:
             self._day_summaries[uid] = {d: DaySummary(**raw) for d, raw in byday.items()}
         for uid, raws in data.get("facts", {}).items():
             self._facts[uid] = [LongTermFact(**raw) for raw in raws]
+        for uid, raw in data.get("closeness", {}).items():
+            self._closeness[uid] = Closeness(**raw)
         for sid, raw in data.get("digests", {}).items():
             self._digests[sid] = SessionDigest(**raw)
 
@@ -79,6 +83,7 @@ class JsonRepository:
             "facts": {
                 uid: [asdict(f) for f in items] for uid, items in self._facts.items()
             },
+            "closeness": {uid: asdict(c) for uid, c in self._closeness.items()},
             "digests": {sid: asdict(d) for sid, d in self._digests.items()},
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -145,10 +150,18 @@ class JsonRepository:
     def facts(self, user_id: str) -> list[LongTermFact]:
         return list(self._facts.get(user_id, []))
 
+    def get_closeness(self, user_id: str) -> Closeness | None:
+        return self._closeness.get(user_id)
+
+    def set_closeness(self, closeness: Closeness) -> None:
+        self._closeness[closeness.user_id] = closeness
+        self._persist()
+
     def clear_memory(self, user_id: str) -> None:
         self._summaries.pop(user_id, None)
         self._day_summaries.pop(user_id, None)
         self._facts.pop(user_id, None)
+        self._closeness.pop(user_id, None)
         self._persist()
 
     def get_digest(self, session_id: str) -> SessionDigest | None:

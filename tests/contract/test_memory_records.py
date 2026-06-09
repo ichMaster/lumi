@@ -4,12 +4,28 @@ Pins ARCHITECTURE §Data model / §Contracts. Changing a record shape must chang
 this test.
 """
 
-from core.repository import DaySummary, LongTermFact, SessionDigest, ShortSummary
+from core.repository import (
+    Closeness,
+    DaySummary,
+    LongTermFact,
+    SessionDigest,
+    ShortSummary,
+)
 
 
 def test_day_summary_shape():
     # v0.9.x: a local day consolidated into ≤4 rows, per-user; `count` drives staleness.
     assert set(DaySummary.__dataclass_fields__) == {"user_id", "date", "summary", "count", "ts"}
+
+
+def test_closeness_shape():
+    # v0.10: per-user relationship level — value + 1–5 bucket + last interaction ts.
+    assert set(Closeness.__dataclass_fields__) == {"user_id", "value", "level", "last_ts"}
+
+
+def test_closeness_is_per_user():
+    c = Closeness(user_id="owner", value=50.0, level=3, last_ts="2026-06-09T00:00:00+00:00")
+    assert c.user_id == "owner" and c.level == 3
 
 
 def test_short_summary_shape():

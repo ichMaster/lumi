@@ -123,6 +123,21 @@ class LongTermFact:
 
 
 @dataclass(frozen=True)
+class Closeness:
+    """Лілі's relationship level with one user (v0.10). Per-user (private).
+
+    ``value`` is the continuous closeness (e.g. 0–100); ``level`` is its 1–5 bucket;
+    ``last_ts`` is the last interaction (for time decay). It biases warmth/openness —
+    **never competence**. Per-user and isolated (never crosses users).
+    """
+
+    user_id: str
+    value: float
+    level: int
+    last_ts: str
+
+
+@dataclass(frozen=True)
 class SessionDigest:
     """A running summary of the earlier part of one session (in-session compaction).
 
@@ -203,6 +218,14 @@ class Repository(Protocol):
 
     def facts(self, user_id: str) -> list[LongTermFact]:
         """The user's accumulated long-term facts."""
+        ...
+
+    def get_closeness(self, user_id: str) -> Closeness | None:
+        """The user's relationship-closeness record, or ``None`` (v0.10). Per-user."""
+        ...
+
+    def set_closeness(self, closeness: Closeness) -> None:
+        """Upsert the user's closeness record (keyed by ``user_id``)."""
         ...
 
     def clear_memory(self, user_id: str) -> None:
