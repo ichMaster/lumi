@@ -69,6 +69,26 @@ THOUGHT_SYSTEM = (
 # The trailing emotion tag the thought ends with — parsed out, never part of the text.
 _EMOTION_RE = re.compile(r"(?im)^[ \t]*емоц[іи][яї][ \t]*:[ \t]*([A-Za-z]+)[ \t]*$")
 
+# Appended after the FULL reply backdrop (canon + memory + state + history) when
+# LUMI_THOUGHTS_CONTEXT=full — turns that backdrop's reply task into a thought task.
+THOUGHT_FULL_HEADER = (
+    "\n\n# Зараз — не відповідь, а ТВОЯ внутрішня думка\n\n"
+    "Подивись на весь контекст вище (хто ти, памʼять про цю людину, настрій, розмова) і {instruction}. "
+    "Напиши РІВНО ОДНУ коротку думку (1–2 речення) своїм голосом — мимохіть, для себе, нікому не "
+    "відповідаючи й не звертаючись. Це внутрішнє/уявне — ніколи не факт про фізичний світ і не про "
+    "чиїсь знання чи вміння. В САМОМУ КІНЦІ окремим рядком «ЕМОЦІЯ: <одне слово>» — одне з: "
+    "joy, calm, playful, tender, thoughtful, serious, surprise, doubt, sad."
+)
+
+
+def thought_full_seed(*, topic: str | None = None, rng_seed: int = 0) -> str:
+    """The final user-turn seed for a full-context thought (the backdrop carries the rest)."""
+    parts = []
+    if topic:
+        parts.append(f"Поміркуй саме про це: {topic}")
+    parts.append(f"(внутрішнє відлуння №{rng_seed})")
+    return "\n\n".join(parts)
+
 
 def thought_request(
     directive: Directive,

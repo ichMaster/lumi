@@ -97,6 +97,7 @@ from core.repository import (
 from core.styles import load_meta_descriptions, load_meta_styles, load_styles
 from core.thoughts import (
     REGISTRY,
+    THOUGHT_FULL_HEADER,
     THOUGHTS_CAP,
     THOUGHTS_INTERVAL_S,
     THOUGHTS_SPOKEN_RATIO,
@@ -105,6 +106,7 @@ from core.thoughts import (
     parse_directive,
     parse_thought,
     should_graduate,
+    thought_full_seed,
     thought_request,
     thoughts_diary_block,
 )
@@ -207,6 +209,7 @@ class Core:
         thoughts_cap: int = THOUGHTS_CAP,
         thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO,
         thoughts_show: str = "hidden",
+        thoughts_context: str = "lean",
         quiet_hours: tuple[int, int] | None = None,
     ) -> None:
         self._llm = llm
@@ -245,6 +248,7 @@ class Core:
         self._thoughts_cap = thoughts_cap
         self._thoughts_spoken_ratio = thoughts_spoken_ratio
         self._thoughts_show = thoughts_show  # hidden (default) / admin / off — the /thoughts policy
+        self._thoughts_context = thoughts_context  # lean (seeds) / full (the whole reply backdrop)
         self._quiet_hours = quiet_hours
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
@@ -538,26 +542,11 @@ class Core:
             return None
         if topic:  # a topic may carry {placeholders} (e.g. %think about {last_thought})
             topic = self.resolve(topic, session=session)
-        seeds: list[str] = []
-        mood = self.mood
-        if mood:
-            seeds.append("mood")
-        _, closeness = self.closeness_status()
-        if closeness:
-            seeds.append("closeness")
-        recent = self._recent_tail(session) if session is not None else None
-        if recent:
-            seeds.append("recent")
-        last = self._recent_thoughts_text()
-        if last:
-            seeds.append("last_thoughts")
-        if topic:
-            seeds.append("topic")
         try:
-            system, msgs = thought_request(
-                directive, mood=mood, closeness=closeness, recent=recent,
-                last_thoughts=last, topic=topic, rng_seed=rng_seed,
-            )
+            if self._thoughts_context == "full" and session is not None:
+                system, msgs, seeds = self._thought_call_full(directive, session, topic, rng_seed)
+            else:
+                system, msgs, seeds = self._thought_call_lean(directive, session, topic, rng_seed)
             raw = self._housekeeping_reply(system, msgs).strip()
         except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
             return None
@@ -574,6 +563,48 @@ class Core:
         self._repo.add_thought(thought)
         _thoughts_log.info("%s [%s] %s", thought.when, thought.kind, thought.text)  # logged tier
         return thought
+
+    def _thought_call_lean(
+        self, directive, session: Session | None, topic: str | None, rng_seed: int,
+    ) -> tuple[str, list[dict[str, str]], list[str]]:
+        """The default **lean** thought call: a dedicated prompt seeded from her live state (cheap)."""
+        seeds: list[str] = []
+        mood = self.mood
+        if mood:
+            seeds.append("mood")
+        _, closeness = self.closeness_status()
+        if closeness:
+            seeds.append("closeness")
+        recent = self._recent_tail(session) if session is not None else None
+        if recent:
+            seeds.append("recent")
+        last = self._recent_thoughts_text()
+        if last:
+            seeds.append("last_thoughts")
+        if topic:
+            seeds.append("topic")
+        system, msgs = thought_request(
+            directive, mood=mood, closeness=closeness, recent=recent,
+            last_thoughts=last, topic=topic, rng_seed=rng_seed,
+        )
+        return system, msgs, seeds
+
+    def _thought_call_full(
+        self, directive, session: Session, topic: str | None, rng_seed: int,
+    ) -> tuple[str, list[dict[str, str]], list[str]]:
+        """The **full-context** thought call (``LUMI_THOUGHTS_CONTEXT=full``): the same backdrop a
+        reply gets — canon + memory + mood + closeness + the diary block + the conversation window —
+        with the reply task swapped for a thought task. Richer, but a mini-reply in tokens."""
+        live = trim_history(self._repo.load_messages(session.id), self._memory_window)
+        messages = [
+            {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live
+        ]
+        messages.append({"role": "user", "content": thought_full_seed(topic=topic, rng_seed=rng_seed)})
+        system = self._system_prompt(session) + THOUGHT_FULL_HEADER.format(
+            instruction=directive.instruction
+        )
+        seeds = ["context", *(["topic"] if topic else [])]
+        return system, messages, seeds
 
     def _recent_tail(self, session: Session, n: int = 6) -> str | None:
         """The last ``n`` messages of the session, compact — a seed for a thought."""
@@ -1095,5 +1126,6 @@ def build_core(
         thoughts_cap=cfg.thoughts_cap,
         thoughts_spoken_ratio=cfg.thoughts_spoken_ratio,
         thoughts_show=cfg.thoughts_show,
+        thoughts_context=cfg.thoughts_context,
         quiet_hours=cfg.quiet_hours,
     )

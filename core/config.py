@@ -139,6 +139,7 @@ class Config:
     thoughts_cap: int = THOUGHTS_CAP  # v0.12 proactive thinks per session
     thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO  # v0.12 fraction that graduate to spoken
     thoughts_show: str = "hidden"  # v0.12 /thoughts policy: hidden / admin / off
+    thoughts_context: str = "lean"  # v0.12 thought prompt: lean (seeds) / full (whole backdrop)
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -269,6 +270,7 @@ def load_config(*, load_env: bool = True) -> Config:
         thoughts_cap=int(os.getenv("LUMI_THOUGHTS_CAP") or THOUGHTS_CAP),
         thoughts_spoken_ratio=float(os.getenv("LUMI_THOUGHTS_SPOKEN_RATIO") or THOUGHTS_SPOKEN_RATIO),
         thoughts_show=(os.getenv("LUMI_THOUGHTS_SHOW") or "hidden").strip().lower(),
+        thoughts_context=(os.getenv("LUMI_THOUGHTS_CONTEXT") or "lean").strip().lower(),
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
