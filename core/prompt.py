@@ -140,7 +140,7 @@ def load_canon(path: str | Path) -> str:
 def build_system_prompt(
     canon: str,
     summaries: Sequence[str] | None = None,
-    gists: Sequence[str] | None = None,
+    day_summaries: Sequence[str] | None = None,
     facts: Sequence[str] | None = None,
     digest: str | None = None,
     style: str | None = None,
@@ -153,11 +153,12 @@ def build_system_prompt(
     The canon always rides at the base; ``emotion=True`` adds the v0.3
     emotion-output instruction (:data:`EMOTION_INSTRUCTION`) right after it; then
     the optional ``ambient`` "now / here" block (v0.4 — background that colors tone,
-    never competence), then the user's recent ``summaries`` and long-term ``facts``,
+    never competence), then the recent-days ``day_summaries`` digests followed by the
+    detailed ``summaries`` and long-term ``facts``,
     then the in-session ``digest``, and finally — at the very **end** — an optional ``style`` overlay
     (which shapes the *form* of the reply, never competence), framed as a
     prioritized directive (:data:`STYLE_HEADER`) so it's the last, most salient
-    instruction. Assembly order: canon → emotion → summaries → facts → digest →
+    instruction. Assembly order: canon → emotion → day_summaries → summaries → facts → digest →
     **style**. With no overlays the result is the canon verbatim (the v0.1
     behavior). v0.5 adds a ``mood`` block the same way.
 
@@ -169,14 +170,15 @@ def build_system_prompt(
         parts.append(EMOTION_INSTRUCTION)
     if ambient:
         parts.append(ambient)
-    if summaries:
+    if day_summaries:  # v0.9: the last few days as compact per-day digests (first)
         parts.append(
-            "Памʼять про попередні розмови з цією людиною:\n"
-            + "\n".join(f"- {s}" for s in summaries)
+            "Останні дні з цією людиною (стисло):\n"
+            + "\n".join(f"- {d}" for d in day_summaries)
         )
-    if gists:  # v0.9: the last few days at a glance (one-line gists)
+    if summaries:  # then the last N conversations in detail
         parts.append(
-            "Останні дні з цією людиною (стисло):\n" + "\n".join(f"- {g}" for g in gists)
+            "Памʼять про останні розмови з цією людиною:\n"
+            + "\n".join(f"- {s}" for s in summaries)
         )
     if facts:
         parts.append(

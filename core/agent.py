@@ -334,18 +334,18 @@ class Core:
         per turn, so a restart recalls prior context and new memory takes effect.
         Isolation holds — only this ``user_id``'s records are read.
         """
-        # v0.9 two-tier short memory: the last N conversations in DETAIL, plus the last D
-        # local days as compact per-day digests (≤4 rows each, consolidated from that day's
-        # gists by ensure_day_summaries). Both dated (v0.4).
-        recent = self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
-        summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
+        # v0.9 two-tier short memory: the last D local days as compact per-day digests
+        # (≤4 rows each, consolidated from that day's gists by ensure_day_summaries) — shown
+        # FIRST — then the last N conversations in DETAIL. Both dated (v0.4). No raw gists.
         since = (self._clock().date() - timedelta(days=GIST_DAYS)).isoformat()
-        gists = [
+        day_summaries = [
             f"[{ds.date}] {line.strip()}"
             for ds in self._repo.day_summaries_since(self._user_id, since)
             for line in ds.summary.splitlines()
             if line.strip()
         ]
+        recent = self._repo.recent_summaries(self._user_id, RECENT_SUMMARIES)
+        summaries = [f"[{format_date(s.ts)}] {s.summary}" for s in recent]
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
         # Append the reasoning directive to the canon so any pre-answer reasoning is
@@ -353,7 +353,7 @@ class Core:
         return build_system_prompt(
             f"{self._canon}\n\n{REASONING_DIRECTIVE}",
             summaries=summaries,
-            gists=gists,
+            day_summaries=day_summaries,
             facts=facts,
             digest=digest.summary if digest else None,
             style=self._style_directive(),

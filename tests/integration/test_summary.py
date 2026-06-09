@@ -174,7 +174,7 @@ def test_detail_tier_plus_day_summary_injection(tmp_path):
     sysp = core._system_prompt(core.start_session())
 
     # Detailed tier: the last N=5 conversations.
-    assert "Памʼять про попередні розмови" in sysp
+    assert "Памʼять про останні розмови" in sysp
     for i in range(5):
         assert f"RDETAIL{i}" in sysp
     # Day tier: the in-window day digest, one row per line, dated by day.
