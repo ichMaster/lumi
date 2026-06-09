@@ -29,7 +29,7 @@ from core.biorhythm import (
     biorhythms as biorhythm_cycles,
 )
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
-from core.closeness import RelationRead, validate_relation
+from core.closeness import RelationRead, update_closeness, validate_relation
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, EmotionState, validate
@@ -57,6 +57,7 @@ from core.prompt import (
     split_style,
 )
 from core.repository import (
+    Closeness,
     DaySummary,
     LongTermFact,
     Repository,
@@ -188,6 +189,11 @@ class Core:
     def mood(self) -> str | None:
         """Today's mood **resolution** (v0.6), or ``None`` when off / not yet computed."""
         return self._mood.resolution if self._mood else None
+
+    @property
+    def closeness(self) -> Closeness | None:
+        """The active user's relationship-closeness record (v0.10), or ``None`` if none yet."""
+        return self._repo.get_closeness(self._user_id)
 
     @property
     def biorhythms(self) -> Biorhythms | None:
@@ -537,6 +543,15 @@ class Core:
         self.last_emotion = state
         # v0.10: the additive relational read of the user's message (internal; feeds closeness).
         self.last_relation = validate_relation(raw.get("relation"))
+        # Advance the per-user closeness: decay over silence + this turn's relational delta.
+        self._repo.set_closeness(
+            update_closeness(
+                self._repo.get_closeness(self._user_id),
+                self.last_relation,
+                self._clock(),
+                self._user_id,
+            )
+        )
         self._write_face_signal(state.emotion.value, state.intensity)  # update the viewer (v0.7)
 
         self._repo.append_message(
