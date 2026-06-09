@@ -10,13 +10,13 @@ Arc of the two axes: capabilities grow text+memory → emotion (emoji) → daily
 
 ## v0 — TUI: core, memory, emotion, emoji, mood (+ biorhythms), local face, closeness, face wardrobe, inner life, emotional memory, semantic recall (RAG), voice, dictation
 
-The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.20 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.18, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
+The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.21 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.19, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v1 splits them into client and server. Depends on: nothing — this is the foundation.
 
 ### v0.1 — Skeleton and canon
 
 **Goal:** a working text chat with Лілі's character in the terminal.
 
-Stand up the project skeleton and the `core` package, an **Anthropic client (Claude Haiku)** behind a thin **`LLMClient`** seam the core depends on (mockable in tests; model id from config, default Haiku), Лілі's authored canon loaded as the system prompt, a TUI loop with input and scrollable history, and the `Repository` interface with a local store behind it. The core exposes one `reply(...)` contract the TUI calls — no interface logic leaks into the core. **Claude Haiku is the only model to start**; more models are added behind the same seam in v0.20.
+Stand up the project skeleton and the `core` package, an **Anthropic client (Claude Haiku)** behind a thin **`LLMClient`** seam the core depends on (mockable in tests; model id from config, default Haiku), Лілі's authored canon loaded as the system prompt, a TUI loop with input and scrollable history, and the `Repository` interface with a local store behind it. The core exposes one `reply(...)` contract the TUI calls — no interface logic leaks into the core. **Claude Haiku is the only model to start**; more models are added behind the same seam in v0.21.
 
 **Tasks:**
 - Create the repo skeleton and the `core` package; wire `pyproject.toml` (ruff + pytest) and `.env` loading for `ANTHROPIC_API_KEY`.
@@ -54,7 +54,7 @@ Add the three (per-user) memory layers: session history trimmed to a rolling win
 Lock the emotion channel. The model emits `{reply, emotion, intensity}` as structured output; the core validates it against the fixed 9-value enum and the 0–1 range, repairs/falls back on invalid output, and logs the field. The `IEmotionRenderer` interface and the `LogRenderer` (plus an optional small TUI status line) land here. **This is the contract every later render tier reuses** — see [EMOTION.md](features/EMOTION.md).
 
 **Tasks:**
-- Structured output `{reply, emotion, intensity}`; constrain `emotion` to the enum and `intensity` to 0–1 via Anthropic's tool/structured output (Claude Haiku) — EMOTION.md §8. (Other models' structured output is handled per-provider when they arrive in v0.20.)
+- Structured output `{reply, emotion, intensity}`; constrain `emotion` to the enum and `intensity` to 0–1 via Anthropic's tool/structured output (Claude Haiku) — EMOTION.md §8. (Other models' structured output is handled per-provider when they arrive in v0.21.)
 - The validation/fallback gate (unknown emotion → `calm`; clamp/default intensity; missing reply → error) — EMOTION.md §8.
 - Log the emotion field per turn (the "logged" render tier); structured logs keyed by `session_id`.
 - `IEmotionRenderer` interface + `LogRenderer`; optional small TUI status line showing the current state.
@@ -274,7 +274,28 @@ See [INNER_LIFE.md](features/INNER_LIFE.md) + [NEEDS_full.md](features/NEEDS_ful
 
 **Tests:** unit — the gap→count curve + dream-iff-night (fixed clock); the gap-fill call (mock model) seeds + appends; replan threshold/reactivity; surfacing honors `mention_aloud`; the honesty boundary present in the prompt; continuity (a new fragment sees previous); **needs replenish from `serves`/`intensity` (exact levels), validation drops out-of-set serves, the free-slot fill targets the hungriest need, the threshold-5 / no-duplication window**. No paid calls.
 
-### v0.14 — Emotional memory I: impressions (diary, not stenographer)
+### v0.14 — Inner monologue (Лілі thinks in her own voice)
+
+**Goal:** the hidden think-step before each reply sounds like **her** — her inner voice weighing her own states ("he's asking about the deploy, but his voice is tired — don't pile on detail, ask how he is first") — not the model's generic task reasoning. The **in-the-moment** sibling of the inner life (between sessions) and emotional memory (after a session): the **convergence point** where mood / closeness / needs / plans are weighed into *how she speaks*. The mechanism already exists (Opus 4.8 extended thinking + the `<think>` parse + the TUI think box); this phase makes it **hers** — **no new engine**.
+
+- **One call, not two.** The reply stays **one model call** with thinking on; the monologue is the `thinking` content block of that same response (parsed out by `split_reasoning`), not a separate think-call. Housekeeping (mood / inner-life / summary / consolidation) stays thinking-**OFF**, as today.
+- **Make it hers (the only real work).** Replace the generic `REASONING_DIRECTIVE` with an authored **think-phase instruction in her voice** (`core/inner_voice.md`, editable): *before answering, think as Лілі — what is he really asking; what's under the words; how am I right now (mood / how close we are / what I'm hungry for); how would I, specifically, say this.* The **state blocks already in the prompt** (mood v0.6/0.8, closeness v0.10, needs + plans v0.12–13) are the concrete inputs it weighs — it **consumes** them, doesn't duplicate them.
+- **Show / log / memory.** A `think_show` mode — **debug** (visible to the operator, never in the reply; safe default) / **open** (surfaced as her inner voice — then it MUST stay in character) / **off**. The think-block is **logged** (the v0.3 logged tier), and **never written to long-term memory** (only the digested v0.15 impression persists — thoughts are ephemeral).
+- **Invariants inside the thinking.** Never competence, honesty about her nature, anti-dependency, the provocation / retreat-before-pain rule — all hold *inside* `<think>` exactly as in the reply (hidden ≠ unconstrained; matters doubly if ever shown).
+
+**No contract change** — the reply still returns `{reply, emotion, intensity}`; `thinking` is a content block, not a new field (the emotion-channel contract test passes verbatim). Reuses v0.6/0.8 (mood), v0.10 (closeness), v0.12–13 (needs + plans), v0.3 (the emotion turn + logged tier). Later states (self-regard, relational feelings) become **additive** inputs when they exist. See [INNER_MONOLOGUE.md](features/INNER_MONOLOGUE.md). Depends on: v0.12–13 (the states it weighs), v0.3.
+
+**Tasks:**
+- Authored `core/inner_voice.md` (the think-phase instruction in her voice) + load it; **replace `REASONING_DIRECTIVE`** in `_system_prompt` with it (the mood/closeness/needs/plan blocks already ride in the prompt). A `LUMI_INNER_VOICE` toggle.
+- An **invariants-inside-think** line in the directive (never competence / honesty / anti-dependency / retreat-before-pain).
+- **Show/log policy:** `LUMI_THINK_SHOW` (`debug`/`open`/`off`) + a `think.log` tier; the raw monologue is **never** persisted to long-term memory.
+- Tests (below).
+
+**DoD:** the reply turn's think-block, with the authored instruction, references **her states** (mood/closeness/needs) rather than generic task analysis; it is **one model call** (no second generation call; housekeeping stays thinking-off); the monologue is **logged but never persisted** to long-term memory; the invariants hold inside it; **no contract change** (the emotion-field test passes verbatim).
+
+**Tests:** unit — the **one-call invariant** (exactly one model call per reply; housekeeping thinking-off); a **voice test** (the mocked think-block references her states, not generic analysis); a **memory test** (the raw think is not persisted to long-term memory); `think_show=off` hides it; determinism (mocked, structural assertions). No paid calls.
+
+### v0.15 — Emotional memory I: impressions (diary, not stenographer)
 
 **Goal:** Лілі's long-term memory of you stops being a fact list and becomes **her first-person impressions** — what she felt, what touched or surprised her — with the hard facts kept as seeds in a parallel layer. The session-close counterpart to the inner life (which writes her *own* days at session start).
 
@@ -299,16 +320,16 @@ See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v0.3 (emoti
 
 **Tests:** unit — the impression generator (mock model) yields impressions + seeds; seed→fact promotion; startup injects both layers; the `Impression` shape + **per-user isolation** (contract); boundary honesty (a "don't remember" topic isn't recorded). No paid calls.
 
-### v0.15 — Emotional memory II: fading & consolidation (understanding, not archive)
+### v0.16 — Emotional memory II: fading & consolidation (understanding, not archive)
 
 **Goal:** her impressions behave like human memory — **what struck her stays bright, the mundane fades, and similar impressions merge into understanding** ("he comes alive with music").
 
-Builds on v0.14:
+Builds on v0.15:
 - **Emotion is the attention filter + fading.** Each impression's `weight` **decays over time** (the v0.4 injected clock); recall ranks by `weight × recency`; high-weight impressions stay longer, low-weight ones dim and eventually drop.
 - **Consolidation into generalizations.** A lazy **consolidation pass** (a model call, at session start or on a counter) folds many small similar impressions into stable **generalizations** — her *understanding* of you — kept as durable, higher-weight entries; the absorbed detail fades.
 - **Stays consistent.** New impressions and consolidations **see the prior ones** (no contradiction), like the inner-life entries; the store stays bounded.
 
-See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v0.14 (the impressions layer), v0.4 (the clock).
+See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v0.15 (the impressions layer), v0.4 (the clock).
 
 **Tasks:**
 - **Weight decay** over time (injected clock); recall ranking by `weight × recency`; drop/archive faded low-weight impressions.
@@ -319,11 +340,11 @@ See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v0.14 (the 
 
 **Tests:** unit — weight decay over days (fixed clock) + recall ranking; the consolidation pass (mock model) merges similar impressions into a generalization and fades the detail; the bound/cap; consistency with prior entries. No paid calls.
 
-### v0.16 — Semantic recall I: index & search (RAG foundation)
+### v0.17 — Semantic recall I: index & search (RAG foundation)
 
 **Goal:** **every message is embedded** into a per-user vector store, and an explicit **`/recall <query>`** semantic search returns the matching past lines — the **exact recall** the lossy layers (window, summaries, impressions) can't give.
 
-The retrieval foundation — seams + index + explicit search (the automatic per-turn RAG is v0.17):
+The retrieval foundation — seams + index + explicit search (the automatic per-turn RAG is v0.18):
 - **`Embedder` seam** (mirrors `LLMClient`): `embed(texts) → vectors`. Default a **local multilingual** model (Ukrainian-capable; private — messages never leave the machine, no per-call cost), **swappable to a cloud API** (Voyage/OpenAI) via config. **Mockable** (deterministic fake vectors) — no paid APIs in CI.
 - **`VectorStore` seam** behind the `Repository`, **keyed by `user_id`**: `{user_id, msg_id, vector, text, ts, role}`. Local first (numpy cosine / `sqlite-vec` — brute-force is instant at this scale); a server vector DB later — swapping the backend never touches the core.
 - **Indexing:** embed each message (yours + Лілі's) as written; **backfill** existing messages once on first run; incremental thereafter.
@@ -343,17 +364,17 @@ Local embedder = private by default (text leaves the machine only if you opt int
 
 **Tests:** unit — index-on-write + backfill (fake embedder, deterministic vectors); top-K cosine ranking; `/recall` renders; the `VectorStore` shape + **per-user isolation** (contract); graceful degradation on embedder error. No paid calls.
 
-### v0.17 — Semantic recall II: automatic RAG in the turn
+### v0.18 — Semantic recall II: automatic RAG in the turn
 
 **Goal:** Лілі **automatically pulls the relevant past** into each reply — the incoming message is the query, the most relevant past moments are injected — so she remembers the exact thing you said long ago, right when it matters.
 
-Builds on v0.16:
+Builds on v0.17:
 - **Per-turn retrieval:** embed the incoming message → **top-K** over this user's vectors → inject a compact **"relevant past moments"** block (dated), grounding the reply in the actual past lines.
 - **Dedup + bound:** drop anything already in the rolling window (no double-context); cap by count / token budget; a **relevance floor** (don't inject weak matches).
 - **Graceful + non-blocking:** retrieval error/empty → no block, never blocks or delays a turn (best-effort, like ambient context).
 - **Trusted history, not web content.** The recalled text is *your/her own* past words (trusted), distinct from untrusted web content (v3.2); it grounds the reply but never overrides her voice, the emotion contract, or competence.
 
-See [SEMANTIC_RECALL.md](features/SEMANTIC_RECALL.md). Depends on: v0.16 (the index + seams).
+See [SEMANTIC_RECALL.md](features/SEMANTIC_RECALL.md). Depends on: v0.17 (the index + seams).
 
 **Tasks:**
 - **Per-turn retrieval:** the message → top-K over the user's vectors → a "relevant past moments" block in the prompt.
@@ -365,7 +386,7 @@ See [SEMANTIC_RECALL.md](features/SEMANTIC_RECALL.md). Depends on: v0.16 (the in
 
 **Tests:** unit — per-turn retrieval injects top-K above the floor (fake embedder); dedup against the window; cap/floor honored; graceful empty/error; **isolation in the turn** (contract). No paid calls.
 
-### v0.18 — Local voice (ElevenLabs)
+### v0.19 — Local voice (ElevenLabs)
 
 **Goal:** hear Лілі — a separate local app that voices her replies, no server.
 
@@ -381,11 +402,11 @@ Add a **separate local console app** that voices Лілі's replies with the Ele
 
 **Tests:** unit — dedup-by-`id` + ascending-order selection (`outbox` minus `spoken`), strictly-sequential playback, retry-on-failure (no `spoken` write); integration — a few `outbox` records voiced via a **mock TTS adapter** (no paid call), `spoken` updated; resumes correctly after a simulated restart.
 
-### v0.19 — Local dictation (STT)
+### v0.20 — Local dictation (STT)
 
-**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.18 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
+**Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.19 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
 
-A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.18 (the local-process + shared-file pattern).
+A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v2.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.19 (the local-process + shared-file pattern).
 
 **Tasks:**
 - A separate **dictator process**: watch `listen.flag`; record the mic while `on`; on `off`, send audio to the **STT adapter** in `/voice` (`stt(audio_uk) -> text`, provider configurable) → append `{id, text, source:"voice", ts}` to `inbox.jsonl`.
@@ -396,7 +417,7 @@ A separate local process listens to the microphone, recognizes Ukrainian via the
 
 **Tests:** unit — `listen.flag` on/off handling, empty-recognition is dropped (no `inbox` write), dedup by `id`; integration — a recognized line via a **mock STT adapter** (no paid call) lands in `inbox.jsonl` and drives a turn identical to a typed one.
 
-### v0.20 — More models (model & provider switching)
+### v0.21 — More models (model & provider switching)
 
 **Goal:** switch Лілі to a different model beyond the v0.1 Claude Haiku default — other Claude tiers (Opus/Sonnet) or other providers (OpenAI, DeepSeek, MiniMax) — as a config switch with no code change.
 
@@ -726,15 +747,15 @@ At session end Лілі decides whether to write a **literary journal entry** �
 
 - Emotion field `{ reply, emotion, intensity }` + enum + `IEmotionRenderer` — locked in **v0.3** (rendered: log → emoji v0.5 → local image face v0.7 → web portrait + caption v2.1 → animation v3.1). See [EMOTION.md](features/EMOTION.md).
 - Emotion-face asset pack (`emotion → image`) — first used by the local viewer in **v0.7** (see [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md)), reused by the web `ImageRenderer` in **v2.1**.
-- Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.20**.
+- Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.21**.
 - Mood / temperament (daily, horoscope-derived; colors tone, never competence) — **v0.6** (core; see [ARCHITECTURE.md](ARCHITECTURE.md) §Mood and temperament).
 - Per-user memory records (`ShortSummary`, `LongTermFact`, with `user_id`) — **v0.2**.
 - User-scoping + the per-user isolation invariant — data-level in **v0.2**, enforced & tested at the auth boundary in **v1.3** (and gated as a security test in **v1.2**).
 - Core API (`reply(...)`, memory commands) — **v0.1**; exposed over the client/server API (TUI + CLI clients) in **v1.1**; web client in **v1.4**.
 - Auth — a local client token in **v1.1**; full accounts, registration/invite codes, allowlist, argon2id in **v1.3**; security testing + CI/CD (deploy, TLS, dep/secret scans) in **v1.2**; admin panel in **v1.5**.
 - Multi-user + multi-session — **v1.3**.
-- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.18** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
-- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.19** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
+- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.19** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v2.2**.
+- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.20** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v2.4**.
 - Image — **v2.1**; web voice output — **v2.2**; shared memory (`SharedMemoryItem`) + cross-pollination — **v2.3**; web dictation — **v2.4**.
 - Animation — **v3.1**.
 - MCP client + `web_search` service (`web.search`/`web.fetch`, off by default, untrusted content) — **v3.2** (see [WEB_SEARCH.md](features/WEB_SEARCH.md)).
