@@ -30,6 +30,8 @@ The specification is the source of truth. Read it before writing code:
 
 Authoring guide (not a design spec): [docs/CANON_SPEC.md](docs/CANON_SPEC.md) — how to write/generate Лілі's canon, the v0.1 character file (`core/canon/lili.md`) loaded as the system prompt.
 
+Operator guide (not a design spec): [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) — how to connect, run, and **monitor** the v0.13 Telegram bridge (BotFather token + allowlist, the 3 processes, the `inbox`/`outbox` file-bus pending checks, troubleshooting).
+
 When asked to "implement `v1.2`" or "start v0", treat that phase's **DoD** as the acceptance criteria, its **Tasks** as the work list, and the ARCHITECTURE/EMOTION contracts as the interfaces to honor.
 
 ## What the project is
