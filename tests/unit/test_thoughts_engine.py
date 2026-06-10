@@ -76,3 +76,11 @@ def test_seeds_recorded_on_the_thought(tmp_path):
     core = _core(tmp_path, MockLLMClient("думка про це\nЕМОЦІЯ: calm"))
     t = core.think("think", topic="море")
     assert "topic" in t.seeds  # the topic seed is recorded
+
+
+def test_think_block_is_stripped(tmp_path):
+    # full-context mode reuses the reply backdrop (which asks for <think>…</think>) — strip it.
+    reply = "<think>міркую сама із собою</think>\n\nа може, крейда миліша за коло\nЕМОЦІЯ: thoughtful"
+    t = _core(tmp_path, MockLLMClient(reply)).think("think")
+    assert t is not None and t.text == "а може, крейда миліша за коло"
+    assert "<think>" not in t.text and "міркую" not in t.text

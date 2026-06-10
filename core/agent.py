@@ -550,6 +550,7 @@ class Core:
             raw = self._housekeeping_reply(system, msgs).strip()
         except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
             return None
+        _, raw = split_reasoning(raw)  # strip any <think>…</think> (the full backdrop's directive)
         parsed = parse_thought(raw)
         if parsed is None:
             return None  # empty / malformed → record nothing (never corrupt the stream)
