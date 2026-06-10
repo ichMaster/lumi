@@ -57,6 +57,15 @@ def test_render_unknown_emotion_falls_back():
     assert out.startswith("hey ")  # renders with the calm-default glyph, no crash
 
 
+def test_render_user_line_is_prefixed_no_emoji():
+    from telegram.outbound import USER_PREFIX
+    user = {"id": 1, "text": "як ти?", "ts": _NOW.isoformat(), "kind": "user"}
+    lili = _rec(2, "добре!", _NOW, "joy", 0.8)
+    out = render([user, lili])  # a mixed batch: your line, then her reply
+    assert out.split("\n\n")[0] == f"{USER_PREFIX} як ти?"  # your line: prefixed, no emoji
+    assert out.split("\n\n")[1].startswith("добре! ")        # her reply: text + emoji
+
+
 # --- chunk (length guard — the photo-caption gotcha) ----------------------
 def test_chunk_short_passes_through():
     assert chunk("hi", MESSAGE_LIMIT) == ["hi"]

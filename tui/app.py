@@ -35,7 +35,7 @@ from core.nudge import load_nudges, pick_nudge_index, should_nudge
 from core.repository import Session
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
-from tui.bridge import drain_inbox, mirror_reply
+from tui.bridge import drain_inbox, mirror_reply, mirror_user
 from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
@@ -485,7 +485,7 @@ class LumiApp(App[None]):
                 return
 
         self._last_activity = self._core.clock()  # real input resets the idle timer
-        await self._run_turn(text)
+        await self._run_turn(text, mirror_input=True)  # keyboard turn → also mirror your line to Telegram
 
     def action_toggle_sound(self) -> None:
         """Toggle the send/receive sound (Ctrl+S). Turning it on probes the audio device."""
@@ -509,12 +509,15 @@ class LumiApp(App[None]):
         if not busy:
             prompt.focus()
 
-    async def _run_turn(self, text: str, *, hidden: bool = False) -> None:
+    async def _run_turn(self, text: str, *, hidden: bool = False, mirror_input: bool = False) -> None:
         """Run one model turn. A ``hidden`` turn (the idle nudge) suppresses the user
-        line entirely — only Лілі's reply is shown — so she appears to speak first."""
+        line entirely — only Лілі's reply is shown — so she appears to speak first.
+        ``mirror_input`` (keyboard turns only) also sends your typed line to Telegram."""
         self._set_busy(True)
         if not hidden:
             self._say(USER_LABEL, text, USER_COLOR)
+            if mirror_input and self._bridge:  # v0.13: your keyboard line → Telegram (not echoed inbox lines)
+                mirror_user(self._outbox_path, text)
             if self._sound_on:
                 self._sound.send()  # your message went out (never on a hidden nudge)
         self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen

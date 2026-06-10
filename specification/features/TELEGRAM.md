@@ -60,17 +60,21 @@ Each consumer remembers the **last id** it processed (a tiny pointer file) and r
 - **Catch-up cap.** After a long downtime, records older than `LUMI_TELEGRAM_CATCHUP_H` are **skipped**
   (pointer advanced silently) so a week offline doesn't flood you on restart.
 
-## What the outbox carries (no echo, by construction)
+## What the outbox carries (a symmetric mirror, echo-free by construction)
 
-The TUI writes to `outbox.jsonl` **only the lines Лілі speaks** — her replies (and her `💭` open
-thoughts if you want those on the phone) — **never your input** and **never technical chrome**
-(`"Compacted 20 messages…"`). Because your own messages never enter the outbox, a message that came
-**from** Telegram can't be sent **back** to Telegram — the echo problem is solved by the rule itself,
-with no `source` tag.
+The TUI writes to `outbox.jsonl`:
+- **Лілі's replies** (`kind="lili"` + emotion) — and her `💭` open thoughts if you want those on the phone;
+- **your *keyboard* lines** (`kind="user"`) — so a turn you type in the terminal also shows on the
+  phone (daemon 2 renders it with a `💻` prefix), the mirror twin of the `📱` inbox line the TUI shows
+  for a Telegram message.
 
-> On your phone you see your own message (in Telegram's own UI) **+** Лілі's reply (delivered by
-> daemon 2) — a perfectly normal chat. A keyboard turn in the terminal surfaces on Telegram as just
-> Лілі's reply (you typed the question in the terminal) — the mirror of *her* side.
+It **never** writes **Telegram-originated input** (that's already on the phone — re-sending it would
+echo) and **never technical chrome** (`"Compacted 20 messages…"`). So the rule is *mirror the lines
+that originated here* — a keyboard line and her reply — and the echo is solved by the rule itself, no
+`source`-comparison needed: an inbox line simply never re-enters the outbox.
+
+> On your phone you see: a Telegram message you sent (Telegram's own bubble) → Лілі's reply; and for a
+> terminal turn, `💻 your line` → Лілі's reply. Both surfaces mirror both sides, once each.
 
 ## Scope: single-owner now, multi-user at v1.3
 

@@ -23,6 +23,7 @@ from viewer.face import face_for
 # Telegram hard limits (a caption is much tighter than a message — the source of the photo gotcha).
 CAPTION_LIMIT = 1024
 MESSAGE_LIMIT = 4096
+USER_PREFIX = "💻"  # marks a line you typed in the TUI (mirrored to Telegram), vs Лілі's own reply
 
 
 def split_catchup(records: list[dict], now: datetime, catchup_h: int) -> tuple[list[dict], list[dict]]:
@@ -60,9 +61,19 @@ def _glyph(record: dict, emoji_map: dict) -> str:
 
 
 def render(records: list[dict], emoji_map: dict | None = None) -> str:
-    """One Telegram message text from a batch — each reply with its emoji, blank-line separated."""
+    """One Telegram message text from a batch — blank-line separated.
+
+    A ``kind="user"`` record is **your** mirrored TUI line (prefixed, no emoji); everything else is
+    Лілі's reply (text + her emoji).
+    """
     table = emoji_map or BUILTIN
-    return "\n\n".join(f"{r['text']} {_glyph(r, table)}".strip() for r in records)
+    lines: list[str] = []
+    for r in records:
+        if r.get("kind") == "user":
+            lines.append(f"{USER_PREFIX} {r['text']}".strip())
+        else:
+            lines.append(f"{r['text']} {_glyph(r, table)}".strip())
+    return "\n\n".join(lines)
 
 
 def chunk(text: str, limit: int) -> list[str]:

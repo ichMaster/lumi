@@ -7,7 +7,7 @@ from core.clock import fixed_clock
 from core.llm import MockLLMClient
 from state import fifo
 from state.local_store import JsonRepository
-from tui.bridge import drain_inbox, mirror_reply
+from tui.bridge import drain_inbox, mirror_reply, mirror_user
 
 _DAY = fixed_clock(datetime(2026, 6, 10, 14, 0, tzinfo=UTC))
 
@@ -24,13 +24,22 @@ def test_drain_inbox_returns_new_and_advances(tmp_path):
 
 
 # --- mirror_reply ---------------------------------------------------------
-def test_mirror_reply_writes_only_her_reply(tmp_path):
+def test_mirror_reply_writes_her_reply(tmp_path):
     from core.emotion import Emotion, EmotionState
     outbox = tmp_path / "outbox.jsonl"
     state = EmotionState(reply="о, привіт!", emotion=Emotion.JOY, intensity=0.8)
     mirror_reply(outbox, state)
     rec = fifo.read_since(outbox, 0)[0]
-    assert rec["text"] == "о, привіт!" and rec["emotion"] == "joy" and rec["intensity"] == 0.8
+    assert rec["text"] == "о, привіт!" and rec["kind"] == "lili"
+    assert rec["emotion"] == "joy" and rec["intensity"] == 0.8
+
+
+def test_mirror_user_writes_your_line(tmp_path):
+    # your keyboard line → outbox as kind="user" (so it shows in Telegram, distinct from her reply)
+    outbox = tmp_path / "outbox.jsonl"
+    mirror_user(outbox, "як ти?")
+    rec = fifo.read_since(outbox, 0)[0]
+    assert rec["text"] == "як ти?" and rec["kind"] == "user" and "emotion" not in rec
 
 
 # --- the inbox → turn → outbox flow (no echo) -----------------------------
