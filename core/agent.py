@@ -213,6 +213,7 @@ class Core:
         thoughts_show: str = "hidden",
         thoughts_context: str = "lean",
         quiet_hours: tuple[int, int] | None = None,
+        thoughts_quiet_hours: tuple[int, int] | None = None,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -253,6 +254,8 @@ class Core:
         self._thoughts_show = thoughts_show  # hidden (default) / admin / off — the /thoughts policy
         self._thoughts_context = thoughts_context  # lean (seeds) / full (the whole reply backdrop)
         self._quiet_hours = quiet_hours
+        # The proactive-think's quiet window is independent of the nudge's (falls back to it in config).
+        self._thoughts_quiet_hours = thoughts_quiet_hours
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
@@ -688,7 +691,7 @@ class Core:
         capped / off / nothing made)."""
         if not self._thoughts_enabled:
             return None
-        if not should_nudge(last_activity, now, self._thoughts_interval_s, self._quiet_hours):
+        if not should_nudge(last_activity, now, self._thoughts_interval_s, self._thoughts_quiet_hours):
             return None
         if self._think_count >= self._thoughts_cap:
             return None
@@ -1137,4 +1140,5 @@ def build_core(
         thoughts_show=cfg.thoughts_show,
         thoughts_context=cfg.thoughts_context,
         quiet_hours=cfg.quiet_hours,
+        thoughts_quiet_hours=cfg.thoughts_quiet_hours,
     )

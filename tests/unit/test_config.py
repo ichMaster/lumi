@@ -48,6 +48,22 @@ def test_thoughts_max_lines_default_and_override(monkeypatch):
     assert load_config(load_env=False).thoughts_max_lines == 20  # override
 
 
+def test_quiet_hours_independent_for_nudge_and_think(monkeypatch):
+    monkeypatch.setenv("LUMI_QUIET_HOURS", "0-9")
+    # unset think → inherits the nudge's window
+    monkeypatch.delenv("LUMI_THOUGHTS_QUIET_HOURS", raising=False)
+    cfg = load_config(load_env=False)
+    assert cfg.quiet_hours == (0, 9) and cfg.thoughts_quiet_hours == (0, 9)
+    # set think → independent of the nudge
+    monkeypatch.setenv("LUMI_THOUGHTS_QUIET_HOURS", "23-7")
+    cfg = load_config(load_env=False)
+    assert cfg.quiet_hours == (0, 9) and cfg.thoughts_quiet_hours == (23, 7)
+    # "off" → no quiet hours for the think, while the nudge stays quiet
+    monkeypatch.setenv("LUMI_THOUGHTS_QUIET_HOURS", "off")
+    cfg = load_config(load_env=False)
+    assert cfg.quiet_hours == (0, 9) and cfg.thoughts_quiet_hours is None
+
+
 def test_think_seeds_path_default_and_override(monkeypatch):
     from core.config import DEFAULT_THINK_SEEDS_PATH
     monkeypatch.delenv("LUMI_THINK_SEEDS_PATH", raising=False)

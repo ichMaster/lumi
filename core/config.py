@@ -89,6 +89,20 @@ EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 _TRUTHY = {"1", "true", "on", "yes", "y"}
 
 
+def _parse_quiet_hours(raw: str | None) -> tuple[int, int] | None:
+    """Parse an ``"HH-HH"`` hour range (e.g. ``"23-7"``) → ``(start, end)``; anything else → None.
+
+    So ``off`` / ``none`` / empty / malformed all mean "no quiet hours".
+    """
+    if not raw or "-" not in raw:
+        return None
+    try:
+        a, b = (int(x) for x in raw.split("-", 1))
+        return (a, b)
+    except ValueError:
+        return None
+
+
 def _parse_id_list(raw: str | None) -> tuple[int, ...]:
     """Parse a comma-separated list of integer ids (e.g. the Telegram allowlist); ignore junk."""
     if not raw:
@@ -145,7 +159,8 @@ class Config:
     idle_seconds: int = 240
     nudge_path: Path = DEFAULT_NUDGE_PATH
     think_seeds_path: Path = DEFAULT_THINK_SEEDS_PATH  # v0.12 proactive-think seed menu (%think …)
-    quiet_hours: tuple[int, int] | None = None
+    quiet_hours: tuple[int, int] | None = None  # the v0.4 idle nudge's quiet window
+    thoughts_quiet_hours: tuple[int, int] | None = None  # the v0.12 proactive-think's (independent)
     # v0.7.x TUI send/receive sound — off by default; toggled at runtime (Ctrl+S).
     sound: bool = False
     emoji_path: Path = DEFAULT_EMOJI_PATH
@@ -252,14 +267,12 @@ def load_config(*, load_env: bool = True) -> Config:
 
     idle_seconds_env = os.getenv("LUMI_IDLE_SECONDS")
     nudge_path_env = os.getenv("LUMI_NUDGE_PATH")
-    quiet_env = os.getenv("LUMI_QUIET_HOURS")  # e.g. "23-7"
-    quiet_hours: tuple[int, int] | None = None
-    if quiet_env and "-" in quiet_env:
-        try:
-            a, b = (int(x) for x in quiet_env.split("-", 1))
-            quiet_hours = (a, b)
-        except ValueError:
-            quiet_hours = None
+    # Quiet hours: the nudge's (LUMI_QUIET_HOURS) and the proactive-think's
+    # (LUMI_THOUGHTS_QUIET_HOURS) are independent. The think inherits the nudge's when its own
+    # var is UNSET; set it to "off" (or any non-range) to give the think no quiet hours at all.
+    quiet_hours = _parse_quiet_hours(os.getenv("LUMI_QUIET_HOURS"))  # e.g. "23-7"
+    thoughts_quiet_env = os.getenv("LUMI_THOUGHTS_QUIET_HOURS")
+    thoughts_quiet_hours = quiet_hours if thoughts_quiet_env is None else _parse_quiet_hours(thoughts_quiet_env)
 
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
@@ -290,6 +303,7 @@ def load_config(*, load_env: bool = True) -> Config:
         nudge_path=Path(nudge_path_env) if nudge_path_env else DEFAULT_NUDGE_PATH,
         think_seeds_path=Path(ts) if (ts := os.getenv("LUMI_THINK_SEEDS_PATH")) else DEFAULT_THINK_SEEDS_PATH,
         quiet_hours=quiet_hours,
+        thoughts_quiet_hours=thoughts_quiet_hours,
         emoji_path=Path(emoji_env) if (emoji_env := os.getenv("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,
         mood=(os.getenv("LUMI_MOOD") or "on").strip().lower() in _TRUTHY,  # on by default
         biorhythms=(os.getenv("LUMI_BIORHYTHMS") or "on").strip().lower() in _TRUTHY,  # on by default

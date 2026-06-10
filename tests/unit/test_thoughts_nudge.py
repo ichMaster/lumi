@@ -44,7 +44,8 @@ def test_not_due_before_the_interval(tmp_path):
 
 
 def test_quiet_hours_suppress(tmp_path):
-    core, s = _core(tmp_path, quiet_hours=(13, 15))  # 14:00 is inside
+    # the proactive think uses its OWN quiet window (independent of the nudge's)
+    core, s = _core(tmp_path, thoughts_quiet_hours=(13, 15))  # 14:00 is inside
     idle = _NOW - timedelta(seconds=601)
     assert core.tick_think(s, idle, _NOW) is None
 
