@@ -126,12 +126,21 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     )
 
     async def _main() -> None:
-        # catch-up: on startup, skip records older than the window (advance the pointer silently).
-        backlog = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))
-        stale, _ = split_catchup(backlog, datetime.now(UTC), cfg.telegram_catchup_h)
-        if stale:
-            fifo.save_pointer(sent_path, stale[-1]["id"])
-            log.info("catch-up: skipped %d stale record(s) (older than %dh)", len(stale), cfg.telegram_catchup_h)
+        if not sent_path.is_file():
+            # FIRST run ever: don't replay history — start from the current tail. (The time-based
+            # catch-up can't protect a same-day backlog; a fresh daemon should never flood.)
+            existing = fifo.read_since(cfg.outbox_path, 0)
+            if existing:
+                fifo.save_pointer(sent_path, existing[-1]["id"])
+                log.info("first run: skipping %d pre-existing record(s), starting from id=%d",
+                         len(existing), existing[-1]["id"])
+        else:
+            # RESUME: skip records gone stale during a downtime (the catch-up cap).
+            backlog = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))
+            stale, _ = split_catchup(backlog, datetime.now(UTC), cfg.telegram_catchup_h)
+            if stale:
+                fifo.save_pointer(sent_path, stale[-1]["id"])
+                log.info("catch-up: skipped %d stale record(s) (older than %dh)", len(stale), cfg.telegram_catchup_h)
         while True:
             new = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))
             for group in batches(new, cfg.telegram_batch):
