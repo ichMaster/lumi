@@ -151,12 +151,31 @@ print('outbox pending (unsent):    ', len(outbox))"
 - `outbox pending` stays > 0 → **daemon 2 isn't sending** (daemon down, bad token, or wrong chat id).
 - Both ~0 with traffic flowing → healthy.
 
-### Daemon output
+### Daemon logs
 
-Each daemon runs in the foreground; watch its terminal. A clean start prints nothing and blocks
-(long-poll). On a config problem it exits immediately with the reason (e.g. `LUMI_TELEGRAM_TOKEN is
-not set`, or `LUMI_TELEGRAM_ALLOWLIST is empty`). Telegram API errors surface as `aiogram`
-exceptions in that terminal.
+Each daemon logs to **stderr** *and* a file under `.lumi/`, so you can `tail -f` it even when the
+daemon runs in the background:
+
+```bash
+tail -f .lumi/telegram-inbound.log     # daemon 1: startup, flushes, blocked senders, get_updates errors
+tail -f .lumi/telegram-outbound.log    # daemon 2: startup, catch-up skips, sends, send errors
+```
+
+What you'll see (counts + ids only — **never the token or message text**):
+
+```
+2026-06-10 14:22:01 INFO lumi.telegram.inbound: inbound up: allowlist=[123456789], flush=2s, inbox=.lumi/inbox.jsonl
+2026-06-10 14:22:09 INFO lumi.telegram.inbound: flushed 2 message(s) → inbox id=7
+2026-06-10 14:22:09 WARNING lumi.telegram.inbound: ignored non-allowlisted id=555
+2026-06-10 14:22:10 INFO lumi.telegram.outbound: sent 1 reply(ies) (ids 7..7) → 1 chat(s)
+2026-06-10 14:25:40 WARNING lumi.telegram.inbound: get_updates failed (retrying): <error>
+```
+
+- A clean start logs an `… up: …` line and then blocks (long-poll).
+- A **config** problem exits immediately with the reason (`LUMI_TELEGRAM_TOKEN is not set`, etc.).
+- A **transient** Telegram/network error is logged and **retried** (the daemon does **not** die);
+  daemon 2 does **not** advance its pointer on a failed send, so nothing is lost.
+- Set `LUMI_LOG_LEVEL=DEBUG` for more detail.
 
 ---
 
@@ -194,6 +213,7 @@ rm -f .lumi/inbox.jsonl .lumi/inbox.pos .lumi/outbox.jsonl .lumi/outbox.sent
 | `LUMI_TELEGRAM_PHOTO` | `off` | daemon 2: also send the face portrait as a photo |
 | `LUMI_INBOX_PATH` | `.lumi/inbox.jsonl` | inbound queue file |
 | `LUMI_OUTBOX_PATH` | `.lumi/outbox.jsonl` | outbound queue file |
+| `LUMI_LOG_LEVEL` | `INFO` | daemon log verbosity (`DEBUG`/`INFO`/`WARNING`) |
 
 ## Security & scope
 

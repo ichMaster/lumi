@@ -72,32 +72,49 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
 
     from core.config import load_config
 
+    from . import get_logger
+
     cfg = load_config()
     if not cfg.telegram_token:
         raise SystemExit("LUMI_TELEGRAM_TOKEN is not set")
     if not cfg.telegram_allowlist:
         raise SystemExit("LUMI_TELEGRAM_ALLOWLIST is empty — refusing to serve everyone")
 
-    inbound = Inbound(cfg.inbox_path, set(cfg.telegram_allowlist))
+    log = get_logger("inbound", cfg.inbox_path.parent)
+    allow = set(cfg.telegram_allowlist)
+    inbound = Inbound(cfg.inbox_path, allow)
     bot = Bot(cfg.telegram_token)
+    log.info("inbound up: allowlist=%s, flush=%ss, inbox=%s", sorted(allow), cfg.telegram_flush_s, cfg.inbox_path)
 
     async def _flusher() -> None:
         while True:
             await asyncio.sleep(cfg.telegram_flush_s)
-            inbound.flush()
+            pending = inbound.buffered
+            rec_id = inbound.flush()
+            if rec_id is not None:
+                log.info("flushed %d message(s) → inbox id=%d", pending, rec_id)
 
     async def _main() -> None:
         asyncio.create_task(_flusher())
         while True:
-            # ask only for updates after what we've durably flushed → un-flushed ones replay on crash
-            updates = await bot.get_updates(offset=inbound.acked_offset + 1, timeout=30)
+            try:
+                # only updates after what we've durably flushed → un-flushed ones replay on a crash
+                updates = await bot.get_updates(offset=inbound.acked_offset + 1, timeout=30)
+            except Exception as exc:  # noqa: BLE001 — a transient error must not kill the daemon
+                log.warning("get_updates failed (retrying): %s", exc)
+                await asyncio.sleep(3)
+                continue
             for u in updates:
                 msg = getattr(u, "message", None)
                 if msg and msg.text and msg.from_user:
+                    if msg.from_user.id not in allow:
+                        log.warning("ignored non-allowlisted id=%s", msg.from_user.id)
                     inbound.receive(u.update_id, msg.from_user.id, msg.text)
 
     try:
         asyncio.run(_main())
+    except KeyboardInterrupt:
+        log.info("inbound stopped")
     finally:
         asyncio.run(bot.session.close())
 

@@ -80,16 +80,23 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     from core.config import load_config
     from core.emoji import load_emoji_map
 
+    from . import get_logger
+
     cfg = load_config()
     if not cfg.telegram_token:
         raise SystemExit("LUMI_TELEGRAM_TOKEN is not set")
     if not cfg.telegram_allowlist:
         raise SystemExit("LUMI_TELEGRAM_ALLOWLIST is empty — no chat to send to")
 
+    log = get_logger("outbound", cfg.outbox_path.parent)
     emoji_map = load_emoji_map(cfg.emoji_path)
     sent_path = cfg.outbox_path.with_suffix(".sent")
     bot = Bot(cfg.telegram_token)
     chats = cfg.telegram_allowlist
+    log.info(
+        "outbound up: batch=%d, catchup=%dh, photo=%s, chats=%s",
+        cfg.telegram_batch, cfg.telegram_catchup_h, cfg.telegram_photo, sorted(chats),
+    )
 
     async def _main() -> None:
         # catch-up: on startup, skip records older than the window (advance the pointer silently).
@@ -97,6 +104,7 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
         stale, _ = split_catchup(backlog, datetime.now(UTC), cfg.telegram_catchup_h)
         if stale:
             fifo.save_pointer(sent_path, stale[-1]["id"])
+            log.info("catch-up: skipped %d stale record(s) (older than %dh)", len(stale), cfg.telegram_catchup_h)
         while True:
             new = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))
             for group in batches(new, cfg.telegram_batch):
@@ -104,16 +112,24 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
                 last = group[-1]
                 photo = portrait_for(cfg.faces_dir, last.get("emotion", ""), last.get("intensity")) \
                     if cfg.telegram_photo else None
-                for chat in chats:
-                    if photo:
-                        await bot.send_photo(chat, FSInputFile(photo), caption=text)
-                    else:
-                        await bot.send_message(chat, text)
+                try:
+                    for chat in chats:
+                        if photo:
+                            await bot.send_photo(chat, FSInputFile(photo), caption=text)
+                        else:
+                            await bot.send_message(chat, text)
+                except Exception as exc:  # noqa: BLE001 — don't advance the pointer; retry next loop
+                    log.error("send failed (ids %d..%d, retrying): %s", group[0]["id"], last["id"], exc)
+                    await asyncio.sleep(3)
+                    break
                 fifo.save_pointer(sent_path, last["id"])
+                log.info("sent %d reply(ies) (ids %d..%d) → %d chat(s)", len(group), group[0]["id"], last["id"], len(chats))
             await asyncio.sleep(1)
 
     try:
         asyncio.run(_main())
+    except KeyboardInterrupt:
+        log.info("outbound stopped")
     finally:
         asyncio.run(bot.session.close())
 
