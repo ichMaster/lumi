@@ -31,7 +31,7 @@ from core.config import load_config
 from core.cycle import format_cycle
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
-from core.nudge import load_nudges, pick_nudge_index, should_nudge
+from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.repository import Session
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
@@ -202,11 +202,16 @@ class LumiApp(App[None]):
         self._quiet_hours: tuple[int, int] | None = None
         self._nudges: list[str] = []
         self._nudge_idx: int = -1
+        # `_last_activity` is reset ONLY by real input (keyboard / Telegram). The nudge and the
+        # think each keep their OWN last-fired stamp so they pace independently and never reset
+        # each other's idle clock (both run together).
         self._last_activity = self._core.clock()
+        self._last_nudge_ts = self._core.clock()
         # v0.12 proactive thinking state (configured in on_mount; on with the thought-stream).
-        self._think_seeds: list[str] = []  # `%`-directive seeds from nudges.md (the A menu)
+        self._think_seeds: list[str] = []  # `%`-directive seeds from think_seeds.md (the A menu)
         self._seed_idx: int = -1
         self._think_n: int = 0  # a varying rng_seed + the A/B alternation counter
+        self._last_think_ts = self._core.clock()
         self._think_busy: bool = False  # avoid overlapping proactive thinks
         # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
         self._bridge: bool = False
@@ -256,16 +261,15 @@ class LumiApp(App[None]):
         self._idle_seconds = cfg.idle_seconds
         self._quiet_hours = cfg.quiet_hours
         self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
-        self._last_activity = self._core.clock()
-        # The nudge file holds two kinds of line: static openers (v0.4) and `%`-directive seeds
-        # (v0.12, the A menu). Route each to its own mechanism.
-        openers = load_nudges(cfg.nudge_path)
-        self._think_seeds = [n for n in openers if n.startswith("%")]
-        if self._nudge_enabled:
-            self._nudges = [n for n in openers if not n.startswith("%")]
+        now = self._core.clock()
+        self._last_activity = self._last_nudge_ts = self._last_think_ts = now
+        # Two separate menus, two independent timers — the nudge (openers) and the think (seeds)
+        # run together and pace on their own stamps.
+        if self._nudge_enabled:  # v0.4: random opener from nudges.md after idle_seconds
+            self._nudges = load_nudges(cfg.nudge_path)
             self.set_interval(30, self._maybe_nudge)
-        # v0.12 proactive thinking (B): poll the idle timer; tick_think gates on interval/cap/quiet.
-        if cfg.thoughts:
+        if cfg.thoughts:  # v0.12: random %think seed from think_seeds.md (A) or free musing (B)
+            self._think_seeds = load_nudges(cfg.think_seeds_path)
             self.set_interval(30, self._maybe_think)
         # v0.13 bridge: the TUI consumes the inbox FIFO (Telegram → file) on a fast poll, and
         # mirrors Лілі's replies to the outbox FIFO (→ Telegram). Off unless LUMI_BRIDGE=on.
@@ -562,9 +566,12 @@ class LumiApp(App[None]):
         if not self._nudge_enabled or self._busy or self._session is None or not self._nudges:
             return
         now = self._core.clock()
-        if not should_nudge(self._last_activity, now, self._idle_seconds, self._quiet_hours):
+        # Due on the later of real-input idle AND the nudge's own last fire — never writes
+        # _last_activity, so the think can't starve it (and vice-versa).
+        if not proactive_due(self._last_activity, self._last_nudge_ts, now,
+                             self._idle_seconds, self._quiet_hours):
             return
-        self._last_activity = now  # rate-limit: one per idle gap
+        self._last_nudge_ts = now
         self._nudge_idx = pick_nudge_index(len(self._nudges), self._nudge_idx)
         opener = self._nudges[self._nudge_idx]
         self.run_worker(self._run_turn(opener, hidden=True), exclusive=False)
@@ -590,13 +597,16 @@ class LumiApp(App[None]):
         self._think_busy = True
         try:
             now = self._core.clock()
+            # Gate (inside tick_think) on the later of: real-input idle AND the think's own last
+            # fire — so the think paces on its OWN interval and never touches _last_activity.
+            anchor = max(self._last_activity, self._last_think_ts)
             thought = await asyncio.to_thread(
-                self._core.tick_think, self._session, self._last_activity, now,
+                self._core.tick_think, self._session, anchor, now,
                 rng_seed=seed_n, kind=kind, topic=topic,
             )
             if thought is None:
                 return  # not due / capped / off / nothing made — silent ones end here
-            self._last_activity = now  # a proactive think counts as activity (one per idle gap)
+            self._last_think_ts = now  # rate-limit the think only (never resets the nudge's idle)
             if thought.spoken:  # she speaks first, grounded in the thought (the hidden self-turn)
                 seed = (f"(ти щойно подумала: «{thought.text}» — напиши йому перша, "
                         "коротко поділись цим або почни з цього розмову)")

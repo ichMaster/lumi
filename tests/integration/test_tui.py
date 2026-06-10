@@ -372,7 +372,9 @@ async def test_idle_nudge_runs_a_hidden_turn(tmp_path):
         app._nudge_enabled = True
         app._nudges = ["ти тут?"]
         app._idle_seconds = 60
+        # v0.12: the nudge gates on the later of real-input idle AND its own last fire.
         app._last_activity = now - timedelta(seconds=120)
+        app._last_nudge_ts = now - timedelta(seconds=120)
         app._maybe_nudge()
         for _ in range(50):
             await pilot.pause()

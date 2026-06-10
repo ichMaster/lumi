@@ -52,3 +52,20 @@ def should_nudge(
     if quiet_hours and _in_quiet_hours(now, quiet_hours):
         return False
     return (now - last_activity).total_seconds() >= interval_s
+
+
+def proactive_due(
+    last_activity: datetime,
+    last_fired: datetime,
+    now: datetime,
+    interval_s: int,
+    quiet_hours: tuple[int, int] | None = None,
+) -> bool:
+    """True if a proactive mechanism (idle nudge / proactive think) is due.
+
+    Due means idle since **both** the last real input (``last_activity``) **and** its **own**
+    last fire (``last_fired``) for ``interval_s``. Because each mechanism keeps its own
+    ``last_fired``, two of them pace **independently** — one firing never resets the other's
+    idle clock, so a short-fuse think can't starve a long-fuse nudge (and vice-versa).
+    """
+    return should_nudge(max(last_activity, last_fired), now, interval_s, quiet_hours)

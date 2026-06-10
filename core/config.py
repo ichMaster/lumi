@@ -49,6 +49,8 @@ DEFAULT_STYLES_PATH = _REPO_ROOT / "core" / "styles.md"
 
 # Idle-nudge openers (v0.4); editable. Optional.
 DEFAULT_NUDGE_PATH = _REPO_ROOT / "core" / "nudges.md"
+# v0.12 proactive-think seeds (%think {topic}) — separate file from the v0.4 nudge openers.
+DEFAULT_THINK_SEEDS_PATH = _REPO_ROOT / "core" / "think_seeds.md"
 
 # Emotion→emoji map (v0.5); editable. Optional (built-in default in core/emoji.py).
 DEFAULT_EMOJI_PATH = _REPO_ROOT / "core" / "emoji.md"
@@ -142,6 +144,7 @@ class Config:
     idle_nudge: bool = False
     idle_seconds: int = 240
     nudge_path: Path = DEFAULT_NUDGE_PATH
+    think_seeds_path: Path = DEFAULT_THINK_SEEDS_PATH  # v0.12 proactive-think seed menu (%think …)
     quiet_hours: tuple[int, int] | None = None
     # v0.7.x TUI send/receive sound — off by default; toggled at runtime (Ctrl+S).
     sound: bool = False
@@ -285,6 +288,7 @@ def load_config(*, load_env: bool = True) -> Config:
         sound=_parse_bool(os.getenv("LUMI_SOUND")),
         idle_seconds=int(idle_seconds_env) if idle_seconds_env else 240,
         nudge_path=Path(nudge_path_env) if nudge_path_env else DEFAULT_NUDGE_PATH,
+        think_seeds_path=Path(ts) if (ts := os.getenv("LUMI_THINK_SEEDS_PATH")) else DEFAULT_THINK_SEEDS_PATH,
         quiet_hours=quiet_hours,
         emoji_path=Path(emoji_env) if (emoji_env := os.getenv("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,
         mood=(os.getenv("LUMI_MOOD") or "on").strip().lower() in _TRUTHY,  # on by default

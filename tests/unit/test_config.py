@@ -48,6 +48,14 @@ def test_thoughts_max_lines_default_and_override(monkeypatch):
     assert load_config(load_env=False).thoughts_max_lines == 20  # override
 
 
+def test_think_seeds_path_default_and_override(monkeypatch):
+    from core.config import DEFAULT_THINK_SEEDS_PATH
+    monkeypatch.delenv("LUMI_THINK_SEEDS_PATH", raising=False)
+    assert load_config(load_env=False).think_seeds_path == DEFAULT_THINK_SEEDS_PATH  # default
+    monkeypatch.setenv("LUMI_THINK_SEEDS_PATH", "/tmp/my-seeds.md")
+    assert load_config(load_env=False).think_seeds_path == Path("/tmp/my-seeds.md")  # override
+
+
 def test_recall_windows_default_and_override(monkeypatch):
     # date-based recall short-memory recall: 3 date-based windows, .env-tunable (defaults 2 / 7 / 14 + 4 / 6).
     for key in ("LUMI_SESSION_DAYS", "LUMI_DAY_DAYS", "LUMI_WEEK_DAYS",

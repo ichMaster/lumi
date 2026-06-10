@@ -34,6 +34,53 @@ def test_load_nudges_missing_file_is_empty(tmp_path):
     assert load_nudges(tmp_path / "nope.md") == []
 
 
+def test_nudge_and_think_pace_independently():
+    # The decoupling: each proactive mechanism keeps its OWN last-fired stamp, so a short-fuse
+    # think firing never resets a long-fuse nudge's idle clock (the bug this fixes).
+    from datetime import UTC, datetime, timedelta
+
+    from core.nudge import proactive_due
+
+    t0 = datetime(2026, 6, 11, 12, 0, tzinfo=UTC)
+    activity = t0                  # last real user input
+    nudge_ts = think_ts = t0       # each mechanism's own last fire
+    THINK, NUDGE = 300, 1200       # 5 min vs 20 min
+
+    t5 = t0 + timedelta(seconds=300)
+    assert proactive_due(activity, think_ts, t5, THINK)      # think is due at 5 min…
+    think_ts = t5                                            # …fires, advancing ONLY its own stamp
+    assert not proactive_due(activity, nudge_ts, t5, NUDGE)  # nudge not yet (still its own t0)
+
+    t20 = t0 + timedelta(seconds=1200)
+    # The think fired 3×/15min meanwhile, but never touched the nudge's clock → the nudge matures:
+    assert proactive_due(activity, nudge_ts, t20, NUDGE)     # nudge fires at 20 min (not starved)
+
+
+def test_proactive_due_respects_real_input_and_quiet_hours():
+    from datetime import UTC, datetime, timedelta
+
+    from core.nudge import proactive_due
+
+    t0 = datetime(2026, 6, 11, 12, 0, tzinfo=UTC)
+    later = t0 + timedelta(seconds=1200)
+    assert proactive_due(t0, t0, later, 1200)               # idle long enough → due
+    assert not proactive_due(later, t0, later, 1200)        # real input just now → not idle
+    assert not proactive_due(t0, t0, later, 1200, (0, 23))  # within quiet hours → suppressed
+
+
+def test_think_seeds_file_loads_and_parses():
+    # The new separate seed file: every non-comment line is a valid %directive with a topic.
+    from core.config import load_config
+    from core.thoughts import parse_directive
+
+    seeds = load_nudges(load_config(load_env=False).think_seeds_path)
+    assert seeds  # at least one seed
+    for line in seeds:
+        assert line.startswith("%")
+        parsed = parse_directive(line)
+        assert parsed is not None and parsed.name in ("think", "wonder")
+
+
 def test_pick_nudge_index_avoids_immediate_repeat():
     from core.nudge import pick_nudge_index
 
