@@ -1,97 +1,127 @@
 # Telegram bot — Лілі in your pocket (v0.13)
 
-Reach Лілі from **Telegram**: the same mind, a new face. This is the first interface besides the
-TUI, and it's the cleanest possible proof of the #1 design contract — **the core is
-interface-independent**. The bot adds **zero** logic to `core`; it's a *driver* that translates
-Telegram updates into `core.reply(...)` calls and renders what comes back.
+Reach Лілі from **Telegram**: the same mind, a new window. The cleanest possible proof of the #1
+design contract — **the core is interface-independent**. Crucially, the **TUI stays the only brain**
+(it's the one process that calls `core.reply`); Telegram is reached through a **file bus** plus two
+**dumb daemons**, so the TUI never imports a Telegram library and there's only ever **one writer to
+the conversation store** (no concurrency clobber).
 
-## The one idea: the core has one door
-
-Everything Лілі is — canon, memory, mood, closeness, the thought-stream, the emotion channel —
-lives behind a single entry point:
+## The architecture: one brain, a file bus, two daemons
 
 ```
-core.reply(text, session) -> EmotionState{reply, emotion, intensity}
+keyboard ─┐
+Telegram ─┴─► inbox.jsonl ─► [ TUI = the brain ] ─► core.reply ─► (Лілі's reply) ─► outbox.jsonl ─► Telegram
+                  ▲   (poll on idle, FIFO)              │                                  ▲   (FIFO, N-batch)
+            daemon 1 appends                         (store)                         daemon 2 sends
 ```
 
-The **TUI** is just a driver around that door (keyboard in → `reply` → terminal out). A **Telegram
-bot** is the *same* driver with different ends (a Telegram message in → `reply` → a Telegram
-message out). The core never knows which interface called it.
+- The **TUI** runs the turns. When it's idle (your turn), it reads the next record from
+  **`inbox.jsonl`** and runs it as a turn — exactly as if you'd typed it. It writes **only Лілі's
+  own messages** to **`outbox.jsonl`** (never your input — that's what prevents an echo).
+- **Daemon 1 (`telegram → inbox`)** receives Telegram messages and appends them to `inbox.jsonl`.
+- **Daemon 2 (`outbox → telegram`)** reads new `outbox.jsonl` records and sends them to Telegram.
 
-```
-Telegram app → Telegram servers → [bot driver] → core.reply(text, session) → [Core] →
-              ← Telegram servers ← [bot driver] ← EmotionState{reply, emotion} ←┘
-```
+The TUI is Telegram-agnostic — it only knows two files. The two daemons are ~30 lines each and never
+touch the core. **One brain, two ears/mouths.**
 
-The whole "reaction" is a few lines:
+## The file bus (FIFO + id pointers)
 
-```python
-@dp.message()                                   # on each incoming message…
-async def on_message(msg):
-    user_id = f"tg:{msg.from_user.id}"          # this Telegram user → a Lumi user_id
-    if not allowed(user_id):                    # allowlist gate — never reaches the core
-        return await msg.answer("…")
-    core, session = session_for(user_id)        # their own core + session
-    state = await asyncio.to_thread(core.reply, msg.text, session)   # THE core call
-    await msg.answer(f"{state.reply} {emoji(state)}")                # send her reply back
-```
+Both queues are **append-only JSONL FIFOs**, each `{"id": <monotonic>, "text": …, "ts": …}`, with
+**exactly one writer and one reader** (so no locks):
 
-## How it "reacts" — long polling
+| file | writer | reader (via pointer) |
+|---|---|---|
+| `inbox.jsonl` | daemon 1 | the **TUI** (`inbox.pos` = last id it ran) |
+| `outbox.jsonl` | the **TUI** | daemon 2 (`outbox.sent` = last id it sent) |
 
-The bot is a **long-running process** that stays connected to Telegram and **asks** for new
-messages (**long polling**: one held-open request that returns the instant a message arrives, then
-re-asks). It's the laptop/bot reaching out to Telegram, not the reverse — so **no public URL is
-needed** (works behind a home network). A webhook (Telegram pushes to your URL) is the alternative,
-but needs a server; long polling is the laptop-friendly default.
+Each consumer remembers the **last id** it processed (a tiny pointer file) and reads records with
+`id > last` — id-based, so trimming old consumed records later doesn't break it (the voicer's
+`spoken.jsonl` pattern). Anything that crosses a process boundary is a file; the rest is in-memory.
 
-**Consequence:** the bot answers only **while the process runs** (laptop on, online). Closed → she's
-"offline"; messages **queue on Telegram** and arrive when the bot reconnects (nothing lost, just
-delayed). For 24/7, run it on a small always-on box — which is the **v1.1 server** step.
+## Daemon 1 — inbound (`telegram → inbox.jsonl`)
 
-## What maps to Telegram
+- **Buffer + flush.** Incoming Telegram messages accumulate in an **in-memory** buffer; every
+  `LUMI_TELEGRAM_FLUSH_S` (default **2 s**) the buffer is flushed as **one consolidated** `inbox`
+  record (the lines joined) — so a quick burst ("привіт" … "як справи") becomes **one turn → one
+  coherent reply**, not three. An empty buffer writes nothing.
+- **No buffer file needed.** The buffer is transient and Telegram already replays un-acked updates,
+  so durability is free: **ack Telegram (advance the `getUpdates` offset) only *after* the flush** —
+  a crash before a flush → Telegram re-delivers on restart → nothing lost.
+- **Allowlist at the edge.** Only the configured id(s) (`LUMI_TELEGRAM_ALLOWLIST`) are buffered; any
+  other sender is ignored and **never enters the bus** (close-circle, no open sign-up).
 
-| Lumi piece | on Telegram |
-|---|---|
-| `core.reply` | message → reply (same call as the TUI) |
-| **per-user memory + isolation** (v0.2) | Telegram id → one `user_id`; A's memory never reaches B (the existing invariant) |
-| emotion + **emoji** (v0.5) | appended to her reply |
-| **face themes/portraits** (v0.11) | send the `faces/<theme>/<emotion>` image as a **photo** |
-| **proactive thoughts** (v0.12) | the idle timer runs in the bot; a *spoken* thought → `send_message` (she reaches out) |
-| `/mood` `/closeness` `/thoughts` `/theme` `/inner` | native Telegram bot commands (thin core reads) |
-| vision (v4.1) / voice (v0.21+) | users send photos / voice ↔ the vision + TTS/STT adapters |
+## Daemon 2 — outbound (`outbox.jsonl → telegram`)
 
-The **proactive inner life** is the standout: the TUI can only show a message when you're looking,
-but a bot can **push** — so the v0.12 musings become real "Лілі reached out" notifications.
+- **FIFO from the pointer.** Reads records with `id > outbox.sent`, in order, advances the pointer
+  after sending.
+- **Consolidate by N (config).** Up to **`LUMI_TELEGRAM_BATCH` = N** consecutive records are merged
+  into **one** Telegram message — which also **bounds a backlog** (M records → ⌈M/N⌉ messages,
+  **never** "the last several days as one message"). N is a config knob.
+- **Catch-up cap.** After a long downtime, records older than `LUMI_TELEGRAM_CATCHUP_H` are **skipped**
+  (pointer advanced silently) so a week offline doesn't flood you on restart.
 
-## Access — allowlist, close-circle
+## What the outbox carries (no echo, by construction)
 
-Per the mission: **allowlist-only, admin-managed, no open sign-up.** The bot serves only a
-configured set of Telegram ids (`LUMI_TELEGRAM_ALLOWLIST`); any other sender gets a polite refusal
-and **never reaches the core** (a hard gate at the edge). This is the personal / close-circle bot;
-the full **accounts + auth** story (argon2id, invite codes) is **v1.3** on the server.
+The TUI writes to `outbox.jsonl` **only the lines Лілі speaks** — her replies (and her `💭` open
+thoughts if you want those on the phone) — **never your input** and **never technical chrome**
+(`"Compacted 20 messages…"`). Because your own messages never enter the outbox, a message that came
+**from** Telegram can't be sent **back** to Telegram — the echo problem is solved by the rule itself,
+with no `source` tag.
 
-## Sessions, secrets, isolation
+> On your phone you see your own message (in Telegram's own UI) **+** Лілі's reply (delivered by
+> daemon 2) — a perfectly normal chat. A keyboard turn in the terminal surfaces on Telegram as just
+> Лілі's reply (you typed the question in the terminal) — the mirror of *her* side.
 
-- **Sessions:** a Telegram chat maps to a Lumi `Session` (the existing lifecycle — ended/summarized
-  on inactivity), so memory + compaction work as in the TUI.
-- **Secrets:** the bot **token** lives in `.env` (gitignored), like `ANTHROPIC_API_KEY` — never
-  committed.
-- **Isolation (contract):** the Telegram id → `user_id` mapping means the v0.2 per-user isolation
-  holds — a reply to A never carries B's memory/closeness (pinned by a test). Thoughts stay global
-  to Лілі but surface per-conversation (the v0.12 rule).
+## Scope: single-owner now, multi-user at v1.3
+
+v0.13 is the **personal** bot: the Telegram user **is the owner** — the same `user_id`, the same
+relationship (memory, closeness, the global thought-stream), and **one ongoing session**. Because the
+TUI is the single brain over the local JSON store, the assumption is **one active interface at a time**
+(you use the bot *or* the TUI; running both at once is the two-writer case). **Multiple users, parallel
+isolated sessions, real auth, and concurrency** are the **v1.3 server** step — not pulled into v0.
+
+## The one constraint
+
+The **TUI must be running** for Telegram to get answers (it's the brain). With the TUI down, daemon 1
+keeps buffering into `inbox.jsonl` and daemon 2 idles; replies flow when the TUI is back. A truly
+**always-on, standalone** Telegram Лілі (the core running headless without the TUI) is the **v1.1
+server**. So the laptop version: run the TUI + the two daemons; she's reachable on the phone while the
+laptop is on.
+
+## Proactive push — the payoff
+
+The v0.12 idle-think timer runs **in the TUI** (where the brain is). A thought that **graduates to
+spoken** is a normal Лілі message → it lands in `outbox.jsonl` → daemon 2 → a Telegram message. So she
+**reaches out first**, as a notification — the thing the TUI alone can't do. Silent thoughts stay in
+the diary; only spoken ones reach the phone (the v0.12 ratio/quiet-hours apply).
+
+## Emotion + face
+
+Her `outbox` line carries the **v0.5 emoji**; daemon 2 sends it. Optionally (`LUMI_TELEGRAM_PHOTO`)
+daemon 2 attaches the **v0.11 `<theme>/<emotion>` portrait** as a Telegram photo — graceful to
+text-only when no portrait exists.
+
+## Config (`.env`, gitignored)
+
+`LUMI_TELEGRAM_TOKEN` (the bot token — never committed) · `LUMI_TELEGRAM_ALLOWLIST` (the owner's
+Telegram id) · `LUMI_TELEGRAM_FLUSH_S` (inbound buffer flush, default 2) · `LUMI_TELEGRAM_BATCH`
+(outbound consolidation N) · `LUMI_TELEGRAM_CATCHUP_H` (skip records older than this on restart) ·
+`LUMI_TELEGRAM_PHOTO` (send the face portrait, default off).
 
 ## Contract & tests
 
-- **No core change.** The bot is a new `/telegram` client; `core.reply` and the emotion contract
-  are untouched (the interface-independence contract, demonstrated).
-- **Mock the Telegram API** — tests exercise the update→`reply`→send adapter, the allowlist gate
-  (a blocked id never calls the core), the user→`user_id` isolation, the proactive `send_message`
-  push, and the command handlers, all against a **fake bot + the mock model**. No network, no paid
-  calls.
+- **No core change.** The TUI gains an `inbox` poller + an `outbox` writer; the core and the emotion
+  contract are untouched (the interface-independence contract, demonstrated). The `inbox`/`outbox`
+  FIFO is shared infrastructure the v0.21 voicer / v0.22 dictator later ride.
+- **Mock everything external.** Tests exercise the **FIFO + id pointers** (append/read/advance), the
+  TUI's **inbox→turn→outbox** path (mock model), daemon 1's **buffer→2 s flush + ack-after-flush**
+  (mock Telegram + fixed clock), daemon 2's **FIFO + N-batch + catch-up cap** (mock Telegram), and
+  the **allowlist** gate — no network, no real sleeps, no paid calls.
 
 ## Roadmap
 
-**v0.13 — Telegram bot**, right after the thought-stream (v0.12) whose proactive push it carries,
-and before the inner-life phases. A standalone long-polling bot; the multi-user **server**
-incarnation rides the v1.1 (server) + v1.3 (accounts/auth) steps later. Depends on **v0.2**
-(user-scoped core + Repository), **v0.3** (the emotion channel), **v0.12** (proactive thoughts).
+**v0.13 — Telegram bot**, right after the thought-stream (v0.12) whose proactive push it carries, and
+before the inner-life phases. A **bridge** (TUI brain + file bus + two daemons), single-owner; the
+multi-user, always-on **server** incarnation is v1.1 (server) + v1.3 (accounts/auth). Depends on
+**v0.2** (user-scoped core + Repository), **v0.3** (the emotion channel), **v0.12** (proactive
+thoughts → push).
