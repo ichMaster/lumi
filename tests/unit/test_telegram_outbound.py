@@ -2,7 +2,15 @@
 
 from datetime import UTC, datetime, timedelta
 
-from telegram.outbound import batches, portrait_for, render, split_catchup
+from telegram.outbound import (
+    CAPTION_LIMIT,
+    MESSAGE_LIMIT,
+    batches,
+    chunk,
+    portrait_for,
+    render,
+    split_catchup,
+)
 
 _NOW = datetime(2026, 6, 10, 14, 0, tzinfo=UTC)
 
@@ -47,6 +55,25 @@ def test_render_appends_emoji_and_joins():
 def test_render_unknown_emotion_falls_back():
     out = render([_rec(1, "hey", _NOW, emotion="nonsense", intensity=0.5)])
     assert out.startswith("hey ")  # renders with the calm-default glyph, no crash
+
+
+# --- chunk (length guard — the photo-caption gotcha) ----------------------
+def test_chunk_short_passes_through():
+    assert chunk("hi", MESSAGE_LIMIT) == ["hi"]
+
+
+def test_chunk_splits_long_text_under_limit():
+    text = "\n".join(f"line {i}" for i in range(2000))  # well over 4096 chars
+    pieces = chunk(text, MESSAGE_LIMIT)
+    assert len(pieces) > 1
+    assert all(len(p) <= MESSAGE_LIMIT for p in pieces)       # every piece fits
+    assert "".join(p.replace("\n", "") for p in pieces) == text.replace("\n", "")  # nothing lost
+
+
+def test_chunk_caption_limit_is_tighter():
+    text = "x " * 700  # ~1400 chars — fits a message, NOT a 1024 caption
+    assert len(chunk(text, MESSAGE_LIMIT)) == 1
+    assert all(len(p) <= CAPTION_LIMIT for p in chunk(text, CAPTION_LIMIT))
 
 
 # --- portrait (graceful) --------------------------------------------------

@@ -233,6 +233,16 @@ rm -f .lumi/inbox.jsonl .lumi/inbox.pos .lumi/outbox.jsonl .lumi/outbox.sent
 | `LUMI_OUTBOX_PATH` | `.lumi/outbox.jsonl` | outbound queue file |
 | `LUMI_LOG_LEVEL` | `INFO` | daemon log verbosity (`DEBUG`/`INFO`/`WARNING`) |
 
+## Photos (`LUMI_TELEGRAM_PHOTO`)
+
+With `LUMI_TELEGRAM_PHOTO=on`, daemon 2 sends each reply as a **photo with the reply as the caption**
+— the face matched to the reply's **emotion + intensity** (`faces/<emotion>.png`). Two things to know:
+
+- It's the **flat** v0.7 face, **not** the themed v0.11 wardrobe — the daemon has no access to the
+  mood/theme (that's Core state). The desktop viewer shows the themed face; Telegram gets the base one.
+- Telegram caps a **caption at 1024 chars**. A long reply (or a big N-batch) that wouldn't fit falls
+  back to a **plain text message** (chunked to ≤4096) — so a long reply never wedges the daemon.
+
 ## Security & scope
 
 - The **token is a secret** — it lives only in `.env` (gitignored). Don't paste it into commits,

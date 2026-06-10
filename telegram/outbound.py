@@ -20,6 +20,10 @@ from core.emotion import DEFAULT_EMOTION, Emotion, EmotionState
 from state import fifo
 from viewer.face import face_for
 
+# Telegram hard limits (a caption is much tighter than a message — the source of the photo gotcha).
+CAPTION_LIMIT = 1024
+MESSAGE_LIMIT = 4096
+
 
 def split_catchup(records: list[dict], now: datetime, catchup_h: int) -> tuple[list[dict], list[dict]]:
     """Split records into ``(stale, fresh)`` by age — stale = `ts` older than ``now - catchup_h``.
@@ -59,6 +63,29 @@ def render(records: list[dict], emoji_map: dict | None = None) -> str:
     """One Telegram message text from a batch — each reply with its emoji, blank-line separated."""
     table = emoji_map or BUILTIN
     return "\n\n".join(f"{r['text']} {_glyph(r, table)}".strip() for r in records)
+
+
+def chunk(text: str, limit: int) -> list[str]:
+    """Split ``text`` into pieces of at most ``limit`` chars, preferring newline/space boundaries.
+
+    Guards the Telegram message/caption length caps so an over-long reply (or a big N-batch) can't
+    wedge the daemon. A short string passes through unchanged.
+    """
+    if len(text) <= limit:
+        return [text]
+    pieces: list[str] = []
+    rest = text
+    while len(rest) > limit:
+        cut = rest.rfind("\n", 0, limit)
+        if cut <= 0:
+            cut = rest.rfind(" ", 0, limit)
+        if cut <= 0:
+            cut = limit  # no boundary — hard cut
+        pieces.append(rest[:cut].rstrip())
+        rest = rest[cut:].lstrip()
+    if rest:
+        pieces.append(rest)
+    return pieces
 
 
 def portrait_for(faces_dir: str | Path, emotion: str, intensity: float | None = None) -> Path | None:
@@ -114,10 +141,13 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
                     if cfg.telegram_photo else None
                 try:
                     for chat in chats:
-                        if photo:
+                        # photo+caption only when the text fits a caption; otherwise chunked text
+                        # (the photo is decoration — a long reply must never wedge the send).
+                        if photo and len(text) <= CAPTION_LIMIT:
                             await bot.send_photo(chat, FSInputFile(photo), caption=text)
                         else:
-                            await bot.send_message(chat, text)
+                            for piece in chunk(text, MESSAGE_LIMIT):
+                                await bot.send_message(chat, piece)
                 except Exception as exc:  # noqa: BLE001 — don't advance the pointer; retry next loop
                     log.error("send failed (ids %d..%d, retrying): %s", group[0]["id"], last["id"], exc)
                     await asyncio.sleep(3)
