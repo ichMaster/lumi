@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 0.12.1 (2026-06-10)
+---------------------------
+- Proactive thinking wired into the TUI idle timer (A + B): when you go quiet (~10 min), Лілі thinks on her own from her live state — mostly SILENTLY (recorded to the dated diary), and a configurable fraction GRADUATE to a spoken turn (she speaks first, via the existing hidden self-turn). The idle knobs now take effect: LUMI_THOUGHTS_INTERVAL_S / _CAP / _SPOKEN_RATIO + quiet hours.
+- nudges.md is now a think-seed menu (A): its %-directive lines (%think {recent} / %think про X) are parsed, placeholders resolved, and fired as real thoughts; non-% lines stay the v0.4 static openers. She alternates free musing (B) and a seed from the menu (A).
+- LUMI_THOUGHTS_CONTEXT=lean|full (default lean): 'full' gives %think/%wonder the same backdrop a reply gets — canon + memory + mood + closeness + the diary block + the conversation window — instead of just the seeds (richer, but a mini-reply in tokens).
+- /theme <name> + /theme auto: a session-level manual face-theme override — Core.theme prefers it over the mood's daily pick, validated against the known themes, re-emits the face signal at once; contract-free (no change to the emotion channel or the signal format).
+- Fix: strip <think>…</think> from generated thoughts — in full context mode the reply backdrop's reasoning directive leaked a <think> block into the recorded thought; now split_reasoning drops it before parsing (the existing diary was cleaned in place).
+- Spec: Telegram bot added to the roadmap as v0.13 (a standalone long-polling driver over core.reply — per-user user_id + isolation, allowlist, proactive push; no core change); downstream v0 phases renumbered v0.13→v0.23; new TELEGRAM.md. Faces: the vigil theme shipped a full 9-emotion pack.
+- 426 tests green (mock model + fixed clock + injected seed; no paid calls).
+
 Version 0.12.0 (2026-06-09)
 ---------------------------
 - v0.12 — Thought-stream (LUMI-046…052): Лілі's mind acts on its own. Between and around your messages she muses (%think / %wonder) into a private, dated diary — mostly silently — and only occasionally says one aloud. A new three-layer vocabulary: %directives (her mind acts, internal/never-typed) vs /commands (read a state) vs plain chat she speaks. NO emotion-contract change; builds on shipped phases (v0.4 nudge, v0.6 mood, v0.10 closeness, v0.2 repository); 415 tests (mock model + fixed clock + injected seed, no paid calls).

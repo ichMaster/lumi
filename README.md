@@ -12,9 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.12.0 — v0.12 Thought-stream.** Лілі's mind **acts on its own**: between and around your
-messages she muses into a private **dated diary**, mostly silently, and only occasionally says one
-aloud.
+**0.12.1 — v0.12 Thought-stream (+ follow-ups).** Лілі's mind **acts on its own**: between and
+around your messages she muses into a private **dated diary**, mostly silently, and only
+occasionally says one aloud. The `.1` adds: **proactive thinking wired into the idle timer** (she
+thinks on her own when you go quiet — mostly silent, occasionally speaks first; `nudges.md`
+`%`-lines become a topic menu), a **`LUMI_THOUGHTS_CONTEXT=lean|full`** toggle (full = the whole
+reply backdrop), a **`/theme <name>` / `/theme auto`** manual face override, and a fix to keep
+`<think>` reasoning out of recorded thoughts.
 
 - **`%directives`** — her mind *acts* (internal, never typed): **`%think`** (everyday musing) +
   **`%wonder`** (curiosity), over one reusable **mental-act engine** (`trigger → seed → generate →
