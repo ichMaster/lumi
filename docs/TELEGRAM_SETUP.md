@@ -101,18 +101,39 @@ uv run python -m telegram.inbound    # 2) daemon 1: Telegram → inbox
 uv run python -m telegram.outbound   # 3) daemon 2: outbox → Telegram
 ```
 
-Then message your bot in Telegram. Within ~3 s a `📱 Telegram` line appears in the TUI, Лілі replies,
-and her reply lands back in your Telegram chat.
+Each daemon should log an `… up: …` line on start (in its terminal and `.lumi/telegram-*.log`); if
+one exits immediately, it prints the reason (e.g. a missing token). Then message your bot in
+Telegram. Within ~3 s a `📱 Telegram` line appears in the TUI, Лілі replies, and her reply lands back
+in your Telegram chat.
 
 ---
 
 ## Monitoring
 
-Everything observable lives in the bus files under `.lumi/` (or wherever `LUMI_INBOX_PATH` /
-`LUMI_OUTBOX_PATH` point). The two queues are append-only JSONL; the two `.pos`/`.sent` files are the
-consumer pointers (the last id processed).
+Two layers of visibility: the **daemon logs** (what each daemon *decided* — flushes, sends, blocks,
+errors) and the **bus files** (what's *queued* — the data and the pointers). Logs are the first place
+to look; the bus files tell you where a message is stuck.
 
-### The files at a glance
+### Quick health check (start here)
+
+The fastest read on the whole bridge — the last log lines of both daemons + the two pending counts:
+
+```bash
+# the last few daemon-log lines (decisions + errors)
+tail -n 3 .lumi/telegram-inbound.log .lumi/telegram-outbound.log
+
+# how much is waiting at each consumer (both ~0 = healthy)
+uv run python -c "
+from state import fifo
+print('inbox pending (TUI unread):', len(fifo.read_since('.lumi/inbox.jsonl',  fifo.load_pointer('.lumi/inbox.pos'))))
+print('outbox pending (unsent):   ', len(fifo.read_since('.lumi/outbox.jsonl', fifo.load_pointer('.lumi/outbox.sent'))))"
+```
+
+**Healthy** = each log shows a recent `… up:` / `flushed` / `sent` line (no `WARNING`/`ERROR`) and
+both pending counts are ~0. A stuck pending count + a clean log points to the **consumer** that's
+down (TUI for inbox, daemon 2 for outbox); a `WARNING`/`ERROR` in a log names the cause directly.
+
+### The bus files at a glance
 
 | file | written by | read by | holds |
 |---|---|---|---|
@@ -134,19 +155,9 @@ tail -f .lumi/outbox.jsonl
 watch -n1 'echo "inbox.pos = $(cat .lumi/inbox.pos 2>/dev/null || echo 0)"; echo "outbox.sent = $(cat .lumi/outbox.sent 2>/dev/null || echo 0)"'
 ```
 
-### Is anything stuck? (pending = last id − pointer)
+### Reading the pending counts
 
-```bash
-# pending = unread records past each consumer's pointer (both should hover at 0 when healthy)
-uv run python -c "
-from state import fifo
-inbox  = fifo.read_since('.lumi/inbox.jsonl',  fifo.load_pointer('.lumi/inbox.pos'))
-outbox = fifo.read_since('.lumi/outbox.jsonl', fifo.load_pointer('.lumi/outbox.sent'))
-print('inbox pending (TUI unread): ', len(inbox))
-print('outbox pending (unsent):    ', len(outbox))"
-```
-
-**Reading it:**
+The pending counts (from the quick health check above) localize *where* a message is stuck:
 - `inbox pending` stays > 0 → the **TUI isn't consuming** (TUI not running, busy, or `LUMI_BRIDGE` off).
 - `outbox pending` stays > 0 → **daemon 2 isn't sending** (daemon down, bad token, or wrong chat id).
 - Both ~0 with traffic flowing → healthy.
@@ -181,16 +192,23 @@ What you'll see (counts + ids only — **never the token or message text**):
 
 ## Troubleshooting
 
+**Look at the daemon logs first** (`.lumi/telegram-inbound.log` / `-outbound.log`) — a `WARNING`/
+`ERROR` line usually names the cause. Then:
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Bot never replies, but `📱` shows in the TUI | daemon 2 down / wrong chat id | start `telegram.outbound`; check `outbox pending` and the daemon-2 terminal |
+| Bot never replies, but `📱` shows in the TUI | daemon 2 down / wrong chat id | start `telegram.outbound`; check `outbox pending` + `telegram-outbound.log` |
 | Bot never replies, **no** `📱` in the TUI | daemon 1 down, or `LUMI_BRIDGE` off, or TUI not running | check `inbox pending`, `LUMI_BRIDGE=on`, that `./lumi` is running |
-| Your messages are ignored entirely | your id isn't in `LUMI_TELEGRAM_ALLOWLIST` | put your @userinfobot id there (numbers only) |
-| `TelegramUnauthorizedError` on a daemon | bad/rotated token | re-copy from BotFather into `.env` |
+| A daemon's terminal went quiet / it exited | crash or config error | read the tail of its `.lumi/telegram-*.log` (it logs the reason on exit), then restart it |
+| Your messages are ignored entirely | your id isn't in `LUMI_TELEGRAM_ALLOWLIST` | `telegram-inbound.log` shows `ignored non-allowlisted id=…` — put that id in the allowlist |
+| `TelegramUnauthorizedError` in a log | bad/rotated token | re-copy from BotFather into `.env` |
 | `terminated by other getUpdates request` | **two** inbound daemons polling the same bot | run only **one** `telegram.inbound` |
-| A flood of old replies on restart | a long backlog in `outbox.jsonl` | that's the **catch-up cap** working only if set; lower `LUMI_TELEGRAM_CATCHUP_H` |
+| A flood of old replies on restart | a long backlog in `outbox.jsonl` | that's the **catch-up cap**; lower `LUMI_TELEGRAM_CATCHUP_H` |
 | Burst of messages → several separate replies | flush window too short for your typing | raise `LUMI_TELEGRAM_FLUSH_S` |
 | `ModuleNotFoundError: aiogram` | extra not installed | `uv sync --all-extras` |
+
+A **transient** network/Telegram error doesn't need action — the daemon logs it as a `WARNING` and
+**retries** on its own (it won't die, and daemon 2 won't drop the message).
 
 **Reset the bus** (start clean — safe; it's only runtime data):
 ```bash
