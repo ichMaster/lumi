@@ -1,17 +1,17 @@
 # Needs — the motivational substrate under the mood (full spec)
 
-Лілі's daily temperament (v0.6) and inner life (v0.13) describe **what she feels** and **what she
+Лілі's daily temperament (v0.6) and inner life (v0.14) describe **what she feels** and **what she
 does** — but not **why**. Needs add the missing cause: a few core drives whose satisfaction or
 deficit pushes her from *inside*, where the horoscope/biorhythms push from *outside*. Needs are not
 a new background loop — they are **another computed input to the daily mood call** (like biorhythms,
-v0.8), a **bias on the inner-life plan + free-slot choice** (v0.13), and they **close from what
-actually happened** in her generated days (v0.14).
+v0.8), a **bias on the inner-life plan + free-slot choice** (v0.14), and they **close from what
+actually happened** in her generated days (v0.15).
 
-**Lands across v0.13–14** (woven into the inner life, not a phase of its own — see §13). It builds
+**Lands across v0.14–15** (woven into the inner life, not a phase of its own — see §13). It builds
 on seams that already exist: the daily **mood call** (v0.6) that already merges extra computed
 inputs the same way (biorhythms/cycle/face-theme, v0.8/v0.11); the per-turn **warmth read** that
 **closeness** already emits (`RelationRead.warmth`, v0.10) — the second channel that closes
-`connection`; and the global **inner-life store** + away-gap generation (v0.13/0.14), where the
+`connection`; and the global **inner-life store** + away-gap generation (v0.14/0.15), where the
 activity-based closing happens.
 
 > Today mood arrives top-down (a reading colors the day). Needs add bottom-up pull — "haven't
@@ -121,7 +121,7 @@ saw no one → `connection` stays in deficit even though `novelty` is fed.
 **(b) Conversation (mid-turn).** `connection` has a second channel: a genuinely warm exchange raises
 it **during the conversation**, read from the same warmth signal **closeness already emits** — the
 per-turn `RelationRead.warmth` (v0.10), so no new model field is needed. After a good talk she's
-less lonely; after a week of silence `connection` decays with the rest. (Lands in v0.13 with the
+less lonely; after a week of silence `connection` decays with the rest. (Lands in v0.14 with the
 needs store, since the warmth read already exists.)
 
 It is always **inner/imagined** activity (no "I went to the shop") — closing happens inside her
@@ -239,16 +239,16 @@ steps 6–8 are model calls (mocked in tests).
 
 ## 10. Where needs feed (additive, no new reply field)
 
-1. **Daily mood call (v0.6), beside biorhythms (v0.8) — [v0.13].** Current levels — especially the
+1. **Daily mood call (v0.6), beside biorhythms (v0.8) — [v0.14].** Current levels — especially the
    hungriest — join the same mood inputs under "integrate these inner states." `mood_request`
    already merges extra computed inputs this way (biorhythms/cycle/face-theme); needs are one more
    line. The resolution blends horoscope + biorhythms + needs ("creation starving + emotional cycle
    rising → eager to make, a little impatient"). All v0.6 rules carry over: once/day, cached, full
    reading logged, only the **resolution** injected, **biases tone/emotion, never competence**.
-2. **Inner-life plan + free-slot choice — [v0.13 tilt, v0.14 fill].** The hungriest deficit **tilts**
+2. **Inner-life plan + free-slot choice — [v0.14 tilt, v0.15 fill].** The hungriest deficit **tilts**
    today's plan (1–2 items) and the free-slot activity toward what serves it; a served slot then
-   replenishes that need (closing the loop — the fill + replenish land with the away-gap, v0.14).
-3. **Idle nudge (v0.4) — [v0.13].** An unprompted nudge can be voiced by the dominant need ("I need
+   replenishes that need (closing the loop — the fill + replenish land with the away-gap, v0.15).
+3. **Idle nudge (v0.4) — [v0.14].** An unprompted nudge can be voiced by the dominant need ("I need
    to make something today" / "I've been too much around people"). Restraint applies.
 
 ---
@@ -279,10 +279,10 @@ steps 6–8 are model calls (mocked in tests).
 
 ## 13. Mapping to the roadmap
 
-Needs are **woven into the inner-life phases v0.13–14** (not a phase of their own), because the loop
+Needs are **woven into the inner-life phases v0.14–15** (not a phase of their own), because the loop
 (needs → plan → reality → close) *is* the inner life. The split follows §9's two halves:
 
-**v0.13 — Inner life I (the drives exist & pull):**
+**v0.14 — Inner life I (the drives exist & pull):**
 - the global **`Needs{levels, last_ts}` store** (beside `InnerLife`, also global) + authored
   `core/needs.md` (the 6 drives: decay/weight/satisfied-by/deficit);
 - **decay + drift** (pure math over the injected clock — §9 steps 4, 11);
@@ -292,16 +292,16 @@ Needs are **woven into the inner-life phases v0.13–14** (not a phase of their 
 - **`connection` replenished mid-turn** from the closeness warmth read (`RelationRead.warmth`, v0.10
   — §4(b) / §9.15).
 
-**v0.14 — Inner life II (the drives close from reality):**
+**v0.15 — Inner life II (the drives close from reality):**
 - the authored **activity→need map** + the away-gap's **structured records** (`serves`/`intensity`/
   `feeling`; the `log` entry gains these — §8);
 - **replenish** math (`level += gain × intensity` per valid `serves` — §9.10);
 - the **free-slot fill** biased by the hungriest need, which then replenishes it (closes the loop —
   §10.2);
 - **plan-vs-reality** closing (needs rise from what *actually* happened — §5);
-- the **threshold-5 per-day generation** rule (§7), refining the v0.14 gap-fill.
+- the **threshold-5 per-day generation** rule (§7), refining the v0.15 gap-fill.
 
 Depends on **v0.6** (the mood it feeds), **v0.8** (biorhythms — the merge pattern it copies),
 **v0.10** (the closeness warmth read), **v0.4** (the clock), **v0.2** (the Repository), and the
-v0.13 inner-life store/away-gap it rides in. An experiment for daily variation from the inside out
+v0.14 inner-life store/away-gap it rides in. An experiment for daily variation from the inside out
 — same spirit as the horoscope and biorhythms, never a claim of real inner states.

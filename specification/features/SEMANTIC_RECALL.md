@@ -6,9 +6,9 @@ exact words you said months ago** when they suddenly matter. Semantic recall add
 layer: **every message is embedded into a per-user vector store, and the relevant past is
 retrieved by meaning** — explicitly (`/recall`) and automatically (RAG in the turn).
 
-- **v0.18 — Index & search:** the `Embedder` + `VectorStore` seams, index/backfill, and the
+- **v0.19 — Index & search:** the `Embedder` + `VectorStore` seams, index/backfill, and the
   explicit `/recall <query>` search.
-- **v0.19 — Automatic RAG:** the incoming message is the query; the most relevant past moments
+- **v0.20 — Automatic RAG:** the incoming message is the query; the most relevant past moments
   are injected into the reply turn.
 
 ## Where it sits among the memory layers
@@ -17,8 +17,8 @@ retrieved by meaning** — explicitly (`/recall`) and automatically (RAG in the 
 |---|---|---|
 | session window | recent turns, verbatim | only recent |
 | short memory (v0.9) | compressed recent + last 5 days | lossy |
-| long-term: facts + impressions (v0.16) | durable understanding | not verbatim, not exhaustive |
-| **semantic recall (v0.18–v0.19)** | **every message embedded → searched by meaning** | **exact recall of anything, anytime** |
+| long-term: facts + impressions (v0.17) | durable understanding | not verbatim, not exhaustive |
+| **semantic recall (v0.19–v0.20)** | **every message embedded → searched by meaning** | **exact recall of anything, anytime** |
 
 It **complements**, never replaces, the others: the summary/impression layers give the *voice and
 the gist*; semantic recall gives *the exact line* on demand.
@@ -42,13 +42,13 @@ Every message (yours **and** Лілі's) is embedded as it's written; existing m
 **backfilled** once on first run; incremental thereafter. Embedding failures degrade gracefully —
 the message is still stored, just not yet indexed (retried later).
 
-## v0.18 — `/recall <query>` (search on request)
+## v0.19 — `/recall <query>` (search on request)
 
 An explicit semantic search: embed the query → **top-K cosine** over this user's vectors → return
 the closest past lines, **dated**. The "search on request" surface — useful on its own and the
 proof that the index works before automatic RAG rides on it.
 
-## v0.19 — automatic RAG in the turn
+## v0.20 — automatic RAG in the turn
 
 Each turn: embed the incoming message → **top-K** over this user's vectors → inject a compact
 **"relevant past moments"** block (dated) so the model can ground the reply in actual past lines.
@@ -79,10 +79,10 @@ per-user store and are cleared by `/forget` like the rest of that user's memory.
 ## Intended stack
 
 A local embedding model (fastembed / sentence-transformers, multilingual), `numpy` for cosine (or
-`sqlite-vec`), both behind the seams. Added to `pyproject.toml` when v0.18 is built.
+`sqlite-vec`), both behind the seams. Added to `pyproject.toml` when v0.19 is built.
 
 ## Mapping to the roadmap
 
-**v0.18 + v0.19 — Semantic recall**, right after the emotional-memory layer (v0.16–v0.17) — the
+**v0.19 + v0.20 — Semantic recall**, right after the emotional-memory layer (v0.17–v0.18) — the
 exact-recall complement to the lossy memory. Depends on **v0.2** (messages + the Repository).
 Per-user, isolated; local-by-default and private.
