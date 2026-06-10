@@ -71,25 +71,30 @@ LUMI_TELEGRAM_PHOTO=off                          # daemon 2: also send the face 
 
 ### 5. Pre-flight check (before launching all three)
 
-Verify the config loads and the bot actually connects — **catches a typo before you start everything**:
+One command — verifies the config loads **and** the bot actually connects (a `getMe`, with a hard
+timeout so it can't hang), **without ever printing the token**:
 
 ```bash
-# config loaded? (prints whether the token is set + the allowlist — never prints the token)
-uv run python -c "from core.config import load_config as c; x=c(); print('token set:', bool(x.telegram_token), '| allowlist:', x.telegram_allowlist, '| bridge:', x.bridge)"
-
-# does the token connect? (a getMe call — prints the bot's @username on success)
-uv run python -c "
-import asyncio
-from aiogram import Bot
-from core.config import load_config
-async def main():
-    b = Bot(load_config().telegram_token)
-    me = await b.get_me(); print('connected as @' + me.username)
-    await b.session.close()
-asyncio.run(main())"
+uv run python -m telegram.check
 ```
 
-A `TelegramUnauthorizedError` here means a bad token; `bridge: False` means `LUMI_BRIDGE` isn't `on`.
+A healthy result ends with:
+
+```
+bridge enabled:   True
+token set:        True
+token format ok:  True
+allowlist:        (123456789,)
+
+✓ Connected as @your_bot (id ...). Bridge is ready.
+```
+
+If instead you see `✗`, it names the cause: token not set / wrong format, empty allowlist, a
+`getMe timed out` (can't reach `api.telegram.org`), or a `getMe failed` with the Telegram error.
+
+> Don't paste a multi-line `python -c "..."` block — your shell may treat the newlines as an
+> unfinished command and just sit at a continuation prompt (looks like a hang). Use the one-liner
+> above.
 
 ### 6. Run the three processes
 
@@ -122,11 +127,8 @@ The fastest read on the whole bridge — the last log lines of both daemons + th
 # the last few daemon-log lines (decisions + errors)
 tail -n 3 .lumi/telegram-inbound.log .lumi/telegram-outbound.log
 
-# how much is waiting at each consumer (both ~0 = healthy)
-uv run python -c "
-from state import fifo
-print('inbox pending (TUI unread):', len(fifo.read_since('.lumi/inbox.jsonl',  fifo.load_pointer('.lumi/inbox.pos'))))
-print('outbox pending (unsent):   ', len(fifo.read_since('.lumi/outbox.jsonl', fifo.load_pointer('.lumi/outbox.sent'))))"
+# how much is waiting at each consumer (both ~0 = healthy) — single line, pastes cleanly
+uv run python -c "from state import fifo; p=lambda f,s: len(fifo.read_since(f, fifo.load_pointer(s))); print('inbox pending:', p('.lumi/inbox.jsonl','.lumi/inbox.pos'), '| outbox pending:', p('.lumi/outbox.jsonl','.lumi/outbox.sent'))"
 ```
 
 **Healthy** = each log shows a recent `… up:` / `flushed` / `sent` line (no `WARNING`/`ERROR`) and
