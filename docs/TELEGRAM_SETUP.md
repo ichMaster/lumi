@@ -119,21 +119,44 @@ Two layers of visibility: the **daemon logs** (what each daemon *decided* — fl
 errors) and the **bus files** (what's *queued* — the data and the pointers). Logs are the first place
 to look; the bus files tell you where a message is stuck.
 
-### Quick health check (start here)
+### The monitor (start here)
 
-The fastest read on the whole bridge — the last log lines of both daemons + the two pending counts:
+One command shows the whole bridge — queue depths, a health verdict, recent traffic both ways, and
+the tail of each daemon log (local-only, no network):
 
 ```bash
-# the last few daemon-log lines (decisions + errors)
-tail -n 3 .lumi/telegram-inbound.log .lumi/telegram-outbound.log
-
-# how much is waiting at each consumer (both ~0 = healthy) — single line, pastes cleanly
-uv run python -c "from state import fifo; p=lambda f,s: len(fifo.read_since(f, fifo.load_pointer(s))); print('inbox pending:', p('.lumi/inbox.jsonl','.lumi/inbox.pos'), '| outbox pending:', p('.lumi/outbox.jsonl','.lumi/outbox.sent'))"
+uv run python -m telegram.monitor            # one-shot snapshot
+uv run python -m telegram.monitor --watch    # live, refresh every 2s (Ctrl+C to stop)
+uv run python -m telegram.monitor --lines 8  # show more recent records / log lines
 ```
 
-**Healthy** = each log shows a recent `… up:` / `flushed` / `sent` line (no `WARNING`/`ERROR`) and
-both pending counts are ~0. A stuck pending count + a clean log points to the **consumer** that's
-down (TUI for inbox, daemon 2 for outbox); a `WARNING`/`ERROR` in a log names the cause directly.
+```
+Lumi Telegram bridge  2026-06-10 22:44:46
+  bridge: ON   inbox=.lumi/inbox.jsonl   outbox=.lumi/outbox.jsonl
+
+  queue    total  pointer  pending
+  inbox        1       1        0  ✓
+  outbox     112     112        0  ✓
+
+  health: ✓ healthy (both queues drained)
+
+  recent inbox (Telegram → you):
+    19:44 id=1  'привіт ))) я вже з телеграму'
+  recent outbox (Лілі → Telegram):
+    19:44 id=112 tender  'Привіт! З телеграму — то бот таки ожив?...'
+  … (+ the tail of telegram-inbound.log / telegram-outbound.log)
+```
+
+**Healthy** = `bridge: ON`, both `pending` are 0 (`✓`), and the logs show recent `flushed`/`sent`
+lines with no `WARNING`/`ERROR`. A stuck `pending` + a clean log → the **consumer** is down (TUI for
+inbox, daemon 2 for outbox); a `⚠` in the health line names which.
+
+The raw building blocks (if you want them directly):
+
+```bash
+tail -n 3 .lumi/telegram-inbound.log .lumi/telegram-outbound.log
+uv run python -c "from state import fifo; p=lambda f,s: len(fifo.read_since(f, fifo.load_pointer(s))); print('inbox pending:', p('.lumi/inbox.jsonl','.lumi/inbox.pos'), '| outbox pending:', p('.lumi/outbox.jsonl','.lumi/outbox.sent'))"
+```
 
 ### The bus files at a glance
 
