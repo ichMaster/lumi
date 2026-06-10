@@ -86,6 +86,21 @@ EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 _TRUTHY = {"1", "true", "on", "yes", "y"}
 
 
+def _parse_id_list(raw: str | None) -> tuple[int, ...]:
+    """Parse a comma-separated list of integer ids (e.g. the Telegram allowlist); ignore junk."""
+    if not raw:
+        return ()
+    out: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part:
+            try:
+                out.append(int(part))
+            except ValueError:
+                continue
+    return tuple(out)
+
+
 def _parse_bool(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _TRUTHY
 
@@ -148,6 +163,13 @@ class Config:
     bridge: bool = False
     inbox_path: Path = DEFAULT_INBOX_PATH
     outbox_path: Path = DEFAULT_OUTBOX_PATH
+    # v0.13 Telegram daemons (separate processes; the token is a secret — never logged/committed).
+    telegram_token: str = ""
+    telegram_allowlist: tuple[int, ...] = ()  # the owner's id(s); only these are served
+    telegram_flush_s: int = 2  # daemon 1: inbound buffer flush cadence
+    telegram_batch: int = 5  # daemon 2: max records consolidated per Telegram message (N)
+    telegram_catchup_h: int = 24  # daemon 2: skip outbox records older than this on restart
+    telegram_photo: bool = False  # daemon 2: also send the face portrait as a photo
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -282,6 +304,12 @@ def load_config(*, load_env: bool = True) -> Config:
         bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
         inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else DEFAULT_INBOX_PATH,
         outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else DEFAULT_OUTBOX_PATH,
+        telegram_token=(os.getenv("LUMI_TELEGRAM_TOKEN") or "").strip(),
+        telegram_allowlist=_parse_id_list(os.getenv("LUMI_TELEGRAM_ALLOWLIST")),
+        telegram_flush_s=int(os.getenv("LUMI_TELEGRAM_FLUSH_S") or 2),
+        telegram_batch=int(os.getenv("LUMI_TELEGRAM_BATCH") or 5),
+        telegram_catchup_h=int(os.getenv("LUMI_TELEGRAM_CATCHUP_H") or 24),
+        telegram_photo=(os.getenv("LUMI_TELEGRAM_PHOTO") or "off").strip().lower() in _TRUTHY,
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,

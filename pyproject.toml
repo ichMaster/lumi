@@ -19,6 +19,9 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
 ]
+telegram = [
+    "aiogram>=3",  # v0.13 Telegram bridge daemons (separate processes; not needed by core/tests)
+]
 
 [tool.uv]
 package = false
