@@ -39,6 +39,15 @@ def test_env_overrides(monkeypatch):
     assert cfg.api_key == "sk-test-not-real"
 
 
+def test_thoughts_max_lines_default_and_override(monkeypatch):
+    # v0.12 prompt cap, now .env-tunable (LUMI_THOUGHTS_MAX_LINES).
+    from core.thoughts import THOUGHTS_MAX_LINES
+    monkeypatch.delenv("LUMI_THOUGHTS_MAX_LINES", raising=False)
+    assert load_config(load_env=False).thoughts_max_lines == THOUGHTS_MAX_LINES  # default 12
+    monkeypatch.setenv("LUMI_THOUGHTS_MAX_LINES", "20")
+    assert load_config(load_env=False).thoughts_max_lines == 20  # override
+
+
 def test_recall_windows_default_and_override(monkeypatch):
     # date-based recall short-memory recall: 3 date-based windows, .env-tunable (defaults 2 / 7 / 14 + 4 / 6).
     for key in ("LUMI_SESSION_DAYS", "LUMI_DAY_DAYS", "LUMI_WEEK_DAYS",

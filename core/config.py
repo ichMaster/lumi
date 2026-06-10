@@ -29,6 +29,7 @@ from core.memory import (
 from core.thoughts import (
     THOUGHTS_CAP,
     THOUGHTS_INTERVAL_S,
+    THOUGHTS_MAX_LINES,
     THOUGHTS_SPOKEN_RATIO,
     THOUGHTS_WINDOW_H,
 )
@@ -154,6 +155,7 @@ class Config:
     closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
+    thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
     thoughts_interval_s: int = THOUGHTS_INTERVAL_S  # v0.12 idle before a proactive %think
     thoughts_cap: int = THOUGHTS_CAP  # v0.12 proactive thinks per session
     thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO  # v0.12 fraction that graduate to spoken
@@ -296,6 +298,7 @@ def load_config(*, load_env: bool = True) -> Config:
         closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
+        thoughts_max_lines=int(os.getenv("LUMI_THOUGHTS_MAX_LINES") or THOUGHTS_MAX_LINES),
         thoughts_interval_s=int(os.getenv("LUMI_THOUGHTS_INTERVAL_S") or THOUGHTS_INTERVAL_S),
         thoughts_cap=int(os.getenv("LUMI_THOUGHTS_CAP") or THOUGHTS_CAP),
         thoughts_spoken_ratio=float(os.getenv("LUMI_THOUGHTS_SPOKEN_RATIO") or THOUGHTS_SPOKEN_RATIO),

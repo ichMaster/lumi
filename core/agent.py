@@ -100,6 +100,7 @@ from core.thoughts import (
     THOUGHT_FULL_HEADER,
     THOUGHTS_CAP,
     THOUGHTS_INTERVAL_S,
+    THOUGHTS_MAX_LINES,
     THOUGHTS_SPOKEN_RATIO,
     THOUGHTS_WINDOW_H,
     directive_mode,
@@ -205,6 +206,7 @@ class Core:
         face_signal: Path | None = None,
         thoughts_enabled: bool = True,
         thoughts_window_h: int = THOUGHTS_WINDOW_H,
+        thoughts_max_lines: int = THOUGHTS_MAX_LINES,
         thoughts_interval_s: int = THOUGHTS_INTERVAL_S,
         thoughts_cap: int = THOUGHTS_CAP,
         thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO,
@@ -243,6 +245,7 @@ class Core:
         # the last `thoughts_window_h` hours feed back into the prompt.
         self._thoughts_enabled = thoughts_enabled
         self._thoughts_window_h = thoughts_window_h
+        self._thoughts_max_lines = thoughts_max_lines
         # v0.12 proactive nudge: idle interval, a per-session cap, and the spoken fraction.
         self._thoughts_interval_s = thoughts_interval_s
         self._thoughts_cap = thoughts_cap
@@ -632,7 +635,7 @@ class Core:
         """The last-24h **dated diary** slice for the prompt (per-user, capped). ``None`` when off/empty."""
         if not self._thoughts_enabled:
             return None
-        return thoughts_diary_block(self.recent_thoughts())
+        return thoughts_diary_block(self.recent_thoughts(), max_lines=self._thoughts_max_lines)
 
     @property
     def thoughts_show(self) -> str:
@@ -1127,6 +1130,7 @@ def build_core(
         face_signal=cfg.face_signal or cfg.store_path.parent / "face.txt",
         thoughts_enabled=cfg.thoughts,
         thoughts_window_h=cfg.thoughts_window_h,
+        thoughts_max_lines=cfg.thoughts_max_lines,
         thoughts_interval_s=cfg.thoughts_interval_s,
         thoughts_cap=cfg.thoughts_cap,
         thoughts_spoken_ratio=cfg.thoughts_spoken_ratio,
