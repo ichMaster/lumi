@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
+from pathlib import Path
 
 from rich.console import RenderableType
 from rich.markdown import Markdown
@@ -34,6 +35,7 @@ from core.nudge import load_nudges, pick_nudge_index, should_nudge
 from core.repository import Session
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
+from tui.bridge import drain_inbox, mirror_reply
 from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
@@ -47,6 +49,8 @@ CANCELLED_LINE = "Cancelled."
 
 # Speaker colors — so your lines and Лілі's read apart at a glance.
 USER_COLOR = "cyan"
+TELEGRAM_LABEL = "📱 Telegram"  # v0.13: an incoming line from the Telegram bridge
+TELEGRAM_COLOR = "blue"
 LILI_COLOR = "green"
 ERROR_COLOR = "red"
 SYSTEM_COLOR = "yellow"
@@ -204,6 +208,12 @@ class LumiApp(App[None]):
         self._seed_idx: int = -1
         self._think_n: int = 0  # a varying rng_seed + the A/B alternation counter
         self._think_busy: bool = False  # avoid overlapping proactive thinks
+        # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
+        self._bridge: bool = False
+        self._inbox_path: Path | None = None
+        self._inbox_pos: Path | None = None
+        self._outbox_path: Path | None = None
+        self._inbox_busy: bool = False  # avoid overlapping inbox drains
         # When True the app releases the mouse so the terminal can select text.
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
@@ -257,6 +267,14 @@ class LumiApp(App[None]):
         # v0.12 proactive thinking (B): poll the idle timer; tick_think gates on interval/cap/quiet.
         if cfg.thoughts:
             self.set_interval(30, self._maybe_think)
+        # v0.13 bridge: the TUI consumes the inbox FIFO (Telegram → file) on a fast poll, and
+        # mirrors Лілі's replies to the outbox FIFO (→ Telegram). Off unless LUMI_BRIDGE=on.
+        self._bridge = cfg.bridge
+        if self._bridge:
+            self._inbox_path = cfg.inbox_path
+            self._inbox_pos = cfg.inbox_path.with_suffix(".pos")
+            self._outbox_path = cfg.outbox_path
+            self.set_interval(1, self._poll_inbox)
 
     async def _refresh_world(self) -> None:
         """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
@@ -519,6 +537,8 @@ class LumiApp(App[None]):
             self._render_thinking(getattr(self._core, "last_thinking", None))
             # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
             self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
+            if self._bridge:  # v0.13: mirror ONLY Лілі's reply to the outbox (→ Telegram); never your input
+                mirror_reply(self._outbox_path, state)
             if not hidden and self._sound_on:
                 self._sound.receive()  # her reply arrived (suppressed for the idle nudge)
         except Exception:  # noqa: BLE001 — never crash the loop on a model error
@@ -580,6 +600,24 @@ class LumiApp(App[None]):
                 await self._run_turn(seed, hidden=True)
         finally:
             self._think_busy = False
+
+    def _poll_inbox(self) -> None:
+        """Bridge tick (v0.13): drain the `inbox` FIFO (Telegram → file) on idle and run each line as a
+        turn. Gated on the bridge being on, not-busy, an open session, and no overlapping drain."""
+        if not self._bridge or self._busy or self._session is None or self._inbox_busy:
+            return
+        self.run_worker(self._drain_inbox(), exclusive=False)
+
+    async def _drain_inbox(self) -> None:
+        """Run each unread `inbox` line as a turn (shown tagged), advancing the pointer."""
+        self._inbox_busy = True
+        try:
+            for text in drain_inbox(self._inbox_path, self._inbox_pos):
+                self._say(TELEGRAM_LABEL, text, TELEGRAM_COLOR)  # show what arrived
+                self._last_activity = self._core.clock()  # a Telegram line is real activity
+                await self._run_turn(text, hidden=True)  # reply (the line was already shown)
+        finally:
+            self._inbox_busy = False
 
     # --- memory commands -------------------------------------------------
     def _show_memory(self) -> None:

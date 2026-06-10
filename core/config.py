@@ -64,6 +64,10 @@ DEFAULT_FACES_DIR = _REPO_ROOT / "viewer" / "faces"
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 
+# v0.13 bridge file bus (gitignored runtime data): the TUI reads inbox, writes outbox.
+DEFAULT_INBOX_PATH = _REPO_ROOT / ".lumi" / "inbox.jsonl"
+DEFAULT_OUTBOX_PATH = _REPO_ROOT / ".lumi" / "outbox.jsonl"
+
 # Rolling window: how many recent messages are kept verbatim in context. Older
 # messages of the current session are folded into a running digest (compaction),
 # in batches of DEFAULT_COMPACTION_BATCH — so the verbatim tail floats between
@@ -140,6 +144,10 @@ class Config:
     thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO  # v0.12 fraction that graduate to spoken
     thoughts_show: str = "hidden"  # v0.12 /thoughts policy: hidden / admin / off
     thoughts_context: str = "lean"  # v0.12 thought prompt: lean (seeds) / full (whole backdrop)
+    # v0.13 bridge: the TUI reads inbox / writes outbox (the file bus to the Telegram daemons). Off by default.
+    bridge: bool = False
+    inbox_path: Path = DEFAULT_INBOX_PATH
+    outbox_path: Path = DEFAULT_OUTBOX_PATH
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -271,6 +279,9 @@ def load_config(*, load_env: bool = True) -> Config:
         thoughts_spoken_ratio=float(os.getenv("LUMI_THOUGHTS_SPOKEN_RATIO") or THOUGHTS_SPOKEN_RATIO),
         thoughts_show=(os.getenv("LUMI_THOUGHTS_SHOW") or "hidden").strip().lower(),
         thoughts_context=(os.getenv("LUMI_THOUGHTS_CONTEXT") or "lean").strip().lower(),
+        bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
+        inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else DEFAULT_INBOX_PATH,
+        outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else DEFAULT_OUTBOX_PATH,
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
