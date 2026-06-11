@@ -1,17 +1,17 @@
 # Local voice — a separate console app (ElevenLabs)
 
-A separate console voicing app that runs fully locally, without a server. It **reads Лілі's replies from a log**, voices them with the ElevenLabs voice, and **writes the `id` of voiced messages to another log**. The core and the voicer are fully decoupled: the core only appends replies, the voicer catches up and marks what's done.
+A separate console voicing app that runs fully locally, without a server. It **reads Лілі's replies from the `outbox.jsonl` bus**, voices them with the ElevenLabs voice, and **marks what it has voiced** (a `spoken` pointer). The chat and the voicer are fully decoupled: the TUI only appends replies to the outbox, the voicer catches up and marks what's done — voicing never blocks the chat.
 
-It is **another decoupled local renderer** of the core's output — the sibling of the v0.7 emotion viewer (the viewer needs only the emotion word; the voicer needs the reply text) — and the **local-stage sibling of the web voice (v2.2)**: both use the **same ElevenLabs TTS adapter** in `/voice`. It lands as **v0.14**.
+**It reuses the v0.13 file bus — it doesn't introduce one.** `outbox.jsonl` + `state/fifo.py` already exist (the Telegram bridge), with records `{id, text, emotion, ts, kind}`. So the voicer is the **twin of the v0.13 `outbox→telegram` daemon** — here `outbox → speaker`: same `fifo.read_since` from a pointer, same one-at-a-time-in-order processing, same retry-on-failure and first-run-skip. It is also the **local-stage sibling of the web voice (v2.2)** (both use the same ElevenLabs TTS adapter in `/voice`) and **another decoupled local renderer** alongside the v0.7 emotion viewer (the viewer needs only the emotion word; the voicer needs the reply text). It lands as **v0.14**.
 
 ## Essence
 
-Two file queues (logs):
+The bus + the voicer's marker:
 
-- **Inbox log** (`outbox.jsonl`) — written by the core, read by the voicer. Each record: `id` + `text` (+ optionally `emotion`).
-- **Confirmation log** (`spoken.jsonl`) — written by the voicer. Each record: `id` that has been voiced.
+- **`outbox.jsonl`** (the v0.13 bus) — written by the TUI, read by the voicer. Each record: `{id, text, emotion, ts, kind}`. The voicer voices **only `kind="lili"`** (her replies); **`kind="user"`** records (your keyboard lines, mirrored for the Telegram view) are **skipped, never voiced**.
+- **`spoken` pointer** — written by the voicer: the last voiced `id` (the twin of daemon 2's `outbox.sent`, via `fifo.load_pointer`/`save_pointer`). It survives a restart, so the voicer resumes where it left off; on a **first run** (no pointer) it **skips the pre-existing backlog** (starts from the current tail — it never replays the accumulated outbox).
 
-The voicer takes from the inbox log the records not yet in the confirmation log, voices them one by one, and appends their `id` to the confirmation log. The confirmation log is its memory of "what has already been said": it survives a restart, so after a restart it continues from where it left off.
+The voicer reads `fifo.read_since(outbox, pointer)`, voices each new `kind="lili"` record in ascending `id` order one at a time, and advances the pointer (past skipped `user` lines too).
 
 ## Log formats
 
@@ -31,11 +31,12 @@ Simplest — JSON Lines (one record per line, append-only).
 
 ## Voicer logic (loop)
 
-1. Read `spoken.jsonl` → the set of already-voiced `id`s.
-2. Periodically (polling) or on file change (watch) read `outbox.jsonl`.
-3. For each record whose `id` is not in the voiced set, in ascending order:
-   - take `text` → send via the `/voice` **ElevenLabs TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) → play the audio locally;
-   - on success, append `{"id": ..., "ts": ...}` to `spoken.jsonl`.
+1. On first run (no pointer): set the `spoken` pointer to the current last outbox `id` — **skip the backlog**.
+2. Periodically (polling), `records = fifo.read_since(outbox.jsonl, spoken_pointer)`.
+3. For each record in ascending `id` order:
+   - if `kind == "user"` → **skip** (advance the pointer past it, don't voice);
+   - else (`kind == "lili"`) → `tts(text, voice_id, emotion?) -> audio` via the `/voice` **ElevenLabs adapter** → play locally; on success advance the pointer;
+   - on a synth/playback **failure** → **stop** (leave the pointer before this `id`, retry next loop — nothing lost or repeated).
 4. Repeat.
 
 ## Details
@@ -51,7 +52,7 @@ Simplest — JSON Lines (one record per line, append-only).
 
 - Voicing is slow (network + synthesis + playback); a separate process doesn't block the chat.
 - It can be turned on/off independently, restarted, without touching the core.
-- The core knows nothing about voice — it only appends replies to the inbox log; the voicer catches up on its own. (Same decoupling as the v0.7 viewer.)
+- The core knows nothing about voice — the TUI appends replies to the existing `outbox.jsonl`; the voicer catches up on its own. (Same decoupling as the v0.7 viewer and the v0.13 Telegram daemons.)
 
 ## Streaming vs queue — no separate queue
 
@@ -67,11 +68,12 @@ The voicer works linearly: take the smallest new `id` (not in `spoken`) → voic
 
 ## Contract
 
-- Input: `outbox.jsonl` — `{ id, text, emotion?, ts }` (written by the core).
-- Output: `spoken.jsonl` — `{ id, ts }` (written by the voicer).
-- Action: voice the new `id`s in order via the `/voice` ElevenLabs TTS adapter (`voice_id`), mark them in `spoken`.
+- Input: **`outbox.jsonl`** (the v0.13 bus) — `{ id, text, emotion, ts, kind }` (written by the TUI; `kind ∈ {lili, user}`).
+- Output: the **`spoken` pointer** — the last voiced `id` (`fifo.load_pointer`/`save_pointer`), like daemon 2's `outbox.sent`.
+- Action: voice the new **`kind="lili"`** records in ascending `id` order via the `/voice` ElevenLabs adapter (`voice_id`), advancing the pointer; `kind="user"` skipped; first-run skips the backlog.
+- **The one core/TUI change:** the TUI writes the outbox when **voice OR bridge** is on (today bridge-only) — a one-line gate. No emotion/memory contract change.
 
 ## Where it lives in the Lumi roadmap
 
-**v0.14 — Local voice (ElevenLabs)**, after the v0.7 emotion viewer: real spoken replies locally, without a server. Stack — a simple console Python app + the ElevenLabs SDK (the shared `/voice` adapter) + local audio playback. Depends on: v0.1 (the core appends replies) and v0.3 (the emotion field). The web sibling is v2.2.
+**v0.14 — Local voice (ElevenLabs)**: real spoken replies locally, without a server — pulled forward (ahead of the inner-life phases) because its `outbox.jsonl` input already exists from v0.13. Stack — a small console Python app + the ElevenLabs SDK (the shared `/voice` adapter, an **optional dep**) + local audio playback, reusing `state/fifo`. Depends on: **v0.13** (the outbox bus + `state/fifo`), v0.1 (the core produces replies), v0.3 (the emotion field). The web sibling is v2.2.
 </content>
