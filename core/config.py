@@ -190,6 +190,11 @@ class Config:
     telegram_batch: int = 5  # daemon 2: max records consolidated per Telegram message (N)
     telegram_catchup_h: int = 24  # daemon 2: skip outbox records older than this on restart
     telegram_photo: bool = False  # daemon 2: also send the face portrait as a photo
+    # v0.14 local voice (the voicer reads the outbox; the key is a secret — never logged/committed).
+    voice: bool = False  # the TUI writes the outbox for the voicer (like bridge); off by default
+    elevenlabs_api_key: str = ""
+    voice_id: str = ""  # the ElevenLabs voice to speak in
+    voice_model: str = "eleven_multilingual_v2"  # ElevenLabs model (multilingual for Ukrainian)
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -331,6 +336,10 @@ def load_config(*, load_env: bool = True) -> Config:
         telegram_batch=int(os.getenv("LUMI_TELEGRAM_BATCH") or 5),
         telegram_catchup_h=int(os.getenv("LUMI_TELEGRAM_CATCHUP_H") or 24),
         telegram_photo=(os.getenv("LUMI_TELEGRAM_PHOTO") or "off").strip().lower() in _TRUTHY,
+        voice=(os.getenv("LUMI_VOICE") or "off").strip().lower() in _TRUTHY,
+        elevenlabs_api_key=(os.getenv("ELEVENLABS_API_KEY") or "").strip(),
+        voice_id=(os.getenv("LUMI_VOICE_ID") or "").strip(),
+        voice_model=(os.getenv("LUMI_VOICE_MODEL") or "eleven_multilingual_v2").strip(),
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,

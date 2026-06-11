@@ -215,6 +215,7 @@ class LumiApp(App[None]):
         self._think_busy: bool = False  # avoid overlapping proactive thinks
         # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
         self._bridge: bool = False
+        self._voice: bool = False  # v0.14: the local voicer also consumes the outbox
         self._inbox_path: Path | None = None
         self._inbox_pos: Path | None = None
         self._outbox_path: Path | None = None
@@ -274,10 +275,13 @@ class LumiApp(App[None]):
         # v0.13 bridge: the TUI consumes the inbox FIFO (Telegram → file) on a fast poll, and
         # mirrors Лілі's replies to the outbox FIFO (→ Telegram). Off unless LUMI_BRIDGE=on.
         self._bridge = cfg.bridge
-        if self._bridge:
+        self._voice = cfg.voice  # v0.14: the local voicer also consumes the outbox
+        # The outbox is written when EITHER the Telegram bridge or the local voicer wants it.
+        if self._bridge or self._voice:
+            self._outbox_path = cfg.outbox_path
+        if self._bridge:  # the inbox poller is Telegram-only
             self._inbox_path = cfg.inbox_path
             self._inbox_pos = cfg.inbox_path.with_suffix(".pos")
-            self._outbox_path = cfg.outbox_path
             self.set_interval(1, self._poll_inbox)
 
     async def _refresh_world(self) -> None:
@@ -544,7 +548,7 @@ class LumiApp(App[None]):
             self._render_thinking(getattr(self._core, "last_thinking", None))
             # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
             self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
-            if self._bridge:  # v0.13: mirror ONLY Лілі's reply to the outbox (→ Telegram); never your input
+            if self._bridge or self._voice:  # mirror ONLY Лілі's reply to the outbox (→ Telegram / voicer)
                 mirror_reply(self._outbox_path, state)
             if not hidden and self._sound_on:
                 self._sound.receive()  # her reply arrived (suppressed for the idle nudge)

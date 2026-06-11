@@ -64,6 +64,19 @@ def test_quiet_hours_independent_for_nudge_and_think(monkeypatch):
     assert cfg.quiet_hours == (0, 9) and cfg.thoughts_quiet_hours is None
 
 
+def test_voice_config_default_and_override(monkeypatch):
+    for k in ("LUMI_VOICE", "ELEVENLABS_API_KEY", "LUMI_VOICE_ID", "LUMI_VOICE_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    cfg = load_config(load_env=False)
+    assert cfg.voice is False and cfg.elevenlabs_api_key == "" and cfg.voice_id == ""
+    assert cfg.voice_model == "eleven_multilingual_v2"  # multilingual default for Ukrainian
+    monkeypatch.setenv("LUMI_VOICE", "on")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "sk-eleven-not-real")
+    monkeypatch.setenv("LUMI_VOICE_ID", "abc123")
+    cfg = load_config(load_env=False)
+    assert cfg.voice is True and cfg.elevenlabs_api_key == "sk-eleven-not-real" and cfg.voice_id == "abc123"
+
+
 def test_think_seeds_path_default_and_override(monkeypatch):
     from core.config import DEFAULT_THINK_SEEDS_PATH
     monkeypatch.delenv("LUMI_THINK_SEEDS_PATH", raising=False)
