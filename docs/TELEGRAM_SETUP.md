@@ -66,7 +66,7 @@ LUMI_TELEGRAM_ALLOWLIST=123456789               # your id from @userinfobot (com
 LUMI_TELEGRAM_FLUSH_S=2                          # daemon 1: consolidate a burst, flush every N s
 LUMI_TELEGRAM_BATCH=5                            # daemon 2: max replies merged per message
 LUMI_TELEGRAM_CATCHUP_H=24                       # daemon 2: skip replies older than this on restart
-LUMI_TELEGRAM_PHOTO=off                          # daemon 2: also send the face portrait as a photo
+LUMI_TELEGRAM_PHOTO=0                            # daemon 2: probability 0..1 of attaching the face photo (0.2 ≈ 1/5)
 ```
 
 ### 5. Pre-flight check (before launching all three)
@@ -253,15 +253,17 @@ rm -f .lumi/inbox.jsonl .lumi/inbox.pos .lumi/outbox.jsonl .lumi/outbox.sent
 | `LUMI_TELEGRAM_FLUSH_S` | `2` | daemon 1: in-memory buffer flush cadence (a burst → one turn) |
 | `LUMI_TELEGRAM_BATCH` | `5` | daemon 2: max replies merged per message (bounds a backlog → ⌈M/N⌉, never one blob) |
 | `LUMI_TELEGRAM_CATCHUP_H` | `24` | daemon 2: skip replies older than this on restart (no flood) |
-| `LUMI_TELEGRAM_PHOTO` | `off` | daemon 2: also send the face portrait as a photo |
+| `LUMI_TELEGRAM_PHOTO` | `0` | daemon 2: probability 0..1 of attaching the face photo (`0`=never, `0.2`≈1/5, `1`=always) |
 | `LUMI_INBOX_PATH` | `.lumi/inbox.jsonl` | inbound queue file |
 | `LUMI_OUTBOX_PATH` | `.lumi/outbox.jsonl` | outbound queue file |
 | `LUMI_LOG_LEVEL` | `INFO` | daemon log verbosity (`DEBUG`/`INFO`/`WARNING`) |
 
 ## Photos (`LUMI_TELEGRAM_PHOTO`)
 
-With `LUMI_TELEGRAM_PHOTO=on`, daemon 2 sends each reply as a **photo with the reply as the caption**
-— the face matched to the reply's **emotion + intensity** (`faces/<emotion>.png`). Two things to know:
+`LUMI_TELEGRAM_PHOTO` is a **probability 0..1** — the chance daemon 2 attaches the face photo to a
+reply (`0` = never, `0.2` ≈ 1 in 5, `1` = always; `on`/`off` still work as `1`/`0`). When it fires,
+the reply is sent as a **photo with the text as the caption** — the face matched to the reply's
+**emotion + intensity** (`faces/<emotion>.png`); otherwise it's a plain text message. Two things to know:
 
 - It's the **flat** v0.7 face, **not** the themed v0.11 wardrobe — the daemon has no access to the
   mood/theme (that's Core state). The desktop viewer shows the themed face; Telegram gets the base one.

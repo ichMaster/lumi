@@ -110,7 +110,7 @@ text-only when no portrait exists.
 `LUMI_TELEGRAM_TOKEN` (the bot token — never committed) · `LUMI_TELEGRAM_ALLOWLIST` (the owner's
 Telegram id) · `LUMI_TELEGRAM_FLUSH_S` (inbound buffer flush, default 2) · `LUMI_TELEGRAM_BATCH`
 (outbound consolidation N) · `LUMI_TELEGRAM_CATCHUP_H` (skip records older than this on restart) ·
-`LUMI_TELEGRAM_PHOTO` (send the face portrait, default off).
+`LUMI_TELEGRAM_PHOTO` (probability 0..1 of attaching the face photo; default 0 — `0.2` ≈ 1/5, `on`/`off` = 1/0).
 
 ## Contract & tests
 

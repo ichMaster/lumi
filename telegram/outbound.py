@@ -12,6 +12,7 @@ not covered).
 
 from __future__ import annotations
 
+import random
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -157,8 +158,9 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
             for group in batches(new, cfg.telegram_batch):
                 text = render(group, emoji_map)
                 last = group[-1]
+                # send the face photo with probability LUMI_TELEGRAM_PHOTO (0=never, 0.2≈1/5, 1=always)
                 photo = portrait_for(cfg.faces_dir, last.get("emotion", ""), last.get("intensity")) \
-                    if cfg.telegram_photo else None
+                    if random.random() < cfg.telegram_photo else None
                 try:
                     for chat in chats:
                         # photo+caption only when the text fits a caption; otherwise chunked text

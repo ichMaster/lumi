@@ -103,6 +103,20 @@ def _parse_quiet_hours(raw: str | None) -> tuple[int, int] | None:
         return None
 
 
+def _parse_probability(raw: str | None) -> float:
+    """Parse a 0..1 probability. ``on``/``yes``/``true``/``y``/``1`` → 1.0; a number → clamped to
+    [0, 1]; ``off`` / empty / junk → 0.0 — so the old ``on``/``off`` boolean still works."""
+    if not raw:
+        return 0.0
+    s = raw.strip().lower()
+    if s in _TRUTHY:
+        return 1.0
+    try:
+        return max(0.0, min(1.0, float(s)))
+    except ValueError:
+        return 0.0
+
+
 def _parse_id_list(raw: str | None) -> tuple[int, ...]:
     """Parse a comma-separated list of integer ids (e.g. the Telegram allowlist); ignore junk."""
     if not raw:
@@ -189,7 +203,7 @@ class Config:
     telegram_flush_s: int = 2  # daemon 1: inbound buffer flush cadence
     telegram_batch: int = 5  # daemon 2: max records consolidated per Telegram message (N)
     telegram_catchup_h: int = 24  # daemon 2: skip outbox records older than this on restart
-    telegram_photo: bool = False  # daemon 2: also send the face portrait as a photo
+    telegram_photo: float = 0.0  # daemon 2: probability 0..1 of sending the face photo (0=never, 1=always)
     # v0.14 local voice (the voicer reads the outbox; the key is a secret — never logged/committed).
     voice: bool = False  # the TUI writes the outbox for the voicer (like bridge); off by default
     elevenlabs_api_key: str = ""
@@ -338,7 +352,7 @@ def load_config(*, load_env: bool = True) -> Config:
         telegram_flush_s=int(os.getenv("LUMI_TELEGRAM_FLUSH_S") or 2),
         telegram_batch=int(os.getenv("LUMI_TELEGRAM_BATCH") or 5),
         telegram_catchup_h=int(os.getenv("LUMI_TELEGRAM_CATCHUP_H") or 24),
-        telegram_photo=(os.getenv("LUMI_TELEGRAM_PHOTO") or "off").strip().lower() in _TRUTHY,
+        telegram_photo=_parse_probability(os.getenv("LUMI_TELEGRAM_PHOTO")),
         voice=(os.getenv("LUMI_VOICE") or "off").strip().lower() in _TRUTHY,
         elevenlabs_api_key=(os.getenv("ELEVENLABS_API_KEY") or "").strip(),
         voice_id=(os.getenv("LUMI_VOICE_ID") or "").strip(),

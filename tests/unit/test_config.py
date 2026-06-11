@@ -64,6 +64,15 @@ def test_quiet_hours_independent_for_nudge_and_think(monkeypatch):
     assert cfg.quiet_hours == (0, 9) and cfg.thoughts_quiet_hours is None
 
 
+def test_telegram_photo_is_a_probability(monkeypatch):
+    monkeypatch.delenv("LUMI_TELEGRAM_PHOTO", raising=False)
+    assert load_config(load_env=False).telegram_photo == 0.0          # default: never
+    for raw, expect in [("0.2", 0.2), ("1", 1.0), ("on", 1.0), ("off", 0.0),
+                        ("0", 0.0), ("1.5", 1.0), ("-0.3", 0.0), ("junk", 0.0)]:
+        monkeypatch.setenv("LUMI_TELEGRAM_PHOTO", raw)
+        assert load_config(load_env=False).telegram_photo == expect, raw  # clamped 0..1; on/off still work
+
+
 def test_voice_config_default_and_override(monkeypatch):
     for k in ("LUMI_VOICE", "ELEVENLABS_API_KEY", "LUMI_VOICE_ID", "LUMI_VOICE_MODEL"):
         monkeypatch.delenv(k, raising=False)
