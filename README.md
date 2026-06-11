@@ -12,28 +12,30 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.12.1 — v0.12 Thought-stream (+ follow-ups).** Лілі's mind **acts on its own**: between and
-around your messages she muses into a private **dated diary**, mostly silently, and only
-occasionally says one aloud. The `.1` adds: **proactive thinking wired into the idle timer** (she
-thinks on her own when you go quiet — mostly silent, occasionally speaks first; `nudges.md`
-`%`-lines become a topic menu), a **`LUMI_THOUGHTS_CONTEXT=lean|full`** toggle (full = the whole
-reply backdrop), a **`/theme <name>` / `/theme auto`** manual face override, and a fix to keep
-`<think>` reasoning out of recorded thoughts.
+**0.13.0 — v0.13 Telegram bot (the bridge).** Reach Лілі from **Telegram** — the same mind, a new
+window — without giving up the TUI.
 
-- **`%directives`** — her mind *acts* (internal, never typed): **`%think`** (everyday musing) +
-  **`%wonder`** (curiosity), over one reusable **mental-act engine** (`trigger → seed → generate →
-  record → maybe surface`). Distinct from `/commands` that *read* state and plain chat she speaks.
-- **A global, dated diary** — a `Thought` store (her one mind, **not** per-user); the **last 24h**
-  of dated thoughts feed back into the prompt (`# Що в мене на думці…`) so she **remembers her
-  day**, and softly color the daily mood.
-- **Proactive nudge** — on the idle timer she thinks **mostly silently** (paced: interval + quiet
-  hours + a per-session cap); a configurable fraction **graduate to a spoken turn**.
-- **Manual + placeholders** — type `%think[!] [about] {topic}` (`!` shows the raw `💭` thought);
-  `{last_thought}` / `{mood}` / … resolve in the topic. A **`/thoughts`** command shows the diary.
-- **Isolation + invariants** — a thought sparked with user A **never** surfaces to B (contract
-  test); logged, **never** written to long-term memory; **never competence**. **No contract change.**
+- **The bridge** — the **TUI stays the only brain** (the one process calling `core.reply`); Telegram
+  is a **file bus** (`inbox.jsonl`/`outbox.jsonl`, append-only **FIFO** with id pointers, `state/fifo.py`)
+  plus **two dumb daemons** (`telegram→inbox`, `outbox→telegram`). **No core change.**
+- **Symmetric mirror, echo-free** — a Telegram message shows in the TUI (`📱`); a keyboard turn shows
+  on the phone (`💻`); a Telegram-originated line never re-enters the outbox (no echo, by construction).
+- **Single-owner, allowlist-gated** — only your Telegram id is served (a non-owner never reaches the
+  core); spoken **proactive thoughts (v0.12) push** to the phone — she reaches out first.
+- **Daemon 1** buffers a burst → 2 s flush → one turn, **ack-after-flush** (no buffer file); **daemon 2**
+  sends FIFO, **N-batched** (bounds a backlog), with a **catch-up cap** + first-run backlog skip, emoji,
+  optional face photo (length-guarded).
+- **Operability** — `python -m telegram.check` (pre-flight `getMe`), `python -m telegram.monitor`
+  (live queue + log health), daemon logging + crash-resilience, and a full **setup & monitoring guide**
+  ([docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)). `aiogram` is an optional extra; mocked in tests.
 
-_(Previous: **0.11.0 — v0.11 Face variants & mood themes** — see RELEASE.txt.)_
+Follow-ups this release: nudge + proactive-think now **run together** (decoupled timers) split into
+**two seed files** (`nudges.md` openers / `think_seeds.md` `%think` seeds, chosen randomly) with
+**independent quiet hours** (`LUMI_THOUGHTS_QUIET_HOURS`) and a `LUMI_THOUGHTS_MAX_LINES` knob; her
+default voice is now **1–2 sentences** (long is the exception, structured via mega-styles); test
+isolation so tests never touch the real bus; and **Local voice moved to v0.14** (next).
+
+_(Previous: **0.12.1 — v0.12 Thought-stream (+ follow-ups)** — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 

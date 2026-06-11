@@ -1,6 +1,21 @@
 Lumi — Release notes
 ====================
 
+Version 0.13.0 (2026-06-11)
+---------------------------
+- v0.13 Telegram bot — the bridge: reach Лілі from Telegram while the TUI stays the only brain (the one process calling core.reply). Telegram is a file bus (inbox.jsonl/outbox.jsonl — append-only FIFO with id pointers, state/fifo.py) plus two dumb daemons (telegram->inbox, outbox->telegram). No core change.
+- Symmetric mirror, echo-free by construction: a Telegram message shows in the TUI (📱); a keyboard turn shows on the phone (💻); a Telegram-originated line never re-enters the outbox.
+- Single-owner + allowlist: only the owner's Telegram id is served (a non-owner never reaches the core); spoken proactive thoughts (v0.12) push to the phone (she reaches out first).
+- Daemon 1: in-memory buffer -> 2s flush -> one consolidated record (a burst -> one turn), ack-after-flush (Telegram replays -> no buffer file), allowlist at the edge.
+- Daemon 2: FIFO from the pointer, consolidate by N (LUMI_TELEGRAM_BATCH, bounds a backlog), catch-up cap + first-run backlog skip, emoji + optional face photo (length-guarded so a long reply/caption never wedges the daemon).
+- Operability: python -m telegram.check (pre-flight getMe, never prints the token), python -m telegram.monitor (live queue depths + log tails + health), daemon logging + crash-resilience, and docs/TELEGRAM_SETUP.md (setup + monitoring). aiogram is an optional extra; mocked in tests (no network/sleeps/paid calls).
+- Issues LUMI-053..056 (the file bus, the TUI inbox-poller/outbox-writer, daemon 1, daemon 2).
+- Follow-ups: nudge + proactive-think now run together (decoupled timers, separate last-fired stamps); split into two seed files chosen at random (nudges.md openers / think_seeds.md %think|%wonder seeds); independent quiet hours (LUMI_THOUGHTS_QUIET_HOURS, inherits LUMI_QUIET_HOURS when unset); LUMI_THOUGHTS_MAX_LINES configurable.
+- Character: her default voice is 1-2 sentences (long is the exception, structured via the mega-styles she actually self-selects).
+- Test isolation: a conftest forces LUMI_BRIDGE=off + temp bus paths so tests never write to the real outbox.
+- Spec: Local voice (ElevenLabs) moved to v0.14, ahead of the inner-life phases (its outbox.jsonl input is already built; the voicer is daemon 2's twin).
+- 463 tests green.
+
 Version 0.12.1 (2026-06-10)
 ---------------------------
 - Proactive thinking wired into the TUI idle timer (A + B): when you go quiet (~10 min), Лілі thinks on her own from her live state — mostly SILENTLY (recorded to the dated diary), and a configurable fraction GRADUATE to a spoken turn (she speaks first, via the existing hidden self-turn). The idle knobs now take effect: LUMI_THOUGHTS_INTERVAL_S / _CAP / _SPOKEN_RATIO + quiet hours.
