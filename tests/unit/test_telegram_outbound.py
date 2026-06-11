@@ -6,11 +6,14 @@ from telegram.outbound import (
     CAPTION_LIMIT,
     MESSAGE_LIMIT,
     batches,
+    caption_for,
     chunk,
     portrait_for,
     render,
     split_catchup,
+    voice_to_telegram,
 )
+from voice.tts import MockTTS
 
 _NOW = datetime(2026, 6, 10, 14, 0, tzinfo=UTC)
 
@@ -83,6 +86,54 @@ def test_chunk_caption_limit_is_tighter():
     text = "x " * 700  # ~1400 chars — fits a message, NOT a 1024 caption
     assert len(chunk(text, MESSAGE_LIMIT)) == 1
     assert all(len(p) <= CAPTION_LIMIT for p in chunk(text, CAPTION_LIMIT))
+
+
+# --- voice mode (LUMI_TELEGRAM_VOICE) -------------------------------------
+from state import fifo  # noqa: E402
+
+
+async def test_voice_mode_voices_lili_skips_user(tmp_path):
+    outbox, sent = tmp_path / "outbox.jsonl", tmp_path / "outbox.sent"
+    fifo.append(outbox, "привіт", kind="lili", emotion="joy")
+    fifo.append(outbox, "моя репліка", kind="user")          # your mirrored keyboard line
+    fifo.append(outbox, "ще", kind="lili", emotion="calm")
+    tts, sent_msgs = MockTTS(), []
+
+    async def fake_send(ogg, caption):
+        sent_msgs.append((ogg, caption))
+
+    n = await voice_to_telegram(
+        outbox, sent, tts=tts, to_ogg=lambda b: b"OGG:" + b,
+        send_voice=fake_send, caption_for=lambda r: r["text"],
+    )
+    assert n == 2                                            # two lili voiced
+    assert [c for _, c in sent_msgs] == ["привіт", "ще"]     # the user line was NOT voiced
+    assert [t for t, _ in tts.calls] == ["привіт", "ще"]     # nor synthesized
+    assert sent_msgs[0][0] == b"OGG:AUDIO:" + "привіт".encode()  # mp3→ogg ran on the synth
+    assert fifo.load_pointer(sent) == 3                      # advanced past all 3 (incl. the user)
+    assert await voice_to_telegram(outbox, sent, tts=tts, to_ogg=lambda b: b,
+                                   send_voice=fake_send, caption_for=lambda r: r["text"]) == 0  # caught up
+
+
+async def test_voice_mode_retry_on_failure(tmp_path):
+    outbox, sent = tmp_path / "outbox.jsonl", tmp_path / "outbox.sent"
+    fifo.append(outbox, "a", kind="lili")
+
+    async def boom(_ogg, _caption):
+        raise RuntimeError("network")
+
+    n = await voice_to_telegram(outbox, sent, tts=MockTTS(), to_ogg=lambda b: b,
+                                send_voice=boom, caption_for=lambda r: r["text"])
+    assert n == 0
+    assert fifo.load_pointer(sent) == 0                     # NOT advanced → will retry
+
+
+def test_voice_caption_carries_emoji_and_is_capped():
+    rec = {"id": 1, "text": "привіт", "emotion": "joy", "intensity": 0.8}
+    cap = caption_for(rec)
+    assert cap.startswith("привіт ") and len(cap) > len("привіт")  # text + emoji
+    long = {"id": 2, "text": "x" * 2000, "emotion": "calm", "intensity": 0.5}
+    assert len(caption_for(long)) <= CAPTION_LIMIT          # truncated to the caption cap
 
 
 # --- portrait (graceful) --------------------------------------------------

@@ -109,6 +109,47 @@ def portrait_for(faces_dir: str | Path, emotion: str, intensity: float | None = 
     return p if p.is_file() else None
 
 
+# ── Voice mode (LUMI_TELEGRAM_VOICE) ──────────────────────────────────────────────────────────────
+def caption_for(rec: dict, emoji_map: dict | None = None) -> str:
+    """The caption for a voice message — the reply text + its emoji, truncated to the caption cap."""
+    return render([rec], emoji_map)[:CAPTION_LIMIT]
+
+
+def mp3_to_ogg(mp3: bytes) -> bytes:  # pragma: no cover - ffmpeg subprocess
+    """Convert MP3 bytes → OGG/OPUS bytes (what a Telegram voice message wants) via ffmpeg."""
+    import subprocess
+
+    out = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
+         "-c:a", "libopus", "-b:a", "32k", "-f", "ogg", "pipe:1"],
+        input=mp3, capture_output=True, check=True,
+    )
+    return out.stdout
+
+
+async def voice_to_telegram(outbox_path, sent_path, *, tts, to_ogg, send_voice, caption_for, log=None) -> int:
+    """Send each new ``kind="lili"`` reply as a Telegram **voice message** (one per reply); return count.
+
+    Skips ``kind="user"`` (advances the pointer past them). ``synth → to_ogg → send_voice(ogg, caption)``
+    per reply; on a synth/convert/send **failure**, stop **without** advancing (retry next loop) — the
+    same resilience as the text path. ``send_voice`` is awaited; ``tts`` / ``to_ogg`` / ``caption_for``
+    are injected so this is testable with a mock TTS + a fake bot (no network).
+    """
+    count = 0
+    for rec in fifo.read_since(outbox_path, fifo.load_pointer(sent_path)):
+        if rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
+            try:
+                ogg = to_ogg(tts.synth(rec["text"], emotion=rec.get("emotion")))
+                await send_voice(ogg, caption_for(rec))
+            except Exception as exc:  # noqa: BLE001 — leave the pointer before this id → retry next loop
+                if log is not None:
+                    log.error("voice send failed for id=%s (retrying): %s", rec.get("id"), exc)
+                break
+            count += 1
+        fifo.save_pointer(sent_path, rec["id"])
+    return count
+
+
 def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     """Forward new ``outbox`` records to the allowlisted chat(s): catch-up skip, then FIFO N-batches."""
     import asyncio
@@ -132,9 +173,25 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     sent_path = cfg.outbox_path.with_suffix(".sent")
     bot = Bot(cfg.telegram_token)
     chats = cfg.telegram_allowlist
+
+    tts = None
+    send_voice = None
+    if cfg.telegram_voice:  # voice mode reuses the v0.14 TTS adapter + key/voice
+        from aiogram.types import BufferedInputFile
+
+        from voice.tts import ElevenLabsTTS
+
+        if not (cfg.elevenlabs_api_key and cfg.voice_id):
+            raise SystemExit("LUMI_TELEGRAM_VOICE needs ELEVENLABS_API_KEY + LUMI_VOICE_ID")
+        tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
+
+        async def send_voice(ogg: bytes, caption: str) -> None:
+            for chat in chats:
+                await bot.send_voice(chat, BufferedInputFile(ogg, "voice.ogg"), caption=caption)
+
     log.info(
-        "outbound up: batch=%d, catchup=%dh, photo=%s, chats=%s",
-        cfg.telegram_batch, cfg.telegram_catchup_h, cfg.telegram_photo, sorted(chats),
+        "outbound up: voice=%s, batch=%d, catchup=%dh, photo=%s, chats=%s",
+        cfg.telegram_voice, cfg.telegram_batch, cfg.telegram_catchup_h, cfg.telegram_photo, sorted(chats),
     )
 
     async def _main() -> None:
@@ -154,6 +211,15 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
                 fifo.save_pointer(sent_path, stale[-1]["id"])
                 log.info("catch-up: skipped %d stale record(s) (older than %dh)", len(stale), cfg.telegram_catchup_h)
         while True:
+            if cfg.telegram_voice:  # VOICE mode: one voice message per reply (no batching)
+                n = await voice_to_telegram(
+                    cfg.outbox_path, sent_path, tts=tts, to_ogg=mp3_to_ogg,
+                    send_voice=send_voice, caption_for=lambda r: caption_for(r, emoji_map), log=log,
+                )
+                if n:
+                    log.info("voiced %d reply(ies) → %d chat(s)", n, len(chats))
+                await asyncio.sleep(1)
+                continue
             new = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))
             for group in batches(new, cfg.telegram_batch):
                 text = render(group, emoji_map)

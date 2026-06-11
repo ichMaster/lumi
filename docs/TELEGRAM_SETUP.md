@@ -254,6 +254,7 @@ rm -f .lumi/inbox.jsonl .lumi/inbox.pos .lumi/outbox.jsonl .lumi/outbox.sent
 | `LUMI_TELEGRAM_BATCH` | `5` | daemon 2: max replies merged per message (bounds a backlog → ⌈M/N⌉, never one blob) |
 | `LUMI_TELEGRAM_CATCHUP_H` | `24` | daemon 2: skip replies older than this on restart (no flood) |
 | `LUMI_TELEGRAM_PHOTO` | `0` | daemon 2: probability 0..1 of attaching the face photo (`0`=never, `0.2`≈1/5, `1`=always) |
+| `LUMI_TELEGRAM_VOICE` | `off` | daemon 2: send replies as **voice messages** (reuses the `LUMI_VOICE_*` key/id + `ffmpeg`) |
 | `LUMI_INBOX_PATH` | `.lumi/inbox.jsonl` | inbound queue file |
 | `LUMI_OUTBOX_PATH` | `.lumi/outbox.jsonl` | outbound queue file |
 | `LUMI_LOG_LEVEL` | `INFO` | daemon log verbosity (`DEBUG`/`INFO`/`WARNING`) |
