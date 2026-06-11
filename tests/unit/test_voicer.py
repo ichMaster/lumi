@@ -2,7 +2,7 @@
 
 from state import fifo
 from voice.tts import MockTTS
-from voice.voicer import skip_backlog_on_first_run, voice_pending
+from voice.voicer import skip_to_tail, voice_pending
 
 
 def test_voices_lili_in_order_and_skips_user(tmp_path):
@@ -45,7 +45,7 @@ def test_first_run_skips_the_backlog(tmp_path):
     outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
     for i in range(3):
         fifo.append(outbox, f"old{i}", kind="lili")
-    assert skip_backlog_on_first_run(outbox, spoken) == 3           # pointer → the current tail
+    assert skip_to_tail(outbox, spoken) == 3                        # pointer → the current tail
     assert fifo.load_pointer(spoken) == 3
 
     tts = MockTTS()
@@ -53,7 +53,23 @@ def test_first_run_skips_the_backlog(tmp_path):
     assert tts.calls == []
     fifo.append(outbox, "new", kind="lili")
     assert voice_pending(outbox, spoken, tts, lambda a: None) == 1  # only a NEW reply is voiced
-    assert skip_backlog_on_first_run(outbox, spoken) is None        # not a first run anymore
+    assert skip_to_tail(outbox, spoken) is None                     # default: a restart now resumes
+
+
+def test_skip_missed_mode_skips_the_backlog_on_every_start(tmp_path):
+    # always=True (LUMI_VOICE_SKIP_MISSED): even with a saved pointer, skip what piled up while off.
+    outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
+    fifo.append(outbox, "a", kind="lili")
+    voice_pending(outbox, spoken, MockTTS(), lambda a: None)        # voiced "a" → pointer 1
+    for i in range(5):                                              # 5 replies pile up while it's "off"
+        fifo.append(outbox, f"missed{i}", kind="lili")
+
+    # default (resume) would voice all 5 missed; skip-missed jumps to the tail instead
+    assert skip_to_tail(outbox, spoken, always=True) == 6          # pointer → the current tail (id 6)
+    tts = MockTTS()
+    assert voice_pending(outbox, spoken, tts, lambda a: None) == 0  # the 5 missed are NOT voiced
+    fifo.append(outbox, "fresh", kind="lili")
+    assert voice_pending(outbox, spoken, tts, lambda a: None) == 1  # only a new one after start
 
 
 def test_playback_failure_skips_without_re_synthesizing(tmp_path):

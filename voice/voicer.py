@@ -17,11 +17,17 @@ from state import fifo
 from voice.tts import TTS
 
 
-def skip_backlog_on_first_run(outbox_path: str | Path, spoken_path: str | Path) -> int | None:
-    """First run only (no ``spoken`` pointer yet): set the pointer to the current last outbox id so
-    the **pre-existing backlog is not replayed**. Returns the id skipped to, or ``None`` when resuming.
+def skip_to_tail(outbox_path: str | Path, spoken_path: str | Path, *, always: bool = False) -> int | None:
+    """Advance the ``spoken`` pointer to the current last outbox id so the backlog isn't voiced.
+
+    - ``always=False`` (default): only on a **first run** (no pointer yet) — a restart **resumes** and
+      voices what piled up while the voicer was off.
+    - ``always=True`` (skip-missed mode): on **every** start — skip the **missed** replies and speak
+      only new ones from now.
+
+    Returns the id skipped to, or ``None`` when it didn't skip (resuming).
     """
-    if Path(spoken_path).is_file():
+    if not always and Path(spoken_path).is_file():
         return None  # resuming — keep the saved pointer
     records = fifo.read_since(outbox_path, 0)
     last = records[-1]["id"] if records else 0
@@ -110,10 +116,14 @@ def run() -> None:  # pragma: no cover - cloud TTS + local playback glue (no pai
     tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
     spoken = cfg.outbox_path.with_suffix(".spoken")
 
-    skipped = skip_backlog_on_first_run(cfg.outbox_path, spoken)
+    skipped = skip_to_tail(cfg.outbox_path, spoken, always=cfg.voice_skip_missed)
     if skipped is not None:
-        log.info("first run: skipping backlog, starting from id=%d", skipped)
-    log.info("voicer up: voice=%s, model=%s, outbox=%s", cfg.voice_id, cfg.voice_model, cfg.outbox_path)
+        why = "skip-missed: ignoring backlog" if cfg.voice_skip_missed else "first run: skipping backlog"
+        log.info("%s, starting from id=%d", why, skipped)
+    log.info(
+        "voicer up: voice=%s, model=%s, skip_missed=%s, outbox=%s",
+        cfg.voice_id, cfg.voice_model, cfg.voice_skip_missed, cfg.outbox_path,
+    )
     while True:
         try:
             n = voice_pending(cfg.outbox_path, spoken, tts, play_audio, log=log)

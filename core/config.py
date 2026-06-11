@@ -195,6 +195,9 @@ class Config:
     elevenlabs_api_key: str = ""
     voice_id: str = ""  # the ElevenLabs voice to speak in
     voice_model: str = "eleven_multilingual_v2"  # ElevenLabs model (multilingual for Ukrainian)
+    # On EVERY start, skip the replies missed while the voicer was off (speak only new ones).
+    # Off (default) = resume — voice the backlog that piled up while it was stopped.
+    voice_skip_missed: bool = False
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -340,6 +343,7 @@ def load_config(*, load_env: bool = True) -> Config:
         elevenlabs_api_key=(os.getenv("ELEVENLABS_API_KEY") or "").strip(),
         voice_id=(os.getenv("LUMI_VOICE_ID") or "").strip(),
         voice_model=(os.getenv("LUMI_VOICE_MODEL") or "eleven_multilingual_v2").strip(),
+        voice_skip_missed=(os.getenv("LUMI_VOICE_SKIP_MISSED") or "off").strip().lower() in _TRUTHY,
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
