@@ -163,6 +163,30 @@ def facts_request(messages: Sequence[Message]) -> tuple[str, list[dict[str, str]
     return FACTS_SYSTEM, [{"role": "user", "content": transcript}]
 
 
+# Instruction to consolidate the accumulated facts into a compact-but-complete digest
+# (one fact per line, same shape as facts_request). Lossy by design but non-destructive —
+# the raw facts stay in the store; this digest is only the prompt-injected view.
+FACTS_DIGEST_SYSTEM = (
+    "Ти ущільнюєш накопичений список довготривалих фактів про співрозмовника у компактнішу, "
+    "але ПОВНУ версію для памʼяті Лілі. Обʼєднай дублікати й перефразування в один факт; "
+    "прибери дрібне, випадкове чи застаріле (новіше переважає над старішим); але ОБОВʼЯЗКОВО "
+    "збережи всю стійку суть про людину — імена й стосунки, уподобання й цінності, важливі "
+    "обставини, домовленості та межі. Нічого не вигадуй — лише ущільнюй наявне. Пиши від "
+    "третьої особи, ПО ОДНОМУ факту на рядок, стисло, без вступів, без маркерів і нумерації. "
+    "Не більше {target} рядків."
+)
+
+
+def facts_digest_request(facts: Sequence[str], target: int) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to consolidate accumulated facts into ≈``target`` lines.
+
+    Merge duplicates/paraphrases, drop trivia/stale, keep the durable understanding. The reply
+    is one fact per line (parse with :func:`parse_facts`), the same shape as ``facts_request``.
+    """
+    content = "Накопичені факти про співрозмовника:\n" + "\n".join(f"- {f}" for f in facts)
+    return FACTS_DIGEST_SYSTEM.format(target=target), [{"role": "user", "content": content}]
+
+
 def compaction_plan(n_messages: int, compacted_count: int, window: int, batch: int) -> int:
     """Decide how many oldest messages should be compacted (the new high-water mark).
 

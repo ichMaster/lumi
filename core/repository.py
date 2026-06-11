@@ -139,6 +139,19 @@ class LongTermFact:
 
 
 @dataclass(frozen=True)
+class FactsDigest:
+    """A consolidated, compact view of a user's long-term facts — injected into the prompt
+    **instead of** all raw facts. Lossy but **non-destructive**: the raw ``LongTermFact``s stay
+    in the store; this is only the prompt-injected view. ``count`` is how many raw facts it was
+    built from (the staleness check — rebuild when the facts grow past it). Per-user (private)."""
+
+    user_id: str
+    summary: str   # the consolidated facts, newline-joined (one fact per line)
+    count: int     # number of raw facts consolidated (staleness check)
+    ts: str        # when it was built
+
+
+@dataclass(frozen=True)
 class Closeness:
     """Лілі's relationship level with one user (v0.10). Per-user (private).
 
@@ -291,6 +304,14 @@ class Repository(Protocol):
 
     def facts(self, user_id: str) -> list[LongTermFact]:
         """The user's accumulated long-term facts."""
+        ...
+
+    def get_facts_digest(self, user_id: str) -> FactsDigest | None:
+        """The user's consolidated facts digest, or ``None`` (rebuilt when facts grow)."""
+        ...
+
+    def set_facts_digest(self, digest: FactsDigest) -> None:
+        """Upsert the user's facts digest (keyed by ``user_id``)."""
         ...
 
     def get_closeness(self, user_id: str) -> Closeness | None:

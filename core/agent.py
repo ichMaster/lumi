@@ -57,6 +57,7 @@ from core.memory import (
     compaction_plan,
     day_summary_request,
     digest_request,
+    facts_digest_request,
     facts_request,
     parse_facts,
     parse_summary,
@@ -85,6 +86,7 @@ from core.prompt import (
 from core.repository import (
     Closeness,
     DaySummary,
+    FactsDigest,
     LongTermFact,
     Repository,
     Session,
@@ -197,6 +199,9 @@ class Core:
         closeness_levels: dict[int, tuple[str, str]] | None = None,
         closeness_enabled: bool = True,
         closeness_tuning: ClosenessTuning | None = None,
+        facts_digest_enabled: bool = False,
+        facts_digest_max: int = 150,
+        facts_digest_refresh: int = 20,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -280,6 +285,11 @@ class Core:
         self._closeness_tuning = closeness_tuning or ClosenessTuning()
         # The level a fresh user (no record) sits at — derived from the configured baseline.
         self._default_level = naive_level(self._closeness_tuning.baseline)
+        # Facts digest: a consolidated, compact view of the long-term facts injected instead of
+        # all raw facts (rebuilt only when the facts grow by `refresh`; non-destructive).
+        self._facts_digest_enabled = facts_digest_enabled
+        self._facts_digest_max = facts_digest_max
+        self._facts_digest_refresh = facts_digest_refresh
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -760,7 +770,15 @@ class Core:
             f"[{format_date(s.ts)}] {s.summary}"
             for s in self._repo.summaries_since(self._user_id, session_since)
         ]
-        facts = [f.fact for f in self._repo.facts(self._user_id)]
+        # Long-term facts: inject the consolidated digest + any facts added since it was built
+        # (verbatim tail), instead of all raw facts. Falls back to raw when no digest exists.
+        raw_facts = self._repo.facts(self._user_id)
+        digest = self._repo.get_facts_digest(self._user_id) if self._facts_digest_enabled else None
+        if digest is not None:
+            tail = [f.fact for f in raw_facts[digest.count:]]  # facts newer than the digest
+            facts = [ln for ln in digest.summary.split("\n") if ln.strip()] + tail
+        else:
+            facts = [f.fact for f in raw_facts]
         digest = self._repo.get_digest(session.id)
         # v0.10: inject the active relationship level's authored block (warmth/openness, never
         # competence). The persisted level is the prior turn's (a fresh user sits at the default).
@@ -918,6 +936,33 @@ class Core:
             except OSError:
                 pass  # best-effort; never block a turn on logging
 
+    def _ensure_facts_digest(self) -> None:
+        """Consolidate the accumulated facts into a compact digest, **rebuilt only when** the raw
+        facts have grown past the last digest by ``facts_digest_refresh``.
+
+        One housekeeping call (extended thinking off, like summaries) per refresh — far cheaper
+        than injecting all raw facts every turn. **Non-destructive** (the raw facts are kept) and
+        best-effort: disabled, too few facts, or a model failure → no digest (the prompt falls
+        back to raw facts), never blocks a turn. Deterministic ``ts`` from the injected clock.
+        """
+        if not self._facts_digest_enabled:
+            return
+        raw = self._repo.facts(self._user_id)
+        if len(raw) <= self._facts_digest_max:
+            return  # already small enough — inject raw, no point digesting
+        existing = self._repo.get_facts_digest(self._user_id)
+        if existing is not None and len(raw) - existing.count < self._facts_digest_refresh:
+            return  # fresh enough — reuse (recent facts ride as a verbatim tail in the prompt)
+        try:
+            system, msgs = facts_digest_request([f.fact for f in raw], self._facts_digest_max)
+            digest_facts = parse_facts(self._housekeeping_reply(system, msgs).strip())
+            if digest_facts:
+                self._repo.set_facts_digest(
+                    FactsDigest(self._user_id, "\n".join(digest_facts), len(raw), self._clock().isoformat())
+                )
+        except Exception:  # noqa: BLE001 — degrade to raw facts; never break a turn
+            pass
+
     def reply(self, user_text: str, session: Session) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
@@ -929,6 +974,7 @@ class Core:
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
         self.ensure_day_summaries()  # refresh the day digests the prompt will inject (date-based recall)
         self.ensure_week_summaries()  # refresh the week digests (date-based recall)
+        self._ensure_facts_digest()  # consolidate facts into a compact digest (rebuild only when they grow)
         history = self._repo.load_messages(session.id)
         digest = self._maybe_compact(session, history)
         compacted = digest.compacted_count if digest else 0
@@ -1133,6 +1179,8 @@ def build_core(
         closeness_levels=load_levels(cfg.closeness_path),
         closeness_enabled=cfg.closeness,
         closeness_tuning=cfg.closeness_tuning,
+        facts_digest_enabled=cfg.facts_digest,
+        facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
         mood_log_path=cfg.store_path.parent / "mood.log",

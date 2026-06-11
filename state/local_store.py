@@ -16,6 +16,7 @@ from uuid import uuid4
 from core.repository import (
     Closeness,
     DaySummary,
+    FactsDigest,
     LongTermFact,
     Message,
     Session,
@@ -39,6 +40,7 @@ class JsonRepository:
         self._day_summaries: dict[str, dict[str, DaySummary]] = {}  # user_id -> date -> DaySummary
         self._week_summaries: dict[str, dict[str, WeekSummary]] = {}  # user_id -> week_start -> WeekSummary
         self._facts: dict[str, list[LongTermFact]] = {}  # by user_id
+        self._facts_digests: dict[str, FactsDigest] = {}  # by user_id (consolidated facts view)
         self._closeness: dict[str, Closeness] = {}  # by user_id (v0.10)
         self._digests: dict[str, SessionDigest] = {}  # by session_id
         self._thoughts: list[Thought] = []  # v0.12: GLOBAL diary — a list, NOT keyed by user_id
@@ -68,6 +70,8 @@ class JsonRepository:
             self._week_summaries[uid] = {w: WeekSummary(**raw) for w, raw in byweek.items()}
         for uid, raws in data.get("facts", {}).items():
             self._facts[uid] = [LongTermFact(**raw) for raw in raws]
+        for uid, raw in data.get("facts_digests", {}).items():
+            self._facts_digests[uid] = FactsDigest(**raw)
         for uid, raw in data.get("closeness", {}).items():
             self._closeness[uid] = Closeness(**raw)
         for sid, raw in data.get("digests", {}).items():
@@ -95,6 +99,7 @@ class JsonRepository:
             "facts": {
                 uid: [asdict(f) for f in items] for uid, items in self._facts.items()
             },
+            "facts_digests": {uid: asdict(d) for uid, d in self._facts_digests.items()},
             "closeness": {uid: asdict(c) for uid, c in self._closeness.items()},
             "digests": {sid: asdict(d) for sid, d in self._digests.items()},
             "thoughts": [asdict(t) for t in self._thoughts],  # global list
@@ -174,6 +179,13 @@ class JsonRepository:
     def facts(self, user_id: str) -> list[LongTermFact]:
         return list(self._facts.get(user_id, []))
 
+    def get_facts_digest(self, user_id: str) -> FactsDigest | None:
+        return self._facts_digests.get(user_id)
+
+    def set_facts_digest(self, digest: FactsDigest) -> None:
+        self._facts_digests[digest.user_id] = digest
+        self._persist()
+
     def get_closeness(self, user_id: str) -> Closeness | None:
         return self._closeness.get(user_id)
 
@@ -186,6 +198,7 @@ class JsonRepository:
         self._day_summaries.pop(user_id, None)
         self._week_summaries.pop(user_id, None)
         self._facts.pop(user_id, None)
+        self._facts_digests.pop(user_id, None)
         self._closeness.pop(user_id, None)
         self._persist()
 

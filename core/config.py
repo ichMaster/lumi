@@ -185,6 +185,8 @@ class Config:
     faces_dir: Path = DEFAULT_FACES_DIR  # v0.11 face packs + themes.md
     closeness: bool = True  # v0.10 relationship level on/off
     closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
+    facts_digest: bool = True       # consolidate long-term facts into a compact prompt digest
+    facts_digest_max: int = 150     # target lines for the consolidated facts digest
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
@@ -343,6 +345,8 @@ def load_config(*, load_env: bool = True) -> Config:
         ),
         faces_dir=Path(fd) if (fd := os.getenv("LUMI_FACES_DIR")) else DEFAULT_FACES_DIR,
         closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
+        facts_digest=(os.getenv("LUMI_FACTS_DIGEST") or "on").strip().lower() in _TRUTHY,  # on by default
+        facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
         thoughts_max_lines=int(os.getenv("LUMI_THOUGHTS_MAX_LINES") or THOUGHTS_MAX_LINES),
