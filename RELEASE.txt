@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.14.1 (2026-06-12)
+---------------------------
+- LUMI-060 Telegram voice messages: with LUMI_TELEGRAM_VOICE=on, daemon 2 (outbox->telegram) sends each of Лілі's replies to Telegram as a VOICE message — synth via the v0.14 ElevenLabs TTS adapter, MP3 -> OGG/OPUS via ffmpeg, bot.send_voice with the text+emoji as caption (read OR listen). One voice message per reply (no batching), your kind="user" lines are still skipped, a synth/convert/send failure retries without losing or repeating a reply. Mock TTS + a fake bot in tests (no network).
+- LUMI_TELEGRAM_PHOTO is now a PROBABILITY 0..1, not a boolean: e.g. 0.2 means ~1 in 5 replies carry the face photo (random per reply); on/off are still accepted as 1/0.
+- Voicer skip-missed mode (LUMI_VOICE_SKIP_MISSED=on): on EVERY start, skip the replies that arrived while the voicer was off and speak only new ones — not just on the first run.
+- Docs/config: .env.example documents LUMI_TELEGRAM_VOICE, LUMI_VOICE_SKIP_MISSED, and the LUMI_TELEGRAM_PHOTO probability; the v0.14 execution report records LUMI-060 complete (4/4). No core contract change; ElevenLabs/aiogram remain optional extras, all mocked in tests (no paid calls).
+
 Version 0.14.0 (2026-06-11)
 ---------------------------
 - v0.14 Local voice (ElevenLabs) — a separate local process voices Лілі's replies aloud in her ElevenLabs voice, no server. The voicer is the twin of the v0.13 outbox->telegram daemon (here outbox -> speaker) and REUSES the v0.13 outbox bus + state/fifo: it reads her replies from the existing outbox.jsonl, voices only her lines (kind="lili" — your keyboard/Telegram lines are skipped, never spoken), one at a time in order.

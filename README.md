@@ -12,8 +12,9 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.14.0 — v0.14 Local voice (ElevenLabs).** Hear Лілі — a separate local process voices her replies
-aloud in her ElevenLabs voice, no server.
+**0.14.1 — v0.14 Local voice (ElevenLabs).** Hear Лілі — a separate local process voices her replies
+aloud in her ElevenLabs voice, no server. (0.14.1 adds Telegram voice messages, a `LUMI_TELEGRAM_PHOTO`
+probability, and the voicer skip-missed mode.)
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,
