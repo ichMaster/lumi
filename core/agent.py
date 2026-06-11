@@ -36,7 +36,9 @@ from core.closeness import (
     closeness_block,
     level_name,
     load_levels,
+    mood_shift,
     naive_level,
+    shifted_level,
     update_closeness,
     validate_relation,
 )
@@ -761,13 +763,21 @@ class Core:
         facts = [f.fact for f in self._repo.facts(self._user_id)]
         digest = self._repo.get_digest(session.id)
         # v0.10: inject the active relationship level's authored block (warmth/openness, never
-        # competence). Use the prior turn's level (a fresh user sits at the default level). Off → none.
+        # competence). The persisted level is the prior turn's (a fresh user sits at the default).
+        # Refinement: today's ephemeral mood-shift (emotional biorhythm + cycle phase) colors the
+        # EFFECTIVE level for THIS prompt only — the stored value/level are untouched. Off → none.
         closeness = None
         if self._closeness_enabled:
             existing = self._repo.get_closeness(self._user_id)
-            closeness = closeness_block(
-                self._closeness_levels, existing.level if existing else self._default_level
-            )
+            base_level = existing.level if existing else self._default_level
+            emotional = self._biorhythms.emotional.value if self._biorhythms else None
+            phase = self._cycle.phase if self._cycle else None
+            shift = mood_shift(emotional, phase)
+            base_value = existing.value if existing else self._closeness_tuning.baseline
+            # with a shift, re-bucket the effective value (transient, no inertia); without one,
+            # keep the inertia-stabilized persisted level (no behavior change when mood is off).
+            level = shifted_level(base_value, shift) if shift else base_level
+            closeness = closeness_block(self._closeness_levels, level)
         # Append the reasoning directive to the canon so any pre-answer reasoning is
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         return build_system_prompt(

@@ -40,8 +40,9 @@ def test_harm_and_manipulation_lower_the_value():
 
 # --- bucketing with inertia ------------------------------------------------
 def test_level_does_not_flap_just_past_an_edge():
-    # 39 + (warmth 0.4 → +2) = 41 — naive L3, but within INERTIA of the 40 edge → stays L2
-    c = update_closeness(_at(39.0, 2), RelationRead(warmth=0.4), NOW, "owner")
+    # 39 + (warmth 0.4 → +2) = 41 — naive L3, but within INERTIA of the 40 edge → stays L2.
+    # drift off isolates the inertia mechanism (the drift is covered in test_closeness_mood_shift).
+    c = update_closeness(_at(39.0, 2), RelationRead(warmth=0.4), NOW, "owner", ClosenessTuning(drift_rate=0.0))
     assert c.value == 41.0 and c.level == 2
 
 
@@ -52,9 +53,10 @@ def test_level_promotes_when_clearly_past_the_edge():
 
 
 def test_level_demotes_only_when_clearly_below_the_edge():
-    held = update_closeness(_at(41.0, 3), RelationRead(harm=0.2), NOW, "owner")  # 39.5 → still L3
+    off = ClosenessTuning(drift_rate=0.0)  # isolate inertia from the per-turn drift
+    held = update_closeness(_at(41.0, 3), RelationRead(harm=0.2), NOW, "owner", off)  # 39.5 → still L3
     assert held.value == 39.5 and held.level == 3
-    dropped = update_closeness(_at(41.0, 3), RelationRead(harm=0.6), NOW, "owner")  # 36.5 → L2
+    dropped = update_closeness(_at(41.0, 3), RelationRead(harm=0.6), NOW, "owner", off)  # 36.5 → L2
     assert dropped.level == 2
 
 
@@ -65,9 +67,10 @@ def test_value_decays_toward_baseline_over_days_of_silence():
     assert 50.0 < c.value < 60.0 and c.value < 90.0  # eased toward baseline 30
 
 
-def test_no_decay_within_the_same_moment():
-    c = update_closeness(_at(70.0, 4), RelationRead(), NOW, "owner")  # last_ts == now
-    assert c.value == 70.0  # no time elapsed, neutral read → unchanged
+def test_no_time_decay_within_the_same_moment():
+    # drift off isolates the time-decay term: last_ts == now + neutral read → unchanged
+    c = update_closeness(_at(70.0, 4), RelationRead(), NOW, "owner", ClosenessTuning(drift_rate=0.0))
+    assert c.value == 70.0  # no time elapsed, no drift, neutral read → unchanged
 
 
 # --- tuning knobs (config/.env-driven) ------------------------------------

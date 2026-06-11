@@ -66,6 +66,20 @@ W_POS = 1.0       # weight per positive dim (warmth/vulnerability/playful)
 W_NEG = 1.5       # weight per negative dim (harm/manipulation) — harm costs more
 DELTA_SCALE = 5.0  # value points per unit of weighted relational signal
 INERTIA = 3.0     # dead-zone (points) around a band edge before the level flips
+DRIFT_RATE = 0.1  # per-turn pull toward the baseline — so an active warm streak can't pin at max
+
+# Ephemeral daily mood-shift (a refinement of v0.10): today's emotional biorhythm + hormonal
+# phase nudge the EFFECTIVE closeness level at prompt-assembly time ONLY — never persisted.
+# It biases warmth/openness, NEVER competence; capped at ±one level band.
+MOOD_SHIFT_MAX = BAND   # total daily shift capped at ±one band (20 points)
+BIO_WEIGHT = 14.0       # the emotional biorhythm (−1…+1) contributes up to ±14 points
+CYCLE_OFFSET = {        # the hormonal phase contributes up to ±6 points
+    "овуляція": 6.0,
+    "фолікулярна": 3.0,
+    "лютеїнова": -2.0,
+    "менструація": -4.0,
+    "ПМС": -6.0,
+}
 
 
 @dataclass(frozen=True)
@@ -78,6 +92,7 @@ class ClosenessTuning:
     w_neg: float = W_NEG
     delta_scale: float = DELTA_SCALE
     inertia: float = INERTIA
+    drift_rate: float = DRIFT_RATE
 
 
 _DEFAULT_TUNING = ClosenessTuning()  # shared immutable default (avoids a call in arg defaults)
@@ -119,7 +134,9 @@ def update_closeness(
     tuning: ClosenessTuning = _DEFAULT_TUNING,
 ) -> Closeness:
     """Advance a user's closeness one turn: **decay** toward the baseline over days of
-    silence, apply the relational **delta**, clamp, and **re-bucket** with inertia.
+    silence, a small **per-turn drift** toward it (so an active warm streak settles at a high
+    plateau instead of pinning at the top), apply the relational **delta**, clamp, and
+    **re-bucket** with inertia.
 
     Deterministic (the injected clock supplies ``now``). A brand-new user starts at the
     baseline (friendly). It biases warmth/openness only — **never competence**.
@@ -130,6 +147,9 @@ def update_closeness(
         # decay the value toward the baseline by the days elapsed since last contact
         days = _days_between(current.last_ts, now)
         value = tuning.baseline + (current.value - tuning.baseline) * (tuning.decay_retained**days)
+        # then a per-turn drift toward the baseline, so the top is never a stable resting
+        # point: holding a high level needs sustained warmth (the delta below still pushes up).
+        value += (tuning.baseline - value) * tuning.drift_rate
         level = current.level
     # the per-turn relational delta: warmth/vulnerability/playful raise, harm/manipulation lower
     signal = tuning.w_pos * (read.warmth + read.vulnerability + read.playful) - tuning.w_neg * (
@@ -138,6 +158,30 @@ def update_closeness(
     value = _clamp_value(value + tuning.delta_scale * signal)
     level = _bucket_with_inertia(value, level, tuning.inertia)
     return Closeness(user_id=user_id, value=value, level=level, last_ts=now.isoformat())
+
+
+def mood_shift(emotional: float | None, cycle_phase: str | None) -> float:
+    """Today's **ephemeral** closeness shift in value points (±``MOOD_SHIFT_MAX``).
+
+    Drawn from the **emotional biorhythm** (``emotional`` ∈ −1…+1, the warmth/mood cycle) and
+    the **hormonal phase** (``cycle_phase``) — the two deterministic body rhythms. Applied
+    **only** when assembling the prompt (``effective = base + shift``), **never persisted**, so
+    a good-cycle day reads a notch warmer and a PMS/low day a notch more reserved without moving
+    the real relationship. The intellectual/physical biorhythms are excluded on purpose (the
+    rule: closeness biases warmth/openness, **never competence**). ``0.0`` when both are absent.
+    """
+    bio = BIO_WEIGHT * emotional if emotional is not None else 0.0
+    cyc = CYCLE_OFFSET.get(cycle_phase or "", 0.0)
+    return max(-MOOD_SHIFT_MAX, min(MOOD_SHIFT_MAX, bio + cyc))
+
+
+def shifted_level(base_value: float, shift: float) -> int:
+    """The 1–5 level for today's **effective** closeness = ``base_value + shift``.
+
+    No inertia — this is a transient daily read for the prompt, not the persisted trajectory
+    (the stored ``value``/``level`` are advanced by :func:`update_closeness` and untouched here).
+    """
+    return naive_level(_clamp_value(base_value + shift))
 
 
 # The level a user sits at before any closeness record exists (the engine's starting point).

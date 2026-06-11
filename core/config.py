@@ -269,6 +269,7 @@ def load_config(*, load_env: bool = True) -> Config:
         w_neg=float(os.getenv("LUMI_CLOSENESS_W_NEG") or _ct.w_neg),
         delta_scale=float(os.getenv("LUMI_CLOSENESS_DELTA") or _ct.delta_scale),
         inertia=float(os.getenv("LUMI_CLOSENESS_INERTIA") or _ct.inertia),
+        drift_rate=float(os.getenv("LUMI_CLOSENESS_DRIFT") or _ct.drift_rate),
     )
 
     max_tokens_env = os.getenv("LUMI_MAX_TOKENS")
