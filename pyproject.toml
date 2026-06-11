@@ -22,6 +22,9 @@ dev = [
 telegram = [
     "aiogram>=3",  # v0.13 Telegram bridge daemons (separate processes; not needed by core/tests)
 ]
+voice = [
+    "elevenlabs>=1",  # v0.14 local voicer (TTS); imported lazily, not needed by core/tests
+]
 
 [tool.uv]
 package = false
