@@ -5,7 +5,7 @@ than its last-seen id and **advances** a tiny pointer file. **One writer + one r
 no locks. The pointer is the last consumed **id** (not a byte offset), so trimming already-consumed
 records (id ≤ pointer) never breaks the consumer — `read_since` only ever returns id > pointer.
 
-This is the shared transport for the Telegram bridge (v0.13) and, later, the voicer (v0.21) and
+This is the shared transport for the Telegram bridge (v0.13), the voicer (v0.14), and later the
 dictator (v0.22). Records are `{"id": <int>, "text": <str>, "ts": <iso>, …extra}` — one JSON per line.
 """
 
