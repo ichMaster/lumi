@@ -46,7 +46,7 @@ A private project for myself and a close circle. In v0 it is just me, local in t
 - **Short memory** — concise summaries of the last few sessions (per user), so Лілі remembers the thread between meetings.
 - **Long-term memory** — durable facts about a user that persist across that user's sessions.
 - **Admin panel** — the v1.5 admin-only web surface for managing users, access, consent, memory, and config.
-- **Voice output** — synthesis of the reply's voice via ElevenLabs: a **local voicer** console app first (v0.21, see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), then server-side in the web (v2.2). Same TTS adapter.
+- **Voice output** — synthesis of the reply's voice via ElevenLabs: a **local voicer** console app first (v0.14, see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), then server-side in the web (v2.2). Same TTS adapter.
 - **Dictation** — Ukrainian voice input (STT): a **local dictator** console app first (v0.22, the mirror of the voicer — see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), then server-side in the web (v2.4). Same STT adapter.
 - **MCP** — Model Context Protocol; the mechanism by which Лілі reaches an external tool. Web search (v3.2) is the first MCP service, world context & knowledge (v3.3) the next; the layer is extensible (e.g. the proposed creative servers in [CREATIVE_MCP.md](features/CREATIVE_MCP.md)).
 - **Web search** — an optional, off-by-default MCP tool letting Лілі look things up on the open internet within strict bounds (see [WEB_SEARCH.md](features/WEB_SEARCH.md)). v3.2.

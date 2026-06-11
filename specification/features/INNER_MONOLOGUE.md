@@ -6,10 +6,10 @@ this spec is not about building it, but about making that thinking **hers** (her
 weighing her own states) instead of the model's generic reasoning, and about the policy around it
 (one call, what to show, what not to store, invariants inside think).
 
-This is the **sixth** personality layer and it is **distinct** from the others: inner life (v0.14)
-holds thoughts *between* sessions; emotional memory (v0.17) holds thoughts *after* a session; this
+This is the **sixth** personality layer and it is **distinct** from the others: inner life (v0.15)
+holds thoughts *between* sessions; emotional memory (v0.18) holds thoughts *after* a session; this
 is thinking *in the moment* — the hidden step inside the reply turn. It is the place where all the
-existing states converge into a decision *how to speak*. Scheduled at **v0.16** (right after the
+existing states converge into a decision *how to speak*. Scheduled at **v0.17** (right after the
 inner-life states it weighs exist); it adds **no new engine** — it shapes the thinking that already
 happens.
 
@@ -44,7 +44,7 @@ Two additions to the existing reply turn:
    close we are); how would I, specifically, say this.* This turns generic reasoning into her inner
    voice.
 2. **The state blocks in context**, so the monologue is concrete, not abstract: the already-built
-   **mood** (v0.6/0.8), **closeness** (v0.10), **needs** (v0.14–15), and — when they exist — any
+   **mood** (v0.6/0.8), **closeness** (v0.10), **needs** (v0.15–16), and — when they exist — any
    later **self-regard** / **relational feeling** layers. The think-phase becomes the **convergence
    point** where these inputs are weighed into how she speaks — it consumes them, it does not
    duplicate them.
@@ -59,7 +59,7 @@ that already exist. No new store, no new loop.
   character, never raw technical reasoning), or **log-always / show-optional**.
 - **Log:** log the think-block for transparency and debugging (the v0.3 logged tier), never audio.
 - **Do NOT write think into long-term memory by default.** Thoughts are ephemeral, like a person's.
-  What persists is the **digested impression** via emotional memory (v0.17), not the raw monologue.
+  What persists is the **digested impression** via emotional memory (v0.18), not the raw monologue.
   (This is also why two calls are unnecessary — nothing needs the think to outlive the turn.)
 
 ## Invariants apply *inside* the thinking too
@@ -80,14 +80,14 @@ This matters doubly if thoughts are ever shown to the user.
   (mood/closeness/needs) rather than generic task analysis (asserted against a mocked thinking
   response).
 - **Memory test:** the raw think-block is **not** persisted to long-term memory; only impressions
-  are (v0.17).
+  are (v0.18).
 - **Determinism:** the model is mocked in tests; thinking content is asserted structurally, not by
   exact wording.
 
 ## Mapping to the roadmap
 
-**v0.16 — Inner monologue (think-phase in her voice)**, once the states it weighs exist:
-**v0.6/0.8** (mood), **v0.10** (closeness), **v0.14–15** (needs + plans), plus later **self-regard**
+**v0.17 — Inner monologue (think-phase in her voice)**, once the states it weighs exist:
+**v0.6/0.8** (mood), **v0.10** (closeness), **v0.15–16** (needs + plans), plus later **self-regard**
 and **relational feelings** as additive inputs when they land. The mechanism is already present
 (Opus 4.8 thinking); this layer is the **authored instruction + state access + show/log/memory
 policy + invariants-inside-think**. The in-the-moment sibling of inner life (between sessions) and

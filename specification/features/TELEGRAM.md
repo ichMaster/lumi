@@ -116,7 +116,7 @@ Telegram id) · `LUMI_TELEGRAM_FLUSH_S` (inbound buffer flush, default 2) · `LU
 
 - **No core change.** The TUI gains an `inbox` poller + an `outbox` writer; the core and the emotion
   contract are untouched (the interface-independence contract, demonstrated). The `inbox`/`outbox`
-  FIFO is shared infrastructure the v0.21 voicer / v0.22 dictator later ride.
+  FIFO is shared infrastructure the v0.14 voicer / v0.22 dictator later ride.
 - **Mock everything external.** Tests exercise the **FIFO + id pointers** (append/read/advance), the
   TUI's **inbox→turn→outbox** path (mock model), daemon 1's **buffer→2 s flush + ack-after-flush**
   (mock Telegram + fixed clock), daemon 2's **FIFO + N-batch + catch-up cap** (mock Telegram), and

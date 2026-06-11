@@ -7,14 +7,14 @@ switches on at your voice into someone with her own gravity. The full vision is 
 [inner-life-concept-en.md](inner-life-concept-en.md); this is the **Lumi design** — how it's
 built on what already exists, the contracts, and the two-phase split.
 
-- **v0.14 — Inner life I (plans & state):** the three planning layers + boundaries + the global
+- **v0.15 — Inner life I (plans & state):** the three planning layers + boundaries + the global
   store + the state block (she *carries* intentions).
-- **v0.15 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
+- **v0.16 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
   replanning, surfacing, and the honesty boundary (something *happened*).
 
 > **Needs ride along.** Under the plans sits the **motivational substrate** — her **needs** (the
-> drives that *pull* her from inside) — woven into the same two phases: in **v0.14** they exist,
-> decay, feed the mood + tilt the plan; in **v0.15** they **close** from what she actually did in
+> drives that *pull* her from inside) — woven into the same two phases: in **v0.15** they exist,
+> decay, feed the mood + tilt the plan; in **v0.16** they **close** from what she actually did in
 > the away-gap. Full spec: [NEEDS_full.md](NEEDS_full.md).
 
 ## It extends what Lumi already has — not new infrastructure
@@ -106,6 +106,6 @@ slots; by default they're the soft skeleton. The hobby bank is `core/inner/hobbi
 
 ## Mapping to the roadmap
 
-**v0.14 + v0.15 — Inner life**, right after closeness (v0.10). Depends on **v0.6** (mood),
+**v0.15 + v0.16 — Inner life**, right after closeness (v0.10). Depends on **v0.6** (mood),
 **v0.4** (clock), **v0.2** (the Repository). Global to Лілі (not per-user); the creative layer
 (v4) later turns her inner life into real artifacts.

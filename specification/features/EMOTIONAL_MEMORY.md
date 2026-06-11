@@ -7,9 +7,9 @@ studies DevOps, likes Y"). This makes it a **diary** instead — Лілі's own 
 [LONG-EMOTIONAL-MEMORY.md](LONG-EMOTIONAL-MEMORY.md); this is the **Lumi design** — the contracts,
 the two-phase split, and how it reuses signals Lumi already produces.
 
-- **v0.17 — Impressions:** the impressions layer + the session-close diary generator + two-layer
+- **v0.18 — Impressions:** the impressions layer + the session-close diary generator + two-layer
   injection.
-- **v0.18 — Fading & consolidation:** weight decay + merging small impressions into
+- **v0.19 — Fading & consolidation:** weight decay + merging small impressions into
   generalizations (her *understanding* of you).
 
 > The **session-close** sibling of the inner life (which writes her *own* days at session start).
@@ -24,7 +24,7 @@ the two-phase split, and how it reuses signals Lumi already produces.
 | "what she felt / what she sensed he felt" | the **v0.3 per-turn emotion** (hers) + the **v0.10 closeness relational read** (his warmth/vulnerability/…) |
 | "mood / tone of the meeting" | **v0.6 mood + v0.8 biorhythms** |
 | session-close generator | the existing **end-of-session extractor seam** — same hook, diary prompt |
-| pairs with the inner life | **v0.14–v0.15** writes her own days (session-start); this writes you (session-close) |
+| pairs with the inner life | **v0.15–v0.16** writes her own days (session-start); this writes you (session-close) |
 
 ## Per-user and isolated
 
@@ -57,7 +57,7 @@ Impression {
 The fact lives **inside** the impression as its seed; it can be promoted into `LongTermFact` for
 concrete recall — but the *shape and the selection* are emotional.
 
-## v0.17 — The session-close diary generator
+## v0.18 — The session-close diary generator
 
 Replaces the dry fact-extractor's prompt with, roughly:
 
@@ -75,7 +75,7 @@ pipeline — I rarely see him like that. That thing is more than work to him, I 
 - **Injection at startup:** a first-person **"what I remember & feel about you"** block
   (top-weighted, capped) **alongside** the facts block.
 
-## v0.18 — Fading & consolidation
+## v0.19 — Fading & consolidation
 
 - **Emotion is the attention filter.** `weight` (set from emotion intensity / a closeness shift /
   "first-time" discovery) decides brightness and longevity. Recall ranks by `weight × recency`.
@@ -104,6 +104,6 @@ pipeline — I rarely see him like that. That thing is more than work to him, I 
 
 ## Mapping to the roadmap
 
-**v0.17 + v0.18 — Emotional memory**, right after the inner life (v0.14–v0.15). Depends on **v0.3**
+**v0.18 + v0.19 — Emotional memory**, right after the inner life (v0.15–v0.16). Depends on **v0.3**
 (emotion), **v0.10** (closeness), **v0.6/v0.8** (mood), **v0.2** (the memory layers), and **v0.4**
 (the clock, for fading). Per-user, isolated; the session-close half of her subjective memory.
