@@ -80,6 +80,13 @@ def test_mood_shift_absent_or_unknown_inputs_are_neutral():
     assert mood_shift(None, "не-фаза") == 0.0
 
 
+def test_mood_shift_scale_tunes_the_strength():
+    assert mood_shift(1.0, "овуляція", 1.0) == 20.0   # full ±1 band (default)
+    assert mood_shift(1.0, "овуляція", 0.5) == 10.0   # half strength
+    assert mood_shift(-1.0, "ПМС", 0.5) == -10.0      # symmetric
+    assert mood_shift(1.0, "овуляція", 0.0) == 0.0    # disabled → effective = base
+
+
 def test_shifted_level_buckets_base_plus_shift_without_inertia():
     assert shifted_level(75.0, 20.0) == naive_level(95.0)   # L4 base, +20 → L5
     assert shifted_level(75.0, -20.0) == naive_level(55.0)  # L4 base, −20 → L3

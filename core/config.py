@@ -262,6 +262,10 @@ def load_config(*, load_env: bool = True) -> Config:
 
     # v0.10 closeness engine knobs (defaults from ClosenessTuning; each overridable via .env).
     _ct = ClosenessTuning()
+    # The daily mood-shift strength is a 0..1 scale (on/off accepted): unset → full (1.0); set
+    # parses via _parse_probability so "off"/0 disables it. (Unlike the floats above, 0.0 here is
+    # a meaningful "off", so we can't use `… or default`.)
+    _ms = os.getenv("LUMI_CLOSENESS_MOOD_SHIFT")
     closeness_tuning = ClosenessTuning(
         baseline=float(os.getenv("LUMI_CLOSENESS_BASELINE") or _ct.baseline),
         decay_retained=float(os.getenv("LUMI_CLOSENESS_DECAY") or _ct.decay_retained),
@@ -270,6 +274,7 @@ def load_config(*, load_env: bool = True) -> Config:
         delta_scale=float(os.getenv("LUMI_CLOSENESS_DELTA") or _ct.delta_scale),
         inertia=float(os.getenv("LUMI_CLOSENESS_INERTIA") or _ct.inertia),
         drift_rate=float(os.getenv("LUMI_CLOSENESS_DRIFT") or _ct.drift_rate),
+        mood_shift_scale=_parse_probability(_ms) if _ms is not None else _ct.mood_shift_scale,
     )
 
     max_tokens_env = os.getenv("LUMI_MAX_TOKENS")

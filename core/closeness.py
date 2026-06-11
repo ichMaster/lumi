@@ -93,6 +93,7 @@ class ClosenessTuning:
     delta_scale: float = DELTA_SCALE
     inertia: float = INERTIA
     drift_rate: float = DRIFT_RATE
+    mood_shift_scale: float = 1.0  # 0..1 strength of the daily mood-shift (0 = off, 1 = full ±1 band)
 
 
 _DEFAULT_TUNING = ClosenessTuning()  # shared immutable default (avoids a call in arg defaults)
@@ -160,7 +161,7 @@ def update_closeness(
     return Closeness(user_id=user_id, value=value, level=level, last_ts=now.isoformat())
 
 
-def mood_shift(emotional: float | None, cycle_phase: str | None) -> float:
+def mood_shift(emotional: float | None, cycle_phase: str | None, scale: float = 1.0) -> float:
     """Today's **ephemeral** closeness shift in value points (±``MOOD_SHIFT_MAX``).
 
     Drawn from the **emotional biorhythm** (``emotional`` ∈ −1…+1, the warmth/mood cycle) and
@@ -169,10 +170,13 @@ def mood_shift(emotional: float | None, cycle_phase: str | None) -> float:
     a good-cycle day reads a notch warmer and a PMS/low day a notch more reserved without moving
     the real relationship. The intellectual/physical biorhythms are excluded on purpose (the
     rule: closeness biases warmth/openness, **never competence**). ``0.0`` when both are absent.
+
+    ``scale`` (``LUMI_CLOSENESS_MOOD_SHIFT``, 0..1) tunes the strength: ``1`` = full ±1 band,
+    ``0.5`` = half, ``0`` = the daily shift is off (``effective = base``).
     """
     bio = BIO_WEIGHT * emotional if emotional is not None else 0.0
     cyc = CYCLE_OFFSET.get(cycle_phase or "", 0.0)
-    return max(-MOOD_SHIFT_MAX, min(MOOD_SHIFT_MAX, bio + cyc))
+    return max(-MOOD_SHIFT_MAX, min(MOOD_SHIFT_MAX, scale * (bio + cyc)))
 
 
 def shifted_level(base_value: float, shift: float) -> int:

@@ -772,7 +772,7 @@ class Core:
             base_level = existing.level if existing else self._default_level
             emotional = self._biorhythms.emotional.value if self._biorhythms else None
             phase = self._cycle.phase if self._cycle else None
-            shift = mood_shift(emotional, phase)
+            shift = mood_shift(emotional, phase, self._closeness_tuning.mood_shift_scale)
             base_value = existing.value if existing else self._closeness_tuning.baseline
             # with a shift, re-bucket the effective value (transient, no inertia); without one,
             # keep the inertia-stabilized persisted level (no behavior change when mood is off).

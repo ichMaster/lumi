@@ -48,6 +48,16 @@ def test_thoughts_max_lines_default_and_override(monkeypatch):
     assert load_config(load_env=False).thoughts_max_lines == 20  # override
 
 
+def test_closeness_mood_shift_scale_default_and_override(monkeypatch):
+    # the daily mood-shift strength (0..1; on/off accepted); unset → full (1.0).
+    monkeypatch.delenv("LUMI_CLOSENESS_MOOD_SHIFT", raising=False)
+    assert load_config(load_env=False).closeness_tuning.mood_shift_scale == 1.0  # unset → full
+    monkeypatch.setenv("LUMI_CLOSENESS_MOOD_SHIFT", "0.5")
+    assert load_config(load_env=False).closeness_tuning.mood_shift_scale == 0.5  # half
+    monkeypatch.setenv("LUMI_CLOSENESS_MOOD_SHIFT", "off")
+    assert load_config(load_env=False).closeness_tuning.mood_shift_scale == 0.0  # disabled
+
+
 def test_quiet_hours_independent_for_nudge_and_think(monkeypatch):
     monkeypatch.setenv("LUMI_QUIET_HOURS", "0-9")
     # unset think → inherits the nudge's window
