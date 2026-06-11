@@ -12,30 +12,27 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.13.0 — v0.13 Telegram bot (the bridge).** Reach Лілі from **Telegram** — the same mind, a new
-window — without giving up the TUI.
+**0.14.0 — v0.14 Local voice (ElevenLabs).** Hear Лілі — a separate local process voices her replies
+aloud in her ElevenLabs voice, no server.
 
-- **The bridge** — the **TUI stays the only brain** (the one process calling `core.reply`); Telegram
-  is a **file bus** (`inbox.jsonl`/`outbox.jsonl`, append-only **FIFO** with id pointers, `state/fifo.py`)
-  plus **two dumb daemons** (`telegram→inbox`, `outbox→telegram`). **No core change.**
-- **Symmetric mirror, echo-free** — a Telegram message shows in the TUI (`📱`); a keyboard turn shows
-  on the phone (`💻`); a Telegram-originated line never re-enters the outbox (no echo, by construction).
-- **Single-owner, allowlist-gated** — only your Telegram id is served (a non-owner never reaches the
-  core); spoken **proactive thoughts (v0.12) push** to the phone — she reaches out first.
-- **Daemon 1** buffers a burst → 2 s flush → one turn, **ack-after-flush** (no buffer file); **daemon 2**
-  sends FIFO, **N-batched** (bounds a backlog), with a **catch-up cap** + first-run backlog skip, emoji,
-  optional face photo (length-guarded).
-- **Operability** — `python -m telegram.check` (pre-flight `getMe`), `python -m telegram.monitor`
-  (live queue + log health), daemon logging + crash-resilience, and a full **setup & monitoring guide**
-  ([docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)). `aiogram` is an optional extra; mocked in tests.
+- **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
+  **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,
+  voices **only her lines** (`kind="lili"` — your keyboard/Telegram lines are skipped, never spoken),
+  one at a time in order. The **only** core/TUI change is a one-line outbox gate (write on `voice OR
+  bridge`). **No core contract change.**
+- **First-run skip + resume** — a fresh voicer **skips the accumulated backlog** (starts from the
+  current tail) and resumes from a `spoken` pointer after a restart.
+- **The TTS adapter** (`voice/tts.py`) — `ElevenLabsTTS` (lazy `elevenlabs`, an optional extra) +
+  `MockTTS`; emotion **biases delivery** (presentation only, never the text).
+- **Resilient playback** — plays MP3 via `afplay`/`ffplay`; a **synth** failure retries (network),
+  a **playback** failure logs + skips (audio already synthesized — never re-synthesizes a stuck
+  speaker, so no wasted TTS credits).
+- **Run it** — `LUMI_VOICE=on` + the key/voice id in `.env`, then `uv run --extra voice python -m
+  voice.voicer` alongside the TUI (see the README "Hearing her" section). Mocked in tests (no paid calls).
 
-Follow-ups this release: nudge + proactive-think now **run together** (decoupled timers) split into
-**two seed files** (`nudges.md` openers / `think_seeds.md` `%think` seeds, chosen randomly) with
-**independent quiet hours** (`LUMI_THOUGHTS_QUIET_HOURS`) and a `LUMI_THOUGHTS_MAX_LINES` knob; her
-default voice is now **1–2 sentences** (long is the exception, structured via mega-styles); test
-isolation so tests never touch the real bus; and **Local voice moved to v0.14** (next).
+Queued next: **Telegram voice messages** (LUMI-060) — daemon 2 sending her replies as voice bubbles.
 
-_(Previous: **0.12.1 — v0.12 Thought-stream (+ follow-ups)** — see RELEASE.txt.)_
+_(Previous: **0.13.0 — v0.13 Telegram bot (the bridge)** — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 

@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 0.14.0 (2026-06-11)
+---------------------------
+- v0.14 Local voice (ElevenLabs) — a separate local process voices Лілі's replies aloud in her ElevenLabs voice, no server. The voicer is the twin of the v0.13 outbox->telegram daemon (here outbox -> speaker) and REUSES the v0.13 outbox bus + state/fifo: it reads her replies from the existing outbox.jsonl, voices only her lines (kind="lili" — your keyboard/Telegram lines are skipped, never spoken), one at a time in order.
+- First-run skip + resume: a fresh voicer skips the accumulated backlog (starts from the current tail); a spoken pointer (twin of daemon 2's outbox.sent) resumes after a restart.
+- TTS adapter (voice/tts.py): ElevenLabsTTS (lazy elevenlabs import, an optional dep) + MockTTS; emotion biases delivery (voice settings — presentation only, never the text).
+- Resilient playback: plays MP3 via afplay (macOS) / ffplay through a temp file (the ElevenLabs SDK's own play() is not callable in this version). A synth failure retries (network); a playback failure logs + skips (the audio was already synthesized — never re-synthesizes a stuck speaker, so no wasted TTS credits).
+- The ONLY core/TUI change: a one-line outbox gate (the TUI writes the outbox on voice OR bridge). No core contract change. elevenlabs is an optional extra; mocked in tests (no network/paid calls).
+- Issues LUMI-057 (outbox gating + voice config), LUMI-058 (TTS adapter + MockTTS), LUMI-059 (the voicer app). README gained a "Hearing her — local voice" setup section.
+- Queued: LUMI-060 — Telegram voice messages (daemon 2 voice mode: TTS -> OGG -> send_voice), not yet built.
+- 473 tests green.
+
 Version 0.13.0 (2026-06-11)
 ---------------------------
 - v0.13 Telegram bot — the bridge: reach Лілі from Telegram while the TUI stays the only brain (the one process calling core.reply). Telegram is a file bus (inbox.jsonl/outbox.jsonl — append-only FIFO with id pointers, state/fifo.py) plus two dumb daemons (telegram->inbox, outbox->telegram). No core change.
