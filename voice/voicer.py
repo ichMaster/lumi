@@ -29,23 +29,58 @@ def skip_backlog_on_first_run(outbox_path: str | Path, spoken_path: str | Path) 
     return last
 
 
-def voice_pending(outbox_path: str | Path, spoken_path: str | Path, tts: TTS, play) -> int:
+def voice_pending(outbox_path: str | Path, spoken_path: str | Path, tts: TTS, play, *, log=None) -> int:
     """Voice the unspoken ``kind="lili"`` replies, ascending, **one at a time**; return the count.
 
-    ``kind="user"`` records are skipped (the pointer still advances past them). On a synth/playback
-    **failure**, stop **without** advancing past the failed id (leave the pointer before it) — so it
-    is retried next loop, never lost or repeated.
+    ``kind="user"`` records are skipped (the pointer still advances past them). The two failure modes
+    differ on purpose:
+
+    - **synth failure** (network) → **stop without advancing** (leave the pointer before this id), so it
+      retries next loop — nothing lost or repeated;
+    - **playback failure** (after a successful synth) → **log and advance** — the audio was already
+      synthesized, so re-synthesizing would burn TTS credits on a stuck speaker; skip it instead.
     """
     voiced = 0
     for rec in fifo.read_since(outbox_path, fifo.load_pointer(spoken_path)):
         if rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
             try:
-                play(tts.synth(rec["text"], emotion=rec.get("emotion")))
-            except Exception:  # noqa: BLE001 — leave the pointer before this id → retry next loop
+                audio = tts.synth(rec["text"], emotion=rec.get("emotion"))
+            except Exception as exc:  # noqa: BLE001 — synth (network) failed → retry: leave the pointer, stop
+                if log is not None:
+                    log.warning("synth failed for id=%s (retrying): %s", rec.get("id"), exc)
                 break
-            voiced += 1
-        fifo.save_pointer(spoken_path, rec["id"])  # advance past this record (voiced or skipped-user)
+            try:
+                play(audio)
+                voiced += 1
+            except Exception as exc:  # noqa: BLE001 — playback failed AFTER synth → skip (do NOT re-synthesize)
+                if log is not None:
+                    log.error("playback failed for id=%s (skipping, not re-synthesizing): %s", rec.get("id"), exc)
+        fifo.save_pointer(spoken_path, rec["id"])  # advance past this record (voiced / user / play-failed)
     return voiced
+
+
+def play_audio(audio: bytes) -> None:  # pragma: no cover - subprocess + an audio device
+    """Play MP3 bytes through a system player (``afplay`` on macOS, else ``ffplay``), blocking.
+
+    The ElevenLabs SDK's own ``play`` is unreliable across versions (``from elevenlabs import play`` may
+    resolve to a module), so the voicer plays the audio itself — one reply at a time (blocking).
+    """
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    afplay, ffplay = shutil.which("afplay"), shutil.which("ffplay")
+    if not (afplay or ffplay):
+        raise RuntimeError("no audio player found — install ffmpeg (ffplay), or use macOS afplay")
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        f.write(audio)
+        path = f.name
+    try:
+        cmd = [afplay, path] if afplay else [ffplay, "-autoexit", "-nodisp", "-loglevel", "quiet", path]
+        subprocess.run(cmd, check=True)
+    finally:
+        os.unlink(path)
 
 
 def run() -> None:  # pragma: no cover - cloud TTS + local playback glue (no paid CI)
@@ -71,13 +106,9 @@ def run() -> None:  # pragma: no cover - cloud TTS + local playback glue (no pai
         stream=sys.stderr,
     )
     log = logging.getLogger("lumi.voice")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # quiet the per-synth HTTP 200 lines
     tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
     spoken = cfg.outbox_path.with_suffix(".spoken")
-
-    def play(audio: bytes) -> None:
-        from elevenlabs import play as el_play  # lazy
-
-        el_play(audio)
 
     skipped = skip_backlog_on_first_run(cfg.outbox_path, spoken)
     if skipped is not None:
@@ -85,7 +116,7 @@ def run() -> None:  # pragma: no cover - cloud TTS + local playback glue (no pai
     log.info("voicer up: voice=%s, model=%s, outbox=%s", cfg.voice_id, cfg.voice_model, cfg.outbox_path)
     while True:
         try:
-            n = voice_pending(cfg.outbox_path, spoken, tts, play)
+            n = voice_pending(cfg.outbox_path, spoken, tts, play_audio, log=log)
             if n:
                 log.info("voiced %d reply(ies)", n)
         except Exception as exc:  # noqa: BLE001 — a transient error must not kill the voicer

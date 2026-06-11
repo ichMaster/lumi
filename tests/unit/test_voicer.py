@@ -56,6 +56,35 @@ def test_first_run_skips_the_backlog(tmp_path):
     assert skip_backlog_on_first_run(outbox, spoken) is None        # not a first run anymore
 
 
+def test_playback_failure_skips_without_re_synthesizing(tmp_path):
+    # A stuck speaker must NOT re-synthesize the same reply forever (that burned ElevenLabs credits).
+    outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
+    fifo.append(outbox, "a", kind="lili")
+    fifo.append(outbox, "b", kind="lili")
+    tts = MockTTS()
+
+    def bad_play(_audio):
+        raise RuntimeError("no audio player")
+
+    assert voice_pending(outbox, spoken, tts, bad_play) == 0   # nothing heard…
+    assert fifo.load_pointer(spoken) == 2                       # …but the pointer advanced past both
+    assert [t for t, _ in tts.calls] == ["a", "b"]             # each synthesized ONCE (not repeated)
+
+
+def test_synth_failure_retries_but_playback_failure_does_not(tmp_path):
+    # synth failure leaves the pointer (retry); a later good run re-synths only the un-advanced id.
+    outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
+    fifo.append(outbox, "a", kind="lili")
+
+    class DownTTS:
+        def synth(self, text, *, emotion=None):
+            raise RuntimeError("network down")
+
+    assert voice_pending(outbox, spoken, DownTTS(), lambda a: None) == 0
+    assert fifo.load_pointer(spoken) == 0                       # NOT advanced — will retry
+    assert voice_pending(outbox, spoken, MockTTS(), lambda a: None) == 1  # recovers, voices "a"
+
+
 def test_resume_after_restart(tmp_path):
     outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
     fifo.append(outbox, "a", kind="lili")
