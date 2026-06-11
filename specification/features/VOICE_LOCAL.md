@@ -15,18 +15,18 @@ The voicer reads `fifo.read_since(outbox, pointer)`, voices each new `kind="lili
 
 ## Log formats
 
-Simplest — JSON Lines (one record per line, append-only).
+`outbox.jsonl` is the **v0.13 JSON-Lines bus** (one record per line, append-only, via `state/fifo`).
 
-**Inbox log `outbox.jsonl`** (written by the core):
+**`outbox.jsonl`** (written by the TUI — the voicer voices only `kind="lili"`):
 ```
-{"id": 41, "text": "Лілі's first reply", "emotion": "calm", "ts": "..."}
-{"id": 42, "text": "Лілі's second reply", "emotion": "joy", "ts": "..."}
+{"id": 41, "text": "Лілі's reply", "emotion": "calm", "ts": "...", "kind": "lili"}
+{"id": 42, "text": "your terminal line", "ts": "...", "kind": "user"}   ← skipped, never voiced
+{"id": 43, "text": "Лілі's reply", "emotion": "joy",  "ts": "...", "kind": "lili"}
 ```
 
-**Confirmation log `spoken.jsonl`** (written by the voicer):
+**`spoken` pointer** (written by the voicer — the last voiced `id`, like daemon 2's `outbox.sent`):
 ```
-{"id": 41, "ts": "..."}
-{"id": 42, "ts": "..."}
+43
 ```
 
 ## Voicer logic (loop)
