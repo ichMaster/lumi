@@ -60,6 +60,31 @@ See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0
   `LUMI_THINKING` (on/off), `LUMI_EFFORT`, `LUMI_MEMORY_WINDOW`,
   `LUMI_COMPACTION_BATCH`, `LUMI_STYLES_PATH`.
 
+### Hearing her — local voice (v0.14)
+
+A separate local process voices Лілі's replies aloud in her **ElevenLabs** voice, reusing the same
+`outbox.jsonl` the Telegram bridge writes. It voices **only her replies** (your own lines are
+skipped) and **skips the existing backlog on first run** — then speaks each new reply, one at a time.
+
+1. **Get an ElevenLabs voice** — at [elevenlabs.io](https://elevenlabs.io), pick/clone a voice and
+   copy its **voice id** + your **API key**.
+2. **Configure `.env`** (the key is a secret — `.env` is gitignored, never commit it):
+   ```ini
+   LUMI_VOICE=on                            # the TUI writes the outbox for the voicer
+   ELEVENLABS_API_KEY=sk_...                # your ElevenLabs key
+   LUMI_VOICE_ID=...                        # the voice to speak in
+   LUMI_VOICE_MODEL=eleven_multilingual_v2  # multilingual — handles Ukrainian
+   ```
+3. **Install the voice extra:** `uv sync --all-extras`
+4. **Run two processes** (the TUI is the brain; the voicer is a separate speaker):
+   ```bash
+   ./lumi                                          # writes her replies to outbox.jsonl
+   uv run --extra voice python -m voice.voicer     # speaks each new reply aloud
+   ```
+
+Stop the voicer anytime — the chat is unaffected; on restart it resumes from where it left off.
+`elevenlabs` is an optional dependency, so it's only needed when you actually run the voicer.
+
 ## Layout
 
 ```
