@@ -44,6 +44,7 @@ from core.closeness import (
 )
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
+from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
 from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
 from core.memory import (
@@ -93,10 +94,13 @@ from core.repository import (
     SessionDigest,
     ShortSummary,
     Thought,
+    VectorRecord,
     WeekSummary,
     make_message,
     make_thought,
+    make_vector_record,
     now_iso,
+    vector_msg_id,
 )
 from core.styles import load_meta_descriptions, load_meta_styles, load_styles
 from core.thoughts import (
@@ -126,6 +130,9 @@ _mood_log = logging.getLogger("lumi.mood")
 
 # Every recorded thought is logged here (the v0.3 logged tier) — never persisted to long-term memory.
 _thoughts_log = logging.getLogger("lumi.thoughts")
+
+# Semantic-recall indexing is best-effort; failures are logged here, never raised (v0.16).
+_recall_log = logging.getLogger("lumi.recall")
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
@@ -203,6 +210,9 @@ class Core:
         facts_digest_max: int = 150,
         facts_digest_refresh: int = 20,
         prompt_cache: bool = False,
+        embedder: Embedder | None = None,
+        recall_enabled: bool = False,
+        recall_backfill_max: int = 500,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -292,6 +302,12 @@ class Core:
         self._facts_digest_max = facts_digest_max
         self._facts_digest_refresh = facts_digest_refresh
         self._prompt_cache = prompt_cache  # v0.15: pass the cache_prefix to the LLM on the reply turn
+        # v0.16 semantic recall: embed every message into the per-user vector store (index on write
+        # + lazy backfill). Best-effort — off, no embedder, or an embed error never blocks a turn.
+        self._embedder = embedder
+        self._recall_enabled = recall_enabled and embedder is not None
+        self._recall_backfill_max = recall_backfill_max
+        self._backfilled = False  # the one-time catch-up runs lazily, once
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -1045,20 +1061,20 @@ class Core:
             )
         self._write_face_signal(state.emotion.value, state.intensity)  # update the viewer (v0.7)
 
-        self._repo.append_message(
-            make_message(session.id, self._user_id, "user", user_text, ts=turn_ts)
+        user_msg = make_message(session.id, self._user_id, "user", user_text, ts=turn_ts)
+        lili_msg = make_message(
+            session.id,
+            self._user_id,
+            "lili",
+            state.reply,
+            ts=turn_ts,
+            emotion=state.emotion.value,
+            intensity=state.intensity,
         )
-        self._repo.append_message(
-            make_message(
-                session.id,
-                self._user_id,
-                "lili",
-                state.reply,
-                ts=turn_ts,
-                emotion=state.emotion.value,
-                intensity=state.intensity,
-            )
-        )
+        self._repo.append_message(user_msg)
+        self._repo.append_message(lili_msg)
+        # v0.16: index both new messages for semantic recall (best-effort, after the reply is built).
+        self._index_messages([user_msg, lili_msg])
         return state
 
     def end_session(self, session: Session) -> ShortSummary | None:
@@ -1113,6 +1129,75 @@ class Core:
         """Wipe the user's short + long-term memory (only this user)."""
         self._repo.clear_memory(user_id or self._user_id)
 
+    # --- Semantic recall indexing (v0.16) — best-effort, never blocks a turn ----
+    @property
+    def recall_enabled(self) -> bool:
+        """Whether semantic-recall indexing/search is active (on **and** an embedder is present)."""
+        return self._recall_enabled
+
+    def _index_messages(self, messages: list[Message]) -> None:
+        """Embed + store ``messages`` in the per-user vector store (best-effort).
+
+        Guarded by ``recall_enabled``; an embedder error is logged and swallowed — the
+        messages are already persisted and get picked up by the next backfill.
+        """
+        if not self._recall_enabled or self._embedder is None:
+            return
+        to_index = [m for m in messages if m.text.strip()]
+        if not to_index:
+            return
+        try:
+            vectors = self._embedder.embed([m.text for m in to_index])
+            for m, vec in zip(to_index, vectors, strict=True):
+                self._repo.add_vector(self._vector_record(m, vec))
+        except Exception:  # noqa: BLE001 — best-effort; the messages are stored, retried by backfill
+            _recall_log.warning("recall index-on-write failed (message stored; will backfill)")
+
+    def _vector_record(self, m: Message, vector: list[float]) -> VectorRecord:
+        return make_vector_record(
+            user_id=m.user_id, session_id=m.session_id, role=m.role,
+            text=m.text, ts=m.ts, vector=vector,
+        )
+
+    def backfill_vectors(self, limit: int | None = None) -> int:
+        """Embed any of **this user's** stored messages not yet indexed (idempotent).
+
+        A cold store catches up once; incremental thereafter (``has_vector`` skips the
+        already-indexed). Bounded by ``limit`` (default ``recall_backfill_max``) per pass.
+        Returns how many were indexed; recall off / no embedder / a model error → 0.
+        """
+        if not self._recall_enabled or self._embedder is None:
+            return 0
+        cap = self._recall_backfill_max if limit is None else limit
+        pending: list[Message] = []
+        for session in self._repo.list_sessions(self._user_id):
+            for m in self._repo.load_messages(session.id):
+                if m.user_id != self._user_id or not m.text.strip():
+                    continue
+                if not self._repo.has_vector(self._user_id, vector_msg_id(m.session_id, m.ts, m.role, m.text)):
+                    pending.append(m)
+                    if len(pending) >= cap:
+                        break
+            if len(pending) >= cap:
+                break
+        if not pending:
+            self._backfilled = True
+            return 0
+        try:
+            vectors = self._embedder.embed([m.text for m in pending])
+        except Exception:  # noqa: BLE001 — best-effort; retried on the next pass
+            _recall_log.warning("recall backfill embed failed (retried next pass)")
+            return 0
+        for m, vec in zip(pending, vectors, strict=True):
+            self._repo.add_vector(self._vector_record(m, vec))
+        self._backfilled = True
+        return len(pending)
+
+    def ensure_backfill(self) -> None:
+        """Run the catch-up backfill **once** per process (lazy; e.g. at startup / first recall)."""
+        if self._recall_enabled and not self._backfilled:
+            self.backfill_vectors()
+
     def _accumulate_facts(self, history: list) -> None:
         try:
             system, msgs = facts_request(history)
@@ -1159,6 +1244,17 @@ def build_core(
             effort=cfg.effort,
         )
 
+    # v0.16 semantic recall: build the embedder only when recall is on. A build failure
+    # (e.g. a cloud provider with no key) degrades recall to off rather than crashing startup.
+    embedder: Embedder | None = None
+    if cfg.recall:
+        from core.embedder import EmbedderError, build_embedder
+
+        try:
+            embedder = build_embedder(cfg.embed_provider, cfg.embed_model, api_key=cfg.embed_api_key)
+        except EmbedderError:
+            embedder = None
+
     canon = load_canon(cfg.canon_path)
     # v0.11 face themes: load the manifest here (the composition root), so the Core class
     # itself stays interface-independent — it only receives the theme data.
@@ -1187,6 +1283,8 @@ def build_core(
         closeness_tuning=cfg.closeness_tuning,
         facts_digest_enabled=cfg.facts_digest,
         prompt_cache=cfg.prompt_cache,
+        embedder=embedder,
+        recall_enabled=cfg.recall,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
