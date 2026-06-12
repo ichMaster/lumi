@@ -62,7 +62,8 @@ class ResponseStats:
     latency_ms: int
     input_tokens: int | None = None
     output_tokens: int | None = None
-    cache_read_tokens: int | None = None
+    cache_read_tokens: int | None = None    # input tokens served from the prompt cache (v0.15)
+    cache_write_tokens: int | None = None   # input tokens written to the cache this turn (v0.15)
     thinking: bool = False
 
 
@@ -214,6 +215,7 @@ class AnthropicClient:
             input_tokens=getattr(usage, "input_tokens", None),
             output_tokens=getattr(usage, "output_tokens", None),
             cache_read_tokens=getattr(usage, "cache_read_input_tokens", None),
+            cache_write_tokens=getattr(usage, "cache_creation_input_tokens", None),
             thinking=self._thinking,
         )
         self.last_thinking = (

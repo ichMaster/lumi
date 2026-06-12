@@ -412,6 +412,10 @@ class LumiApp(App[None]):
         last_tok = (stats.input_tokens or 0) + (stats.output_tokens or 0)
         total_tok = totals.input_tokens + totals.output_tokens
         last = f"last {self._fmt_tokens(last_tok)} tok · {self._fmt_latency(stats.latency_ms)}"
+        if stats.cache_read_tokens:  # v0.15: prefix served from the prompt cache
+            last += f" · cache {self._fmt_tokens(stats.cache_read_tokens)}↩"
+        if stats.cache_write_tokens:  # the prefix was (re)written to the cache this turn
+            last += f" · wrote {self._fmt_tokens(stats.cache_write_tokens)}↑"
         total = (
             f"total {totals.turns} turns · {self._fmt_tokens(total_tok)} tok"
             f" · avg {self._fmt_latency(totals.avg_latency_ms)}"

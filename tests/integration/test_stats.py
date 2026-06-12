@@ -24,6 +24,20 @@ def test_reply_records_stats_and_totals(tmp_path):
     assert core.totals.turns == 2
 
 
+def test_stats_line_shows_cache_read_and_write(tmp_path):
+    # v0.15 (LUMI-068): the status line surfaces prompt-cache read/write.
+    from tui.app import LumiApp
+    core = _core(tmp_path, MockLLMClient("ok"))
+    core.last_stats = ResponseStats(
+        model="m", latency_ms=100, input_tokens=500, output_tokens=50,
+        cache_read_tokens=9800, cache_write_tokens=2400,
+    )
+    core.totals.turns = 1
+    text = LumiApp(core)._stats_text()
+    assert "cache" in text and "↩" in text   # prefix served from the cache
+    assert "wrote" in text and "↑" in text    # prefix (re)written this turn
+
+
 class _ThinkingRecorder:
     """A fake LLM that records whether thinking was on during each call."""
 

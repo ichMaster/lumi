@@ -330,3 +330,33 @@ def test_mock_client_ignores_cache_prefix():
     assert mock.reply("sys", [], "m", cache_prefix="sy") == "ok"  # accepted + ignored
     st = MockLLMClient(states={"reply": "r", "emotion": "calm", "intensity": 0.5})
     assert st.reply_structured("sys", [], "m", cache_prefix="sy")["reply"] == "r"
+
+
+def test_response_stats_capture_cache_read_and_write():
+    # v0.15 (LUMI-068): the cache read/write token counts ride in ResponseStats.
+    class _Usage:
+        input_tokens = 100
+        output_tokens = 20
+        cache_read_input_tokens = 9800
+        cache_creation_input_tokens = 2400
+
+    class _Block:
+        type = "text"
+        text = "ok"
+
+    class _Resp:
+        content = [_Block()]
+        usage = _Usage()
+
+    class _Messages:
+        def create(self, **kwargs):
+            return _Resp()
+
+    class _Client:
+        messages = _Messages()
+
+    client = AnthropicClient("sk-test", _client=_Client())
+    client.reply("sys", [], "claude-opus-4-8")
+    st = client.last_stats
+    assert st.cache_read_tokens == 9800 and st.cache_write_tokens == 2400
+    assert st.input_tokens == 100 and st.output_tokens == 20
