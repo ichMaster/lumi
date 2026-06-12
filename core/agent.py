@@ -98,7 +98,6 @@ from core.repository import (
     WeekSummary,
     make_message,
     make_thought,
-    make_vector_record,
     now_iso,
     vector_msg_id,
 )
@@ -133,6 +132,12 @@ _thoughts_log = logging.getLogger("lumi.thoughts")
 
 # Semantic-recall indexing is best-effort; failures are logged here, never raised (v0.16).
 _recall_log = logging.getLogger("lumi.recall")
+
+# Cap text length before embedding: the model reads only ~512 tokens, and a huge message (e.g. a
+# pasted book chapter — 100k+ chars) tokenizes pathologically slowly and can hang the embedder.
+# Truncate for embedding AND for the stored display text; the content-addressed msg_id stays on the
+# FULL text so has_vector / backfill idempotency is unaffected.
+_MAX_EMBED_CHARS = 2000
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
@@ -1151,7 +1156,7 @@ class Core:
         if not to_index:
             return
         try:
-            vectors = self._embedder.embed([m.text for m in to_index])
+            vectors = self._embedder.embed([m.text[:_MAX_EMBED_CHARS] for m in to_index])
             self._repo.add_vectors(
                 [self._vector_record(m, vec) for m, vec in zip(to_index, vectors, strict=True)]
             )
@@ -1159,9 +1164,14 @@ class Core:
             _recall_log.warning("recall index-on-write failed (message stored; will backfill): %s", exc)
 
     def _vector_record(self, m: Message, vector: list[float]) -> VectorRecord:
-        return make_vector_record(
-            user_id=m.user_id, session_id=m.session_id, role=m.role,
-            text=m.text, ts=m.ts, vector=vector,
+        # msg_id from the FULL text (stable id / has_vector); stored text truncated (display + size).
+        return VectorRecord(
+            user_id=m.user_id,
+            msg_id=vector_msg_id(m.session_id, m.ts, m.role, m.text),
+            vector=tuple(float(x) for x in vector),
+            text=m.text[:_MAX_EMBED_CHARS],
+            ts=m.ts,
+            role=m.role,
         )
 
     def backfill_vectors(self, limit: int | None = None) -> int:
@@ -1188,7 +1198,7 @@ class Core:
         if not pending:
             return 0
         try:
-            vectors = self._embedder.embed([m.text for m in pending])
+            vectors = self._embedder.embed([m.text[:_MAX_EMBED_CHARS] for m in pending])
         except Exception as exc:  # noqa: BLE001 — best-effort; retried on the next pass
             _recall_log.warning("recall backfill embed failed (retried next pass): %s", exc)
             return 0
@@ -1224,7 +1234,7 @@ class Core:
             return []
         self.ensure_backfill()
         try:
-            [vec] = self._embedder.embed([query], is_query=True)  # asymmetric: this is the QUERY side
+            [vec] = self._embedder.embed([query[:_MAX_EMBED_CHARS]], is_query=True)  # QUERY side
             return self._repo.search_vectors(self._user_id, list(vec), k or self._recall_k)
         except Exception as exc:  # noqa: BLE001 — recall must never break the UI
             _recall_log.warning("recall search failed: %s", exc)

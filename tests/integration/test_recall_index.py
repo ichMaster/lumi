@@ -131,6 +131,28 @@ def test_model_change_drops_old_vectors_and_reindexes(tmp_path):
     assert len(b._repo._vectors["owner"]) == 2
 
 
+def test_huge_message_is_truncated_before_embedding(tmp_path):
+    # A 100k-char message (a pasted chapter) must be capped before the embedder sees it —
+    # otherwise tokenizing it hangs. The stored display text is capped too; the msg_id is stable.
+    from core.agent import _MAX_EMBED_CHARS
+
+    class _LenSpy(MockEmbedder):
+        def embed(self, texts, *, is_query=False):
+            self.seen_lens = [len(t) for t in texts]
+            return super().embed(texts, is_query=is_query)
+
+    spy = _LenSpy()
+    core = _core(tmp_path, embedder=spy)
+    huge = "пуер " * 30000  # ~150k chars
+    core.reply(huge, core.start_session())
+
+    assert max(spy.seen_lens) <= _MAX_EMBED_CHARS          # never feed the embedder the full 150k
+    rec = next(r for r in core._repo._vectors["owner"] if r.role == "user")
+    assert len(rec.text) <= _MAX_EMBED_CHARS               # stored/display text is capped too
+    # The full message is still recoverable from the message store (only the vector text is capped).
+    assert core._repo.load_messages(core._repo.list_sessions("owner")[0].id)[0].text == huge
+
+
 class _BoomEmbedder:
     """An embedder that always raises — to prove index-on-write degrades gracefully."""
 
