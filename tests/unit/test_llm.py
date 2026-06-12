@@ -274,3 +274,59 @@ def test_anthropic_reply_structured_degrades_to_text_without_a_tool_call():
     client = AnthropicClient("sk-test", _client=_Client())
     raw = client.reply_structured("sys", [], "claude-haiku-4-5")
     assert raw == {"reply": "просто текст"}  # the gate fills emotion=calm
+
+
+# --- v0.15 prompt caching: the cache_prefix breakpoint (LUMI-067) ----------
+def test_cache_prefix_splits_system_into_two_blocks():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", _client=rec)
+    system = "PREFIX-STABLE\n\nTAIL-VOLATILE"
+    client.reply(system, [{"role": "user", "content": "hi"}], "claude-opus-4-8",
+                 cache_prefix="PREFIX-STABLE")
+    sys_field = rec.last_kwargs["system"]
+    assert sys_field == [
+        {"type": "text", "text": "PREFIX-STABLE", "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": "\n\nTAIL-VOLATILE"},
+    ]
+    # the blocks concatenate back to the original system (byte-identical)
+    assert sys_field[0]["text"] + sys_field[1]["text"] == system
+
+
+def test_no_cache_prefix_keeps_plain_string_system():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", _client=rec)
+    client.reply("PLAIN-SYSTEM", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
+    assert rec.last_kwargs["system"] == "PLAIN-SYSTEM"  # plain string, no cache_control
+
+
+def test_cache_prefix_equal_to_system_is_one_block():
+    # tail empty → cache_prefix == system → one cached block, no empty remainder
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", _client=rec)
+    client.reply("WHOLE", [{"role": "user", "content": "hi"}], "claude-opus-4-8", cache_prefix="WHOLE")
+    assert rec.last_kwargs["system"] == [
+        {"type": "text", "text": "WHOLE", "cache_control": {"type": "ephemeral"}}
+    ]
+
+
+def test_cache_prefix_not_a_prefix_falls_back_to_plain_string():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", _client=rec)
+    client.reply("SYSTEM-X", [{"role": "user", "content": "hi"}], "claude-opus-4-8",
+                 cache_prefix="MISMATCH")
+    assert rec.last_kwargs["system"] == "SYSTEM-X"  # defensive: not a prefix → plain string
+
+
+def test_cache_prefix_works_for_structured_calls_too():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", _client=rec)
+    client.reply_structured("P\n\nT", [], "claude-opus-4-8", cache_prefix="P")
+    sys_field = rec.last_kwargs["system"]
+    assert sys_field[0]["cache_control"] == {"type": "ephemeral"} and sys_field[0]["text"] == "P"
+
+
+def test_mock_client_ignores_cache_prefix():
+    mock = MockLLMClient(replies="ok")
+    assert mock.reply("sys", [], "m", cache_prefix="sy") == "ok"  # accepted + ignored
+    st = MockLLMClient(states={"reply": "r", "emotion": "calm", "intensity": 0.5})
+    assert st.reply_structured("sys", [], "m", cache_prefix="sy")["reply"] == "r"

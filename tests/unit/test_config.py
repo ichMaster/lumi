@@ -58,6 +58,14 @@ def test_closeness_mood_shift_scale_default_and_override(monkeypatch):
     assert load_config(load_env=False).closeness_tuning.mood_shift_scale == 0.0  # disabled
 
 
+def test_prompt_cache_default_and_override(monkeypatch):
+    # v0.15: the prompt-cache toggle (on by default).
+    monkeypatch.delenv("LUMI_PROMPT_CACHE", raising=False)
+    assert load_config(load_env=False).prompt_cache is True
+    monkeypatch.setenv("LUMI_PROMPT_CACHE", "off")
+    assert load_config(load_env=False).prompt_cache is False
+
+
 def test_quiet_hours_independent_for_nudge_and_think(monkeypatch):
     monkeypatch.setenv("LUMI_QUIET_HOURS", "0-9")
     # unset think → inherits the nudge's window

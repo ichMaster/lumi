@@ -202,6 +202,7 @@ class Core:
         facts_digest_enabled: bool = False,
         facts_digest_max: int = 150,
         facts_digest_refresh: int = 20,
+        prompt_cache: bool = False,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -290,6 +291,7 @@ class Core:
         self._facts_digest_enabled = facts_digest_enabled
         self._facts_digest_max = facts_digest_max
         self._facts_digest_refresh = facts_digest_refresh
+        self._prompt_cache = prompt_cache  # v0.15: pass the cache_prefix to the LLM on the reply turn
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -988,9 +990,12 @@ class Core:
         ]
         messages.append({"role": "user", "content": f"[{format_stamp(turn_ts)}] {user_text}"})
 
-        system, _ = self._system_prompt(session)  # cache_prefix is consumed in LUMI-067
+        system, cache_prefix = self._system_prompt(session)
         self.last_prompt = {"system": system, "messages": list(messages)}
-        raw = self._llm.reply_structured(system=system, messages=messages, model=self._model)
+        raw = self._llm.reply_structured(
+            system=system, messages=messages, model=self._model,
+            cache_prefix=cache_prefix if self._prompt_cache else None,  # v0.15 cache breakpoint
+        )
         # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of
         # the reply field; the clean text is shown/stored. Prefer the model's tagged
         # inline reasoning; fall back to the provider's summarized thinking channel.
@@ -1181,6 +1186,7 @@ def build_core(
         closeness_enabled=cfg.closeness,
         closeness_tuning=cfg.closeness_tuning,
         facts_digest_enabled=cfg.facts_digest,
+        prompt_cache=cfg.prompt_cache,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,

@@ -78,12 +78,23 @@ class LLMError(RuntimeError):
 class LLMClient(Protocol):
     """The seam the core depends on. Backends implement ``reply`` + ``reply_structured``."""
 
-    def reply(self, system: str, messages: list[Message], model: str) -> str:
-        """Return the model's plain **text** reply (used for memory housekeeping)."""
+    def reply(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> str:
+        """Return the model's plain **text** reply (used for memory housekeeping).
+
+        ``cache_prefix`` (v0.15) — an optional stable prefix of ``system`` to mark as a prompt-cache
+        breakpoint; backends without caching ignore it (the assembled text is unchanged).
+        """
         ...
 
-    def reply_structured(self, system: str, messages: list[Message], model: str) -> dict:
-        """Return the raw structured ``{reply, emotion, intensity}`` (the core validates it)."""
+    def reply_structured(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> dict:
+        """Return the raw structured ``{reply, emotion, intensity}`` (the core validates it).
+
+        ``cache_prefix`` (v0.15) — see :meth:`reply` (prompt-cache breakpoint hint, ignorable).
+        """
         ...
 
 
@@ -162,10 +173,24 @@ class AnthropicClient:
             getattr(anthropic, name) for name in self._RETRYABLE_NAMES if hasattr(anthropic, name)
         )
 
-    def _base_kwargs(self, system: str, messages: list[Message], model: str) -> dict:
+    def _base_kwargs(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> dict:
+        # v0.15 prompt caching: mark the stable prefix as an **ephemeral** cache breakpoint by
+        # passing `system` as content blocks — [prefix(cache_control), remainder] — that concatenate
+        # back to the original text. Without a (valid) prefix it stays a plain string (byte-identical;
+        # an unset/short prefix simply isn't cached, never an error).
+        if cache_prefix and system.startswith(cache_prefix):
+            blocks = [{"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}}]
+            remainder = system[len(cache_prefix):]
+            if remainder:
+                blocks.append({"type": "text", "text": remainder})
+            system_field: object = blocks
+        else:
+            system_field = system
         kwargs: dict = {
             "model": model,
-            "system": system,
+            "system": system_field,
             "max_tokens": self._max_tokens,
             "messages": messages,
         }
@@ -200,10 +225,14 @@ class AnthropicClient:
             or None
         )
 
-    def reply(self, system: str, messages: list[Message], model: str) -> str:
+    def reply(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> str:
         def _once() -> str:
             started = time.monotonic()
-            resp = self._client.messages.create(**self._base_kwargs(system, messages, model))
+            resp = self._client.messages.create(
+                **self._base_kwargs(system, messages, model, cache_prefix)
+            )
             self._capture(resp, model, int((time.monotonic() - started) * 1000))
             return "".join(
                 getattr(block, "text", "")
@@ -213,9 +242,11 @@ class AnthropicClient:
 
         return self._run(_once, "Claude call failed")
 
-    def reply_structured(self, system: str, messages: list[Message], model: str) -> dict:
+    def reply_structured(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> dict:
         def _once() -> dict:
-            kwargs = self._base_kwargs(system, messages, model)
+            kwargs = self._base_kwargs(system, messages, model, cache_prefix)
             kwargs["tools"] = [_EMOTION_TOOL]
             # A forced tool_choice is incompatible with extended thinking, so with
             # thinking on we use "auto" (a strong instruction asks for the tool) and
@@ -317,12 +348,16 @@ class MockLLMClient:
             return value
         return self._default
 
-    def reply(self, system: str, messages: list[Message], model: str) -> str:
-        self._record(system, messages, model)
+    def reply(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> str:
+        self._record(system, messages, model)  # cache_prefix ignored — the text is unchanged
         return self._pick_text(system, messages, model)
 
-    def reply_structured(self, system: str, messages: list[Message], model: str) -> dict:
-        self._record(system, messages, model)
+    def reply_structured(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> dict:
+        self._record(system, messages, model)  # cache_prefix ignored by the mock
         if self._state_fn is not None:
             return self._state_fn(system, messages, model)
         if self._state_queue:
