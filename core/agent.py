@@ -1152,8 +1152,8 @@ class Core:
             vectors = self._embedder.embed([m.text for m in to_index])
             for m, vec in zip(to_index, vectors, strict=True):
                 self._repo.add_vector(self._vector_record(m, vec))
-        except Exception:  # noqa: BLE001 — best-effort; the messages are stored, retried by backfill
-            _recall_log.warning("recall index-on-write failed (message stored; will backfill)")
+        except Exception as exc:  # noqa: BLE001 — best-effort; the messages are stored, retried by backfill
+            _recall_log.warning("recall index-on-write failed (message stored; will backfill): %s", exc)
 
     def _vector_record(self, m: Message, vector: list[float]) -> VectorRecord:
         return make_vector_record(
@@ -1186,8 +1186,8 @@ class Core:
             return 0
         try:
             vectors = self._embedder.embed([m.text for m in pending])
-        except Exception:  # noqa: BLE001 — best-effort; retried on the next pass
-            _recall_log.warning("recall backfill embed failed (retried next pass)")
+        except Exception as exc:  # noqa: BLE001 — best-effort; retried on the next pass
+            _recall_log.warning("recall backfill embed failed (retried next pass): %s", exc)
             return 0
         for m, vec in zip(pending, vectors, strict=True):
             self._repo.add_vector(self._vector_record(m, vec))
@@ -1218,8 +1218,8 @@ class Core:
         try:
             [vec] = self._embedder.embed([query])
             return self._repo.search_vectors(self._user_id, list(vec), k or self._recall_k)
-        except Exception:  # noqa: BLE001 — recall must never break the UI
-            _recall_log.warning("recall search failed")
+        except Exception as exc:  # noqa: BLE001 — recall must never break the UI
+            _recall_log.warning("recall search failed: %s", exc)
             return []
 
     def _accumulate_facts(self, history: list) -> None:

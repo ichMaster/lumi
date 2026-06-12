@@ -17,8 +17,9 @@ import hashlib
 import math
 from typing import Protocol, runtime_checkable
 
-# A Ukrainian-capable multilingual default (small/fast); overridable via LUMI_EMBED_MODEL.
-DEFAULT_LOCAL_MODEL = "intfloat/multilingual-e5-small"
+# A Ukrainian-capable multilingual default that fastembed ships (small/fast, dim 384, ~0.22 GB);
+# overridable via LUMI_EMBED_MODEL (must be one of TextEmbedding.list_supported_models()).
+DEFAULT_LOCAL_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 # The mock's vector size — small but enough for stable cosine ranking in tests.
 DEFAULT_MOCK_DIM = 64
 
