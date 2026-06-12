@@ -6,7 +6,7 @@ no locks. The pointer is the last consumed **id** (not a byte offset), so trimmi
 records (id ≤ pointer) never breaks the consumer — `read_since` only ever returns id > pointer.
 
 This is the shared transport for the Telegram bridge (v0.13), the voicer (v0.14), and later the
-dictator (v0.22). Records are `{"id": <int>, "text": <str>, "ts": <iso>, …extra}` — one JSON per line.
+dictator (v0.18). Records are `{"id": <int>, "text": <str>, "ts": <iso>, …extra}` — one JSON per line.
 """
 
 from __future__ import annotations
