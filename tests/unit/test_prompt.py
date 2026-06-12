@@ -129,3 +129,18 @@ def test_split_emotion_no_tag_is_clean_text():
 def test_split_emotion_strips_stray_tag():
     _, clean = split_emotion("текст <emotion>joy 0.5</emotion> хвіст")
     assert "<emotion" not in clean and "</emotion" not in clean
+
+
+def test_mark_cache_breakpoint_is_display_only_and_recoverable():
+    from core.prompt import CACHE_BREAKPOINT_MARKER, mark_cache_breakpoint
+    system, cache_prefix = build_system_prompt("CANON", emotion=True, mood="MOOD", ambient="AMB")
+    marked = mark_cache_breakpoint(system, cache_prefix)
+    # the divider sits exactly at the prefix/tail boundary (after mood, before ambient)
+    assert CACHE_BREAKPOINT_MARKER in marked
+    assert marked.index("MOOD") < marked.index(CACHE_BREAKPOINT_MARKER) < marked.index("AMB")
+    # removing the divider yields the original system byte-for-byte (it never touches the real prompt)
+    assert marked.replace("\n\n" + CACHE_BREAKPOINT_MARKER, "") == system
+    # None / whole-system / not-a-prefix → unchanged
+    assert mark_cache_breakpoint(system, None) == system
+    assert mark_cache_breakpoint(system, system) == system
+    assert mark_cache_breakpoint(system, "NOTAPREFIX") == system

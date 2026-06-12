@@ -991,7 +991,7 @@ class Core:
         messages.append({"role": "user", "content": f"[{format_stamp(turn_ts)}] {user_text}"})
 
         system, cache_prefix = self._system_prompt(session)
-        self.last_prompt = {"system": system, "messages": list(messages)}
+        self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         raw = self._llm.reply_structured(
             system=system, messages=messages, model=self._model,
             cache_prefix=cache_prefix if self._prompt_cache else None,  # v0.15 cache breakpoint

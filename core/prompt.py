@@ -220,3 +220,19 @@ def build_system_prompt(
     cache_prefix = "\n\n".join(prefix)
     system = "\n\n".join(prefix + tail)
     return system, cache_prefix
+
+
+# A visible divider for the /prompt dump — shows where the cached prefix ends (v0.15).
+CACHE_BREAKPOINT_MARKER = "━━━━━━ ✂ CACHE BREAKPOINT — cached prefix above · per-turn tail below ━━━━━━"
+
+
+def mark_cache_breakpoint(system: str, cache_prefix: str | None) -> str:
+    """Return ``system`` with a visible CACHE-BREAKPOINT divider at the ``cache_prefix`` boundary.
+
+    **Display only** — used by the `/prompt` dump so the cache split is visible. The real prompt
+    sent to the model is never modified (the marker is not part of ``system``). A ``None`` / whole /
+    non-prefix ``cache_prefix`` returns ``system`` unchanged.
+    """
+    if cache_prefix and cache_prefix != system and system.startswith(cache_prefix):
+        return f"{cache_prefix}\n\n{CACHE_BREAKPOINT_MARKER}{system[len(cache_prefix):]}"
+    return system

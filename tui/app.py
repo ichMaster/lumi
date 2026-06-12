@@ -32,6 +32,7 @@ from core.cycle import format_cycle
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
+from core.prompt import mark_cache_breakpoint
 from core.repository import Session
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
@@ -797,7 +798,8 @@ class LumiApp(App[None]):
             msg = "No prompt yet — make a turn first."
             self._emit(msg, Text(msg, style=SYSTEM_COLOR))
             return
-        parts = ["── last turn's prompt ──", "", "[SYSTEM]", p["system"], "", "[MESSAGES]"]
+        system = mark_cache_breakpoint(p["system"], p.get("cache_prefix"))  # show the cache split
+        parts = ["── last turn's prompt ──", "", "[SYSTEM]", system, "", "[MESSAGES]"]
         parts += [f"{m['role']}: {m['content']}" for m in p["messages"]]
         body = "\n".join(parts)
         self._emit(body, Text(body, style=THINKING_COLOR))  # dim, like a meta block
