@@ -12,9 +12,11 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.14.1 — v0.14 Local voice (ElevenLabs).** Hear Лілі — a separate local process voices her replies
-aloud in her ElevenLabs voice, no server. (0.14.1 adds Telegram voice messages, a `LUMI_TELEGRAM_PHOTO`
-probability, and the voicer skip-missed mode.)
+**0.15.0 — v0.15 Prompt caching.** Cache the stable system-prompt prefix (canon + instructions +
+memory + mood) via Anthropic's ephemeral `cache_control`, while the per-turn tail (ambient, closeness,
+thoughts, style) stays fresh — cutting repeat input cost ~3–4×. `LUMI_PROMPT_CACHE` toggles it; the
+status line and `/prompt` dump now surface in/out + cache read/write tokens and a cache-breakpoint
+marker. Also: closeness drift + ephemeral daily mood-shift, and a non-destructive facts digest.
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,

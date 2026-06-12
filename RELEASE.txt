@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 0.15.0 (2026-06-12)
+---------------------------
+- Prompt caching (v0.15): cache the stable system-prompt prefix (canon + instructions + memory + mood) via Anthropic's ephemeral cache_control, while the per-turn tail (ambient "# Зараз", closeness, thoughts, style) stays uncached. build_system_prompt now returns (system, cache_prefix) with system.startswith(cache_prefix); the Anthropic adapter splits the system field into a cached block + a fresh remainder. LUMI_PROMPT_CACHE toggles it (on by default). Repeat-turn input cost drops ~3–4x (cached prefix billed at ~10%).
+- Cache accounting: ResponseStats gained cache_write_tokens (from usage.cache_creation_input_tokens) alongside cache_read_tokens; the status line shows cache read (read) / write (wrote); the /prompt dump carries a [TOKENS] header (in/out + cache) and a display-only CACHE BREAKPOINT divider showing exactly where the cached prefix ends.
+- Closeness refinements: a per-day base drift toward baseline, an ephemeral daily mood-shift folded in at prompt time only (never persisted), tunable via LUMI_CLOSENESS_MOOD_SHIFT, plus an expressiveness budget.
+- Facts digest: consolidate raw long-term facts into a compact prompt view (LUMI_FACTS_DIGEST / _MAX, default 200) - non-destructive, the stored facts are untouched.
+- Roadmap: Semantic recall pulled forward to v0.15-0.16, Prompt caching inserted as v0.15, Local dictation moved to v0.18.
+- Issues LUMI-066 (reorder build_system_prompt - stable prefix vs per-turn tail), LUMI-067 (cache breakpoint in the Anthropic adapter + LUMI_PROMPT_CACHE), LUMI-068 (cache accounting + status line), LUMI-069 (caching contract test - prefix stability + per-turn isolation). The locked emotion contract {reply, emotion, intensity} is unchanged; the mock model ignores cache_prefix, no paid APIs in CI.
+
 Version 0.14.1 (2026-06-12)
 ---------------------------
 - LUMI-060 Telegram voice messages: with LUMI_TELEGRAM_VOICE=on, daemon 2 (outbox->telegram) sends each of Лілі's replies to Telegram as a VOICE message — synth via the v0.14 ElevenLabs TTS adapter, MP3 -> OGG/OPUS via ffmpeg, bot.send_voice with the text+emoji as caption (read OR listen). One voice message per reply (no batching), your kind="user" lines are still skipped, a synth/convert/send failure retries without losing or repeating a reply. Mock TTS + a fake bot in tests (no network).
