@@ -94,6 +94,25 @@ def test_backfill_respects_limit(tmp_path):
     assert on.backfill_vectors(limit=2) == 0
 
 
+def test_ensure_backfill_drains_the_whole_history(tmp_path):
+    # ensure_backfill must cover ALL un-indexed messages, not just one capped batch.
+    store = tmp_path / "store.json"
+    off = Core(llm=MockLLMClient("ок"), repository=JsonRepository(store),
+               canon="Ти — Лілі.", model="m", embedder=MockEmbedder(), recall_enabled=False)
+    session = off.start_session()
+    for t in ("a", "b", "c"):
+        off.reply(t, session)  # 6 messages total, nothing indexed (recall off)
+
+    # A tiny per-pass cap (2) — ensure_backfill must loop until everything is covered.
+    on = Core(llm=MockLLMClient("ок"), repository=JsonRepository(store),
+              canon="Ти — Лілі.", model="m", embedder=MockEmbedder(),
+              recall_enabled=True, recall_backfill_max=2)
+    on.ensure_backfill()
+    assert len(on._repo._vectors["owner"]) == 6   # all 6 indexed despite the cap of 2
+    on.ensure_backfill()                          # idempotent — runs once per process
+    assert len(on._repo._vectors["owner"]) == 6
+
+
 class _BoomEmbedder:
     """An embedder that always raises — to prove index-on-write degrades gracefully."""
 

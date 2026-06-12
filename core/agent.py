@@ -1162,11 +1162,11 @@ class Core:
         )
 
     def backfill_vectors(self, limit: int | None = None) -> int:
-        """Embed any of **this user's** stored messages not yet indexed (idempotent).
+        """Embed up to ``limit`` of **this user's** un-indexed messages — **one pass** (idempotent).
 
-        A cold store catches up once; incremental thereafter (``has_vector`` skips the
-        already-indexed). Bounded by ``limit`` (default ``recall_backfill_max``) per pass.
-        Returns how many were indexed; recall off / no embedder / a model error → 0.
+        ``has_vector`` skips the already-indexed, so repeated calls drain the history in batches
+        of ``limit`` (default ``recall_backfill_max``). Returns how many were indexed this pass;
+        recall off / no embedder / a model error → 0. :meth:`ensure_backfill` loops it to completion.
         """
         if not self._recall_enabled or self._embedder is None:
             return 0
@@ -1183,7 +1183,6 @@ class Core:
             if len(pending) >= cap:
                 break
         if not pending:
-            self._backfilled = True
             return 0
         try:
             vectors = self._embedder.embed([m.text for m in pending])
@@ -1192,13 +1191,19 @@ class Core:
             return 0
         for m, vec in zip(pending, vectors, strict=True):
             self._repo.add_vector(self._vector_record(m, vec))
-        self._backfilled = True
         return len(pending)
 
     def ensure_backfill(self) -> None:
-        """Run the catch-up backfill **once** per process (lazy; e.g. at startup / first recall)."""
-        if self._recall_enabled and not self._backfilled:
-            self.backfill_vectors()
+        """Index the **whole** un-indexed history once per process (drains in capped batches).
+
+        Loops :meth:`backfill_vectors` until nothing is left — so a large existing history is fully
+        covered, not just one batch. Best run off the UI thread (the TUI calls it at startup).
+        """
+        if not self._recall_enabled or self._backfilled:
+            return
+        while self.backfill_vectors() > 0:
+            pass
+        self._backfilled = True
 
     def recall(self, query: str, k: int | None = None) -> list[tuple[float, VectorRecord]]:
         """Explicit semantic search (the ``/recall`` command, v0.16).

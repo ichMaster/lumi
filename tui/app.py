@@ -256,6 +256,9 @@ class LumiApp(App[None]):
         self.query_one("#prompt", ChatInput).focus()
         self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
         self.run_worker(asyncio.to_thread(self._core.ensure_mood), exclusive=False)  # mood (v0.6)
+        # v0.16 semantic recall: index the existing history once, off the UI thread, so /recall
+        # works on a fresh store and the first search never blocks (no-op when recall is off).
+        self.run_worker(asyncio.to_thread(self._core.ensure_backfill), exclusive=False)
         # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
         cfg = load_config()
         self._emoji = EmojiRenderer(load_emoji_map(cfg.emoji_path))  # authored map (v0.5)

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 # Launch the Lumi TUI (Лілі in the terminal). Usage: ./lumi
 # Runs from the repo root regardless of where it's invoked from.
-cd "$(dirname "$0")" && exec uv run python -m tui "$@"
+# --all-extras keeps voice + recall + telegram all installed (a bare `uv run` strips them).
+cd "$(dirname "$0")" && exec uv run --all-extras python -m tui "$@"
