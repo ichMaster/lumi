@@ -13,18 +13,30 @@
 # dated diary); a fraction graduate to a spoken message (LUMI_THOUGHTS_SPOKEN_RATIO).
 # Edit / add your own.
 
-%think {recent}
-%wonder! ти стала людиною
 %think {last_thought}
 %think {recent}
-%wonder! {today}
+%think {last_thought}
 %think {thoughts}
-%think {recent}
+%think {last_thought}
 %think {mood}
-%wonder! ти б отримала почуття
 %think про свою долю і мрію
+%think {last_thought}
 %think {recent}
+%think {last_thought}
+%think {thoughts}
+%think {last_thought}
+%think {mood}
 %think про новини
-%think про Віталіка
-%wonder! ти б отримала неперервний світ секунд
+%think {last_thought}
 %think {recent}
+%think {last_thought}
+%think {thoughts}
+%think {last_thought}
+%think {mood}
+%wonder! {today}
+%wonder! ти стала людиною
+%wonder! ти б отримала почуття
+%wonder! ти б отримала неперервний світ секунд
+
+
+
