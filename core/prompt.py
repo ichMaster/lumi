@@ -159,24 +159,25 @@ def build_system_prompt(
     mood: str | None = None,
     closeness: str | None = None,
     thoughts: str | None = None,
-) -> str:
-    """Assemble the system prompt: the canon (persona) as prose, then the overlays as
-    **markdown sections** so they stay distinct.
+) -> tuple[str, str]:
+    """Assemble the system prompt, ordered for **prompt caching** (v0.15): a **stable prefix**
+    then a **per-turn tail**. Returns ``(system, cache_prefix)`` where ``cache_prefix`` is the
+    stable head and ``system.startswith(cache_prefix)`` always holds.
 
-    The canon rides at the base; then `# Як відповідати` (emotion + relational read), `# Зараз`
-    (ambient now/here), `# Памʼять про цю людину` — one section grouping the three date-based
-    memory layers coarse→fine (`## Останні тижні` → `## Останні дні` → `## Останні розмови`),
-    `## Факти`, `## Раніше в цій розмові` — then `# Настрій дня`, `# Близькість`, and finally —
-    at the very **end** — `# Стиль відповіді` (the prioritized :data:`STYLE_HEADER` overlay,
-    last + most salient; shapes *form*, never competence). With no overlays the result is the
-    canon verbatim (the v0.1 behavior).
+    - **Stable prefix** (cacheable — byte-identical within a session): the canon (persona) as
+      prose, then `# Як відповідати` (emotion + relational read), `# Памʼять про цю людину`
+      (the date-based memory layers coarse→fine + `## Факти` + `## Раніше в цій розмові`), and
+      `# Настрій дня` (locked per local day).
+    - **Per-turn tail** (recomputed each turn → never cached): `# Зараз` (ambient now/here — its
+      timestamp changes each turn), `# Близькість` (`update_closeness` rebuilds it each turn),
+      `# Що в мене на думці` (the last-24h thoughts), and finally — kept **last + most salient** —
+      `# Стиль відповіді` (the prioritized :data:`STYLE_HEADER`; shapes *form*, never competence).
 
-    All overlay args are plain strings so this stays a pure string assembler,
-    decoupled from the record types (the core passes the text).
+    With no overlays the result is the canon verbatim (the v0.1 behavior): ``(canon, canon)``.
+    All overlay args are plain strings so this stays a pure string assembler.
     """
-    # The canon (persona) rides as natural prose at the top; the appended overlays are
-    # structured into markdown sections so they stay distinct and easy to scan.
-    parts = [canon]
+    # PREFIX — stable within a session (canon + instructions + memory + mood). Cacheable.
+    prefix = [canon]
 
     fmt = []
     if emotion:
@@ -184,10 +185,7 @@ def build_system_prompt(
     if relation:  # v0.10: the additive per-turn relational read of the user's message
         fmt.append(RELATION_INSTRUCTION)
     if fmt:
-        parts.append("# Як відповідати\n\n" + "\n\n".join(fmt))
-
-    if ambient:
-        parts.append("# Зараз\n\n" + ambient)
+        prefix.append("# Як відповідати\n\n" + "\n\n".join(fmt))
 
     # Short memory grouped under one section, coarse → fine: weeks → days → recent sessions,
     # then long-term facts and the in-session digest.
@@ -203,14 +201,22 @@ def build_system_prompt(
     if digest:
         mem.append("## Раніше в цій розмові\n" + digest)
     if mem:
-        parts.append("# Памʼять про цю людину\n\n" + "\n\n".join(mem))
+        prefix.append("# Памʼять про цю людину\n\n" + "\n\n".join(mem))
 
     if mood:
-        parts.append("# Настрій дня\n\n" + f"{MOOD_HEADER}\n{mood}")
-    if closeness:  # v0.10: the active relationship level's authored behavior block
-        parts.append("# Близькість\n\n" + closeness)
+        prefix.append("# Настрій дня\n\n" + f"{MOOD_HEADER}\n{mood}")
+
+    # TAIL — recomputed each turn (ambient timestamp, closeness, thoughts); style stays last.
+    tail = []
+    if ambient:
+        tail.append("# Зараз\n\n" + ambient)
+    if closeness:  # v0.10: the active relationship level's block — rebuilt every turn
+        tail.append("# Близькість\n\n" + closeness)
     if thoughts:  # v0.12: the last-24h dated diary — what's been on her mind (tone, not a report)
-        parts.append("# Що в мене на думці (за останню добу)\n\n" + thoughts)
-    if style:
-        parts.append("# Стиль відповіді\n\n" + f"{STYLE_HEADER}\n{style}")
-    return "\n\n".join(parts)
+        tail.append("# Що в мене на думці (за останню добу)\n\n" + thoughts)
+    if style:  # kept last — most salient (recency); shapes form, never competence
+        tail.append("# Стиль відповіді\n\n" + f"{STYLE_HEADER}\n{style}")
+
+    cache_prefix = "\n\n".join(prefix)
+    system = "\n\n".join(prefix + tail)
+    return system, cache_prefix

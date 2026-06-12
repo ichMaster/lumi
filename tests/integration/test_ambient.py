@@ -47,5 +47,5 @@ def test_ambient_line_recomputes_now_from_the_clock():
 
 
 def test_build_system_prompt_ambient_is_opt_in():
-    assert build_system_prompt("CANON") == "CANON"
-    assert "X-AMB" in build_system_prompt("CANON", ambient="X-AMB")
+    assert build_system_prompt("CANON") == ("CANON", "CANON")
+    assert "X-AMB" in build_system_prompt("CANON", ambient="X-AMB")[0]

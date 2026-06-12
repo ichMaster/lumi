@@ -200,16 +200,16 @@ def test_reply_strips_think_tags_and_stores_clean(tmp_path):
     assert stored == ["Привіт, друже!"]
 
 
-# --- prompt assembly (build_system_prompt unchanged) ----------------------
+# --- prompt assembly (v0.15 prefix/tail split — style stays last in the tail) ---
 def test_build_system_prompt_places_style_last_with_importance():
-    system = build_system_prompt(
+    system, _ = build_system_prompt(
         "CANON", summaries=["S"], facts=["F"], digest="D", style="STYLE-X"
     )
     for earlier in ("CANON", "S", "F", "D"):
         assert system.index(earlier) < system.index("STYLE-X")
-    assert system.rstrip().endswith("STYLE-X")
+    assert system.rstrip().endswith("STYLE-X")  # style is the last block (the tail's tail)
     assert "ВАЖЛИВО" in system
-    assert build_system_prompt("CANON") == "CANON"
+    assert build_system_prompt("CANON") == ("CANON", "CANON")
 
 
 # --- TUI ------------------------------------------------------------------

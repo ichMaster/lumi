@@ -18,20 +18,20 @@ def test_load_canon_reads_the_configured_file():
 
 def test_build_system_prompt_places_canon_into_system_field():
     canon = "Ти — Лілі. Ось твій характер."
-    system = build_system_prompt(canon)
+    system, _ = build_system_prompt(canon)
     assert canon in system  # the canon rides in the system prompt (the extension seam)
 
 
 def test_build_system_prompt_is_verbatim_without_memory():
     canon = "exact character content"
-    assert build_system_prompt(canon) == canon
-    assert build_system_prompt(canon, summaries=[], facts=[]) == canon
+    assert build_system_prompt(canon) == (canon, canon)  # (system, cache_prefix)
+    assert build_system_prompt(canon, summaries=[], facts=[]) == (canon, canon)
 
 
 def test_build_system_prompt_composes_memory_around_canon():
     canon = "Ти — Лілі."
-    system = build_system_prompt(canon, summaries=["Минулого разу говорили про гори."],
-                                 facts=["Зі Львова", "Любить каву"])
+    system, _ = build_system_prompt(
+        canon, summaries=["Минулого разу говорили про гори."], facts=["Зі Львова", "Любить каву"])
     # Canon at the base; summaries and facts composed around it.
     assert system.startswith(canon)
     assert "Минулого разу говорили про гори." in system
@@ -83,12 +83,31 @@ def test_split_reasoning_handles_multiline_and_stray_tags():
 def test_build_system_prompt_emotion_instruction_is_opt_in():
     from core.prompt import EMOTION_INSTRUCTION
     # Off by default → canon verbatim (the v0.1 contract).
-    assert build_system_prompt("CANON") == "CANON"
-    assert EMOTION_INSTRUCTION not in build_system_prompt("CANON")
+    assert build_system_prompt("CANON") == ("CANON", "CANON")
+    assert EMOTION_INSTRUCTION not in build_system_prompt("CANON")[0]
     # emotion=True injects it right after the canon.
-    withe = build_system_prompt("CANON", emotion=True)
+    withe, _ = build_system_prompt("CANON", emotion=True)
     assert EMOTION_INSTRUCTION in withe
     assert withe.index("CANON") < withe.index(EMOTION_INSTRUCTION)
+
+
+def test_build_system_prompt_cache_prefix_excludes_per_turn_blocks():
+    # v0.15: stable blocks (instructions / memory / mood) form the cache_prefix; the per-turn
+    # blocks (ambient / closeness / thoughts) + style ride in the tail, never the cached prefix.
+    from core.prompt import EMOTION_INSTRUCTION
+    system, cache_prefix = build_system_prompt(
+        "CANON", emotion=True, facts=["F-STABLE"], mood="MOOD-STABLE",
+        ambient="AMB-TURN", closeness="CLOSE-TURN", thoughts="THINK-TURN", style="STYLE-TAIL",
+    )
+    assert system.startswith(cache_prefix)  # cache_prefix is a true prefix of the full system
+    # stable blocks live in the cached prefix
+    assert EMOTION_INSTRUCTION in cache_prefix
+    assert "F-STABLE" in cache_prefix and "MOOD-STABLE" in cache_prefix
+    # per-turn blocks (+ style) are in the TAIL, never the cached prefix
+    for per_turn in ("AMB-TURN", "CLOSE-TURN", "THINK-TURN", "STYLE-TAIL"):
+        assert per_turn not in cache_prefix, f"{per_turn} leaked into the cache prefix"
+        assert per_turn in system
+    assert system.rstrip().endswith("STYLE-TAIL")  # style is still last (most salient)
 
 
 def test_split_emotion_parses_and_strips():

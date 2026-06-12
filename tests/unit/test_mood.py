@@ -111,8 +111,8 @@ def test_mood_off_or_no_natal_makes_no_call(tmp_path):
 def test_build_system_prompt_mood_is_a_prominent_block():
     from core.prompt import MOOD_HEADER, build_system_prompt
 
-    assert "X-MOOD" not in build_system_prompt("CANON")
-    out = build_system_prompt("CANON", mood="X-MOOD")
+    assert "X-MOOD" not in build_system_prompt("CANON")[0]
+    out, _ = build_system_prompt("CANON", mood="X-MOOD")
     assert "X-MOOD" in out and MOOD_HEADER in out  # prominent prioritized header
 
 

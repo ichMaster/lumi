@@ -619,7 +619,7 @@ class Core:
             {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live
         ]
         messages.append({"role": "user", "content": thought_full_seed(topic=topic, rng_seed=rng_seed)})
-        system = self._system_prompt(session) + THOUGHT_FULL_HEADER.format(
+        system = self._system_prompt(session)[0] + THOUGHT_FULL_HEADER.format(
             instruction=directive.instruction
         )
         seeds = ["context", *(["topic"] if topic else [])]
@@ -742,8 +742,9 @@ class Core:
             "user": lambda: self._user_id,
         }
 
-    def _system_prompt(self, session: Session) -> str:
-        """Assemble the system prompt for this turn, rehydrated for the user.
+    def _system_prompt(self, session: Session) -> tuple[str, str]:
+        """Assemble the system prompt for this turn — returns ``(system, cache_prefix)``,
+        the cacheable stable head (v0.15). Rehydrated for the user.
 
         Composes the canon with the user's recent summaries + long-term facts and
         — if the current session has been compacted — its running digest. Loaded
@@ -987,7 +988,7 @@ class Core:
         ]
         messages.append({"role": "user", "content": f"[{format_stamp(turn_ts)}] {user_text}"})
 
-        system = self._system_prompt(session)
+        system, _ = self._system_prompt(session)  # cache_prefix is consumed in LUMI-067
         self.last_prompt = {"system": system, "messages": list(messages)}
         raw = self._llm.reply_structured(system=system, messages=messages, model=self._model)
         # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of

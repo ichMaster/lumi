@@ -175,7 +175,7 @@ def test_three_date_based_tiers_injection(tmp_path):
         repository=repo, canon="C", model="m",
         clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
     )
-    sysp = core._system_prompt(core.start_session())
+    sysp, _ = core._system_prompt(core.start_session())
 
     # Grouped under one markdown memory section, coarse → fine.
     assert "# Памʼять про цю людину" in sysp
@@ -202,5 +202,5 @@ def test_no_tiers_when_no_summaries(tmp_path):
         repository=repo, canon="C", model="m",
         clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
     )
-    sysp = core._system_prompt(core.start_session())
+    sysp, _ = core._system_prompt(core.start_session())
     assert "# Памʼять про цю людину" not in sysp  # no memory at all → no section

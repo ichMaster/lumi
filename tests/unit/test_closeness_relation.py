@@ -68,5 +68,5 @@ def test_reply_without_relation_degrades_to_neutral(tmp_path):
 
 def test_relation_instruction_in_prompt(tmp_path):
     core = _core(tmp_path, {"reply": "ок", "emotion": "calm", "intensity": 0.5})
-    sysp = core._system_prompt(core.start_session())
+    sysp, _ = core._system_prompt(core.start_session())
     assert "relation" in sysp and "warmth" in sysp  # the model is asked to fill it

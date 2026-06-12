@@ -78,8 +78,8 @@ an active chat). The client already *reads* `cache_read_input_tokens` ([core/llm
    and only per-turn content trails:
    ```
    PREFIX (cache):  canon + instructions + memory(weeks/days/sessions/facts-digest)
-                    + mood + style                    →  [cache_control: ephemeral]
-   TAIL (per-turn): # Зараз (ambient time) + closeness (recomputed each turn) + thoughts + [MESSAGES]
+                    + mood                            →  [cache_control: ephemeral]
+   TAIL (per-turn): # Зараз (ambient time) + closeness (recomputed each turn) + thoughts + # Стиль (last) + [MESSAGES]
    ```
    Today `# Зараз` sits *early* — its per-turn timestamp invalidates everything after it for
    caching. Moving it (the closeness block, which `update_closeness` rebuilds each turn, and the
@@ -110,9 +110,8 @@ in the impressions layer. Replaces the digest's hand-run consolidation. See ARCH
 ## 3. Target architecture (caching + RAG combine)
 Complementary — **cache the static, RAG the dynamic**:
 ```
-CACHED prefix (~10K @10% ≈ 1K):  canon + instructions + facts-digest + mood
-                                 + weeks/days + style
-VOLATILE tail (~3K):             ambient time + closeness + RAG top-K relevant past + capped thoughts + messages
+CACHED prefix (~10K @10% ≈ 1K):  canon + instructions + facts-digest + mood + weeks/days
+VOLATILE tail (~3K):             ambient time + closeness + RAG top-K relevant past + capped thoughts + style + messages
 ```
 Character (canon, boundaries, mood) stays in the cached prefix → cheap *and* stable; the small
 closeness block (~150 tok, recomputed each turn) rides in the volatile tail.

@@ -50,7 +50,7 @@ def test_guardrail_present_in_header_and_l1():
 # --- prompt injection ------------------------------------------------------
 def test_active_level_block_injected_in_prompt(tmp_path):
     core = _core(tmp_path, {"reply": "ок", "emotion": "calm", "intensity": 0.5})
-    sysp = core._system_prompt(core.start_session())  # no record yet → DEFAULT_LEVEL
+    sysp, _ = core._system_prompt(core.start_session())  # no record yet → DEFAULT_LEVEL
     assert LEVELS[DEFAULT_LEVEL][0] in sysp and "компетентн" in sysp
 
 
