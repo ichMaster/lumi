@@ -133,13 +133,21 @@ class CloudEmbedder:
         try:
             import voyageai  # optional; imported only when the Voyage provider is used
         except ImportError as exc:  # pragma: no cover
-            raise EmbedderError("The Voyage embedder needs 'voyageai' installed.") from exc
+            raise EmbedderError(
+                "The Voyage embedder needs 'voyageai': uv sync --extra embed."
+            ) from exc
         if self._client is None:
             self._client = voyageai.Client(api_key=self._api_key)
-        # Voyage is asymmetric too — tell it whether this is a query or a document.
+        # Voyage is asymmetric too — tell it whether this is a query or a document. It also caps
+        # each request at 128 inputs, so chunk a backfill batch into sub-requests.
         input_type = "query" if is_query else "document"
-        result = self._client.embed(texts, model=self._model, input_type=input_type)  # type: ignore[attr-defined]
-        return [[float(x) for x in v] for v in result.embeddings]
+        out: list[list[float]] = []
+        for i in range(0, len(texts), 128):
+            result = self._client.embed(  # type: ignore[attr-defined]
+                texts[i : i + 128], model=self._model, input_type=input_type
+            )
+            out.extend([float(x) for x in v] for v in result.embeddings)
+        return out
 
     def _embed_openai(self, texts: list[str]) -> list[list[float]]:
         try:

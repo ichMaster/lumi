@@ -28,6 +28,7 @@ voice = [
 embed = [
     "fastembed>=0.3",  # v0.16 local multilingual embedder (semantic recall); imported lazily
     "numpy>=1.26",     # v0.16 brute-force cosine in the local vector store
+    "voyageai>=0.2",   # v0.16 optional CLOUD embedder (Anthropic-recommended); imported lazily
 ]
 
 [tool.uv]
