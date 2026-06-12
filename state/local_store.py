@@ -90,7 +90,13 @@ class JsonRepository:
         self._closeness: dict[str, Closeness] = {}  # by user_id (v0.10)
         self._digests: dict[str, SessionDigest] = {}  # by session_id
         self._thoughts: list[Thought] = []  # v0.12: GLOBAL diary — a list, NOT keyed by user_id
-        self._vectors: dict[str, list[VectorRecord]] = {}  # v0.16 semantic recall, by user_id
+        # v0.16 semantic recall. The vectors (thousands of 1024-float arrays) live in a SEPARATE
+        # APPEND-ONLY file, never in store.json — so indexing just appends (instant) instead of
+        # rewriting the whole store, and per-turn store writes stay small. `_vector_ids` is an
+        # in-memory msg_id set per user for O(1) idempotent appends.
+        self._vectors: dict[str, list[VectorRecord]] = {}  # by user_id (loaded into memory)
+        self._vector_ids: dict[str, set[str]] = {}  # by user_id — for dedup on append
+        self._vectors_path = self._path.parent / f"{self._path.stem}.vectors.jsonl"
         self._vector_model = ""  # the embedding model the stored vectors were built with
         self._load()
         self._guard_with_lock()
@@ -117,6 +123,7 @@ class JsonRepository:
     # --- persistence -----------------------------------------------------
     def _load(self) -> None:
         if not self._path.is_file():
+            self._load_vectors_file()  # vectors persist separately — load them even on a fresh store
             return
         data = json.loads(self._path.read_text(encoding="utf-8"))
         for sid, raw in data.get("sessions", {}).items():
@@ -146,10 +153,51 @@ class JsonRepository:
             self._digests[sid] = SessionDigest(**raw)
         # v0.12: a flat list (global), not a dict-by-user — that's what makes it global.
         self._thoughts = [Thought(**raw) for raw in data.get("thoughts", [])]
-        # v0.16: per-user vector store (the JSON list round-trips into VectorRecord tuples).
-        for uid, raws in data.get("vectors", {}).items():
-            self._vectors[uid] = [VectorRecord(**raw) for raw in raws]
         self._vector_model = data.get("vector_model", "")
+        # v0.16: vectors load from the append-only JSONL. Legacy stores kept them inside store.json
+        # under "vectors" — migrate those to the JSONL once (no re-embedding), then they're dropped
+        # from store.json on the next _persist (which no longer writes that key).
+        legacy = data.get("vectors")
+        if legacy and not self._vectors_path.is_file():
+            for raws in legacy.values():
+                for raw in raws:
+                    self._remember_vector(VectorRecord(**raw))
+            self._rewrite_vectors_file()
+            self._persist()  # rewrite store.json WITHOUT the now-migrated vectors
+        else:
+            self._load_vectors_file()
+
+    def _remember_vector(self, record: VectorRecord) -> bool:
+        """Add ``record`` to the in-memory store if new (dedup by msg_id). Returns True if added."""
+        ids = self._vector_ids.setdefault(record.user_id, set())
+        if record.msg_id in ids:
+            return False
+        ids.add(record.msg_id)
+        self._vectors.setdefault(record.user_id, []).append(record)
+        return True
+
+    def _load_vectors_file(self) -> None:
+        if not self._vectors_path.is_file():
+            return
+        for line in self._vectors_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                self._remember_vector(VectorRecord(**json.loads(line)))
+            except Exception:  # noqa: BLE001 — skip a truncated/corrupt trailing line
+                continue
+
+    def _rewrite_vectors_file(self) -> None:
+        """Rewrite the whole JSONL from memory (used on clear/migrate; appends are the hot path)."""
+        self._vectors_path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            json.dumps(asdict(r), ensure_ascii=False)
+            for items in self._vectors.values()
+            for r in items
+        ]
+        tmp = self._vectors_path.with_suffix(self._vectors_path.suffix + ".tmp")
+        tmp.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        tmp.replace(self._vectors_path)
 
     def _persist(self) -> None:
         data = {
@@ -175,9 +223,8 @@ class JsonRepository:
             "closeness": {uid: asdict(c) for uid, c in self._closeness.items()},
             "digests": {sid: asdict(d) for sid, d in self._digests.items()},
             "thoughts": [asdict(t) for t in self._thoughts],  # global list
-            "vectors": {
-                uid: [asdict(v) for v in items] for uid, items in self._vectors.items()
-            },
+            # NB: vectors live in the append-only `<store>.vectors.jsonl`, NOT here — keeping the
+            # big 1024-float arrays out of store.json is what makes per-turn writes fast.
             "vector_model": self._vector_model,
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -276,7 +323,10 @@ class JsonRepository:
         self._facts.pop(user_id, None)
         self._facts_digests.pop(user_id, None)
         self._closeness.pop(user_id, None)
-        self._vectors.pop(user_id, None)  # v0.16: /forget clears the user's recall vectors too
+        # v0.16: /forget clears the user's recall vectors too (rewrite the JSONL without them).
+        self._vectors.pop(user_id, None)
+        self._vector_ids.pop(user_id, None)
+        self._rewrite_vectors_file()
         self._persist()
 
     def get_digest(self, session_id: str) -> SessionDigest | None:
@@ -312,37 +362,34 @@ class JsonRepository:
         self.add_vectors([record])
 
     def add_vectors(self, records: list[VectorRecord]) -> None:
-        # Index many at once with a SINGLE persist — backfill writes thousands of vectors, and a
-        # per-record full-store rewrite would be O(n²) I/O. Idempotent: re-embedding the same
-        # message (same content-addressed msg_id) upserts rather than duplicates.
-        if not records:
-            return
-        by_user: dict[str, list[VectorRecord]] = {}
+        # APPEND new records to the JSONL — no full-store rewrite (that's what froze indexing of a
+        # large history). Idempotent: a msg_id already present is skipped (re-embedding is a no-op;
+        # a genuine model change goes through reset_vectors, which truncates).
+        new_lines: list[str] = []
         for record in records:
-            by_user.setdefault(record.user_id, []).append(record)
-        for user_id, recs in by_user.items():
-            items = self._vectors.setdefault(user_id, [])
-            index = {r.msg_id: i for i, r in enumerate(items)}  # built once per user per call
-            for record in recs:
-                if record.msg_id in index:
-                    items[index[record.msg_id]] = record
-                else:
-                    index[record.msg_id] = len(items)
-                    items.append(record)
-        self._persist()
+            if self._remember_vector(record):
+                new_lines.append(json.dumps(asdict(record), ensure_ascii=False))
+        if not new_lines:
+            return
+        self._vectors_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._vectors_path.open("a", encoding="utf-8") as fh:
+            fh.write("\n".join(new_lines) + "\n")
 
     def has_vector(self, user_id: str, msg_id: str) -> bool:
-        return any(r.msg_id == msg_id for r in self._vectors.get(user_id, []))
+        return msg_id in self._vector_ids.get(user_id, ())
 
     def vectors_model(self) -> str:
         return self._vector_model
 
     def reset_vectors(self, model: str) -> None:
         # A model change means the old vectors have a different dimensionality — drop them all
-        # so backfill re-indexes with the new model.
+        # (truncate the JSONL) so backfill re-indexes with the new model.
         self._vectors.clear()
+        self._vector_ids.clear()
         self._vector_model = model
-        self._persist()
+        self._vectors_path.parent.mkdir(parents=True, exist_ok=True)
+        self._vectors_path.write_text("", encoding="utf-8")  # truncate
+        self._persist()  # store.json keeps the model marker
 
     def search_vectors(
         self, user_id: str, query_vector: list[float], k: int
