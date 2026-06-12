@@ -38,6 +38,19 @@ def test_stats_line_shows_cache_read_and_write(tmp_path):
     assert "wrote" in text and "↑" in text    # prefix (re)written this turn
 
 
+def test_prompt_dump_tokens_line_shows_in_out_and_cache(tmp_path):
+    # v0.15: the /prompt dump carries the last turn's token cost (in/out + cache).
+    from tui.app import LumiApp
+    core = _core(tmp_path, MockLLMClient("ok"))
+    core.last_stats = ResponseStats(
+        model="m", latency_ms=1200, input_tokens=16000, output_tokens=180,
+        cache_read_tokens=14000, cache_write_tokens=0,
+    )
+    line = LumiApp(core)._last_tokens_line()
+    assert line.startswith("[TOKENS]")
+    assert "in" in line and "out" in line and "↩" in line  # in/out tokens + cache read
+
+
 class _ThinkingRecorder:
     """A fake LLM that records whether thinking was on during each call."""
 

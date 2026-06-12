@@ -791,15 +791,34 @@ class LumiApp(App[None]):
             line = f"Unknown style in '{arg}'. Available: {names}"
             self._emit(line, Text(line, style=ERROR_COLOR))
 
+    def _last_tokens_line(self) -> str | None:
+        """The last turn's token usage for the `/prompt` dump — in/out + cache + latency, or None."""
+        stats = self._core.last_stats
+        if stats is None:
+            return None
+        bits = [
+            f"in {self._fmt_tokens(stats.input_tokens or 0)}",
+            f"out {self._fmt_tokens(stats.output_tokens or 0)}",
+        ]
+        if stats.cache_read_tokens:
+            bits.append(f"cache {self._fmt_tokens(stats.cache_read_tokens)}↩")
+        if stats.cache_write_tokens:
+            bits.append(f"wrote {self._fmt_tokens(stats.cache_write_tokens)}↑")
+        bits.append(self._fmt_latency(stats.latency_ms))
+        return "[TOKENS] " + " · ".join(bits)
+
     def _show_prompt(self) -> None:
-        """Show the exact prompt sent on the last turn — `/prompt`."""
+        """Show the exact prompt sent on the last turn (+ its token cost) — `/prompt`."""
         p = getattr(self._core, "last_prompt", None)
         if not p:
             msg = "No prompt yet — make a turn first."
             self._emit(msg, Text(msg, style=SYSTEM_COLOR))
             return
         system = mark_cache_breakpoint(p["system"], p.get("cache_prefix"))  # show the cache split
-        parts = ["── last turn's prompt ──", "", "[SYSTEM]", system, "", "[MESSAGES]"]
+        head = ["── last turn's prompt ──"]
+        if (tokens := self._last_tokens_line()) is not None:
+            head.append(tokens)
+        parts = [*head, "", "[SYSTEM]", system, "", "[MESSAGES]"]
         parts += [f"{m['role']}: {m['content']}" for m in p["messages"]]
         body = "\n".join(parts)
         self._emit(body, Text(body, style=THINKING_COLOR))  # dim, like a meta block
