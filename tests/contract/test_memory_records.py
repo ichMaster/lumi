@@ -10,6 +10,7 @@ from core.repository import (
     LongTermFact,
     SessionDigest,
     ShortSummary,
+    VectorRecord,
     WeekSummary,
 )
 
@@ -66,3 +67,18 @@ def test_session_digest_shape():
     # In-session compaction record (per-session, behind repository).
     fields = set(SessionDigest.__dataclass_fields__)
     assert fields == {"session_id", "summary", "compacted_count", "ts"}
+
+
+def test_vector_record_shape():
+    # v0.16 semantic recall — ARCHITECTURE §Semantic recall: {user_id, msg_id, vector, text, ts, role}.
+    assert set(VectorRecord.__dataclass_fields__) == {
+        "user_id", "msg_id", "vector", "text", "ts", "role",
+    }
+
+
+def test_vector_record_is_per_user_and_coerces_vector():
+    # Per-user (carries user_id); JSON round-trips the vector list back into a tuple.
+    r = VectorRecord(user_id="owner", msg_id="abc", vector=[0.1, 0.2],
+                     text="привіт", ts="2026-06-06T00:00:00+00:00", role="user")
+    assert r.user_id == "owner"
+    assert r.vector == (0.1, 0.2)  # list coerced to tuple in __post_init__

@@ -12,6 +12,7 @@ match ARCHITECTURE §Data model minus that field.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
@@ -225,6 +226,49 @@ def make_thought(
     )
 
 
+@dataclass(frozen=True)
+class VectorRecord:
+    """One embedded message in the per-user vector store (v0.16 semantic recall).
+
+    ``vector`` is the message's embedding; ``msg_id`` is a **stable, content-addressed**
+    id (a hash of ``session_id|ts|role|text``) so indexing/backfill is **idempotent** —
+    re-embedding the same message never duplicates it. Per-user (private); retrieval runs
+    only over the requesting user's records (the isolation invariant). See SEMANTIC_RECALL.md.
+    """
+
+    user_id: str
+    msg_id: str
+    vector: tuple[float, ...]
+    text: str
+    ts: str
+    role: str
+
+    def __post_init__(self) -> None:
+        # JSON round-trips tuples as lists; coerce back so equality/round-trip hold.
+        if not isinstance(self.vector, tuple):
+            object.__setattr__(self, "vector", tuple(float(x) for x in self.vector))
+
+
+def vector_msg_id(session_id: str, ts: str, role: str, text: str) -> str:
+    """A stable content-addressed id for a message (idempotent indexing/backfill)."""
+    raw = f"{session_id}|{ts}|{role}|{text}"
+    return hashlib.blake2b(raw.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def make_vector_record(
+    *, user_id: str, session_id: str, role: str, text: str, ts: str, vector: list[float]
+) -> VectorRecord:
+    """Build a :class:`VectorRecord`, deriving the content-addressed ``msg_id``."""
+    return VectorRecord(
+        user_id=user_id,
+        msg_id=vector_msg_id(session_id, ts, role, text),
+        vector=tuple(float(x) for x in vector),
+        text=text,
+        ts=ts,
+        role=role,
+    )
+
+
 @runtime_checkable
 class Repository(Protocol):
     """The storage seam — keyed by ``user_id`` (ARCHITECTURE §Storage).
@@ -323,10 +367,29 @@ class Repository(Protocol):
         ...
 
     def clear_memory(self, user_id: str) -> None:
-        """Wipe a user's relationship memory (short summaries + long-term facts).
+        """Wipe a user's relationship memory (short summaries + long-term facts + vectors).
 
         Affects only this ``user_id``; the canon and other users are untouched.
-        Session messages are not removed.
+        Session messages are not removed; the user's semantic-recall vectors (v0.16) are.
+        """
+        ...
+
+    # --- Semantic recall / vector store (v0.16) — per-user, isolated ----
+    def add_vector(self, record: VectorRecord) -> None:
+        """Index one embedded message (per-user). Idempotent by ``msg_id`` (no duplicates)."""
+        ...
+
+    def has_vector(self, user_id: str, msg_id: str) -> bool:
+        """Whether this user already has a vector for ``msg_id`` (for incremental/backfill)."""
+        ...
+
+    def search_vectors(
+        self, user_id: str, query_vector: list[float], k: int
+    ) -> list[tuple[float, VectorRecord]]:
+        """Top-``k`` records by cosine similarity, **scoped to ``user_id``** (descending).
+
+        Runs only over the requesting user's vectors — A's records never surface for B
+        (the isolation invariant). A cold/empty store returns ``[]``.
         """
         ...
 

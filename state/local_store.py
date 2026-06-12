@@ -9,6 +9,7 @@ server DB can replace it later without touching the core.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, replace
 from pathlib import Path
 from uuid import uuid4
@@ -23,10 +24,44 @@ from core.repository import (
     SessionDigest,
     ShortSummary,
     Thought,
+    VectorRecord,
     WeekSummary,
     now_iso,
 )
 from core.user import DEFAULT_USER_ID
+
+
+def _topk_cosine(
+    query: list[float], records: list[VectorRecord], k: int
+) -> list[tuple[float, VectorRecord]]:
+    """Top-``k`` (score, record) by cosine, descending. Uses numpy when installed (the
+    ``embed`` extra), else a pure-Python fallback so the store works with no heavy dep."""
+    if not records or k <= 0:
+        return []
+    try:
+        import numpy as np  # optional (the 'embed' extra); fast brute-force cosine
+    except ImportError:
+        return _topk_cosine_py(query, records, k)
+    mat = np.array([r.vector for r in records], dtype=float)
+    q = np.array(query, dtype=float)
+    denom = np.linalg.norm(mat, axis=1) * np.linalg.norm(q)
+    sims = np.divide(mat.dot(q), denom, out=np.zeros(len(records)), where=denom > 0)
+    order = np.argsort(-sims, kind="stable")[:k]
+    return [(float(sims[i]), records[i]) for i in order]
+
+
+def _topk_cosine_py(
+    query: list[float], records: list[VectorRecord], k: int
+) -> list[tuple[float, VectorRecord]]:
+    qn = math.sqrt(sum(x * x for x in query))
+    scored: list[tuple[float, VectorRecord]] = []
+    for r in records:
+        rn = math.sqrt(sum(x * x for x in r.vector))
+        denom = qn * rn
+        dot = sum(a * b for a, b in zip(query, r.vector, strict=False))
+        scored.append((dot / denom if denom else 0.0, r))
+    scored.sort(key=lambda t: t[0], reverse=True)  # stable → ties keep insertion order
+    return scored[:k]
 
 
 class JsonRepository:
@@ -44,6 +79,7 @@ class JsonRepository:
         self._closeness: dict[str, Closeness] = {}  # by user_id (v0.10)
         self._digests: dict[str, SessionDigest] = {}  # by session_id
         self._thoughts: list[Thought] = []  # v0.12: GLOBAL diary — a list, NOT keyed by user_id
+        self._vectors: dict[str, list[VectorRecord]] = {}  # v0.16 semantic recall, by user_id
         self._load()
 
     # --- persistence -----------------------------------------------------
@@ -78,6 +114,9 @@ class JsonRepository:
             self._digests[sid] = SessionDigest(**raw)
         # v0.12: a flat list (global), not a dict-by-user — that's what makes it global.
         self._thoughts = [Thought(**raw) for raw in data.get("thoughts", [])]
+        # v0.16: per-user vector store (the JSON list round-trips into VectorRecord tuples).
+        for uid, raws in data.get("vectors", {}).items():
+            self._vectors[uid] = [VectorRecord(**raw) for raw in raws]
 
     def _persist(self) -> None:
         data = {
@@ -103,6 +142,9 @@ class JsonRepository:
             "closeness": {uid: asdict(c) for uid, c in self._closeness.items()},
             "digests": {sid: asdict(d) for sid, d in self._digests.items()},
             "thoughts": [asdict(t) for t in self._thoughts],  # global list
+            "vectors": {
+                uid: [asdict(v) for v in items] for uid, items in self._vectors.items()
+            },
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(self._path.suffix + ".tmp")
@@ -200,6 +242,7 @@ class JsonRepository:
         self._facts.pop(user_id, None)
         self._facts_digests.pop(user_id, None)
         self._closeness.pop(user_id, None)
+        self._vectors.pop(user_id, None)  # v0.16: /forget clears the user's recall vectors too
         self._persist()
 
     def get_digest(self, session_id: str) -> SessionDigest | None:
@@ -229,3 +272,25 @@ class JsonRepository:
         if len(kept) != len(self._thoughts):
             self._thoughts = kept
             self._persist()
+
+    # --- Semantic recall / vector store (v0.16) — per-user, isolated ----
+    def add_vector(self, record: VectorRecord) -> None:
+        items = self._vectors.setdefault(record.user_id, [])
+        # Idempotent: re-embedding the same message (same content-addressed msg_id)
+        # upserts rather than duplicates.
+        for i, existing in enumerate(items):
+            if existing.msg_id == record.msg_id:
+                items[i] = record
+                self._persist()
+                return
+        items.append(record)
+        self._persist()
+
+    def has_vector(self, user_id: str, msg_id: str) -> bool:
+        return any(r.msg_id == msg_id for r in self._vectors.get(user_id, []))
+
+    def search_vectors(
+        self, user_id: str, query_vector: list[float], k: int
+    ) -> list[tuple[float, VectorRecord]]:
+        # Isolation: only this user's vectors are ever in the candidate set.
+        return _topk_cosine(list(query_vector), self._vectors.get(user_id, []), k)
