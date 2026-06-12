@@ -18,6 +18,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from core.closeness import ClosenessTuning
+from core.embedder import DEFAULT_LOCAL_MODEL
 from core.memory import (
     DAY_DAYS,
     MAX_DAY_ROWS,
@@ -188,6 +189,11 @@ class Config:
     facts_digest: bool = True       # consolidate long-term facts into a compact prompt digest
     facts_digest_max: int = 150     # target lines for the consolidated facts digest
     prompt_cache: bool = True       # v0.15: mark the stable prompt prefix as a cache breakpoint
+    # v0.16 semantic recall (RAG) — off by default (the whole feature: index + /recall).
+    recall: bool = False
+    embed_provider: str = "local"   # local (private, default) | voyage | openai
+    embed_model: str = DEFAULT_LOCAL_MODEL
+    embed_api_key: str = field(default="", repr=False)  # cloud embedder key — secret, never logged
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
@@ -306,6 +312,13 @@ def load_config(*, load_env: bool = True) -> Config:
     thoughts_quiet_env = os.getenv("LUMI_THOUGHTS_QUIET_HOURS")
     thoughts_quiet_hours = quiet_hours if thoughts_quiet_env is None else _parse_quiet_hours(thoughts_quiet_env)
 
+    # v0.16 semantic recall: the embedder provider + its (cloud-only) key. local → no key.
+    embed_provider = (os.getenv("LUMI_EMBED_PROVIDER") or "local").strip().lower()
+    embed_key = {
+        "voyage": os.getenv("VOYAGE_API_KEY"),
+        "openai": os.getenv("OPENAI_API_KEY"),
+    }.get(embed_provider) or ""
+
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
@@ -348,6 +361,10 @@ def load_config(*, load_env: bool = True) -> Config:
         closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
         facts_digest=(os.getenv("LUMI_FACTS_DIGEST") or "on").strip().lower() in _TRUTHY,  # on by default
         prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
+        recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
+        embed_provider=embed_provider,
+        embed_model=(os.getenv("LUMI_EMBED_MODEL") or DEFAULT_LOCAL_MODEL).strip(),
+        embed_api_key=embed_key,
         facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),

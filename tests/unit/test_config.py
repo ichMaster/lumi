@@ -58,6 +58,31 @@ def test_closeness_mood_shift_scale_default_and_override(monkeypatch):
     assert load_config(load_env=False).closeness_tuning.mood_shift_scale == 0.0  # disabled
 
 
+def test_recall_defaults_off_and_local_embedder(monkeypatch):
+    # v0.16 semantic recall: the whole feature is off by default; the default embedder
+    # is the private LOCAL one — nothing is sent anywhere unless explicitly configured.
+    for key in ("LUMI_RECALL", "LUMI_EMBED_PROVIDER", "LUMI_EMBED_MODEL",
+                "VOYAGE_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    cfg = load_config(load_env=False)
+    assert cfg.recall is False
+    assert cfg.embed_provider == "local"
+    assert "multilingual" in cfg.embed_model
+    assert cfg.embed_api_key == ""  # local → no cloud key
+
+
+def test_recall_on_and_cloud_key_resolves_by_provider(monkeypatch):
+    monkeypatch.setenv("LUMI_RECALL", "on")
+    monkeypatch.setenv("LUMI_EMBED_PROVIDER", "voyage")
+    monkeypatch.setenv("VOYAGE_API_KEY", "vk-test-not-real")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-other")
+    cfg = load_config(load_env=False)
+    assert cfg.recall is True
+    assert cfg.embed_provider == "voyage"
+    assert cfg.embed_api_key == "vk-test-not-real"  # picked by provider, not OpenAI's
+    assert "embed_api_key" not in repr(cfg)  # the secret stays out of repr
+
+
 def test_prompt_cache_default_and_override(monkeypatch):
     # v0.15: the prompt-cache toggle (on by default).
     monkeypatch.delenv("LUMI_PROMPT_CACHE", raising=False)

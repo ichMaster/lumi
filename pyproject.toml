@@ -25,6 +25,10 @@ telegram = [
 voice = [
     "elevenlabs>=1",  # v0.14 local voicer (TTS); imported lazily, not needed by core/tests
 ]
+embed = [
+    "fastembed>=0.3",  # v0.16 local multilingual embedder (semantic recall); imported lazily
+    "numpy>=1.26",     # v0.16 brute-force cosine in the local vector store
+]
 
 [tool.uv]
 package = false
