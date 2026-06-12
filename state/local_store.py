@@ -40,6 +40,10 @@ def _topk_cosine(
     ``embed`` extra), else a pure-Python fallback so the store works with no heavy dep."""
     if not records or k <= 0:
         return []
+    # Skip any vector whose dim doesn't match the query (e.g. left over from a previous model).
+    records = [r for r in records if len(r.vector) == len(query)]
+    if not records:
+        return []
     try:
         import numpy as np  # optional (the 'embed' extra); fast brute-force cosine
     except ImportError:
@@ -87,6 +91,7 @@ class JsonRepository:
         self._digests: dict[str, SessionDigest] = {}  # by session_id
         self._thoughts: list[Thought] = []  # v0.12: GLOBAL diary — a list, NOT keyed by user_id
         self._vectors: dict[str, list[VectorRecord]] = {}  # v0.16 semantic recall, by user_id
+        self._vector_model = ""  # the embedding model the stored vectors were built with
         self._load()
         self._guard_with_lock()
 
@@ -144,6 +149,7 @@ class JsonRepository:
         # v0.16: per-user vector store (the JSON list round-trips into VectorRecord tuples).
         for uid, raws in data.get("vectors", {}).items():
             self._vectors[uid] = [VectorRecord(**raw) for raw in raws]
+        self._vector_model = data.get("vector_model", "")
 
     def _persist(self) -> None:
         data = {
@@ -172,6 +178,7 @@ class JsonRepository:
             "vectors": {
                 uid: [asdict(v) for v in items] for uid, items in self._vectors.items()
             },
+            "vector_model": self._vector_model,
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(self._path.suffix + ".tmp")
@@ -326,6 +333,16 @@ class JsonRepository:
 
     def has_vector(self, user_id: str, msg_id: str) -> bool:
         return any(r.msg_id == msg_id for r in self._vectors.get(user_id, []))
+
+    def vectors_model(self) -> str:
+        return self._vector_model
+
+    def reset_vectors(self, model: str) -> None:
+        # A model change means the old vectors have a different dimensionality — drop them all
+        # so backfill re-indexes with the new model.
+        self._vectors.clear()
+        self._vector_model = model
+        self._persist()
 
     def search_vectors(
         self, user_id: str, query_vector: list[float], k: int

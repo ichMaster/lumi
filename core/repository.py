@@ -386,6 +386,17 @@ class Repository(Protocol):
         """
         ...
 
+    def vectors_model(self) -> str:
+        """The embedding model the stored vectors were built with (``""`` if none/unknown).
+
+        Lets the core detect a model change (different dimensionality) and re-index.
+        """
+        ...
+
+    def reset_vectors(self, model: str) -> None:
+        """Drop **all** vectors and record ``model`` as the current one (on a model change)."""
+        ...
+
     def has_vector(self, user_id: str, msg_id: str) -> bool:
         """Whether this user already has a vector for ``msg_id`` (for incremental/backfill)."""
         ...

@@ -17,9 +17,10 @@ import hashlib
 import math
 from typing import Protocol, runtime_checkable
 
-# A Ukrainian-capable multilingual default that fastembed ships (small/fast, dim 384, ~0.22 GB);
-# overridable via LUMI_EMBED_MODEL (must be one of TextEmbedding.list_supported_models()).
-DEFAULT_LOCAL_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# A Ukrainian-capable multilingual **retrieval** model fastembed ships (dim 1024, ~2.24 GB).
+# e5 is asymmetric — it needs "query: " / "passage: " prefixes (handled below); without them a
+# keyword query matches by shape, not meaning. Overridable via LUMI_EMBED_MODEL (a fastembed model).
+DEFAULT_LOCAL_MODEL = "intfloat/multilingual-e5-large"
 # The mock's vector size — small but enough for stable cosine ranking in tests.
 DEFAULT_MOCK_DIM = 64
 
@@ -37,8 +38,12 @@ class Embedder(Protocol):
         """The vector dimensionality this embedder produces."""
         ...
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        """Return one vector per input text (batch; same order)."""
+    def embed(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
+        """Return one vector per input text (batch; same order).
+
+        ``is_query=True`` embeds a **search query**, ``False`` a stored **passage** — asymmetric
+        retrieval models (e5) prefix the two differently, which is essential for good ranking.
+        """
         ...
 
 
@@ -59,6 +64,8 @@ class LocalEmbedder:
 
     def __init__(self, model: str = DEFAULT_LOCAL_MODEL) -> None:
         self._model_name = model
+        # e5 models are asymmetric: they REQUIRE "query: " / "passage: " prefixes to rank well.
+        self._e5 = "e5" in model.lower()
         self._model: object | None = None
         self._dim: int | None = None
 
@@ -74,9 +81,13 @@ class LocalEmbedder:
             self._model = TextEmbedding(model_name=self._model_name)
         return self._model
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
         model = self._ensure()
-        vectors = [_unit([float(x) for x in v]) for v in model.embed(list(texts))]  # type: ignore[attr-defined]
+        items = list(texts)
+        if self._e5:
+            prefix = "query: " if is_query else "passage: "
+            items = [prefix + t for t in items]
+        vectors = [_unit([float(x) for x in v]) for v in model.embed(items)]  # type: ignore[attr-defined]
         if vectors:
             self._dim = len(vectors[0])
         return vectors
@@ -105,10 +116,10 @@ class CloudEmbedder:
         self._client: object | None = None
         self._dim: int | None = None
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
         texts = list(texts)
         if self._provider == "voyage":
-            vectors = self._embed_voyage(texts)
+            vectors = self._embed_voyage(texts, is_query)
         elif self._provider == "openai":
             vectors = self._embed_openai(texts)
         else:  # pragma: no cover — build_embedder gates the provider name
@@ -118,14 +129,16 @@ class CloudEmbedder:
             self._dim = len(vectors[0])
         return vectors
 
-    def _embed_voyage(self, texts: list[str]) -> list[list[float]]:
+    def _embed_voyage(self, texts: list[str], is_query: bool = False) -> list[list[float]]:
         try:
             import voyageai  # optional; imported only when the Voyage provider is used
         except ImportError as exc:  # pragma: no cover
             raise EmbedderError("The Voyage embedder needs 'voyageai' installed.") from exc
         if self._client is None:
             self._client = voyageai.Client(api_key=self._api_key)
-        result = self._client.embed(texts, model=self._model)  # type: ignore[attr-defined]
+        # Voyage is asymmetric too — tell it whether this is a query or a document.
+        input_type = "query" if is_query else "document"
+        result = self._client.embed(texts, model=self._model, input_type=input_type)  # type: ignore[attr-defined]
         return [[float(x) for x in v] for v in result.embeddings]
 
     def _embed_openai(self, texts: list[str]) -> list[list[float]]:
@@ -171,7 +184,9 @@ class MockEmbedder:
             vec[int.from_bytes(digest, "big") % self._dim] += 1.0
         return _unit(vec)
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
+        # is_query is ignored — the mock is deterministic (same text → same vector) so query
+        # and passage of identical text match exactly, which keeps the ranking tests stable.
         texts = list(texts)
         self.calls.append(list(texts))
         return [self._vector(t) for t in texts]

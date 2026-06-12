@@ -113,6 +113,24 @@ def test_ensure_backfill_drains_the_whole_history(tmp_path):
     assert len(on._repo._vectors["owner"]) == 6
 
 
+def test_model_change_drops_old_vectors_and_reindexes(tmp_path):
+    # Switching the embedding model changes the vector dimensionality — the old vectors must be
+    # dropped and the history re-indexed under the new model (else /recall would mix dims).
+    store = tmp_path / "store.json"
+    a = Core(llm=MockLLMClient("ок"), repository=JsonRepository(store), canon="c", model="m",
+             embedder=MockEmbedder(), recall_enabled=True, embed_model="model-A")
+    a.reply("привіт", a.start_session())
+    a.ensure_backfill()
+    assert a._repo.vectors_model() == "model-A"
+    assert len(a._repo._vectors["owner"]) == 2
+
+    b = Core(llm=MockLLMClient("ок"), repository=JsonRepository(store), canon="c", model="m",
+             embedder=MockEmbedder(), recall_enabled=True, embed_model="model-B")
+    b.ensure_backfill()  # different model → reset + re-index
+    assert b._repo.vectors_model() == "model-B"
+    assert len(b._repo._vectors["owner"]) == 2
+
+
 class _BoomEmbedder:
     """An embedder that always raises — to prove index-on-write degrades gracefully."""
 

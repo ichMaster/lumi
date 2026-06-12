@@ -98,3 +98,12 @@ def test_cloud_embedder_requires_a_key():
 
 def test_default_local_model_is_multilingual():
     assert "multilingual" in DEFAULT_LOCAL_MODEL
+
+
+def test_mock_embed_accepts_is_query_and_stays_deterministic():
+    # The seam is asymmetric (query vs passage), but the mock ignores it — same text → same
+    # vector — so query/passage of identical text match exactly and ranking tests stay stable.
+    e = MockEmbedder()
+    [as_query] = e.embed(["пуер"], is_query=True)
+    [as_passage] = e.embed(["пуер"])
+    assert as_query == as_passage

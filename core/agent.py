@@ -214,6 +214,7 @@ class Core:
         recall_enabled: bool = False,
         recall_k: int = 5,
         recall_backfill_max: int = 500,
+        embed_model: str = "",
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -309,6 +310,7 @@ class Core:
         self._recall_enabled = recall_enabled and embedder is not None
         self._recall_k = recall_k
         self._recall_backfill_max = recall_backfill_max
+        self._embed_model = embed_model  # the active model — re-index if it changed (dim change)
         self._backfilled = False  # the one-time catch-up runs lazily, once
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
@@ -1203,6 +1205,10 @@ class Core:
         """
         if not self._recall_enabled or self._backfilled:
             return
+        # If the embedding model changed, the old vectors have a different dimensionality — drop
+        # them so the whole history re-indexes with the current model (else /recall would mix dims).
+        if self._embed_model and self._repo.vectors_model() != self._embed_model:
+            self._repo.reset_vectors(self._embed_model)
         while self.backfill_vectors() > 0:
             pass
         self._backfilled = True
@@ -1218,7 +1224,7 @@ class Core:
             return []
         self.ensure_backfill()
         try:
-            [vec] = self._embedder.embed([query])
+            [vec] = self._embedder.embed([query], is_query=True)  # asymmetric: this is the QUERY side
             return self._repo.search_vectors(self._user_id, list(vec), k or self._recall_k)
         except Exception as exc:  # noqa: BLE001 — recall must never break the UI
             _recall_log.warning("recall search failed: %s", exc)
@@ -1312,6 +1318,7 @@ def build_core(
         embedder=embedder,
         recall_enabled=cfg.recall,
         recall_k=cfg.recall_k,
+        embed_model=cfg.embed_model,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
