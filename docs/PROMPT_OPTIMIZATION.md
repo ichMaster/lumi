@@ -27,7 +27,7 @@ Total **~40,623 tokens/turn** — most of it re-sent every turn. At Opus input $
 | Як відповідати (emotion/relation instr) | 262 | 1% | static |
 | Стиль (mega-style palette) | 396 | 1% | static |
 | Настрій (mood) | 290 | 1% | stable within a day |
-| Близькість (closeness block) | 150 | 0% | stable within a day |
+| Близькість (closeness block) | 150 | 0% | **per-turn** (recomputed each turn) |
 | Зараз (ambient now/here) | 179 | 0% | **per-turn** (timestamp) |
 | [MESSAGES] | 432 | 1% | per-turn |
 
@@ -78,11 +78,12 @@ an active chat). The client already *reads* `cache_read_input_tokens` ([core/llm
    and only per-turn content trails:
    ```
    PREFIX (cache):  canon + instructions + memory(weeks/days/sessions/facts-digest)
-                    + mood + closeness + style        →  [cache_control: ephemeral]
-   TAIL (per-turn): # Зараз (ambient time) + thoughts + [MESSAGES]
+                    + mood + style                    →  [cache_control: ephemeral]
+   TAIL (per-turn): # Зараз (ambient time) + closeness (recomputed each turn) + thoughts + [MESSAGES]
    ```
    Today `# Зараз` sits *early* — its per-turn timestamp invalidates everything after it for
-   caching. Moving it (and thoughts) to the tail is the key fix; the blocks are order-independent.
+   caching. Moving it (the closeness block, which `update_closeness` rebuilds each turn, and the
+   thoughts) to the tail is the key fix; the blocks are order-independent.
 2. **Set `cache_control` on the prefix** in `AnthropicClient._base_kwargs`.
 
 → Cached prefix ~10K @ 10% ≈ 1K effective; volatile tail ~4–6K. **No content/quality change.**
@@ -109,11 +110,12 @@ in the impressions layer. Replaces the digest's hand-run consolidation. See ARCH
 ## 3. Target architecture (caching + RAG combine)
 Complementary — **cache the static, RAG the dynamic**:
 ```
-CACHED prefix (~10K @10% ≈ 1K):  canon + instructions + facts-digest + mood + closeness
+CACHED prefix (~10K @10% ≈ 1K):  canon + instructions + facts-digest + mood
                                  + weeks/days + style
-VOLATILE tail (~3K):             ambient time + RAG top-K relevant past + capped thoughts + messages
+VOLATILE tail (~3K):             ambient time + closeness + RAG top-K relevant past + capped thoughts + messages
 ```
-Character (canon, boundaries, mood, closeness) stays in the cached prefix → cheap *and* stable.
+Character (canon, boundaries, mood) stays in the cached prefix → cheap *and* stable; the small
+closeness block (~150 tok, recomputed each turn) rides in the volatile tail.
 
 ---
 
