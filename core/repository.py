@@ -379,6 +379,13 @@ class Repository(Protocol):
         """Index one embedded message (per-user). Idempotent by ``msg_id`` (no duplicates)."""
         ...
 
+    def add_vectors(self, records: list[VectorRecord]) -> None:
+        """Index many embedded messages at once (one write). Idempotent by ``msg_id``.
+
+        The bulk path for backfill — a per-record persist would be O(n²) I/O over a big store.
+        """
+        ...
+
     def has_vector(self, user_id: str, msg_id: str) -> bool:
         """Whether this user already has a vector for ``msg_id`` (for incremental/backfill)."""
         ...

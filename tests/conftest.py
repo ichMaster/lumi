@@ -15,6 +15,9 @@ def _isolate_runtime(monkeypatch, tmp_path_factory):
     """Never let a test join the real Telegram bus or write the real outbox via voice; tmp bus paths."""
     monkeypatch.setenv("LUMI_BRIDGE", "off")
     monkeypatch.setenv("LUMI_VOICE", "off")  # v0.14: no test writes the real outbox via voice either
+    # v0.16: never let a dev's LUMI_RECALL=on make a test load the real embedding model (network +
+    # slow). Tests that exercise recall inject a MockEmbedder / recall_enabled=True explicitly.
+    monkeypatch.setenv("LUMI_RECALL", "off")
     bus = tmp_path_factory.mktemp("bus")
     monkeypatch.setenv("LUMI_INBOX_PATH", str(bus / "inbox.jsonl"))
     monkeypatch.setenv("LUMI_OUTBOX_PATH", str(bus / "outbox.jsonl"))

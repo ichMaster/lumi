@@ -8,8 +8,10 @@ server DB can replace it later without touching the core.
 
 from __future__ import annotations
 
+import functools
 import json
 import math
+import threading
 from dataclasses import asdict, replace
 from pathlib import Path
 from uuid import uuid4
@@ -68,6 +70,11 @@ class JsonRepository:
     """A :class:`~core.repository.Repository` backed by one JSON file."""
 
     def __init__(self, path: str | Path) -> None:
+        # The TUI calls the repo from background worker threads (mood, recall backfill) as well as
+        # the main thread; a plain JSON store isn't otherwise thread-safe (concurrent _persist raced
+        # on the temp file). One re-entrant lock serializes every public method (_guard_with_lock).
+        # The v1 server DB handles concurrency natively (ARCHITECTURE §Storage).
+        self._lock = threading.RLock()
         self._path = Path(path)
         self._sessions: dict[str, Session] = {}
         self._messages: dict[str, list[Message]] = {}
@@ -81,6 +88,26 @@ class JsonRepository:
         self._thoughts: list[Thought] = []  # v0.12: GLOBAL diary — a list, NOT keyed by user_id
         self._vectors: dict[str, list[VectorRecord]] = {}  # v0.16 semantic recall, by user_id
         self._load()
+        self._guard_with_lock()
+
+    def _guard_with_lock(self) -> None:
+        """Wrap every public method so it runs under ``_lock`` (read or write).
+
+        Serializes all access to the shared in-memory state + file, so concurrent calls from
+        the TUI's worker threads can't race (the temp-file ``replace`` crash) or mutate a dict
+        another thread is iterating. ``_persist``/``_load`` (private) run inside these, reentrant.
+        """
+        for name in dir(type(self)):
+            if name.startswith("_") or not callable(getattr(type(self), name)):
+                continue
+            bound = getattr(self, name)
+
+            @functools.wraps(bound)
+            def guarded(*args, _bound=bound, **kwargs):
+                with self._lock:
+                    return _bound(*args, **kwargs)
+
+            object.__setattr__(self, name, guarded)
 
     # --- persistence -----------------------------------------------------
     def _load(self) -> None:
@@ -275,15 +302,26 @@ class JsonRepository:
 
     # --- Semantic recall / vector store (v0.16) — per-user, isolated ----
     def add_vector(self, record: VectorRecord) -> None:
-        items = self._vectors.setdefault(record.user_id, [])
-        # Idempotent: re-embedding the same message (same content-addressed msg_id)
-        # upserts rather than duplicates.
-        for i, existing in enumerate(items):
-            if existing.msg_id == record.msg_id:
-                items[i] = record
-                self._persist()
-                return
-        items.append(record)
+        self.add_vectors([record])
+
+    def add_vectors(self, records: list[VectorRecord]) -> None:
+        # Index many at once with a SINGLE persist — backfill writes thousands of vectors, and a
+        # per-record full-store rewrite would be O(n²) I/O. Idempotent: re-embedding the same
+        # message (same content-addressed msg_id) upserts rather than duplicates.
+        if not records:
+            return
+        by_user: dict[str, list[VectorRecord]] = {}
+        for record in records:
+            by_user.setdefault(record.user_id, []).append(record)
+        for user_id, recs in by_user.items():
+            items = self._vectors.setdefault(user_id, [])
+            index = {r.msg_id: i for i, r in enumerate(items)}  # built once per user per call
+            for record in recs:
+                if record.msg_id in index:
+                    items[index[record.msg_id]] = record
+                else:
+                    index[record.msg_id] = len(items)
+                    items.append(record)
         self._persist()
 
     def has_vector(self, user_id: str, msg_id: str) -> bool:

@@ -1150,8 +1150,9 @@ class Core:
             return
         try:
             vectors = self._embedder.embed([m.text for m in to_index])
-            for m, vec in zip(to_index, vectors, strict=True):
-                self._repo.add_vector(self._vector_record(m, vec))
+            self._repo.add_vectors(
+                [self._vector_record(m, vec) for m, vec in zip(to_index, vectors, strict=True)]
+            )
         except Exception as exc:  # noqa: BLE001 — best-effort; the messages are stored, retried by backfill
             _recall_log.warning("recall index-on-write failed (message stored; will backfill): %s", exc)
 
@@ -1189,8 +1190,9 @@ class Core:
         except Exception as exc:  # noqa: BLE001 — best-effort; retried on the next pass
             _recall_log.warning("recall backfill embed failed (retried next pass): %s", exc)
             return 0
-        for m, vec in zip(pending, vectors, strict=True):
-            self._repo.add_vector(self._vector_record(m, vec))
+        self._repo.add_vectors(
+            [self._vector_record(m, vec) for m, vec in zip(pending, vectors, strict=True)]
+        )
         return len(pending)
 
     def ensure_backfill(self) -> None:
