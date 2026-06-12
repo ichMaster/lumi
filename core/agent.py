@@ -212,6 +212,7 @@ class Core:
         prompt_cache: bool = False,
         embedder: Embedder | None = None,
         recall_enabled: bool = False,
+        recall_k: int = 5,
         recall_backfill_max: int = 500,
         clock: Clock = system_clock,
         natal: str = "",
@@ -306,6 +307,7 @@ class Core:
         # + lazy backfill). Best-effort — off, no embedder, or an embed error never blocks a turn.
         self._embedder = embedder
         self._recall_enabled = recall_enabled and embedder is not None
+        self._recall_k = recall_k
         self._recall_backfill_max = recall_backfill_max
         self._backfilled = False  # the one-time catch-up runs lazily, once
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
@@ -1198,6 +1200,23 @@ class Core:
         if self._recall_enabled and not self._backfilled:
             self.backfill_vectors()
 
+    def recall(self, query: str, k: int | None = None) -> list[tuple[float, VectorRecord]]:
+        """Explicit semantic search (the ``/recall`` command, v0.16).
+
+        Embed ``query`` → top-``k`` over **this user's** vectors → dated matches (descending).
+        Backfills a cold store first so it still answers. Off / no embedder / empty query /
+        an embed error → ``[]`` — **never raises**. Scoped to the active user (isolation).
+        """
+        if not self._recall_enabled or self._embedder is None or not query.strip():
+            return []
+        self.ensure_backfill()
+        try:
+            [vec] = self._embedder.embed([query])
+            return self._repo.search_vectors(self._user_id, list(vec), k or self._recall_k)
+        except Exception:  # noqa: BLE001 — recall must never break the UI
+            _recall_log.warning("recall search failed")
+            return []
+
     def _accumulate_facts(self, history: list) -> None:
         try:
             system, msgs = facts_request(history)
@@ -1285,6 +1304,7 @@ def build_core(
         prompt_cache=cfg.prompt_cache,
         embedder=embedder,
         recall_enabled=cfg.recall,
+        recall_k=cfg.recall_k,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,

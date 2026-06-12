@@ -244,7 +244,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /recall /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -477,6 +477,10 @@ class LumiApp(App[None]):
             self._show_thoughts()
             prompt.focus()
             return
+        if text == "/recall" or text.startswith("/recall "):
+            self._recall_command(text)
+            prompt.focus()
+            return
         if text == "/theme" or text.startswith("/theme "):
             self._theme_command(text)
             prompt.focus()
@@ -685,6 +689,32 @@ class LumiApp(App[None]):
         else:
             view = self._core.thoughts_view()
             body = f"**Що в мене на думці:**\n\n{view}" if view else "Поки що жодних думок."
+        self._emit(body, Markdown(body))
+
+    def _recall_command(self, text: str) -> None:
+        """Explicit semantic search — the `/recall <query>` command (v0.16).
+
+        Renders each hit as a dated, scored line; an empty query or no results prints a
+        friendly note. Off (LUMI_RECALL) → says so rather than implying nothing matched.
+        """
+        query = text[len("/recall"):].strip()
+        if not self._core.recall_enabled:
+            body = "Семантичний пошук вимкнено (увімкни `LUMI_RECALL=on`)."
+            self._emit(body, Markdown(body))
+            return
+        if not query:
+            body = "Що згадати? `/recall <запит>`"
+            self._emit(body, Markdown(body))
+            return
+        hits = self._core.recall(query)
+        if not hits:
+            body = f"Нічого не згадалося про «{query}»."
+        else:
+            lines = [f"**Згадую про «{query}»:**"]
+            for score, rec in hits:
+                who = "Лілі" if rec.role == "lili" else "ти"
+                lines.append(f"- {rec.ts[:10]} · {who}: «{rec.text}» _({score:.2f})_")
+            body = "\n".join(lines)
         self._emit(body, Markdown(body))
 
     def _show_closeness(self) -> None:

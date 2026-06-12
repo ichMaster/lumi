@@ -83,6 +83,13 @@ def test_recall_on_and_cloud_key_resolves_by_provider(monkeypatch):
     assert "embed_api_key" not in repr(cfg)  # the secret stays out of repr
 
 
+def test_recall_k_default_and_override(monkeypatch):
+    monkeypatch.delenv("LUMI_RECALL_K", raising=False)
+    assert load_config(load_env=False).recall_k == 5  # default top-K
+    monkeypatch.setenv("LUMI_RECALL_K", "8")
+    assert load_config(load_env=False).recall_k == 8
+
+
 def test_prompt_cache_default_and_override(monkeypatch):
     # v0.15: the prompt-cache toggle (on by default).
     monkeypatch.delenv("LUMI_PROMPT_CACHE", raising=False)
