@@ -319,6 +319,11 @@ def load_config(*, load_env: bool = True) -> Config:
         "voyage": os.getenv("VOYAGE_API_KEY"),
         "openai": os.getenv("OPENAI_API_KEY"),
     }.get(embed_provider) or ""
+    # The model defaults per provider (a Voyage/OpenAI model name, not the local e5 one) unless set.
+    _embed_default_model = {"voyage": "voyage-3", "openai": "text-embedding-3-small"}.get(
+        embed_provider, DEFAULT_LOCAL_MODEL
+    )
+    embed_model = (os.getenv("LUMI_EMBED_MODEL") or _embed_default_model).strip()
 
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
@@ -364,7 +369,7 @@ def load_config(*, load_env: bool = True) -> Config:
         prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
         recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
-        embed_model=(os.getenv("LUMI_EMBED_MODEL") or DEFAULT_LOCAL_MODEL).strip(),
+        embed_model=embed_model,
         embed_api_key=embed_key,
         recall_k=int(os.getenv("LUMI_RECALL_K") or 5),
         facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),

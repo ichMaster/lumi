@@ -80,6 +80,7 @@ def test_recall_on_and_cloud_key_resolves_by_provider(monkeypatch):
     assert cfg.recall is True
     assert cfg.embed_provider == "voyage"
     assert cfg.embed_api_key == "vk-test-not-real"  # picked by provider, not OpenAI's
+    assert cfg.embed_model == "voyage-3"  # model defaults to a Voyage model, not the local e5 one
     assert "embed_api_key" not in repr(cfg)  # the secret stays out of repr
 
 
