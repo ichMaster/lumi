@@ -77,7 +77,7 @@ class JsonRepository:
         # The TUI calls the repo from background worker threads (mood, recall backfill) as well as
         # the main thread; a plain JSON store isn't otherwise thread-safe (concurrent _persist raced
         # on the temp file). One re-entrant lock serializes every public method (_guard_with_lock).
-        # The v1 server DB handles concurrency natively (ARCHITECTURE §Storage).
+        # The v2 server DB handles concurrency natively (ARCHITECTURE §Storage).
         self._lock = threading.RLock()
         self._path = Path(path)
         self._sessions: dict[str, Session] = {}

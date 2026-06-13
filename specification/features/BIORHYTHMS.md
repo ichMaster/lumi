@@ -46,7 +46,7 @@ the current phase alongside the cycles.
 ## Merged with the astrology forecast (v0.6)
 
 The biorhythm state is **another input to the daily mood call**, exactly like world context
-(v3.3) will be — so the daily **reading + resolution blend the horoscope and the biorhythms** into
+(v4.3) will be — so the daily **reading + resolution blend the horoscope and the biorhythms** into
 one temperament:
 
 - *"emotional cycle low + a tense transit → quiet, thin-skinned, wants gentleness";*

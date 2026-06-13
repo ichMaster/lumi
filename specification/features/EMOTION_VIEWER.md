@@ -1,8 +1,8 @@
 # Emotion viewer — local window for Лілі's face
 
-The simplest way to show Лілі's face without a server or web: a separate **local desktop window** that displays pre-made emotion images. All it needs to know is **which emotion to show right now**. It is another **renderer of the emotion channel** (EMOTION.md §5), alongside the emoji in the TUI — the same `emotion → image` tier the web `ImageRenderer` (v2.1) will use, just rendered to a local window. It lands as **v0.7**.
+The simplest way to show Лілі's face without a server or web: a separate **local desktop window** that displays pre-made emotion images. All it needs to know is **which emotion to show right now**. It is another **renderer of the emotion channel** (EMOTION.md §5), alongside the emoji in the TUI — the same `emotion → image` tier the web `ImageRenderer` (v3.1) will use, just rendered to a local window. It lands as **v0.7**.
 
-> **Naming:** the face images live in a `faces/` asset pack — **not** the v4 `gallery` (the per-user artifact store, GALLERY_MCP.md). These are the **emotion-face assets** described in EMOTION.md §7; v0.7 and v2.1 share them.
+> **Naming:** the face images live in a `faces/` asset pack — **not** the v5 `gallery` (the per-user artifact store, GALLERY_MCP.md). These are the **emotion-face assets** described in EMOTION.md §7; v0.7 and v3.1 share them.
 
 ## Essence
 
@@ -21,7 +21,7 @@ faces/
   surprise.png   doubt.png      sad.png
 ```
 
-This is the same emotion-face asset pack (e.g. `lili_v1`) that the web `ImageRenderer` reuses in v2.1.
+This is the same emotion-face asset pack (e.g. `lili_v1`) that the web `ImageRenderer` reuses in v3.1.
 
 ## The current-emotion signal
 
@@ -46,9 +46,9 @@ For finer control, keep variants like `joy_low.png` / `joy_high.png` and pick by
 ## Connection to the rest of Lumi
 
 - A **separate local viewer process**, not embedded in the TUI (a terminal can't show PNGs); its only link to the core is the shared signal/folder.
-- Another **renderer of the emotion channel** (EMOTION.md §5): in the TUI the emotion shows as an emoji (v0.5), here as an image from `faces/` by the same emotion word (v0.7), in the web as a portrait + caption (v2.1), later animated (v3.1). Same `EmotionState`, different renderer.
-- Fully **local, no server** — the v0-stage way to get a real image face before the web. Server + web is the v2.1 sibling.
-- Face images are placed by the user/Лілі in advance; later they can be supplemented by the creative layer's image generation (v4.3).
+- Another **renderer of the emotion channel** (EMOTION.md §5): in the TUI the emotion shows as an emoji (v0.5), here as an image from `faces/` by the same emotion word (v0.7), in the web as a portrait + caption (v3.1), later animated (v4.1). Same `EmotionState`, different renderer.
+- Fully **local, no server** — the v0-stage way to get a real image face before the web. Server + web is the v3.1 sibling.
+- Face images are placed by the user/Лілі in advance; later they can be supplemented by the creative layer's image generation (v5.3).
 
 ## Contract (minimal)
 
@@ -58,5 +58,5 @@ For finer control, keep variants like `joy_low.png` / `joy_high.png` and pick by
 
 ## Where it lives in the Lumi roadmap
 
-**v0.7 — Local emotion viewer (image face)**, right after the emoji channel (v0.5): real emotion images locally, without a server, before the web. Stack — any simple desktop viewer (e.g. Python/Tkinter). Depends on: v0.3 (the emotion channel). The web sibling is v2.1.
+**v0.7 — Local emotion viewer (image face)**, right after the emoji channel (v0.5): real emotion images locally, without a server, before the web. Stack — any simple desktop viewer (e.g. Python/Tkinter). Depends on: v0.3 (the emotion channel). The web sibling is v3.1.
 </content>

@@ -4,7 +4,7 @@ A mode of **joint drawing, prompt by prompt, in turns**: you and Лілі take t
 
 ## Essence
 
-We draw **in turns, step by step**: Лілі goes first, then you, then her again — and so on. On their turn a participant either adds a prompt contribution (the canvas changes) or **skips the turn**, just reacting in words. Лілі **sees** the current canvas before her turn (Anthropic vision, §Vision v4.1) and consciously decides what to add.
+We draw **in turns, step by step**: Лілі goes first, then you, then her again — and so on. On their turn a participant either adds a prompt contribution (the canvas changes) or **skips the turn**, just reacting in words. Лілі **sees** the current canvas before her turn (Anthropic vision, §Vision v5.1) and consciously decides what to add.
 
 Why it's strong: Лілі is a **co-author** here, not a tool — she starts the canvas, sees its state, and develops it in her style; the "generation + vision" loop closes.
 
@@ -15,7 +15,7 @@ Why it's strong: Лілі is a **co-author** here, not a tool — she starts the
 3. **Player's turn:** you give a prompt → the canvas changes.
 4. They alternate. Anyone on their turn may **skip** (words only, no canvas change) and pass the turn.
 
-The turn is **synchronous**: give a prompt — wait for the new canvas — next turn. No asynchrony is needed (one step is one generation, seconds) — so the canvas does **not** use the v4.2 async-jobs mechanism, even though it uses the v4.3 `image` generator.
+The turn is **synchronous**: give a prompt — wait for the new canvas — next turn. No asynchrony is needed (one step is one generation, seconds) — so the canvas does **not** use the v5.2 async-jobs mechanism, even though it uses the v5.3 `image` generator.
 
 ## Change mode
 
@@ -29,10 +29,10 @@ Neither Лілі nor you are obligated to draw every time: on your turn you may 
 ## Connection to the rest
 
 This is not a separate vision tool, but a **combination**:
-- the `image` generator (v4.3) — generation / (later) editing of the canvas;
-- **Anthropic vision** (§Vision, v4.1) — so Лілі perceives the current canvas (the image goes into the context of her reply, not a separate call).
+- the `image` generator (v5.3) — generation / (later) editing of the canvas;
+- **Anthropic vision** (§Vision, v5.1) — so Лілі perceives the current canvas (the image goes into the context of her reply, not a separate call).
 
-A plain "show Лілі a photo" is a free bonus of the same vision capability (v4.1). Finished canvases go into the [gallery](GALLERY_MCP.md).
+A plain "show Лілі a photo" is a free bonus of the same vision capability (v5.1). Finished canvases go into the [gallery](GALLERY_MCP.md).
 
 ## Contract (internal tools)
 
@@ -42,11 +42,11 @@ A plain "show Лілі a photo" is a free bonus of the same vision capability (v
 
 ## Boundaries
 
-- Off by default, per-user (admin panel, v1.5); limits (rate, cost cap); logging.
+- Off by default, per-user (admin panel, v2.5); limits (rate, cost cap); logging.
 - The canvas and prompt history are stored behind `repository`, isolated per-user; finished canvases go into the gallery.
 - Лілі's style is fixed in a prompt wrapper so her contributions are "hers".
 
 ## Where it lives in the Lumi roadmap
 
-**v4.4 — Co-creation canvas**, after `image` (v4.3, which it relies on) and vision (v4.1). The turn is synchronous (no async). We start with the layer-by-layer mode and Лілі's first move; inpainting comes later. Depends on: v4.1 (gallery + vision), v4.3 (the `image` generator).
+**v5.4 — Co-creation canvas**, after `image` (v5.3, which it relies on) and vision (v5.1). The turn is synchronous (no async). We start with the layer-by-layer mode and Лілі's first move; inpainting comes later. Depends on: v5.1 (gallery + vision), v5.3 (the `image` generator).
 </content>

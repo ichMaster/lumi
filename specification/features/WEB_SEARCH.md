@@ -1,6 +1,6 @@
 # WEB_SEARCH.md
 
-Boundaries for the optional **web search** capability (ROADMAP §v3.2; ARCHITECTURE §MCP tools, §Security, auth, and access). It lets Лілі look things up on the open internet — **within strict bounds** — through an MCP tool, and is **off by default**. Adapted from the Pyramid project's web-search design.
+Boundaries for the optional **web search** capability (ROADMAP §v4.2; ARCHITECTURE §MCP tools, §Security, auth, and access). It lets Лілі look things up on the open internet — **within strict bounds** — through an MCP tool, and is **off by default**. Adapted from the Pyramid project's web-search design.
 
 ---
 
@@ -17,7 +17,7 @@ Boundaries for the optional **web search** capability (ROADMAP §v3.2; ARCHITECT
 
 ## 2. The `web_search` MCP service
 
-A networked MCP service (HTTP/SSE), called by the model like any other tool during the v3.2 tool loop. The server hosts the MCP client; the core's model turn issues the calls.
+A networked MCP service (HTTP/SSE), called by the model like any other tool during the v4.2 tool loop. The server hosts the MCP client; the core's model turn issues the calls.
 
 - `web.search(query, k) → results[{ id, title, url, snippet }]`
   Runs a query against a configured search API; returns up to `k` results (capped, e.g. ≤ 5). `id` is an opaque per-turn handle.
@@ -30,7 +30,7 @@ The normal pattern: `search` → pick relevant results → `fetch` one or two �
 
 ## 3. Enablement
 
-- Per-user toggle `User.web_search`, **default `false`**, edited in the admin panel (v1.5).
+- Per-user toggle `User.web_search`, **default `false`**, edited in the admin panel (v2.5).
 - When `false`, the `web_search` tool is **not offered** to the model at all (not merely refused) — the turn proceeds with no internet access.
 - The search-API key lives in server `.env` (never in a client).
 
@@ -49,7 +49,7 @@ The normal pattern: `search` → pick relevant results → `fetch` one or two �
 
 ## 5. Turn integration
 
-- Runs inside the v3.2 MCP **tool loop** (ARCHITECTURE §MCP tools): bounded iterations, tool results fed back as tool messages; on tool error/timeout the turn returns a **degraded reply** (answer from model knowledge + a note), never fails the turn. The emotion field `{reply, emotion, intensity}` is produced exactly as on any other turn.
+- Runs inside the v4.2 MCP **tool loop** (ARCHITECTURE §MCP tools): bounded iterations, tool results fed back as tool messages; on tool error/timeout the turn returns a **degraded reply** (answer from model knowledge + a note), never fails the turn. The emotion field `{reply, emotion, intensity}` is produced exactly as on any other turn.
 - **Citations required:** when the answer uses web content, the reply names its sources (titles/URLs from the results used). "Fresh result with sources" is the success bar.
 - A per-call timeout like the other external stages (model, TTS, STT).
 

@@ -106,7 +106,7 @@ class EmojiRenderer:
             self._sink(self.last_glyph)
 
     def set_speaking(self, speaking: bool) -> None:
-        pass  # v2.2+ voice → lip-sync; nothing to do in the emoji tier
+        pass  # v3.2+ voice → lip-sync; nothing to do in the emoji tier
 
     def tick(self, dt_ms: int) -> None:
-        pass  # v3 idle loop; nothing to do in the emoji tier
+        pass  # v4 idle loop; nothing to do in the emoji tier

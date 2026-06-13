@@ -100,7 +100,7 @@ The sessions block (~5–11K) is "dump *all* recent sessions every turn." RAG re
 
 → Memory injection **11K → ~1–2K** *and* more relevant. Per-turn, so it lives in the volatile tail.
 
-### Phase 4 — v0.22 facts fade & consolidation (future)
+### Phase 4 — v1.4 facts fade & consolidation (future)
 The automated successor to the manual facts digest: weight-fade + merge facts into "understanding"
 in the impressions layer. Replaces the digest's hand-run consolidation. See ARCHITECTURE
 §Emotional memory.

@@ -3,7 +3,7 @@
 Лілі's persona output is structured: every reply carries an ``emotion`` (from a
 fixed set) and an ``intensity``. This shape is the contract **every render tier
 reuses unchanged** — logged (v0.3), emoji (v0.4), local face (v0.6), web portrait
-(v2.1), animation (v3). The model **emits** it; the core **validates** it
+(v3.1), animation (v4). The model **emits** it; the core **validates** it
 (LUMI-015); a **renderer** shows it (LUMI-017+). See
 ``specification/features/EMOTION.md`` §3–§5.
 
@@ -51,7 +51,7 @@ class EmotionState:
     """One model turn's output: Лілі's text + her state (EMOTION.md §3).
 
     The model emits exactly ``{reply, emotion, intensity}``. ``ttl_ms`` (relax to
-    ``calm`` after idle, v3) and ``speaking`` (renderer-set during voice, v2.2) are
+    ``calm`` after idle, v4) and ``speaking`` (renderer-set during voice, v3.2) are
     **renderer-side** concerns — reserved in the spec, deliberately *not* in this
     shape, so the contract does not change when those tiers arrive.
 
@@ -129,7 +129,7 @@ class IEmotionRenderer(Protocol):
     """The one interface the core renders the emotion channel through (EMOTION.md §5).
 
     Each tier is one implementation — v0.3 :class:`LogRenderer`, v0.4 emoji (TUI),
-    v2.1 image (web), v3.1 animation. **Only the renderer changes between versions;**
+    v3.1 image (web), v4.1 animation. **Only the renderer changes between versions;**
     ``EmotionState`` and the enum are constant.
     """
 
@@ -138,11 +138,11 @@ class IEmotionRenderer(Protocol):
         ...
 
     def set_speaking(self, speaking: bool) -> None:
-        """v2.2+ voice → lip-sync (v3). No-op in the log/emoji tiers."""
+        """v3.2+ voice → lip-sync (v4). No-op in the log/emoji tiers."""
         ...
 
     def tick(self, dt_ms: int) -> None:
-        """v3 idle loop: transitions, micro-motion. No-op in the log/emoji tiers."""
+        """v4 idle loop: transitions, micro-motion. No-op in the log/emoji tiers."""
         ...
 
 
@@ -172,7 +172,7 @@ class LogRenderer:
         )
 
     def set_speaking(self, speaking: bool) -> None:
-        pass  # v2.2+ voice → lip-sync; nothing to do in the log tier
+        pass  # v3.2+ voice → lip-sync; nothing to do in the log tier
 
     def tick(self, dt_ms: int) -> None:
-        pass  # v3 idle loop; nothing to do in the log tier
+        pass  # v4 idle loop; nothing to do in the log tier

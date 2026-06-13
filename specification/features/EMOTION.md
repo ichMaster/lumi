@@ -12,8 +12,8 @@ so improving how emotion looks is a **renderer swap, not a rewrite**:
 - **Logged (v0.3):** the field is validated and logged; optionally a small TUI status line.
 - **Emoji (v0.5):** emotion → an emoji shown next to the reply in the terminal.
 - **Local image face (v0.7):** emotion → a portrait of Лілі in a separate local desktop window, from a `faces/` asset pack — no server (see [EMOTION_VIEWER.md](EMOTION_VIEWER.md)).
-- **Web portrait + caption (v2.1):** emotion → the same portrait in the web interface, plus a short descriptive caption (§6).
-- **Animation (v3.1):** the portrait comes alive (transitions, idle motion, lip-sync to voice).
+- **Web portrait + caption (v3.1):** emotion → the same portrait in the web interface, plus a short descriptive caption (§6).
+- **Animation (v4.1):** the portrait comes alive (transitions, idle motion, lip-sync to voice).
 
 ## 1. Goals and non-goals
 
@@ -24,7 +24,7 @@ so improving how emotion looks is a **renderer swap, not a rewrite**:
 
 **Non-goals**
 - A separate "emotion engine" that infers state from the text. In Lumi the **model emits its own state** as a structured field (MISSION: "emotion is part of the reply").
-- Per-frame model calls. Emotion is decided once per turn with the reply; animation/lip-sync (v3) run locally off that single state plus the TTS audio.
+- Per-frame model calls. Emotion is decided once per turn with the reply; animation/lip-sync (v4) run locally off that single state plus the TTS audio.
 
 ## 2. Who decides emotion (Lumi-specific)
 
@@ -54,12 +54,12 @@ Fields:
 - `reply` — string. Лілі's spoken/written text. Required.
 - `emotion` — enum, see §4. Required. The model is constrained to this fixed set.
 - `intensity` — float 0.0–1.0. Scales presentation: emoji variant/emphasis (v0.5),
-  portrait intensity variant (v2.1), animation amplitude and idle motion (v3).
+  portrait intensity variant (v3.1), animation amplitude and idle motion (v4).
   Required.
 - `ttl_ms` — int, optional (default 8000). After this with no new turn, an
-  animated renderer (v3) relaxes toward `calm`. Ignored by the log/emoji/static tiers.
+  animated renderer (v4) relaxes toward `calm`. Ignored by the log/emoji/static tiers.
 - `speaking` — bool, optional (default false). Set by the renderer (not the model)
-  while voice (v2.2) is playing, to drive lip-sync (v3). Not part of the model's output.
+  while voice (v3.2) is playing, to drive lip-sync (v4). Not part of the model's output.
 
 The model outputs only `{reply, emotion, intensity}`; `ttl_ms`/`speaking` are
 renderer-side concerns reserved here so the contract does not change when animation
@@ -71,7 +71,7 @@ A small, **fixed** set of 9. Every renderer tier implements the same names. The
 model is instructed (and, where the SDK supports it, schema-constrained) to return
 exactly one.
 
-| emotion      | reads as                                  | emoji (v0.5) | portrait key (v2.1) |
+| emotion      | reads as                                  | emoji (v0.5) | portrait key (v3.1) |
 |--------------|-------------------------------------------|------------|-------------------|
 | `joy`        | bright, openly happy                      | 😄         | `joy`             |
 | `calm`       | base, resting, attentive (the neutral)    | 🙂         | `calm`            |
@@ -84,7 +84,7 @@ exactly one.
 | `sad`        | downcast, quiet                           | 😢         | `sad`             |
 
 `calm` is the neutral / fallback state (§8). The emoji column is the v0.5 mapping;
-the portrait-key column is the v2.1 asset manifest key (§7).
+the portrait-key column is the v3.1 asset manifest key (§7).
 
 ## 5. The renderer interface
 
@@ -96,19 +96,19 @@ from typing import Protocol
 
 class IEmotionRenderer(Protocol):
     def render(self, state: EmotionState) -> None: ...      # show the new state
-    def set_speaking(self, speaking: bool) -> None: ...     # v2.2+ voice → lip-sync (v3)
-    def tick(self, dt_ms: int) -> None: ...                 # v3 idle loop: transitions, micro-motion
+    def set_speaking(self, speaking: bool) -> None: ...     # v3.2+ voice → lip-sync (v4)
+    def tick(self, dt_ms: int) -> None: ...                 # v4 idle loop: transitions, micro-motion
 ```
 
 - **`LogRenderer` (v0.3)** — writes the validated field to the log; optional TUI status line. `tick`/`set_speaking` are no-ops.
 - **`EmojiRenderer` (v0.5)** — maps `emotion`→emoji (§4) and shows it beside the reply; `intensity` may pick an emphasis variant.
 - **Local viewer (v0.7)** — a separate desktop process that polls a local emotion **signal** and shows `faces/<emotion>.png` from the §7 asset pack. A renderer of the channel in spirit, decoupled via a file signal rather than an in-process `render()` call (see [EMOTION_VIEWER.md](EMOTION_VIEWER.md)).
-- **`ImageRenderer` (v2.1)** — resolves `emotion`(+`intensity`)→a portrait asset (§7, the **same pack** as the v0.7 viewer) and swaps the web portrait panel; also shows the §6 caption.
-- **`AnimationRenderer` (v3.1)** — `render` sets a target expression and crossfades; `tick` runs the idle loop (blink, breathe, micro gaze-drift); `set_speaking` + the TTS amplitude envelope drive mouth lip-sync.
+- **`ImageRenderer` (v3.1)** — resolves `emotion`(+`intensity`)→a portrait asset (§7, the **same pack** as the v0.7 viewer) and swaps the web portrait panel; also shows the §6 caption.
+- **`AnimationRenderer` (v4.1)** — `render` sets a target expression and crossfades; `tick` runs the idle loop (blink, breathe, micro gaze-drift); `set_speaking` + the TTS amplitude envelope drive mouth lip-sync.
 
 Only the renderer changes between versions. The `EmotionState` and the enum are constant.
 
-## 6. Emoji mapping (v0.5) and mood caption (v2.1)
+## 6. Emoji mapping (v0.5) and mood caption (v3.1)
 
 **Emoji (v0.5).** The `emoji` column of §4 gives each emotion its base **face**;
 `intensity` scales the **emphasis, not the feeling** — the *same* face, made stronger by
@@ -144,7 +144,7 @@ the table and add / remove / replace emojis** without touching code. A missing f
 absent/blank row falls back to this default (ultimately the base glyph → `calm`), keeping
 the resolved map total over the enum.
 
-**Mood caption (v2.1).** Alongside the web portrait, a short evocative **caption**
+**Mood caption (v3.1).** Alongside the web portrait, a short evocative **caption**
 describes Лілі's current state — **not** the emotion's enum name, and not her
 reply: a small atmospheric line in her spirit. A curated phrase per emotion
 (presentation-only, no contract change; `intensity` may pick a variant, and a few
@@ -166,12 +166,12 @@ The caption map is **total over the enum** and **never emits the bare emotion
 name**. Final wording is authored in Лілі's voice (canon); the table above is a
 placeholder.
 
-## 7. Image asset manifest (v0.7 / v2.1)
+## 7. Image asset manifest (v0.7 / v3.1)
 
 The portrait tier is described by a manifest so adding/replacing art never
 touches the core — only the manifest and the image files change. **The same pack
 is shared** by the local viewer (v0.7, a `faces/` folder) and the web
-`ImageRenderer` (v2.1):
+`ImageRenderer` (v3.1):
 
 ```json
 {
@@ -194,13 +194,13 @@ is shared** by the local viewer (v0.7, a `faces/` folder) and the web
 
 Optional `intensity` variants per emotion (e.g. `"joy": {"low": "...", "high": "..."}`)
 may be added within the same schema; the resolver falls back to the single `image`
-when no variant matches. Full PNG quality, no palette limits (ROADMAP v2.1 DoD).
+when no variant matches. Full PNG quality, no palette limits (ROADMAP v3.1 DoD).
 Asset packs live in `/web` (or `/assets`) — see §10.
 
 ## 8. Validation and fallback
 
 The core never trusts raw model output:
-- **Schema enforcement first.** Use the model's constrained output — **Anthropic tool/structured output** for Claude Haiku (v0.1); for the models added in v0.24, each provider's mechanism (OpenAI/DeepSeek JSON-schema, MiniMax JSON) — to force `emotion` to the enum and `intensity` to a 0–1 number so invalid values are rare by construction. (The gate below is still the real safety net.)
+- **Schema enforcement first.** Use the model's constrained output — **Anthropic tool/structured output** for Claude Haiku (v0.1); for the models added in v0.18, each provider's mechanism (OpenAI/DeepSeek JSON-schema, MiniMax JSON) — to force `emotion` to the enum and `intensity` to a 0–1 number so invalid values are rare by construction. (The gate below is still the real safety net.)
 - **Validation gate.** On parse: an unknown/missing `emotion` → `calm`; `intensity` clamped to `[0,1]`, missing → `0.5`; a missing `reply` is an error surfaced to the interface (not a silent empty turn).
 - **Log every repair** keyed by `session_id`/turn so drift in model behavior is visible (ARCHITECTURE §Observability).
 
@@ -208,12 +208,12 @@ This is the single place emotion can go wrong, so it is tested: a contract test
 pins the schema and a unit test pins the repair/fallback rules (ARCHITECTURE
 §Testing and CI).
 
-## 9. Voice delivery (v2.2, optional)
+## 9. Voice delivery (v3.2, optional)
 
 Where the TTS voice supports it, the `emotion`/`intensity` may bias delivery
 (tone/tempo). This is presentation only and best-effort — it never changes the
 `reply` text. The renderer sets `speaking=true` while audio plays so a later
-animated face (v3) can lip-sync.
+animated face (v4) can lip-sync.
 
 ## 10. Mapping to the Lumi roadmap
 
@@ -222,9 +222,9 @@ animated face (v3) can lip-sync.
   contract test. Renderers after this are swaps.
 - **v0.5 — emoji.** `EmojiRenderer` (§6). No contract change.
 - **v0.7 — local image face.** A separate desktop viewer over a local signal + the §7 asset pack (`faces/`); `calm` fallback (see [EMOTION_VIEWER.md](EMOTION_VIEWER.md)). No contract change.
-- **v2.1 — web portrait + caption.** `ImageRenderer` + the same asset manifest (§7) in the browser, plus the §6 mood caption. No contract change.
-- **v2.2 — voice.** Optional emotion-biased TTS delivery (§9); renderer sets `speaking`.
-- **v3.1 — animation.** `AnimationRenderer` (§5): transitions, idle loop, lip-sync. The same `EmotionState` drives it.
+- **v3.1 — web portrait + caption.** `ImageRenderer` + the same asset manifest (§7) in the browser, plus the §6 mood caption. No contract change.
+- **v3.2 — voice.** Optional emotion-biased TTS delivery (§9); renderer sets `speaking`.
+- **v4.1 — animation.** `AnimationRenderer` (§5): transitions, idle loop, lip-sync. The same `EmotionState` drives it.
 
 ## 11. Repo placement
 
@@ -232,5 +232,5 @@ animated face (v3) can lip-sync.
 - `core/` — the `EmotionState` model, the enum, the validation/fallback gate, the `IEmotionRenderer` interface, and (v0.7) writing the current emotion to the local signal.
 - `tui/` — `LogRenderer` (v0.3), `EmojiRenderer` (v0.5).
 - `viewer/` (v0.7) — the local desktop face window (Tkinter or similar) + the `faces/` asset pack; polls the local signal (see [EMOTION_VIEWER.md](EMOTION_VIEWER.md)).
-- `web/` (v1.4+) — `ImageRenderer` + the mood caption, the portrait panel, and the same asset pack (`lili_v1`); `AnimationRenderer` (v3).
+- `web/` (v2.4+) — `ImageRenderer` + the mood caption, the portrait panel, and the same asset pack (`lili_v1`); `AnimationRenderer` (v4).
 </content>

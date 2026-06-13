@@ -23,7 +23,7 @@ users, and memory scopes. This document describes **what the code does today**.
 | **Long‑term memory** | durable facts about the user | `facts` (by `user_id`) | the **system prompt** (all) | at session end | every turn |
 
 Everything is **user‑scoped**: every record carries a `user_id` (the single default
-`owner` until real accounts arrive in v1.3), and a record written under user A is never
+`owner` until real accounts arrive in v2.3), and a record written under user A is never
 read in user B's context — the **isolation invariant** ([../core/repository.py](../core/repository.py),
 pinned by [../tests/contract/test_isolation.py](../tests/contract/test_isolation.py)).
 
@@ -377,8 +377,8 @@ These are deliberate simplifications, not bugs — flagged so the behavior isn't
 5. **Rolling window is by message count (40 verbatim, floating to 60), not a token budget.**
    In‑session compaction (§4.5) folds older messages into a digest rather than dropping them.
 6. **Single user.** The `user_id` scoping is in place but runs with one default `owner`;
-   real accounts/auth arrive in v1.3.
-7. **No shared‑experience layer.** Cross‑user, de‑identified memory (the v2.3
+   real accounts/auth arrive in v2.3.
+7. **No shared‑experience layer.** Cross‑user, de‑identified memory (the v3.3
    cross‑pollination pipeline) is **not** built — every layer here is just the owner's.
 8. **Summarization only on a clean end.** A crash/kill skips it for that session.
 

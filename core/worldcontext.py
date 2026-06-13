@@ -28,7 +28,7 @@ HttpGet = Callable[[str], str]
 # Open-Meteo JSON shape). Asks for current (temp + feels-like + condition) and
 # today's daily (max/min + condition) so the line shows now + the day.
 DEFAULT_WEATHER_URL = (
-    "https://api.open-meteo.com/v1/forecast"
+    "https://api.open-meteo.com/v2/forecast"
     "?latitude={lat}&longitude={lon}"
     "&current=temperature_2m,apparent_temperature,weather_code"
     "&daily=temperature_2m_max,temperature_2m_min,weather_code"

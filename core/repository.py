@@ -1,7 +1,7 @@
 """The ``Repository`` seam and the v0.1 data shapes.
 
 Memory access goes through this thin interface; the core depends on it, never on
-a concrete store, so the v1 server DB is a swap (ARCHITECTURE §Storage). A local
+a concrete store, so the v2 server DB is a swap (ARCHITECTURE §Storage). A local
 JSON/SQLite store sits behind it in v0.1 (``state/``).
 
 v0.1 is **single-session, no user concept** — ``user_id`` is added in v0.2, when

@@ -2,7 +2,7 @@
 
 A separate console voicing app that runs fully locally, without a server. It **reads Лілі's replies from the `outbox.jsonl` bus**, voices them with the ElevenLabs voice, and **marks what it has voiced** (a `spoken` pointer). The chat and the voicer are fully decoupled: the TUI only appends replies to the outbox, the voicer catches up and marks what's done — voicing never blocks the chat.
 
-**It reuses the v0.13 file bus — it doesn't introduce one.** `outbox.jsonl` + `state/fifo.py` already exist (the Telegram bridge), with records `{id, text, emotion, ts, kind}`. So the voicer is the **twin of the v0.13 `outbox→telegram` daemon** — here `outbox → speaker`: same `fifo.read_since` from a pointer, same one-at-a-time-in-order processing, same retry-on-failure and first-run-skip. It is also the **local-stage sibling of the web voice (v2.2)** (both use the same ElevenLabs TTS adapter in `/voice`) and **another decoupled local renderer** alongside the v0.7 emotion viewer (the viewer needs only the emotion word; the voicer needs the reply text). It lands as **v0.14**.
+**It reuses the v0.13 file bus — it doesn't introduce one.** `outbox.jsonl` + `state/fifo.py` already exist (the Telegram bridge), with records `{id, text, emotion, ts, kind}`. So the voicer is the **twin of the v0.13 `outbox→telegram` daemon** — here `outbox → speaker`: same `fifo.read_since` from a pointer, same one-at-a-time-in-order processing, same retry-on-failure and first-run-skip. It is also the **local-stage sibling of the web voice (v3.2)** (both use the same ElevenLabs TTS adapter in `/voice`) and **another decoupled local renderer** alongside the v0.7 emotion viewer (the viewer needs only the emotion word; the voicer needs the reply text). It lands as **v0.14**.
 
 ## Essence
 
@@ -63,7 +63,7 @@ The voicer works linearly: take the smallest new `id` (not in `spoken`) → voic
 ## Connection to the rest of Lumi
 
 - **Another local renderer** of the core's output, alongside the v0.7 emotion viewer. The viewer needs only the emotion word; the voicer needs the text — so it reads `outbox` (text + id), not just the emotion signal.
-- **The local-stage sibling of the web voice (v2.2):** both use the same `/voice` ElevenLabs TTS adapter; v0.14 voices locally from the log, v2.2 voices server-side in the browser.
+- **The local-stage sibling of the web voice (v3.2):** both use the same `/voice` ElevenLabs TTS adapter; v0.14 voices locally from the log, v3.2 voices server-side in the browser.
 - **A second cloud dependency.** The model is already cloud (Claude Haiku from v0.1); the voicer adds **ElevenLabs (cloud synthesis)** on top — it needs `ELEVENLABS_API_KEY` + internet, and is **optional/toggle-able**. The offline alternative is **Piper (uk)**, but that is not her signature voice.
 
 ## Contract
@@ -75,5 +75,5 @@ The voicer works linearly: take the smallest new `id` (not in `spoken`) → voic
 
 ## Where it lives in the Lumi roadmap
 
-**v0.14 — Local voice (ElevenLabs)**: real spoken replies locally, without a server — pulled forward (ahead of the inner-life phases) because its `outbox.jsonl` input already exists from v0.13. Stack — a small console Python app + the ElevenLabs SDK (the shared `/voice` adapter, an **optional dep**) + local audio playback, reusing `state/fifo`. Depends on: **v0.13** (the outbox bus + `state/fifo`), v0.1 (the core produces replies), v0.3 (the emotion field). The web sibling is v2.2.
+**v0.14 — Local voice (ElevenLabs)**: real spoken replies locally, without a server — pulled forward (ahead of the inner-life phases) because its `outbox.jsonl` input already exists from v0.13. Stack — a small console Python app + the ElevenLabs SDK (the shared `/voice` adapter, an **optional dep**) + local audio playback, reusing `state/fifo`. Depends on: **v0.13** (the outbox bus + `state/fifo`), v0.1 (the core produces replies), v0.3 (the emotion field). The web sibling is v3.2.
 </content>

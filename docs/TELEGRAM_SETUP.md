@@ -23,7 +23,7 @@ You run **three processes**: the **TUI** + **daemon 1** (inbound) + **daemon 2**
 - The **TUI must be running** for replies — it's the brain. With it down, daemon 1 keeps buffering
   into `inbox.jsonl`; nothing answers until the TUI is back.
 - This is the **single-owner** bot: the Telegram user *is* the owner, one relationship, one session.
-  Multi-user / always-on belong to the v1.1/v1.3 server.
+  Multi-user / always-on belong to the v2.1/v2.3 server.
 
 ---
 
@@ -277,4 +277,4 @@ the reply is sent as a **photo with the text as the caption** — the face match
   logs, or screenshots. If it leaks, `/revoke` in BotFather and replace it.
 - The **allowlist** is the access boundary — only listed ids reach Лілі. There's no open sign-up.
 - **Single-owner, TUI-must-run.** For a 24/7, multi-user, always-on Лілі (the core hosted without
-  the TUI), that's the **v1.1 server** + **v1.3 accounts** — not this bridge.
+  the TUI), that's the **v2.1 server** + **v2.3 accounts** — not this bridge.
