@@ -108,6 +108,13 @@ def test_rag_defaults_off_with_k_and_floor(monkeypatch):
     assert cfg.rag is True and cfg.rag_k == 6 and cfg.rag_floor == 0.5 and cfg.rag_max_chars == 800
 
 
+def test_rag_w_default_and_override(monkeypatch):
+    monkeypatch.delenv("LUMI_RAG_W", raising=False)
+    assert load_config(load_env=False).rag_w == 2  # ±2 neighbours
+    monkeypatch.setenv("LUMI_RAG_W", "3")
+    assert load_config(load_env=False).rag_w == 3
+
+
 def test_prompt_cache_default_and_override(monkeypatch):
     # v0.15: the prompt-cache toggle (on by default).
     monkeypatch.delenv("LUMI_PROMPT_CACHE", raising=False)

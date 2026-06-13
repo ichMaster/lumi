@@ -143,6 +143,14 @@ _MAX_EMBED_CHARS = 2000
 # memory, not the whole message); the block's total is bounded by `rag_max_chars`.
 _RAG_SNIPPET_CHARS = 240
 
+
+def _snippet(text: str) -> str:
+    """A compact one-line form of a message for the recall block (collapse newlines, truncate)."""
+    text = " ".join(text.split())
+    if len(text) > _RAG_SNIPPET_CHARS:
+        text = text[:_RAG_SNIPPET_CHARS].rstrip() + "…"
+    return text
+
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
 
@@ -228,6 +236,7 @@ class Core:
         rag_k: int = 4,
         rag_floor: float = 0.3,
         rag_max_chars: int = 1200,
+        rag_w: int = 2,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -331,6 +340,10 @@ class Core:
         self._rag_k = rag_k
         self._rag_floor = rag_floor
         self._rag_max_chars = rag_max_chars
+        self._rag_w = rag_w
+        # v0.17 context expansion: msg_id → (session_id, index) for this user, built lazily once
+        # (no re-index needed); lets a hit be widened to its session neighbours.
+        self._position_index: dict[str, tuple[str, int]] | None = None
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -1265,37 +1278,111 @@ class Core:
         return self._rag_enabled
 
     def _recall_block(self, query: str, live: list[Message] | None = None) -> str | None:
-        """The per-turn RAG block (v0.17): the query-relevant past as a dated «relevant moments»
-        block, or ``None`` when off / no hit above the floor. **Best-effort, never blocks a turn.**
+        """The per-turn RAG block (v0.17): the query-relevant past as dated «relevant moments»,
+        each **widened to a small window of its session neighbours** (the moment, not the line) —
+        or ``None`` when off / no hit above the floor. **Best-effort, never blocks a turn.**
 
-        Reuses :meth:`recall` (search → relevance floor), then **dedups against the live window**
-        (never repeat a line already in context) and **caps** the block by a char budget
-        (``rag_max_chars``) — hits are score-ordered, so the cap keeps the most relevant. A
-        retrieval error degrades to ``None``.
+        Reuses :meth:`recall` (search → relevance floor), drops hits already in the live window
+        (no double-context), expands each survivor to a ±``rag_w`` snippet (anchor marked, overlaps
+        merged, neighbour lines in the window dropped), and caps by ``rag_max_chars``.
         """
         if not self._rag_enabled:
             return None
         hits = [(s, r) for s, r in self.recall(query, self._rag_k) if s >= self._rag_floor]
         if not hits:
             return None
-        # Dedup against the rolling window — a line already verbatim in context isn't repeated.
-        seen = {
-            vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in (live or [])
-        }
-        lines, used = [], 0
-        for _score, rec in hits:
-            if rec.msg_id in seen:
-                continue
-            who = "Лілі" if rec.role == "lili" else "ти"
-            text = rec.text.strip()
-            if len(text) > _RAG_SNIPPET_CHARS:
-                text = text[:_RAG_SNIPPET_CHARS].rstrip() + "…"
-            line = f"— {rec.ts[:10]} · {who}: «{text}»"
-            lines.append(line)
-            used += len(line) + 1
-            if used >= self._rag_max_chars:  # char budget reached — keep the most relevant
+        window_ids = {vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in (live or [])}
+        hits = [(s, r) for s, r in hits if r.msg_id not in window_ids]  # anchor dedup (LUMI-071)
+        if not hits:
+            return None
+        try:
+            snippets = self._expand_hits(hits, window_ids)
+        except Exception:  # noqa: BLE001 — expansion is best-effort; fall back to bare anchor lines
+            _recall_log.warning("recall context expansion failed; using bare anchors")
+            snippets = [
+                f"— {r.ts[:10]} —\n  {self._who(r.role)}: {_snippet(r.text)}  ← (matched)"
+                for _s, r in hits
+            ]
+        # Char budget across the whole block: keep whole snippets while they fit (most-relevant
+        # first); if even the top snippet overflows (dense hits merged into one), truncate it.
+        out, used = [], 0
+        for snip in snippets:
+            remaining = self._rag_max_chars - used
+            if remaining <= 0:
                 break
-        return "\n".join(lines) if lines else None
+            if len(snip) > remaining:
+                if not out:
+                    out.append(snip[:remaining].rstrip() + " …")
+                break
+            out.append(snip)
+            used += len(snip) + 2
+        return "\n\n".join(out) if out else None
+
+    @staticmethod
+    def _who(role: str) -> str:
+        return "Лілі" if role == "lili" else "ти"
+
+    def _position_of(self, msg_id: str) -> tuple[str, int] | None:
+        """Resolve a hit's ``msg_id`` to ``(session_id, index)`` via a lazily-built per-user map
+        (no re-index). A miss (e.g. a message added after the map was built) → ``None`` (the caller
+        degrades to a bare anchor line)."""
+        if self._position_index is None:
+            idx: dict[str, tuple[str, int]] = {}
+            for session in self._repo.list_sessions(self._user_id):
+                for i, m in enumerate(self._repo.load_messages(session.id)):
+                    if m.user_id == self._user_id and m.text.strip():
+                        idx[vector_msg_id(m.session_id, m.ts, m.role, m.text)] = (session.id, i)
+            self._position_index = idx
+        return self._position_index.get(msg_id)
+
+    def _expand_hits(
+        self, hits: list[tuple[float, VectorRecord]], window_ids: set[str]
+    ) -> list[str]:
+        """Widen each hit to a ±``rag_w`` session-neighbour snippet (anchor marked); merge
+        overlapping windows within a session; drop neighbour lines already in the window. Returns
+        dated snippet strings, most-relevant first. A hit that doesn't resolve → a bare anchor line.
+        """
+        w = self._rag_w
+        by_session: dict[str, list[tuple[int, float]]] = {}  # session_id → [(anchor_index, score)]
+        bare: list[tuple[float, str]] = []
+        for score, rec in hits:
+            pos = self._position_of(rec.msg_id)
+            if pos is None:
+                bare.append((score, f"— {rec.ts[:10]} —\n  {self._who(rec.role)}: "
+                                    f"{_snippet(rec.text)}  ← (matched)"))
+                continue
+            by_session.setdefault(pos[0], []).append((pos[1], score))
+
+        snippets: list[tuple[float, str]] = []
+        for session_id, anchors in by_session.items():
+            msgs = self._repo.load_messages(session_id)
+            anchors.sort()
+            anchor_idx = {i for i, _ in anchors}
+            # Merge overlapping/adjacent ±w windows into ranges, carrying the best score.
+            ranges: list[list[float]] = []  # [start, end, rank]
+            for i, score in anchors:
+                start, end = max(0, i - w), min(len(msgs) - 1, i + w)
+                if ranges and start <= ranges[-1][1] + 1:
+                    ranges[-1][1] = max(ranges[-1][1], end)
+                    ranges[-1][2] = max(ranges[-1][2], score)
+                else:
+                    ranges.append([start, end, score])
+            for start, end, rank in ranges:
+                lines = []
+                for p in range(int(start), int(end) + 1):
+                    m = msgs[p]
+                    mid = vector_msg_id(m.session_id, m.ts, m.role, m.text)
+                    if mid in window_ids:  # dedup the whole snippet, not just the anchor
+                        continue
+                    mark = "  ← (matched)" if p in anchor_idx else ""
+                    lines.append(f"  {self._who(m.role)}: {_snippet(m.text)}{mark}")
+                if lines:
+                    date = msgs[int(start)].ts[:10]
+                    snippets.append((rank, f"— {date} —\n" + "\n".join(lines)))
+
+        snippets.extend(bare)
+        snippets.sort(key=lambda x: x[0], reverse=True)  # most relevant first
+        return [text for _, text in snippets]
 
     def _accumulate_facts(self, history: list) -> None:
         try:
@@ -1390,6 +1477,7 @@ def build_core(
         rag_k=cfg.rag_k,
         rag_floor=cfg.rag_floor,
         rag_max_chars=cfg.rag_max_chars,
+        rag_w=cfg.rag_w,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,

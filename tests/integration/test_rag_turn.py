@@ -139,6 +139,60 @@ def test_long_recalled_line_is_snippet_truncated(tmp_path):
     assert all(len(ln) <= _RAG_SNIPPET_CHARS + 60 for ln in block.splitlines())
 
 
+# --- context expansion (LUMI-072) -------------------------------------------
+def test_hit_is_widened_to_a_neighbour_snippet_anchor_marked(tmp_path):
+    core = _core(tmp_path)  # rag on, floor 0, W=2
+    s = core.start_session()
+    core.reply("привіт як ти", s)
+    core.reply("розкажи мені про безсоння нічне", s)   # the line we'll hit
+    core.reply("дякую на добраніч", s)
+    block = core._recall_block("безсоння", live=[])
+    assert block
+    assert "← (matched)" in block                       # the anchor is marked
+    assert "безсоння" in block                           # the matched line
+    assert block.count("\n") >= 2                        # a multi-line moment, not a bare line
+
+
+def test_overlapping_windows_merge_no_line_twice(tmp_path):
+    core = _core(tmp_path)
+    s = core.start_session()
+    core.reply("пуер один історія", s)
+    core.reply("пуер два історія", s)   # adjacent → ±W windows overlap
+    core.reply("пуер три історія", s)
+    block = core._recall_block("пуер історія", live=[])
+    assert block.count("пуер один історія") == 1         # each line once (merged, not repeated)
+    assert block.count("пуер два історія") == 1
+    assert block.count("—", 0, len(block)) and block.count("\n— ") == 0  # ONE merged snippet header
+
+
+def test_unresolved_hit_degrades_to_a_bare_anchor(tmp_path, monkeypatch):
+    core = _core(tmp_path)
+    s = core.start_session()
+    core.reply("пуер найкращий на заварці", s)
+    monkeypatch.setattr(core, "_position_of", lambda _mid: None)  # force the neighbour lookup to miss
+    block = core._recall_block("пуер заварці", live=[])
+    assert block and "← (matched)" in block              # still a marked anchor…
+    assert "пуер" in block                               # …just without its neighbours
+
+
+def test_rag_w_zero_gives_just_the_anchor(tmp_path):
+    # floor>0 + a distinctive token so exactly ONE message matches (the others score 0).
+    core = Core(
+        llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
+        canon="Ти — Лілі.", model="m", embedder=MockEmbedder(),
+        recall_enabled=True, rag_enabled=True, rag_floor=0.1, rag_w=0,
+    )
+    s = core.start_session()
+    core.reply("привіт як справи", s)
+    core.reply("розкажи про дирижабль над містом", s)   # only this shares «дирижабль»
+    core.reply("добраніч друже", s)
+    block = core._recall_block("дирижабль", live=[])
+    # W=0 → exactly the one anchor line, no neighbours
+    assert block and block.count("← (matched)") == 1
+    assert "дирижабль" in block
+    assert "добраніч" not in block and "привіт" not in block
+
+
 def test_an_old_out_of_window_line_resurfaces(tmp_path):
     # The point of RAG: a line long out of the verbatim window comes back when the topic returns.
     core = Core(

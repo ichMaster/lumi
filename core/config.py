@@ -200,6 +200,7 @@ class Config:
     rag_k: int = 4                  # top-K relevant past moments injected per turn
     rag_floor: float = 0.3          # cosine relevance floor — weaker matches aren't injected
     rag_max_chars: int = 1200       # the recall block's total char budget (spend recall tokens carefully)
+    rag_w: int = 2                  # context-expansion window: ±W neighbour messages around each hit
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
@@ -381,6 +382,7 @@ def load_config(*, load_env: bool = True) -> Config:
         rag_k=int(os.getenv("LUMI_RAG_K") or 4),
         rag_floor=float(os.getenv("LUMI_RAG_FLOOR") or 0.3),
         rag_max_chars=int(os.getenv("LUMI_RAG_MAX_CHARS") or 1200),
+        rag_w=int(os.getenv("LUMI_RAG_W") or 2),
         facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
