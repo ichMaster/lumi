@@ -220,6 +220,9 @@ class Core:
         recall_k: int = 5,
         recall_backfill_max: int = 500,
         embed_model: str = "",
+        rag_enabled: bool = False,
+        rag_k: int = 4,
+        rag_floor: float = 0.3,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -317,6 +320,11 @@ class Core:
         self._recall_backfill_max = recall_backfill_max
         self._embed_model = embed_model  # the active model — re-index if it changed (dim change)
         self._backfilled = False  # the one-time catch-up runs lazily, once
+        # v0.17 automatic per-turn RAG: inject the query-relevant past into the reply. Needs the
+        # recall infra (embedder + index); off → behaves like v0.16. Best-effort, never blocks a turn.
+        self._rag_enabled = rag_enabled and (recall_enabled and embedder is not None)
+        self._rag_k = rag_k
+        self._rag_floor = rag_floor
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -769,7 +777,7 @@ class Core:
             "user": lambda: self._user_id,
         }
 
-    def _system_prompt(self, session: Session) -> tuple[str, str]:
+    def _system_prompt(self, session: Session, recall: str | None = None) -> tuple[str, str]:
         """Assemble the system prompt for this turn — returns ``(system, cache_prefix)``,
         the cacheable stable head (v0.15). Rehydrated for the user.
 
@@ -840,6 +848,7 @@ class Core:
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
             closeness=closeness,  # the active relationship level's block (v0.10)
             thoughts=self._thoughts_block(),  # the last-24h dated diary (v0.12)
+            recall=recall,  # v0.17: the per-turn "relevant past moments" RAG block (tail; never cached)
         )
 
     def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:
@@ -1015,7 +1024,8 @@ class Core:
         ]
         messages.append({"role": "user", "content": f"[{format_stamp(turn_ts)}] {user_text}"})
 
-        system, cache_prefix = self._system_prompt(session)
+        # v0.17: automatic per-turn RAG — the incoming message is the query; inject the relevant past.
+        system, cache_prefix = self._system_prompt(session, recall=self._recall_block(user_text))
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         raw = self._llm.reply_structured(
             system=system, messages=messages, model=self._model,
@@ -1240,6 +1250,28 @@ class Core:
             _recall_log.warning("recall search failed: %s", exc)
             return []
 
+    @property
+    def rag_enabled(self) -> bool:
+        """Whether automatic per-turn RAG injection is active (v0.17)."""
+        return self._rag_enabled
+
+    def _recall_block(self, query: str) -> str | None:
+        """The per-turn RAG block (v0.17): the query-relevant past as a dated «relevant moments»
+        block, or ``None`` when off / no hit above the floor. **Best-effort, never blocks a turn.**
+
+        Reuses :meth:`recall` (search → relevance floor); a retrieval error degrades to ``None``.
+        """
+        if not self._rag_enabled:
+            return None
+        hits = [(s, r) for s, r in self.recall(query, self._rag_k) if s >= self._rag_floor]
+        if not hits:
+            return None
+        lines = []
+        for _score, rec in hits:
+            who = "Лілі" if rec.role == "lili" else "ти"
+            lines.append(f"— {rec.ts[:10]} · {who}: «{rec.text.strip()}»")
+        return "\n".join(lines)
+
     def _accumulate_facts(self, history: list) -> None:
         try:
             system, msgs = facts_request(history)
@@ -1329,6 +1361,9 @@ def build_core(
         recall_enabled=cfg.recall,
         recall_k=cfg.recall_k,
         embed_model=cfg.embed_model,
+        rag_enabled=cfg.rag,
+        rag_k=cfg.rag_k,
+        rag_floor=cfg.rag_floor,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,

@@ -159,6 +159,7 @@ def build_system_prompt(
     mood: str | None = None,
     closeness: str | None = None,
     thoughts: str | None = None,
+    recall: str | None = None,
 ) -> tuple[str, str]:
     """Assemble the system prompt, ordered for **prompt caching** (v0.15): a **stable prefix**
     then a **per-turn tail**. Returns ``(system, cache_prefix)`` where ``cache_prefix`` is the
@@ -168,10 +169,11 @@ def build_system_prompt(
       prose, then `# Як відповідати` (emotion + relational read), `# Памʼять про цю людину`
       (the date-based memory layers coarse→fine + `## Факти` + `## Раніше в цій розмові`), and
       `# Настрій дня` (locked per local day).
-    - **Per-turn tail** (recomputed each turn → never cached): `# Зараз` (ambient now/here — its
-      timestamp changes each turn), `# Близькість` (`update_closeness` rebuilds it each turn),
-      `# Що в мене на думці` (the last-24h thoughts), and finally — kept **last + most salient** —
-      `# Стиль відповіді` (the prioritized :data:`STYLE_HEADER`; shapes *form*, never competence).
+    - **Per-turn tail** (recomputed each turn → never cached): `# Релевантні моменти минулого`
+      (the v0.17 per-turn RAG block — the query-relevant past, so it changes every turn), `# Зараз`
+      (ambient now/here — its timestamp changes each turn), `# Близькість` (`update_closeness`
+      rebuilds it each turn), `# Що в мене на думці` (the last-24h thoughts), and finally — kept
+      **last + most salient** — `# Стиль відповіді` (the :data:`STYLE_HEADER`; *form*, never competence).
 
     With no overlays the result is the canon verbatim (the v0.1 behavior): ``(canon, canon)``.
     All overlay args are plain strings so this stays a pure string assembler.
@@ -206,8 +208,10 @@ def build_system_prompt(
     if mood:
         prefix.append("# Настрій дня\n\n" + f"{MOOD_HEADER}\n{mood}")
 
-    # TAIL — recomputed each turn (ambient timestamp, closeness, thoughts); style stays last.
+    # TAIL — recomputed each turn (recall, ambient timestamp, closeness, thoughts); style stays last.
     tail = []
+    if recall:  # v0.17: the per-turn "relevant past moments" RAG block (query-relevant → never cached)
+        tail.append("# Релевантні моменти минулого\n\n" + recall)
     if ambient:
         tail.append("# Зараз\n\n" + ambient)
     if closeness:  # v0.10: the active relationship level's block — rebuilt every turn

@@ -91,6 +91,21 @@ def test_recall_k_default_and_override(monkeypatch):
     assert load_config(load_env=False).recall_k == 8
 
 
+def test_rag_defaults_off_with_k_and_floor(monkeypatch):
+    # v0.17 automatic per-turn RAG is OFF by default (off → behaves like v0.16).
+    for key in ("LUMI_RAG", "LUMI_RAG_K", "LUMI_RAG_FLOOR"):
+        monkeypatch.delenv(key, raising=False)
+    cfg = load_config(load_env=False)
+    assert cfg.rag is False
+    assert cfg.rag_k == 4
+    assert cfg.rag_floor == 0.3
+    monkeypatch.setenv("LUMI_RAG", "on")
+    monkeypatch.setenv("LUMI_RAG_K", "6")
+    monkeypatch.setenv("LUMI_RAG_FLOOR", "0.5")
+    cfg = load_config(load_env=False)
+    assert cfg.rag is True and cfg.rag_k == 6 and cfg.rag_floor == 0.5
+
+
 def test_prompt_cache_default_and_override(monkeypatch):
     # v0.15: the prompt-cache toggle (on by default).
     monkeypatch.delenv("LUMI_PROMPT_CACHE", raising=False)
