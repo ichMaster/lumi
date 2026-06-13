@@ -99,11 +99,13 @@ def test_rag_defaults_off_with_k_and_floor(monkeypatch):
     assert cfg.rag is False
     assert cfg.rag_k == 4
     assert cfg.rag_floor == 0.3
+    assert cfg.rag_max_chars == 1200
     monkeypatch.setenv("LUMI_RAG", "on")
     monkeypatch.setenv("LUMI_RAG_K", "6")
     monkeypatch.setenv("LUMI_RAG_FLOOR", "0.5")
+    monkeypatch.setenv("LUMI_RAG_MAX_CHARS", "800")
     cfg = load_config(load_env=False)
-    assert cfg.rag is True and cfg.rag_k == 6 and cfg.rag_floor == 0.5
+    assert cfg.rag is True and cfg.rag_k == 6 and cfg.rag_floor == 0.5 and cfg.rag_max_chars == 800
 
 
 def test_prompt_cache_default_and_override(monkeypatch):

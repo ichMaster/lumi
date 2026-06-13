@@ -39,14 +39,22 @@ def test_recall_block_lives_in_the_tail_not_the_cached_prefix():
 
 # --- the turn injects the relevant past -------------------------------------
 def test_reply_injects_the_relevant_past(tmp_path):
-    core = _core(tmp_path)
+    # A small window so the matched line leaves it (else dedup would suppress it — LUMI-071).
+    core = Core(
+        llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
+        canon="Ти — Лілі.", model="m", embedder=MockEmbedder(),
+        recall_enabled=True, rag_enabled=True, rag_floor=0.0,
+        memory_window=2, compaction_batch=2,
+    )
     s = core.start_session()
-    core.reply("я люблю каву вранці на світанку", s)   # indexed on write
-    core.reply("розкажи мені ще про каву", s)           # the query shares «каву»
+    core.reply("я люблю каву вранці на світанку", s)     # indexed on write
+    for filler in ("погода", "новини", "жарт"):           # push the coffee line out of the window
+        core.reply(filler, s)
+    core.reply("розкажи мені ще про каву", s)             # the query shares «каву»
 
     system = core.last_prompt["system"]
     assert BLOCK in system
-    assert "каву" in system.split(BLOCK, 1)[1]          # the past coffee line surfaced in the block
+    assert "кав" in system.split(BLOCK, 1)[1]             # the past coffee line surfaced in the block
     assert BLOCK not in core.last_prompt["cache_prefix"]  # tail-only
 
 
@@ -89,6 +97,46 @@ def test_retrieval_error_degrades_to_no_block_and_never_breaks_the_turn(tmp_path
     state = core.reply("привіт", s)          # the turn still completes…
     assert state.reply
     assert BLOCK not in core.last_prompt["system"]  # …with no block (graceful)
+
+
+# --- dedup against the window + bounds (LUMI-071) ---------------------------
+def test_dedup_against_the_live_window(tmp_path):
+    core = _core(tmp_path)  # rag on, floor 0
+    s = core.start_session()
+    core.reply("пуер найкращий на третій заварці", s)
+    user_msg = next(m for m in core._repo.load_messages(s.id) if "заварці" in m.text)
+
+    # The same line, with it IN the window → deduped (not repeated); with an empty window → injected.
+    with_window = core._recall_block("розкажи про пуер заварці", live=[user_msg])
+    without_window = core._recall_block("розкажи про пуер заварці", live=[])
+    assert with_window is None or "заварці" not in with_window   # no double-context
+    assert without_window and "заварці" in without_window         # otherwise it IS a valid hit
+
+
+def test_block_respects_the_char_budget(tmp_path):
+    core = Core(
+        llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
+        canon="Ти — Лілі.", model="m", embedder=MockEmbedder(),
+        recall_enabled=True, rag_enabled=True, rag_floor=0.0,
+        rag_k=10, rag_max_chars=120,
+    )
+    s = core.start_session()
+    for i in range(8):
+        core.reply(f"пуер чай історія розповідь номер {i} про смак і аромат напою", s)
+    block = core._recall_block("пуер чай історія смак", live=[])
+    assert block is not None
+    assert len(block) <= 120 + 80          # bounded by the budget (allow one trailing line)
+    assert block.count("\n") + 1 < 10      # capped well below the 10 hits
+
+
+def test_long_recalled_line_is_snippet_truncated(tmp_path):
+    from core.agent import _RAG_SNIPPET_CHARS
+    core = _core(tmp_path)
+    s = core.start_session()
+    core.reply("пуер " + "дуже довга історія про чай та аромат напою ".strip() * 30, s)
+    block = core._recall_block("пуер історія чай аромат", live=[])
+    assert block and "…" in block          # the long line is snippet-truncated
+    assert all(len(ln) <= _RAG_SNIPPET_CHARS + 60 for ln in block.splitlines())
 
 
 def test_an_old_out_of_window_line_resurfaces(tmp_path):

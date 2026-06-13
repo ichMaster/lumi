@@ -139,6 +139,10 @@ _recall_log = logging.getLogger("lumi.recall")
 # FULL text so has_vector / backfill idempotency is unaffected.
 _MAX_EMBED_CHARS = 2000
 
+# Per-line snippet length in the v0.17 recall block — keep each recalled moment compact (a jog of
+# memory, not the whole message); the block's total is bounded by `rag_max_chars`.
+_RAG_SNIPPET_CHARS = 240
+
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
 
@@ -223,6 +227,7 @@ class Core:
         rag_enabled: bool = False,
         rag_k: int = 4,
         rag_floor: float = 0.3,
+        rag_max_chars: int = 1200,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -325,6 +330,7 @@ class Core:
         self._rag_enabled = rag_enabled and (recall_enabled and embedder is not None)
         self._rag_k = rag_k
         self._rag_floor = rag_floor
+        self._rag_max_chars = rag_max_chars
         self._recommendation: list[str] = []  # the user's soft style suggestion (or none)
         self.last_style: str | None = None  # the style Лілі declared last turn (<style>…)
         # The validated EmotionState from the last turn (for a renderer / status line).
@@ -1024,8 +1030,11 @@ class Core:
         ]
         messages.append({"role": "user", "content": f"[{format_stamp(turn_ts)}] {user_text}"})
 
-        # v0.17: automatic per-turn RAG — the incoming message is the query; inject the relevant past.
-        system, cache_prefix = self._system_prompt(session, recall=self._recall_block(user_text))
+        # v0.17: automatic per-turn RAG — the incoming message is the query; inject the relevant past
+        # (deduped against the live window so it never repeats a line already in context).
+        system, cache_prefix = self._system_prompt(
+            session, recall=self._recall_block(user_text, live)
+        )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         raw = self._llm.reply_structured(
             system=system, messages=messages, model=self._model,
@@ -1255,22 +1264,38 @@ class Core:
         """Whether automatic per-turn RAG injection is active (v0.17)."""
         return self._rag_enabled
 
-    def _recall_block(self, query: str) -> str | None:
+    def _recall_block(self, query: str, live: list[Message] | None = None) -> str | None:
         """The per-turn RAG block (v0.17): the query-relevant past as a dated «relevant moments»
         block, or ``None`` when off / no hit above the floor. **Best-effort, never blocks a turn.**
 
-        Reuses :meth:`recall` (search → relevance floor); a retrieval error degrades to ``None``.
+        Reuses :meth:`recall` (search → relevance floor), then **dedups against the live window**
+        (never repeat a line already in context) and **caps** the block by a char budget
+        (``rag_max_chars``) — hits are score-ordered, so the cap keeps the most relevant. A
+        retrieval error degrades to ``None``.
         """
         if not self._rag_enabled:
             return None
         hits = [(s, r) for s, r in self.recall(query, self._rag_k) if s >= self._rag_floor]
         if not hits:
             return None
-        lines = []
+        # Dedup against the rolling window — a line already verbatim in context isn't repeated.
+        seen = {
+            vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in (live or [])
+        }
+        lines, used = [], 0
         for _score, rec in hits:
+            if rec.msg_id in seen:
+                continue
             who = "Лілі" if rec.role == "lili" else "ти"
-            lines.append(f"— {rec.ts[:10]} · {who}: «{rec.text.strip()}»")
-        return "\n".join(lines)
+            text = rec.text.strip()
+            if len(text) > _RAG_SNIPPET_CHARS:
+                text = text[:_RAG_SNIPPET_CHARS].rstrip() + "…"
+            line = f"— {rec.ts[:10]} · {who}: «{text}»"
+            lines.append(line)
+            used += len(line) + 1
+            if used >= self._rag_max_chars:  # char budget reached — keep the most relevant
+                break
+        return "\n".join(lines) if lines else None
 
     def _accumulate_facts(self, history: list) -> None:
         try:
@@ -1364,6 +1389,7 @@ def build_core(
         rag_enabled=cfg.rag,
         rag_k=cfg.rag_k,
         rag_floor=cfg.rag_floor,
+        rag_max_chars=cfg.rag_max_chars,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
