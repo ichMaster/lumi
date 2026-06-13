@@ -112,3 +112,100 @@ def test_clear_memory_is_per_user(tmp_path):
 
     assert repo._vectors.get("alice", []) == []          # A's vectors gone
     assert any(r.text == "Боб" for r in repo._vectors.get("bob", []))  # B's intact
+
+
+# === v0.17 — automatic per-turn RAG: isolation in the turn + bounds/graceful (LUMI-074) ===
+RAG_HEADER = "# Релевантні моменти минулого"
+
+
+def _rag_core(repo, user_id, *, floor=0.0, rag=True):
+    return Core(
+        llm=MockLLMClient("ок"), repository=repo, canon="Ти — Лілі.", model="m",
+        user_id=user_id, embedder=MockEmbedder(), recall_enabled=True,
+        rag_enabled=rag, rag_floor=floor, memory_window=2, compaction_batch=2,
+    )
+
+
+def _rag_block(core):
+    sys = core.last_prompt["system"]
+    return sys.split(RAG_HEADER, 1)[1] if RAG_HEADER in sys else ""
+
+
+def test_per_turn_rag_never_crosses_users(tmp_path):
+    # One shared store, two users; each turn's injected recall block (anchor + neighbours) must
+    # contain ONLY the requesting user's messages — never the other's.
+    repo = JsonRepository(tmp_path / "s.json")
+    alice, bob = _rag_core(repo, "alice"), _rag_core(repo, "bob")
+    sa, sb = alice.start_session(), bob.start_session()
+    alice.reply("моя улюблена страва борщ український зі сметаною", sa)
+    bob.reply("моя улюблена страва піца італійська з моцарелою", sb)
+    for filler in ("як справи", "що нового", "розкажи жарт", "добраніч друже"):
+        alice.reply(filler, sa)   # push the food line out of each user's window
+        bob.reply(filler, sb)
+
+    bob.reply("нагадай про піцу", sb)        # bob's turn → bob's recall block
+    bob_block = _rag_block(bob)
+    assert "борщ" not in bob_block and "український" not in bob_block   # never Alice's
+    alice.reply("нагадай про борщ", sa)      # alice's turn → alice's recall block
+    alice_block = _rag_block(alice)
+    assert "піца" not in alice_block and "італійська" not in alice_block  # never Bob's
+
+
+def test_rag_off_is_byte_for_byte_the_pre_rag_prompt(tmp_path):
+    # LUMI_RAG off → the prompt is exactly what it would be without the feature (no block).
+    repo_on = JsonRepository(tmp_path / "on.json")
+    repo_off = JsonRepository(tmp_path / "off.json")
+    on, off = _rag_core(repo_on, "owner", rag=True), _rag_core(repo_off, "owner", rag=False)
+    for c in (on, off):
+        s = c.start_session()
+        c.reply("пуер на третій заварці найсмачніший", s)
+        for f in ("привіт", "як ти", "що робиш", "добраніч"):
+            c.reply(f, s)
+        c.reply("нагадай про пуер", s)
+    assert RAG_HEADER not in off.last_prompt["system"]   # off → no block at all
+    assert RAG_HEADER in on.last_prompt["system"]        # on → the block is there
+
+
+def test_rag_below_floor_injects_no_block(tmp_path):
+    repo = JsonRepository(tmp_path / "s.json")
+    core = _rag_core(repo, "owner", floor=0.99)          # nothing clears a 0.99 floor
+    s = core.start_session()
+    core.reply("пуер на третій заварці", s)
+    for f in ("привіт", "як ти", "добраніч"):
+        core.reply(f, s)
+    core.reply("нагадай про пуер", s)
+    assert RAG_HEADER not in core.last_prompt["system"]
+
+
+def test_rag_deduped_against_the_window(tmp_path):
+    # A line still in the live window is never repeated in the block (no double-context).
+    repo = JsonRepository(tmp_path / "s.json")
+    core = Core(
+        llm=MockLLMClient("ок"), repository=repo, canon="Ти — Лілі.", model="m",
+        user_id="owner", embedder=MockEmbedder(), recall_enabled=True,
+        rag_enabled=True, rag_floor=0.0, memory_window=40,  # big window → the line stays in it
+    )
+    s = core.start_session()
+    core.reply("пуер на третій заварці унікальний", s)
+    core.reply("розкажи про пуер заварці унікальний", s)  # matches the still-in-window line
+    block = _rag_block(core)
+    assert "третій заварці унікальний" not in block       # deduped (already in the window)
+
+
+class _BoomEmbedder:
+    dim = 8
+
+    def embed(self, texts, *, is_query=False):
+        raise RuntimeError("embedding down")
+
+
+def test_rag_retrieval_error_never_breaks_the_turn(tmp_path):
+    repo = JsonRepository(tmp_path / "s.json")
+    core = Core(
+        llm=MockLLMClient("ок"), repository=repo, canon="Ти — Лілі.", model="m",
+        user_id="owner", embedder=_BoomEmbedder(), recall_enabled=True, rag_enabled=True,
+    )
+    s = core.start_session()
+    state = core.reply("привіт", s)                       # the turn still completes…
+    assert state.reply
+    assert RAG_HEADER not in core.last_prompt["system"]   # …with no block (graceful)
