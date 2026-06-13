@@ -695,10 +695,11 @@ class LumiApp(App[None]):
         self._emit(body, Markdown(body))
 
     def _recall_command(self, text: str) -> None:
-        """Explicit semantic search — the `/recall <query>` command (v0.16).
+        """Explicit semantic search — the `/recall <query>` command (v0.16; v0.17 context expansion).
 
-        Renders each hit as a dated, scored line; an empty query or no results prints a
-        friendly note. Off (LUMI_RECALL) → says so rather than implying nothing matched.
+        Renders each hit as a dated dialogue **snippet** (the matched line with its session
+        neighbours, anchor + score marked), so search results read as moments, not orphan lines.
+        Empty query / no results → a friendly note; off (LUMI_RECALL) → says so.
         """
         query = text[len("/recall"):].strip()
         if not self._core.recall_enabled:
@@ -709,15 +710,11 @@ class LumiApp(App[None]):
             body = "Що згадати? `/recall <запит>`"
             self._emit(body, Markdown(body))
             return
-        hits = self._core.recall(query)
-        if not hits:
+        moments = self._core.recall_moments(query)  # v0.17: dated snippets (hit + neighbours)
+        if not moments:
             body = f"Нічого не згадалося про «{query}»."
         else:
-            lines = [f"**Згадую про «{query}»:**"]
-            for score, rec in hits:
-                who = "Лілі" if rec.role == "lili" else "ти"
-                lines.append(f"- {rec.ts[:10]} · {who}: «{rec.text}» _({score:.2f})_")
-            body = "\n".join(lines)
+            body = f"**Згадую про «{query}»:**\n\n" + "\n\n".join(moments)
         self._emit(body, Markdown(body))
 
     def _show_closeness(self) -> None:

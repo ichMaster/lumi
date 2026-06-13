@@ -95,6 +95,32 @@ def test_recall_never_raises_on_embed_error(tmp_path):
     assert core.recall("привіт") == []  # search degrades to empty, not an exception
 
 
+# --- expanded snippets (LUMI-073) -------------------------------------------
+def test_recall_moments_returns_expanded_dated_snippets(tmp_path):
+    core = _core(tmp_path, embedder=MockEmbedder())
+    s = core.start_session()
+    core.reply("привіт як ти сьогодні", s)
+    core.reply("розкажи мені про дирижабль у небі", s)   # the line we'll search
+    core.reply("дякую дуже цікаво", s)
+
+    moments = core.recall_moments("дирижабль")
+    assert moments
+    joined = "\n".join(moments)
+    assert "← (matched, 0." in joined          # the anchor is marked WITH its score
+    assert "дирижабль" in joined               # the matched line
+    assert joined.lstrip().startswith("—")     # dated snippet header (a moment, not a bare line)
+    assert "  " in joined                      # indented dialogue lines (neighbours)
+
+
+def test_recall_moments_empty_or_off(tmp_path):
+    on = _core(tmp_path, embedder=MockEmbedder(), store="x.json")
+    assert on.recall_moments("   ") == []      # empty query
+    off = _core(tmp_path, embedder=MockEmbedder(), recall=False, store="y.json")
+    s = off.start_session()
+    off.reply("привіт", s)
+    assert off.recall_moments("привіт") == []  # recall off
+
+
 # --- the /recall TUI command -------------------------------------------------
 async def _submit(pilot, app, text):
     app.query_one("#prompt").text = text
@@ -105,16 +131,17 @@ async def _submit(pilot, app, text):
             break
 
 
-async def test_recall_command_renders_dated_scored_hits(tmp_path):
+async def test_recall_command_renders_expanded_snippets(tmp_path):
     core = _core(tmp_path, embedder=MockEmbedder())
     app = LumiApp(core)
     async with app.run_test() as pilot:
-        await _submit(pilot, app, "я люблю каву")     # a turn to index
+        await _submit(pilot, app, "я люблю каву вранці")   # a turn to index
         app.transcript.clear()
         await _submit(pilot, app, "/recall кава")
         joined = "\n".join(app.transcript)
         assert "Згадую про «кава»" in joined
-        assert "ти:" in joined and "кава" in joined    # dated, who, the text
+        assert "ти:" in joined and "кава" in joined        # who + the text
+        assert "← (matched" in joined                      # the anchor is marked (expanded snippet)
 
 
 async def test_recall_command_empty_query_prompts(tmp_path):

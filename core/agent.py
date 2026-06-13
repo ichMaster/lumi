@@ -1272,6 +1272,15 @@ class Core:
             _recall_log.warning("recall search failed: %s", exc)
             return []
 
+    def recall_moments(self, query: str, k: int | None = None) -> list[str]:
+        """Explicit `/recall` as **dated dialogue snippets** (the v0.16 hits widened with their
+        neighbours, anchor + score marked) — the same context expansion the per-turn RAG uses, so
+        search results read as moments, not orphan lines. Empty / off → ``[]``; never raises."""
+        hits = self.recall(query, k)
+        if not hits:
+            return []
+        return self._expand_hits(hits, set(), show_score=True)  # no window dedup for explicit search
+
     @property
     def rag_enabled(self) -> bool:
         """Whether automatic per-turn RAG injection is active (v0.17)."""
@@ -1336,12 +1345,23 @@ class Core:
         return self._position_index.get(msg_id)
 
     def _expand_hits(
-        self, hits: list[tuple[float, VectorRecord]], window_ids: set[str]
+        self,
+        hits: list[tuple[float, VectorRecord]],
+        window_ids: set[str],
+        *,
+        show_score: bool = False,
     ) -> list[str]:
         """Widen each hit to a ±``rag_w`` session-neighbour snippet (anchor marked); merge
         overlapping windows within a session; drop neighbour lines already in the window. Returns
         dated snippet strings, most-relevant first. A hit that doesn't resolve → a bare anchor line.
+
+        ``show_score`` annotates the anchor mark with the cosine score (for the ``/recall`` view).
         """
+        def mark(score: float | None) -> str:
+            if score is None:
+                return ""
+            return f"  ← (matched, {score:.2f})" if show_score else "  ← (matched)"
+
         w = self._rag_w
         by_session: dict[str, list[tuple[int, float]]] = {}  # session_id → [(anchor_index, score)]
         bare: list[tuple[float, str]] = []
@@ -1349,7 +1369,7 @@ class Core:
             pos = self._position_of(rec.msg_id)
             if pos is None:
                 bare.append((score, f"— {rec.ts[:10]} —\n  {self._who(rec.role)}: "
-                                    f"{_snippet(rec.text)}  ← (matched)"))
+                                    f"{_snippet(rec.text)}{mark(score)}"))
                 continue
             by_session.setdefault(pos[0], []).append((pos[1], score))
 
@@ -1357,7 +1377,7 @@ class Core:
         for session_id, anchors in by_session.items():
             msgs = self._repo.load_messages(session_id)
             anchors.sort()
-            anchor_idx = {i for i, _ in anchors}
+            anchor_score = {i: sc for i, sc in anchors}  # position → its cosine score
             # Merge overlapping/adjacent ±w windows into ranges, carrying the best score.
             ranges: list[list[float]] = []  # [start, end, rank]
             for i, score in anchors:
@@ -1374,8 +1394,8 @@ class Core:
                     mid = vector_msg_id(m.session_id, m.ts, m.role, m.text)
                     if mid in window_ids:  # dedup the whole snippet, not just the anchor
                         continue
-                    mark = "  ← (matched)" if p in anchor_idx else ""
-                    lines.append(f"  {self._who(m.role)}: {_snippet(m.text)}{mark}")
+                    lines.append(f"  {self._who(m.role)}: {_snippet(m.text)}"
+                                 f"{mark(anchor_score.get(p))}")
                 if lines:
                     date = msgs[int(start)].ts[:10]
                     snippets.append((rank, f"— {date} —\n" + "\n".join(lines)))
