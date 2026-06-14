@@ -186,16 +186,31 @@ class DirectiveOutcome:
 
 @dataclass
 class UsageTotals:
-    """Running totals across the session (for the TUI status line)."""
+    """Running totals across the session (for the TUI status line).
+
+    Counts **every** model call — user replies AND background calls (proactive thinks, summaries,
+    facts, mood, compaction) — so the line shows real token consumption. ``turns`` and ``latency_ms``
+    track **user turns only** (so the avg stays per-reply); the token fields include everything.
+    """
 
     turns: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     latency_ms: int = 0
 
     @property
     def avg_latency_ms(self) -> int:
         return self.latency_ms // self.turns if self.turns else 0
+
+    @property
+    def total_tokens(self) -> int:
+        """All tokens processed (fresh input + cache read + cache write + output)."""
+        return (
+            self.input_tokens + self.output_tokens
+            + self.cache_read_tokens + self.cache_write_tokens
+        )
 
 
 class Core:
@@ -895,13 +910,34 @@ class Core:
         if prev_thinking:
             llm._thinking = False
         try:
-            return llm.reply(
+            text = llm.reply(
                 system=system, messages=messages, model=self._model,
                 cache_prefix=cache_prefix if self._prompt_cache else None,
             )
+            self._accumulate_stats(turn=False)  # count this background call's real token cost
+            return text
         finally:
             if prev_thinking:
                 llm._thinking = prev_thinking
+
+    def _accumulate_stats(self, *, turn: bool) -> None:
+        """Fold the LLM's most-recent call into the running totals + ``last_stats``.
+
+        Called after **every** model call — user replies (``turn=True``) and background calls
+        (thinks, summaries, facts, mood, compaction; ``turn=False``) — so the status line reflects
+        real consumption. Token fields count everything; ``turns``/``latency_ms`` count user turns
+        only (so the avg stays per-reply)."""
+        stats = getattr(self._llm, "last_stats", None)
+        if stats is None:
+            return
+        self.last_stats = stats
+        self.totals.input_tokens += stats.input_tokens or 0
+        self.totals.output_tokens += stats.output_tokens or 0
+        self.totals.cache_read_tokens += stats.cache_read_tokens or 0
+        self.totals.cache_write_tokens += stats.cache_write_tokens or 0
+        if turn:
+            self.totals.turns += 1
+            self.totals.latency_ms += stats.latency_ms
 
     def _maybe_compact(self, session: Session, history: list) -> SessionDigest | None:
         """Fold older-than-window messages into the session digest, in batches.
@@ -1082,12 +1118,7 @@ class Core:
         # Strip a leading [date-time] the model may echo from the timestamped history.
         reply_text = strip_leading_stamp(reply_text)
         self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None)
-        self.last_stats = getattr(self._llm, "last_stats", None)
-        if self.last_stats is not None:
-            self.totals.turns += 1
-            self.totals.input_tokens += self.last_stats.input_tokens or 0
-            self.totals.output_tokens += self.last_stats.output_tokens or 0
-            self.totals.latency_ms += self.last_stats.latency_ms
+        self._accumulate_stats(turn=True)  # the reply turn (+ any housekeeping above already folded in)
 
         # Merge emotion sources: the structured tool wins when present; otherwise the
         # inline <emotion> tag (the reliable path when the tool can't be forced —

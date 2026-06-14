@@ -255,7 +255,8 @@ class LumiApp(App[None]):
         self._render_stats()
         self.query_one("#prompt", ChatInput).focus()
         self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
-        self.run_worker(asyncio.to_thread(self._core.ensure_mood), exclusive=False)  # mood (v0.6)
+        # mood (v0.6) — render the bar after, so the startup mood call's tokens show up
+        self.run_worker(self._render_after(asyncio.to_thread(self._core.ensure_mood)), exclusive=False)
         # v0.16 semantic recall: index the existing history once, off the UI thread, so /recall
         # works on a fresh store and the first search never blocks (no-op when recall is off).
         self.run_worker(asyncio.to_thread(self._core.ensure_backfill), exclusive=False)
@@ -411,10 +412,10 @@ class LumiApp(App[None]):
         """The statistics line — last response + running totals (total tokens only)."""
         stats = self._core.last_stats
         totals = self._core.totals
-        if stats is None or totals.turns == 0:
+        if stats is None:  # show as soon as ANY model call ran (e.g. the startup mood), not just replies
             return "stats: —"
         last_tok = (stats.input_tokens or 0) + (stats.output_tokens or 0)
-        total_tok = totals.input_tokens + totals.output_tokens
+        total_tok = totals.total_tokens  # all tokens: fresh input + cache read/write + output
         last = f"last {self._fmt_tokens(last_tok)} tok · {self._fmt_latency(stats.latency_ms)}"
         if stats.cache_read_tokens:  # v0.15: prefix served from the prompt cache
             last += f" · cache {self._fmt_tokens(stats.cache_read_tokens)}↩"
@@ -431,6 +432,14 @@ class LumiApp(App[None]):
 
     def _render_stats(self) -> None:
         self.query_one("#stats", Static).update(self._stats_text())
+
+    async def _render_after(self, coro) -> None:
+        """Await a background model-consuming task, then refresh the stats bar — so the startup
+        mood call (and other off-thread housekeeping) shows its real token cost, not just replies."""
+        try:
+            await coro
+        finally:
+            self._render_stats()
 
     async def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         prompt = self.query_one("#prompt", ChatInput)
@@ -620,6 +629,7 @@ class LumiApp(App[None]):
                 self._core.tick_think, self._session, anchor, now,
                 rng_seed=seed_n, kind=kind, topic=topic,
             )
+            self._render_stats()  # a think consumes tokens too — reflect its cost in the bar
             if thought is None:
                 return  # not due / capped / off / nothing made — silent ones end here
             self._last_think_ts = now  # rate-limit the think only (never resets the nudge's idle)

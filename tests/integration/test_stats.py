@@ -86,3 +86,41 @@ def test_end_session_disables_thinking_for_housekeeping(tmp_path):
     assert rec.thinking_per_call[2] is False
     # ...and thinking is restored afterward (so it isn't permanently disabled).
     assert rec._thinking is True
+
+
+def test_background_calls_count_toward_token_totals_not_turns(tmp_path):
+    # Real consumption: mood / summaries / facts / thinks all run through _housekeeping_reply, so
+    # their tokens land in the totals (and last_stats) WITHOUT inflating the user-turn count.
+    class _Rec:
+        def __init__(self):
+            self._thinking = False
+            self.last_thinking = None
+            self.last_stats = None
+
+        def _set(self, model, n):
+            self.last_stats = ResponseStats(
+                model=model, latency_ms=1, input_tokens=n, output_tokens=n // 10
+            )
+
+        def reply(self, system, messages, model, cache_prefix=None):
+            self._set(model, 100)              # a background/housekeeping call (summary/facts/think)
+            return "стислий підсумок\nЕМОЦІЯ: calm"
+
+        def reply_structured(self, system, messages, model, cache_prefix=None):
+            self._set(model, 300)              # a real user reply
+            return {"reply": "ок", "emotion": "calm", "intensity": 0.5}
+
+    rec = _Rec()
+    core = Core(llm=rec, repository=JsonRepository(tmp_path / "s.json"),
+                canon="C", model="m", thoughts_enabled=True)
+    session = core.start_session()
+    core.reply("привіт", session)
+    turns_after_reply = core.totals.turns          # 1
+    tok_after_reply = core.totals.input_tokens
+
+    core.think("think", session=session)           # a proactive think (background)
+    core.end_session(session)                      # summary + facts (background)
+
+    assert core.totals.turns == turns_after_reply          # background calls add NO user turns
+    assert core.totals.input_tokens > tok_after_reply       # …but their tokens ARE counted
+    assert core.last_stats.input_tokens == 100              # the bar's "last" reflects a background call
