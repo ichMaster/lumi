@@ -11,6 +11,8 @@ v0.1 ``reply(...)`` returns plain text; v0.3 will return a validated
 
 from __future__ import annotations
 
+import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -55,6 +57,44 @@ _EMOTION_TOOL = {
         "required": ["reply", "emotion", "intensity"],
     },
 }
+
+# For JSON-mode providers (OpenAI/DeepSeek/local v0.18, MiniMax) that have no tool-call: ask for the
+# same shape as plain JSON. Appended to `system` only on the structured call; the v0.3 gate still validates.
+_JSON_STATE_INSTRUCTION = (
+    "\n\nReturn ONLY a single JSON object (no prose, no markdown fences) with exactly these keys: "
+    '"reply" (string — Лілі\'s reply text, her words only), '
+    '"emotion" (one of: ' + ", ".join(e.value for e in Emotion) + "), "
+    '"intensity" (number between 0 and 1). '
+    'Example: {"reply": "...", "emotion": "calm", "intensity": 0.6}'
+)
+
+
+def parse_emotion_json(content: str) -> dict:
+    """Parse a JSON-mode reply into the raw ``{reply, emotion, intensity}`` dict (the v0.3 gate validates).
+
+    Tolerates ```json fences and surrounding prose (extracts the first ``{…}`` block); a total parse
+    failure degrades to ``{"reply": <text>}`` so the gate fills ``emotion=calm`` — never raises.
+    """
+    text = (content or "").strip()
+    if text.startswith("```"):  # ```json … ``` fences
+        text = text.strip("`").strip()
+        if text[:4].lower() == "json":
+            text = text[4:].strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, ValueError):
+        pass
+    match = re.search(r"\{.*\}", text, re.S)  # first {...} block embedded in prose
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {"reply": text}  # total fallback → the v0.3 gate fills emotion=calm
 
 
 @dataclass(frozen=True)
@@ -300,6 +340,99 @@ class AnthropicClient:
             raise LLMError(f"{err}: {exc}") from exc
 
 
+class OpenAICompatibleClient:
+    """OpenAI / DeepSeek / any OpenAI-compatible local server (Ollama, LM Studio) — v0.18.
+
+    One adapter for all three: they differ only by ``base_url`` + key + model id. The ``openai`` SDK is
+    imported **only here** (an optional extra). Structured output is requested as a JSON object and
+    parsed into the shared ``{reply, emotion, intensity}`` shape via :func:`parse_emotion_json`, then
+    validated by the v0.3 gate. Prompt caching / extended thinking are Anthropic-only and ignored here
+    (``cache_prefix`` is accepted but unused; ``last_thinking`` stays ``None``).
+    """
+
+    _RETRYABLE_NAMES = {"APIConnectionError", "APITimeoutError", "RateLimitError", "InternalServerError"}
+
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        base_url: str | None = None,
+        max_tokens: int = 1024,
+        retries: int = 2,
+        backoff: float = 0.5,
+        _client: object | None = None,
+    ) -> None:
+        if _client is not None:
+            self._client = _client
+        else:
+            if not api_key:
+                raise LLMError(
+                    "The OpenAI-compatible provider's key is not set — add the provider's key to .env "
+                    "(OPENAI_API_KEY / DEEPSEEK_API_KEY)."
+                )
+            import openai  # optional extra ('models'); imported only inside this client
+
+            self._client = openai.OpenAI(api_key=api_key, base_url=base_url or None)
+        self._max_tokens = max_tokens
+        self._retries = retries
+        self._backoff = backoff
+        self.last_thinking: str | None = None  # no provider-side thinking on this path
+        self.last_stats: ResponseStats | None = None
+
+    def _create(self, system: str, messages: list[Message], model: str, *, structured: bool) -> object:
+        sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
+        payload = [{"role": "system", "content": sys_text}, *messages]
+        kwargs: dict = {"model": model, "messages": payload, "max_tokens": self._max_tokens}
+        if structured:
+            kwargs["response_format"] = {"type": "json_object"}  # JSON mode (OpenAI + DeepSeek + most local)
+        started = time.monotonic()
+        resp = self._run(lambda: self._client.chat.completions.create(**kwargs))
+        self._capture(resp, model, int((time.monotonic() - started) * 1000))
+        return resp
+
+    @staticmethod
+    def _content(resp: object) -> str:
+        try:
+            return resp.choices[0].message.content or ""  # type: ignore[attr-defined]
+        except (AttributeError, IndexError, TypeError):
+            return ""
+
+    def _capture(self, resp: object, model: str, latency_ms: int) -> None:
+        usage = getattr(resp, "usage", None)
+        details = getattr(usage, "prompt_tokens_details", None)
+        self.last_stats = ResponseStats(
+            model=model,
+            latency_ms=latency_ms,
+            input_tokens=getattr(usage, "prompt_tokens", None),
+            output_tokens=getattr(usage, "completion_tokens", None),
+            cache_read_tokens=getattr(details, "cached_tokens", None) if details is not None else None,
+            cache_write_tokens=None,
+            thinking=False,
+        )
+        self.last_thinking = None
+
+    def reply(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> str:
+        return self._content(self._create(system, messages, model, structured=False))
+
+    def reply_structured(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> dict:
+        return parse_emotion_json(self._content(self._create(system, messages, model, structured=True)))
+
+    def _run(self, fn: Callable[[], _T]) -> _T:
+        try:
+            return _call_with_retries(
+                fn,
+                retries=self._retries,
+                backoff=self._backoff,
+                is_retryable=lambda exc: type(exc).__name__ in self._RETRYABLE_NAMES,
+            )
+        except Exception as exc:  # noqa: BLE001 — wrap any API/network failure as LLMError (never hang)
+            raise LLMError(f"OpenAI-compatible call failed: {exc}") from exc
+
+
 class MockLLMClient:
     """A canned :class:`LLMClient` for tests — never touches the network.
 
@@ -410,13 +543,34 @@ def build_llm(cfg: Config) -> LLMClient:
             effort=cfg.effort,
             cache_ttl=cfg.prompt_cache_ttl,
         )
-    # The OpenAI-compatible adapter (openai / deepseek / local) lands in LUMI-076; MiniMax in LUMI-077.
+    if provider in ("openai", "deepseek", "local"):
+        base_url, key = _openai_compatible_target(cfg, provider)
+        return OpenAICompatibleClient(key, base_url=base_url, max_tokens=cfg.max_tokens)
+    # MiniMax lands in LUMI-077.
     if provider not in KNOWN_PROVIDERS:
         raise LLMError(
             f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "
             f"{', '.join(KNOWN_PROVIDERS)}."
         )
     raise LLMError(
-        f"Provider {provider!r} is not wired yet (arrives in v0.18: OpenAI-compatible LUMI-076, "
-        "MiniMax LUMI-077). Use LUMI_PROVIDER=anthropic for now."
+        f"Provider {provider!r} is not wired yet (MiniMax arrives in v0.18 LUMI-077). "
+        "Use LUMI_PROVIDER=anthropic / openai / deepseek / local for now."
     )
+
+
+def _openai_compatible_target(cfg: Config, provider: str) -> tuple[str | None, str]:
+    """(base_url, key) for an OpenAI-compatible provider; a clear LLMError names the missing var."""
+    if provider == "openai":
+        if not cfg.openai_api_key:
+            raise LLMError("LUMI_PROVIDER=openai needs OPENAI_API_KEY in .env.")
+        return (cfg.llm_base_url or None), cfg.openai_api_key
+    if provider == "deepseek":
+        if not cfg.deepseek_api_key:
+            raise LLMError("LUMI_PROVIDER=deepseek needs DEEPSEEK_API_KEY in .env.")
+        return (cfg.llm_base_url or "https://api.deepseek.com"), cfg.deepseek_api_key
+    # local OpenAI-compatible server (Ollama / LM Studio): needs a base_url; key usually optional.
+    if not cfg.llm_base_url:
+        raise LLMError(
+            "LUMI_PROVIDER=local needs LUMI_LLM_BASE_URL (e.g. http://localhost:11434/v1)."
+        )
+    return cfg.llm_base_url, (cfg.openai_api_key or "local")

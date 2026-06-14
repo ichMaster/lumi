@@ -30,11 +30,11 @@ def test_unknown_provider_raises_with_known_set():
         build_llm(Config(provider="wat", api_key="x"))
 
 
-def test_known_but_unwired_provider_raises_clear_message():
-    # openai/deepseek/minimax/local are known (land in LUMI-076/077) → a clear "not wired yet" error.
-    for provider in ("openai", "deepseek", "minimax", "local"):
-        with pytest.raises(LLMError, match="not wired yet"):
-            build_llm(Config(provider=provider, api_key="x"))
+def test_unwired_minimax_provider_raises_clear_message():
+    # openai/deepseek/local are wired in LUMI-076 (their key/base_url checks live in test_llm_openai);
+    # MiniMax lands in LUMI-077 → a clear "not wired yet" error until then.
+    with pytest.raises(LLMError, match="not wired yet"):
+        build_llm(Config(provider="minimax", api_key="x"))
 
 
 def test_provider_is_case_and_space_insensitive():
