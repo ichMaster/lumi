@@ -12,13 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.17.0 — Automatic RAG in the turn.** Each reply automatically pulls the **query-relevant past**
-into the prompt — a `# Релевантні моменти минулого` block in the volatile tail — deduped against the
-window, behind a relevance floor + budget, with **context expansion** (each hit arrives with its ±W
-session neighbours, not an orphan line). `/recall` reuses the same snippets. Rides on the v0.16
-per-user vector store (`Embedder` local-or-Voyage/OpenAI; `VectorStore` per-user, isolated). Also: a
-1-hour prompt-cache TTL + cached proactive thinks, and a status line showing real token consumption
-across all calls. Off by default per feature (`LUMI_RECALL` / `LUMI_RAG`).
+**0.17.1 — Face packs, image-gen skills & a usage report.** Two Claude Code skills build the v0.11
+emotion-face wardrobe from a single theme reference via Google Gemini ("Nano Banana"):
+`/generate-faces` does image-to-image expression deltas (copying the reference faithfully), and
+`/place-faces` reshapes to 768² and files them as viewer variants. Six themes shipped — `drowning`,
+`calm-before`, `dissociation`, `furious`, `last-memory`, `im-fine` (9 emotions × 3 each). Plus a
+**per-session token usage + estimated-cost report**: on every session close, `.lumi/usage-report.md`
+is re-rendered with cost by **month / week / day / session** (`LUMI_USAGE_REPORT`, on by default).
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,
@@ -37,7 +37,7 @@ across all calls. Off by default per feature (`LUMI_RECALL` / `LUMI_RAG`).
 
 Queued next: **Telegram voice messages** (LUMI-060) — daemon 2 sending her replies as voice bubbles.
 
-_(Previous: **0.13.0 — v0.13 Telegram bot (the bridge)** — see RELEASE.txt.)_
+_(Previous: **0.17.0 — Automatic RAG in the turn** — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 

@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 0.17.1 (2026-06-14)
+---------------------------
+- Face-generation skills: /generate-faces builds a theme's 27 emotion×intensity faces from a single reference via Google Gemini "Nano Banana" (gemini-2.5-flash-image) image-to-image, copying the reference faithfully (identity, wardrobe, cool grey-blue eyes); /place-faces reshapes the reviewed images to 768² and files them as the v0.11 viewer variants. Resilient (imageSize fallback, billing-quota message, retry/backoff, --files/--only/--force/--dry-run); GEMINI_API_KEY from env or .env; the raw/ scratch area is gitignored.
+- v0.11 theme face packs: six complete wardrobe themes shipped — drowning, calm-before, dissociation, furious, last-memory, im-fine (9 emotions × 3 variants each, 768²).
+- Per-session token usage + estimated-cost report (core/usage.py): on every session close (quit or /new), the session's token delta is appended to .lumi/usage-ledger.jsonl and .lumi/usage-report.md is re-rendered with estimated cost aggregated by month / week / day / session. Per-model Anthropic pricing, cache-aware (cache read 10%, cache write 1.25×/2× by TTL) — an estimate, not a billing source. LUMI_USAGE_REPORT on by default; both files live in the gitignored .lumi/.
+
 Version 0.17.0 (2026-06-14)
 ---------------------------
 - Semantic recall II — automatic per-turn RAG (v0.17, LUMI-070..074): each reply pulls the query-relevant past into the prompt as a "# Релевантні моменти минулого" block in the VOLATILE TAIL (never the cached prefix, so v0.15 caching keeps working); deduped against the live window, behind a relevance floor + count/char cap.
