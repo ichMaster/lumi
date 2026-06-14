@@ -12,6 +12,7 @@ v0.1 ``reply(...)`` returns plain text; v0.3 will return a validated
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import Callable
@@ -22,6 +23,9 @@ from core.emotion import Emotion
 
 if TYPE_CHECKING:  # annotation only — build_llm reads cfg attributes, never imports config at runtime
     from core.config import Config
+
+# Provider selection + degradation notes are logged here (e.g. thinking/effort on a non-Anthropic backend).
+_log = logging.getLogger("lumi.llm")
 
 # A chat message as the core hands it to the model: an Anthropic-style turn.
 Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
@@ -641,6 +645,10 @@ def build_llm(cfg: Config) -> LLMClient:
     never learns which backend it got — it depends only on the :class:`LLMClient` seam.
     """
     provider = (cfg.provider or "anthropic").strip().lower()
+    if provider != "anthropic" and (cfg.thinking or cfg.effort):
+        # Extended thinking / effort (and prompt caching, task budgets) are Anthropic-only; on other
+        # providers they are ignored, not errors — the turn still completes (the v0.3 gate is uniform).
+        _log.debug("thinking/effort are Anthropic-only — ignored for provider %r", provider)
     if provider == "anthropic":
         return AnthropicClient(
             cfg.api_key,
