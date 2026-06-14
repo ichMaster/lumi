@@ -129,6 +129,22 @@ def test_block_respects_the_char_budget(tmp_path):
     assert block.count("\n") + 1 < 10      # capped well below the 10 hits
 
 
+def test_rag_snippet_chars_is_configurable(tmp_path):
+    long_text = "пуер історія " + "дуже довге слово про чай ".strip() * 40  # ~1000 chars
+    def _block(limit, store):
+        core = Core(
+            llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / store),
+            canon="C", model="m", embedder=MockEmbedder(),
+            recall_enabled=True, rag_enabled=True, rag_floor=0.0, rag_w=0,
+            rag_snippet_chars=limit, rag_max_chars=9000,
+        )
+        core.reply(long_text, core.start_session())
+        return core._recall_block("пуер історія чай", live=[])
+    short, wide = _block(60, "a.json"), _block(400, "b.json")
+    assert short and wide
+    assert len(max(short.splitlines(), key=len)) < len(max(wide.splitlines(), key=len))  # 60 < 400
+
+
 def test_long_recalled_line_is_snippet_truncated(tmp_path):
     from core.agent import _RAG_SNIPPET_CHARS
     core = _core(tmp_path)

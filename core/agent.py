@@ -144,11 +144,11 @@ _MAX_EMBED_CHARS = 2000
 _RAG_SNIPPET_CHARS = 240
 
 
-def _snippet(text: str) -> str:
+def _snippet(text: str, limit: int = _RAG_SNIPPET_CHARS) -> str:
     """A compact one-line form of a message for the recall block (collapse newlines, truncate)."""
     text = " ".join(text.split())
-    if len(text) > _RAG_SNIPPET_CHARS:
-        text = text[:_RAG_SNIPPET_CHARS].rstrip() + "…"
+    if len(text) > limit:
+        text = text[:limit].rstrip() + "…"
     return text
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
@@ -252,6 +252,7 @@ class Core:
         rag_floor: float = 0.3,
         rag_max_chars: int = 1200,
         rag_w: int = 2,
+        rag_snippet_chars: int = _RAG_SNIPPET_CHARS,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -356,6 +357,7 @@ class Core:
         self._rag_floor = rag_floor
         self._rag_max_chars = rag_max_chars
         self._rag_w = rag_w
+        self._rag_snippet_chars = rag_snippet_chars  # per-line cap for recalled moments
         # v0.17 context expansion: msg_id → (session_id, index) for this user, built lazily once
         # (no re-index needed); lets a hit be widened to its session neighbours.
         self._position_index: dict[str, tuple[str, int]] | None = None
@@ -1357,7 +1359,7 @@ class Core:
         except Exception:  # noqa: BLE001 — expansion is best-effort; fall back to bare anchor lines
             _recall_log.warning("recall context expansion failed; using bare anchors")
             snippets = [
-                f"— {r.ts[:10]} —\n  {self._who(r.role)}: {_snippet(r.text)}  ← (matched)"
+                f"— {r.ts[:10]} —\n  {self._who(r.role)}: {_snippet(r.text, self._rag_snippet_chars)}  ← (matched)"
                 for _s, r in hits
             ]
         # Char budget across the whole block: keep whole snippets while they fit (most-relevant
@@ -1417,7 +1419,7 @@ class Core:
             pos = self._position_of(rec.msg_id)
             if pos is None:
                 bare.append((score, f"— {rec.ts[:10]} —\n  {self._who(rec.role)}: "
-                                    f"{_snippet(rec.text)}{mark(score)}"))
+                                    f"{_snippet(rec.text, self._rag_snippet_chars)}{mark(score)}"))
                 continue
             by_session.setdefault(pos[0], []).append((pos[1], score))
 
@@ -1442,7 +1444,7 @@ class Core:
                     mid = vector_msg_id(m.session_id, m.ts, m.role, m.text)
                     if mid in window_ids:  # dedup the whole snippet, not just the anchor
                         continue
-                    lines.append(f"  {self._who(m.role)}: {_snippet(m.text)}"
+                    lines.append(f"  {self._who(m.role)}: {_snippet(m.text, self._rag_snippet_chars)}"
                                  f"{mark(anchor_score.get(p))}")
                 if lines:
                     date = msgs[int(start)].ts[:10]
@@ -1547,6 +1549,7 @@ def build_core(
         rag_floor=cfg.rag_floor,
         rag_max_chars=cfg.rag_max_chars,
         rag_w=cfg.rag_w,
+        rag_snippet_chars=cfg.rag_snippet_chars,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,

@@ -92,8 +92,10 @@ def test_recall_k_default_and_override(monkeypatch):
 
 
 def test_rag_defaults_off_with_k_and_floor(monkeypatch):
-    # v0.17 automatic per-turn RAG is OFF by default (off → behaves like v0.16).
-    for key in ("LUMI_RAG", "LUMI_RAG_K", "LUMI_RAG_FLOOR"):
+    # v0.17 automatic per-turn RAG is OFF by default (off → behaves like v0.16). Clear every RAG var
+    # so a dev's .env (loaded via load_dotenv elsewhere) can't leak and shift a default under test.
+    for key in ("LUMI_RAG", "LUMI_RAG_K", "LUMI_RAG_FLOOR", "LUMI_RAG_MAX_CHARS",
+                "LUMI_RAG_W", "LUMI_RAG_SNIPPET_CHARS"):
         monkeypatch.delenv(key, raising=False)
     cfg = load_config(load_env=False)
     assert cfg.rag is False
@@ -113,6 +115,13 @@ def test_rag_w_default_and_override(monkeypatch):
     assert load_config(load_env=False).rag_w == 2  # ±2 neighbours
     monkeypatch.setenv("LUMI_RAG_W", "3")
     assert load_config(load_env=False).rag_w == 3
+
+
+def test_rag_snippet_chars_default_and_override(monkeypatch):
+    monkeypatch.delenv("LUMI_RAG_SNIPPET_CHARS", raising=False)
+    assert load_config(load_env=False).rag_snippet_chars == 240
+    monkeypatch.setenv("LUMI_RAG_SNIPPET_CHARS", "500")
+    assert load_config(load_env=False).rag_snippet_chars == 500
 
 
 def test_prompt_cache_ttl_default_and_1h(monkeypatch):
