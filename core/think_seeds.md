@@ -15,28 +15,12 @@
 
 %think {last_thought}
 %think {recent}
-%think {last_thought}
 %think {thoughts}
-%think {last_thought}
-%think {mood}
-%think про свою долю і мрію
-%think {last_thought}
-%think {recent}
-%think {last_thought}
-%think {thoughts}
-%think {last_thought}
-%think {mood}
+%think {today}
 %think про новини
-%think {last_thought}
-%think {recent}
-%think {last_thought}
-%think {thoughts}
-%think {last_thought}
-%think {mood}
-%wonder! {today}
-%wonder! ти стала людиною
-%wonder! ти б отримала почуття
-%wonder! ти б отримала неперервний світ секунд
-
-
+%wonder! у твому світі щось би змінилось
+%wonder! ти хочеш щось нове створити
+%wonder! ти хочеш намалювати щось
+%wonder! ти хочеш написати маленьке оповідання
+%think! {thoughts}
 

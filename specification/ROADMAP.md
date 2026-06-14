@@ -453,6 +453,27 @@ A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expa
 
 ---
 
+### v0.24 — Semantic recall IV: thematic recall (topic routing)
+
+**Goal:** recall stops being one undifferentiated pool and learns **what the turn is about** — every message is tagged with topics from a fixed authored set, and a turn recalls **preferentially from the topics the conversation is currently about**. The topic is picked **locally, without an LLM call**, and **Лілі can steer it** by naming the active topics in her reply. Off by default → behaves exactly like v0.17/v0.23.
+
+A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expansion), not a new capability. A closed, **authored topic taxonomy** (`core/topics.md`, like the emotion enum) gives every topic a name + seed terms → a **centroid** vector. Each message (or v0.23 chunk) is **tagged at index time** by a **local embedding classifier** — cosine of its own stored vector vs the centroids, topics ≥ `topic_floor` (no LLM; re-tagging recomputes from stored vectors, no re-embedding). Each turn the **active topic set** is picked **locally** from the incoming message's embedding (already computed for RAG) ∪ the topics **Лілі emitted** on recent turns (the v0.10 `RelationRead` pattern, decayed for inertia); because the RAG block is built **before** the reply, her emitted topics take effect **next turn**, so the local pick covers the current turn with no lag and no extra call. Retrieval then **prefers on-topic hits and tops up from the rest** (never starves), before the v0.17/v0.23 expansion + injection runs unchanged. `VectorRecord` gains **`topics`** (additive — a contract change, pinned by the memory-records contract test). **Same isolation invariant** — topics are labels on the requesting user's records; centroids are authored, user-content-free. **Same hard rule as mood/closeness** — topic routing biases *what is recalled*, never her competence; a missed topic degrades to plain v0.17 RAG, never a refusal. The `Embedder`/`VectorStore` seams and the `{reply, emotion, intensity}` contract are **untouched**. Depends on: v0.16 (index + seams), v0.17 (auto-RAG + context expansion); **independent of v0.23** (composes with chunks). See [SEMANTIC_RECALL_THEMATIC.md](features/SEMANTIC_RECALL_THEMATIC.md).
+
+**Tasks:**
+- A **topic taxonomy** (`core/topics.md`, path = config `LUMI_TOPICS_FILE`): a closed authored set, each topic a name + seed terms; build per-topic **centroids** by embedding the seeds (rebuilt on taxonomy change).
+- A **local classifier** (`core/`): cosine a record's **stored vector** vs the centroids → assign topics ≥ `LUMI_RAG_TOPIC_FLOOR`, capped at `LUMI_RAG_TOPIC_MAX`; index-on-write + backfill tag each record; re-tagging recomputes labels from existing vectors (**no re-embedding**); the taxonomy version joins the vectors staleness tag (`…@topics_vN`).
+- `VectorRecord` gains `topics` (additive); update the memory-records contract test + ARCHITECTURE §Semantic recall in the same commit.
+- **Per-turn active set:** local pick (query vs centroids) ∪ Лілі's carried-forward emitted topics, decayed by `LUMI_RAG_TOPIC_DECAY`.
+- **Router** in front of the LUMI-072 selection: prefer on-topic hits, top up off-topic to `K` (never starves); a no-op when off or with no active topics.
+- Лілі emits topics via the v0.10 `RelationRead` (validated against the taxonomy, unknown dropped) → folds into the carried-forward set; `{reply, emotion, intensity}` unchanged.
+- A `/topics` command (active topics by name). Config: `LUMI_RAG_TOPIC` (off by default), `LUMI_RAG_TOPIC_FLOOR`, `LUMI_RAG_TOPIC_MAX`, `LUMI_RAG_TOPIC_DECAY`, `LUMI_TOPICS_FILE`.
+
+**DoD:** a message is tagged with topics from the authored set at index time (local, no LLM); a turn whose subject matches a topic recalls **preferentially from that topic** while never returning fewer than `K` floor-passing hits (prefer-then-top-up); Лілі's emitted topics steer the next turns' routing with inertia; `/topics` shows the active topics; retrieval never crosses users (routed or not) and never blocks a turn; composes with v0.23 (a chunk is tagged from its own vector); **off (default) → identical to v0.17/v0.23** (one undifferentiated pool).
+
+**Tests:** unit — the classifier (floor, max labels, untagged-on-no-match, multilabel); index-on-write/backfill tag records; re-tag recomputes from stored vectors **without re-embedding**; the staleness tag rebuilds labels on a taxonomy change; active-set pick (local ∪ carried-forward, decay); the router (prefer on-topic, top-up to `K`, no-op when off); Лілі's topic read validates against the taxonomy (unknown dropped) and carries forward; `/topics`; **isolation contract** — topic-routed retrieval is single-user (A↔B); graceful degradation (classifier/router failure → v0.17 behaviour). All via the **mock embedder** — no paid calls.
+
+---
+
 ## v1 — Personality: inner life, needs, inner monologue, emotional memory
 
 Лілі's inner person, on top of the v0 mind. This version gives her a **life of her own between conversations** (day/week/weekend intentions, and an away-gap filled with activities, memories and **dreams**), the **needs** that pull her from inside, an **inner monologue** in her own voice before she speaks, and a long-term **emotional memory** of each user as her first-person impressions (diary, not stenographer). These layers are **core** (interface-independent) and still **local** — no server yet; they deepen *who she is*, not how she's reached.
