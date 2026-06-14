@@ -147,6 +147,7 @@ class AnthropicClient:
         max_tokens: int = 1024,
         thinking: bool = False,
         effort: str | None = None,
+        cache_ttl: str = "5m",
         retries: int = 2,
         backoff: float = 0.5,
         _client: object | None = None,
@@ -163,6 +164,9 @@ class AnthropicClient:
         self._max_tokens = max_tokens
         self._thinking = thinking
         self._effort = effort
+        # Prompt-cache lifetime: "5m" (default ephemeral) or "1h" (extended — keeps the cached prefix
+        # warm across longer gaps, e.g. 10-min proactive thinks; needs the extended-cache-ttl beta).
+        self._cache_ttl = cache_ttl
         # The reasoning summary from the most recent turn (None when off/absent),
         # so a client can render it (e.g. greyed) alongside the reply.
         self.last_thinking: str | None = None
@@ -181,8 +185,12 @@ class AnthropicClient:
         # passing `system` as content blocks — [prefix(cache_control), remainder] — that concatenate
         # back to the original text. Without a (valid) prefix it stays a plain string (byte-identical;
         # an unset/short prefix simply isn't cached, never an error).
-        if cache_prefix and system.startswith(cache_prefix):
-            blocks = [{"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}}]
+        cached = bool(cache_prefix and system.startswith(cache_prefix))
+        if cached:
+            cache_control = {"type": "ephemeral"}
+            if self._cache_ttl == "1h":
+                cache_control["ttl"] = "1h"  # extended TTL — survives longer gaps between turns
+            blocks = [{"type": "text", "text": cache_prefix, "cache_control": cache_control}]
             remainder = system[len(cache_prefix):]
             if remainder:
                 blocks.append({"type": "text", "text": remainder})
@@ -195,6 +203,8 @@ class AnthropicClient:
             "max_tokens": self._max_tokens,
             "messages": messages,
         }
+        if cached and self._cache_ttl == "1h":  # the 1h cache is behind a beta header
+            kwargs["extra_headers"] = {"anthropic-beta": "extended-cache-ttl-2025-04-11"}
         if self._thinking:
             # Adaptive extended thinking (Opus 4.8 / Sonnet 4.6): the model reasons
             # in `thinking` blocks before the visible reply. `display: "summarized"`

@@ -4,11 +4,35 @@ from datetime import UTC, datetime
 
 from core.agent import Core
 from core.clock import fixed_clock
-from core.llm import MockLLMClient
+from core.llm import MockLLMClient, ResponseStats
+from core.repository import make_message
 from core.thoughts import REGISTRY, THINK, WONDER, parse_thought, thought_request
 from state.local_store import JsonRepository
 
 _DAY = fixed_clock(datetime(2026, 6, 9, 14, 30, tzinfo=UTC))
+
+
+class _CacheRec:
+    """A fake LLM that records the cache_prefix each call received (to test think-time caching)."""
+
+    def __init__(self, text):
+        self._text = text
+        self.calls: list[dict] = []
+        self._thinking = False
+        self.last_thinking = None
+        self.last_stats = None
+
+    def _record(self, system, model, cache_prefix):
+        self.calls.append({"system": system, "cache_prefix": cache_prefix})
+        self.last_stats = ResponseStats(model=model, latency_ms=0)
+
+    def reply(self, system, messages, model, cache_prefix=None):
+        self._record(system, model, cache_prefix)
+        return self._text
+
+    def reply_structured(self, system, messages, model, cache_prefix=None):
+        self._record(system, model, cache_prefix)
+        return {"reply": self._text, "emotion": "calm", "intensity": 0.5}
 
 
 def _core(tmp_path, llm, *, enabled=True):
@@ -84,3 +108,42 @@ def test_think_block_is_stripped(tmp_path):
     t = _core(tmp_path, MockLLMClient(reply)).think("think")
     assert t is not None and t.text == "а може, крейда миліша за коло"
     assert "<think>" not in t.text and "міркую" not in t.text
+
+
+# --- v0.17.x: the full-mode think reuses the reply cache prefix (so frequent thinks keep it warm) ---
+def test_full_mode_think_marks_the_cache_prefix(tmp_path):
+    rec = _CacheRec("думка\nЕМОЦІЯ: calm")
+    core = Core(llm=rec, repository=JsonRepository(tmp_path / "s.json"), canon="CANON",
+                model="m", clock=_DAY, mood_enabled=False, thoughts_enabled=True,
+                thoughts_context="full", prompt_cache=True)
+    s = core.start_session()
+    core._repo.append_message(
+        make_message(s.id, "owner", "user", "привіт", ts="2026-06-09T14:00:00+00:00")
+    )
+    core.think("think", session=s, rng_seed=1)
+    call = rec.calls[-1]
+    assert call["cache_prefix"]                              # the full think marks a cache prefix…
+    assert call["system"].startswith(call["cache_prefix"])  # …and the startswith invariant holds
+
+
+def test_lean_mode_think_has_no_cache_prefix(tmp_path):
+    rec = _CacheRec("думка\nЕМОЦІЯ: calm")
+    core = Core(llm=rec, repository=JsonRepository(tmp_path / "s.json"), canon="C",
+                model="m", clock=_DAY, mood_enabled=False, thoughts_enabled=True,
+                thoughts_context="lean", prompt_cache=True)
+    s = core.start_session()
+    core.think("think", session=s, rng_seed=1)
+    assert rec.calls[-1]["cache_prefix"] is None             # lean → small prompt, nothing cached
+
+
+def test_full_mode_think_skips_cache_prefix_when_caching_off(tmp_path):
+    rec = _CacheRec("думка\nЕМОЦІЯ: calm")
+    core = Core(llm=rec, repository=JsonRepository(tmp_path / "s.json"), canon="CANON",
+                model="m", clock=_DAY, mood_enabled=False, thoughts_enabled=True,
+                thoughts_context="full", prompt_cache=False)
+    s = core.start_session()
+    core._repo.append_message(
+        make_message(s.id, "owner", "user", "привіт", ts="2026-06-09T14:00:00+00:00")
+    )
+    core.think("think", session=s, rng_seed=1)
+    assert rec.calls[-1]["cache_prefix"] is None             # caching off → no breakpoint passed

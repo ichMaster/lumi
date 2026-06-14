@@ -115,6 +115,15 @@ def test_rag_w_default_and_override(monkeypatch):
     assert load_config(load_env=False).rag_w == 3
 
 
+def test_prompt_cache_ttl_default_and_1h(monkeypatch):
+    monkeypatch.delenv("LUMI_PROMPT_CACHE_TTL", raising=False)
+    assert load_config(load_env=False).prompt_cache_ttl == "5m"   # default
+    monkeypatch.setenv("LUMI_PROMPT_CACHE_TTL", "1h")
+    assert load_config(load_env=False).prompt_cache_ttl == "1h"
+    monkeypatch.setenv("LUMI_PROMPT_CACHE_TTL", "junk")
+    assert load_config(load_env=False).prompt_cache_ttl == "5m"   # anything but 1h → 5m
+
+
 def test_prompt_cache_default_and_override(monkeypatch):
     # v0.15: the prompt-cache toggle (on by default).
     monkeypatch.delenv("LUMI_PROMPT_CACHE", raising=False)

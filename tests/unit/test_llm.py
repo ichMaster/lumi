@@ -360,3 +360,23 @@ def test_response_stats_capture_cache_read_and_write():
     st = client.last_stats
     assert st.cache_read_tokens == 9800 and st.cache_write_tokens == 2400
     assert st.input_tokens == 100 and st.output_tokens == 20
+
+
+def test_cache_ttl_1h_sets_extended_ttl_and_beta_header():
+    # v0.17.x: the 1-hour cache marks ttl="1h" and sends the extended-cache-ttl beta header.
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", cache_ttl="1h", _client=rec)
+    client.reply("PREFIX·tail", [{"role": "user", "content": "hi"}], "m", cache_prefix="PREFIX")
+    blocks = rec.last_kwargs["system"]
+    assert isinstance(blocks, list)
+    assert blocks[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert rec.last_kwargs["extra_headers"] == {"anthropic-beta": "extended-cache-ttl-2025-04-11"}
+
+
+def test_cache_ttl_5m_default_no_ttl_no_beta():
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", _client=rec)  # default 5m
+    client.reply("PREFIX·tail", [{"role": "user", "content": "hi"}], "m", cache_prefix="PREFIX")
+    blocks = rec.last_kwargs["system"]
+    assert blocks[0]["cache_control"] == {"type": "ephemeral"}  # no ttl key
+    assert "extra_headers" not in rec.last_kwargs

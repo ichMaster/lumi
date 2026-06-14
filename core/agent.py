@@ -616,10 +616,14 @@ class Core:
             topic = self.resolve(topic, session=session)
         try:
             if self._thoughts_context == "full" and session is not None:
-                system, msgs, seeds = self._thought_call_full(directive, session, topic, rng_seed)
+                system, msgs, seeds, cache_prefix = self._thought_call_full(
+                    directive, session, topic, rng_seed
+                )
             else:
-                system, msgs, seeds = self._thought_call_lean(directive, session, topic, rng_seed)
-            raw = self._housekeeping_reply(system, msgs).strip()
+                system, msgs, seeds, cache_prefix = self._thought_call_lean(
+                    directive, session, topic, rng_seed
+                )
+            raw = self._housekeeping_reply(system, msgs, cache_prefix=cache_prefix).strip()
         except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
             return None
         _, raw = split_reasoning(raw)  # strip any <think>…</think> (the full backdrop's directive)
@@ -639,8 +643,10 @@ class Core:
 
     def _thought_call_lean(
         self, directive, session: Session | None, topic: str | None, rng_seed: int,
-    ) -> tuple[str, list[dict[str, str]], list[str]]:
-        """The default **lean** thought call: a dedicated prompt seeded from her live state (cheap)."""
+    ) -> tuple[str, list[dict[str, str]], list[str], str | None]:
+        """The default **lean** thought call: a dedicated prompt seeded from her live state (cheap).
+
+        No cache prefix — the lean prompt is small and shares nothing with the reply prefix."""
         seeds: list[str] = []
         mood = self.mood
         if mood:
@@ -660,24 +666,28 @@ class Core:
             directive, mood=mood, closeness=closeness, recent=recent,
             last_thoughts=last, topic=topic, rng_seed=rng_seed,
         )
-        return system, msgs, seeds
+        return system, msgs, seeds, None
 
     def _thought_call_full(
         self, directive, session: Session, topic: str | None, rng_seed: int,
-    ) -> tuple[str, list[dict[str, str]], list[str]]:
+    ) -> tuple[str, list[dict[str, str]], list[str], str | None]:
         """The **full-context** thought call (``LUMI_THOUGHTS_CONTEXT=full``): the same backdrop a
         reply gets — canon + memory + mood + closeness + the diary block + the conversation window —
-        with the reply task swapped for a thought task. Richer, but a mini-reply in tokens."""
+        with the reply task swapped for a thought task. Richer, but a mini-reply in tokens.
+
+        Returns the same **cache prefix** the reply uses (canon + memory + mood) so the frequent
+        proactive thinks reuse the cached stable backdrop instead of re-sending it each time —
+        only her per-think tail (thoughts/ambient) + the thought header is fresh. With a 1h TTL the
+        10-min thinks keep that cache warm (and only the unchanging prefix is cached, not the tail)."""
         live = trim_history(self._repo.load_messages(session.id), self._memory_window)
         messages = [
             {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live
         ]
         messages.append({"role": "user", "content": thought_full_seed(topic=topic, rng_seed=rng_seed)})
-        system = self._system_prompt(session)[0] + THOUGHT_FULL_HEADER.format(
-            instruction=directive.instruction
-        )
+        full_system, cache_prefix = self._system_prompt(session)
+        system = full_system + THOUGHT_FULL_HEADER.format(instruction=directive.instruction)
         seeds = ["context", *(["topic"] if topic else [])]
-        return system, messages, seeds
+        return system, messages, seeds, cache_prefix
 
     def _recent_tail(self, session: Session, n: int = 6) -> str | None:
         """The last ``n`` messages of the session, compact — a seed for a thought."""
@@ -870,18 +880,25 @@ class Core:
             recall=recall,  # v0.17: the per-turn "relevant past moments" RAG block (tail; never cached)
         )
 
-    def _housekeeping_reply(self, system: str, messages: list[Message]) -> str:
+    def _housekeeping_reply(
+        self, system: str, messages: list[Message], cache_prefix: str | None = None
+    ) -> str:
         """An internal model call with extended thinking forced off.
 
         Used for summaries / facts / compaction — internal extraction, not
-        user-facing reasoning, so it stays fast and cheap.
+        user-facing reasoning, so it stays fast and cheap. ``cache_prefix`` (v0.17.x) lets the
+        full-mode thought reuse the same cached prefix as the reply (so frequent thinks keep the
+        cache warm) — passed only when prompt caching is on.
         """
         llm = self._llm
         prev_thinking = getattr(llm, "_thinking", None)
         if prev_thinking:
             llm._thinking = False
         try:
-            return llm.reply(system=system, messages=messages, model=self._model)
+            return llm.reply(
+                system=system, messages=messages, model=self._model,
+                cache_prefix=cache_prefix if self._prompt_cache else None,
+            )
         finally:
             if prev_thinking:
                 llm._thinking = prev_thinking
@@ -1448,6 +1465,7 @@ def build_core(
             max_tokens=cfg.max_tokens,
             thinking=cfg.thinking,
             effort=cfg.effort,
+            cache_ttl=cfg.prompt_cache_ttl,
         )
 
     # v0.16 semantic recall: build the embedder only when recall is on. A build failure

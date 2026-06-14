@@ -189,6 +189,7 @@ class Config:
     facts_digest: bool = True       # consolidate long-term facts into a compact prompt digest
     facts_digest_max: int = 150     # target lines for the consolidated facts digest
     prompt_cache: bool = True       # v0.15: mark the stable prompt prefix as a cache breakpoint
+    prompt_cache_ttl: str = "5m"    # cache lifetime: 5m (default) or 1h (keeps it warm across thinks)
     # v0.16 semantic recall (RAG) — off by default (the whole feature: index + /recall).
     recall: bool = False
     embed_provider: str = "local"   # local (private, default) | voyage | openai
@@ -373,6 +374,7 @@ def load_config(*, load_env: bool = True) -> Config:
         closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
         facts_digest=(os.getenv("LUMI_FACTS_DIGEST") or "on").strip().lower() in _TRUTHY,  # on by default
         prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
+        prompt_cache_ttl="1h" if (os.getenv("LUMI_PROMPT_CACHE_TTL") or "5m").strip().lower() == "1h" else "5m",
         recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,
