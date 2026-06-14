@@ -91,6 +91,13 @@ def test_recall_k_default_and_override(monkeypatch):
     assert load_config(load_env=False).recall_k == 8
 
 
+def test_embed_max_chars_default_and_override(monkeypatch):
+    monkeypatch.delenv("LUMI_EMBED_MAX_CHARS", raising=False)
+    assert load_config(load_env=False).embed_max_chars == 2000  # safe for the local model
+    monkeypatch.setenv("LUMI_EMBED_MAX_CHARS", "8000")
+    assert load_config(load_env=False).embed_max_chars == 8000
+
+
 def test_rag_defaults_off_with_k_and_floor(monkeypatch):
     # v0.17 automatic per-turn RAG is OFF by default (off → behaves like v0.16). Clear every RAG var
     # so a dev's .env (loaded via load_dotenv elsewhere) can't leak and shift a default under test.

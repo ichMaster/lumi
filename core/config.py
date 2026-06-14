@@ -196,6 +196,7 @@ class Config:
     embed_model: str = DEFAULT_LOCAL_MODEL
     embed_api_key: str = field(default="", repr=False)  # cloud embedder key — secret, never logged
     recall_k: int = 5               # /recall (v0.16) top-K results
+    embed_max_chars: int = 2000     # cap per message before embedding (local model ~512 tok; Voyage ~32k → raise it)
     # v0.17 automatic per-turn RAG — off by default (off → behaves like v0.16: index + /recall only).
     rag: bool = False
     rag_k: int = 4                  # top-K relevant past moments injected per turn
@@ -381,6 +382,7 @@ def load_config(*, load_env: bool = True) -> Config:
         embed_model=embed_model,
         embed_api_key=embed_key,
         recall_k=int(os.getenv("LUMI_RECALL_K") or 5),
+        embed_max_chars=int(os.getenv("LUMI_EMBED_MAX_CHARS") or 2000),
         rag=(os.getenv("LUMI_RAG") or "off").strip().lower() in _TRUTHY,  # v0.17, off by default
         rag_k=int(os.getenv("LUMI_RAG_K") or 4),
         rag_floor=float(os.getenv("LUMI_RAG_FLOOR") or 0.3),

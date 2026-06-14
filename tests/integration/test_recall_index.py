@@ -174,6 +174,20 @@ def test_embedder_failure_does_not_break_the_turn(tmp_path):
     assert _indexed_texts(core._repo) == set()
 
 
+def test_embed_max_chars_is_configurable(tmp_path):
+    # Raising the cap (e.g. for Voyage's 32k-token window) lets longer messages be embedded.
+    class _LenSpy(MockEmbedder):
+        def embed(self, texts, *, is_query=False):
+            self.seen = [len(t) for t in texts]
+            return super().embed(texts, is_query=is_query)
+
+    spy = _LenSpy()
+    core = Core(llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
+                canon="c", model="m", embedder=spy, recall_enabled=True, embed_max_chars=500)
+    core.reply("пуер " * 400, core.start_session())  # ~2000 chars
+    assert max(spy.seen) <= 500                       # truncated to the configured cap, not 2000
+
+
 def test_indexed_message_is_searchable(tmp_path):
     e = MockEmbedder()
     core = _core(tmp_path, embedder=e)

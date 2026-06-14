@@ -138,16 +138,27 @@ class CloudEmbedder:
             ) from exc
         if self._client is None:
             self._client = voyageai.Client(api_key=self._api_key)
-        # Voyage is asymmetric too — tell it whether this is a query or a document. It also caps
-        # each request at 128 inputs, so chunk a backfill batch into sub-requests.
+        # Voyage is asymmetric too — tell it whether this is a query or a document. A request is
+        # capped at 128 inputs AND a total token budget, so batch by BOTH count and a char budget
+        # (~240k chars ≈ ~70k tokens, well under the limit) — important once long messages are
+        # embedded without truncation.
         input_type = "query" if is_query else "document"
         out: list[list[float]] = []
-        for i in range(0, len(texts), 128):
-            result = self._client.embed(  # type: ignore[attr-defined]
-                texts[i : i + 128], model=self._model, input_type=input_type
-            )
-            out.extend([float(x) for x in v] for v in result.embeddings)
+        batch: list[str] = []
+        batch_chars = 0
+        for text in texts:
+            if batch and (len(batch) >= 128 or batch_chars + len(text) > 240_000):
+                out.extend(self._voyage_request(batch, input_type))
+                batch, batch_chars = [], 0
+            batch.append(text)
+            batch_chars += len(text)
+        if batch:
+            out.extend(self._voyage_request(batch, input_type))
         return out
+
+    def _voyage_request(self, batch: list[str], input_type: str) -> list[list[float]]:
+        result = self._client.embed(batch, model=self._model, input_type=input_type)  # type: ignore[attr-defined]
+        return [[float(x) for x in v] for v in result.embeddings]
 
     def _embed_openai(self, texts: list[str]) -> list[list[float]]:
         try:

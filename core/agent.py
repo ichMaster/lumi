@@ -246,6 +246,7 @@ class Core:
         recall_enabled: bool = False,
         recall_k: int = 5,
         recall_backfill_max: int = 500,
+        embed_max_chars: int = _MAX_EMBED_CHARS,
         embed_model: str = "",
         rag_enabled: bool = False,
         rag_k: int = 4,
@@ -348,6 +349,7 @@ class Core:
         self._recall_enabled = recall_enabled and embedder is not None
         self._recall_k = recall_k
         self._recall_backfill_max = recall_backfill_max
+        self._embed_max_chars = embed_max_chars  # truncate a message to this before embedding
         self._embed_model = embed_model  # the active model — re-index if it changed (dim change)
         self._backfilled = False  # the one-time catch-up runs lazily, once
         # v0.17 automatic per-turn RAG: inject the query-relevant past into the reply. Needs the
@@ -1238,7 +1240,7 @@ class Core:
         if not to_index:
             return
         try:
-            vectors = self._embedder.embed([m.text[:_MAX_EMBED_CHARS] for m in to_index])
+            vectors = self._embedder.embed([m.text[:self._embed_max_chars] for m in to_index])
             self._repo.add_vectors(
                 [self._vector_record(m, vec) for m, vec in zip(to_index, vectors, strict=True)]
             )
@@ -1251,7 +1253,7 @@ class Core:
             user_id=m.user_id,
             msg_id=vector_msg_id(m.session_id, m.ts, m.role, m.text),
             vector=tuple(float(x) for x in vector),
-            text=m.text[:_MAX_EMBED_CHARS],
+            text=m.text[:self._embed_max_chars],
             ts=m.ts,
             role=m.role,
         )
@@ -1280,7 +1282,7 @@ class Core:
         if not pending:
             return 0
         try:
-            vectors = self._embedder.embed([m.text[:_MAX_EMBED_CHARS] for m in pending])
+            vectors = self._embedder.embed([m.text[:self._embed_max_chars] for m in pending])
         except Exception as exc:  # noqa: BLE001 — best-effort; retried on the next pass
             _recall_log.warning("recall backfill embed failed (retried next pass): %s", exc)
             return 0
@@ -1316,7 +1318,7 @@ class Core:
             return []
         self.ensure_backfill()
         try:
-            [vec] = self._embedder.embed([query[:_MAX_EMBED_CHARS]], is_query=True)  # QUERY side
+            [vec] = self._embedder.embed([query[:self._embed_max_chars]], is_query=True)  # QUERY side
             return self._repo.search_vectors(self._user_id, list(vec), k or self._recall_k)
         except Exception as exc:  # noqa: BLE001 — recall must never break the UI
             _recall_log.warning("recall search failed: %s", exc)
@@ -1543,7 +1545,10 @@ def build_core(
         embedder=embedder,
         recall_enabled=cfg.recall,
         recall_k=cfg.recall_k,
-        embed_model=cfg.embed_model,
+        embed_max_chars=cfg.embed_max_chars,
+        # The vectors-staleness tag includes the char cap, so changing either the model OR the cap
+        # re-embeds the history at the new limit (ensure_backfill resets on a tag change).
+        embed_model=f"{cfg.embed_model}@{cfg.embed_max_chars}",
         rag_enabled=cfg.rag,
         rag_k=cfg.rag_k,
         rag_floor=cfg.rag_floor,
