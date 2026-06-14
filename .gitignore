@@ -232,3 +232,6 @@ lili-chat-export.md
 
 # v0.7 generated placeholder faces (real art added with `git add -f`)
 viewer/faces/*.png
+
+# v0.11 face-generation scratch area: 1K Gemini sources, reviewed then placed (never committed)
+viewer/faces/raw/
