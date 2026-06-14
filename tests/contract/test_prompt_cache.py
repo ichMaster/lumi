@@ -33,7 +33,7 @@ class _CacheRecorder(MockLLMClient):
 
     last_cache_prefix: object = "unset"
 
-    def reply_structured(self, system, messages, model, cache_prefix=None):
+    def reply_structured(self, system, messages, model, cache_prefix=None, **_):
         self.last_cache_prefix = cache_prefix
         return super().reply_structured(system, messages, model)
 

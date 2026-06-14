@@ -279,6 +279,11 @@ class Core:
         usage_ledger_path: Path | None = None,
         usage_report_path: Path | None = None,
         usage_cache_ttl: str = "5m",
+        file_tool_enabled: bool = False,
+        files_dir: Path | None = None,
+        file_read_lines: int = 200,
+        file_find_max: int = 50,
+        tool_max_steps: int = 8,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -326,6 +331,12 @@ class Core:
         self._usage_report_path = usage_report_path
         self._usage_cache_ttl = usage_cache_ttl
         self._usage_base = (0, 0, 0, 0, 0)  # totals snapshot at the last session boundary (zeros at start)
+        # v0.19 local file tool (off by default) — sandboxed per-user under files_dir/<user_id>.
+        self._file_tool_enabled = file_tool_enabled
+        self._files_dir = files_dir
+        self._file_read_lines = file_read_lines
+        self._file_find_max = file_find_max
+        self._tool_max_steps = tool_max_steps
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
@@ -1087,6 +1098,19 @@ class Core:
         except Exception:  # noqa: BLE001 — degrade to raw facts; never break a turn
             pass
 
+    def _file_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, executor) for the v0.19 file tool — bound to **this user's** sandbox; (None, None)
+        when off. The root ``files_dir/<user_id>`` is created lazily; a fresh executor per turn carries
+        the per-turn read budget (LUMI-083). Per-user keying enforces isolation."""
+        if not self._file_tool_enabled or self._files_dir is None:
+            return None, None
+        from core.files import READ_TOOLS, FileTools
+
+        root = self._files_dir / self._user_id
+        root.mkdir(parents=True, exist_ok=True)
+        tools = FileTools(root, read_lines=self._file_read_lines, find_max=self._file_find_max)
+        return READ_TOOLS, tools.execute
+
     def reply(self, user_text: str, session: Session) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
@@ -1117,9 +1141,12 @@ class Core:
             session, recall=self._recall_block(user_text, live)
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
+        # v0.19: when the file tool is on, run the turn as a bounded tool-loop over this user's sandbox.
+        tools, tool_executor = self._file_tool_args()
         raw = self._llm.reply_structured(
             system=system, messages=messages, model=self._model,
             cache_prefix=cache_prefix if self._prompt_cache else None,  # v0.15 cache breakpoint
+            tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
         )
         # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of
         # the reply field; the clean text is shown/stored. Prefer the model's tagged
@@ -1626,4 +1653,9 @@ def build_core(
         usage_ledger_path=(cfg.store_path.parent / "usage-ledger.jsonl") if cfg.usage_report else None,
         usage_report_path=(cfg.store_path.parent / "usage-report.md") if cfg.usage_report else None,
         usage_cache_ttl=cfg.prompt_cache_ttl,
+        file_tool_enabled=cfg.file_tool,
+        files_dir=cfg.files_dir,
+        file_read_lines=cfg.file_read_lines,
+        file_find_max=cfg.file_find_max,
+        tool_max_steps=cfg.tool_max_steps,
     )

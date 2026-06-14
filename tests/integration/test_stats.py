@@ -66,7 +66,7 @@ class _ThinkingRecorder:
         # During end-of-session housekeeping the system is the summary/facts prompt.
         return "підсумок" if system in (SUMMARY_SYSTEM, FACTS_SYSTEM) else "відповідь"
 
-    def reply_structured(self, system, messages, model, cache_prefix=None):
+    def reply_structured(self, system, messages, model, cache_prefix=None, **_):
         # The user turn (v0.3) goes through the structured path.
         self.thinking_per_call.append(self._thinking)
         self.last_stats = ResponseStats(model=model, latency_ms=0)
@@ -106,7 +106,7 @@ def test_background_calls_count_toward_token_totals_not_turns(tmp_path):
             self._set(model, 100)              # a background/housekeeping call (summary/facts/think)
             return "стислий підсумок\nЕМОЦІЯ: calm"
 
-        def reply_structured(self, system, messages, model, cache_prefix=None):
+        def reply_structured(self, system, messages, model, cache_prefix=None, **_):
             self._set(model, 300)              # a real user reply
             return {"reply": "ок", "emotion": "calm", "intensity": 0.5}
 

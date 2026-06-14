@@ -193,9 +193,11 @@ class Config:
     prompt_cache_ttl: str = "5m"    # cache lifetime: 5m (default) or 1h (keeps it warm across thinks)
     usage_report: bool = True       # write per-session token usage + cost report to .lumi/ on session close
     # v0.19 local file tool (read-only half) — off by default; sandboxed, untrusted, bounded.
+    file_tool: bool = False         # enable the file tools at all (LUMI_FILE_TOOL)
     files_dir: Path = DEFAULT_FILES_DIR  # sandbox root (per-user subdirs under it)
     file_read_lines: int = 200      # default / max lines returned by one read_file call
     file_find_max: int = 50         # max matches find_in_file returns
+    tool_max_steps: int = 8         # max tool calls per turn (the bounded tool-loop cap)
     # v0.16 semantic recall (RAG) — off by default (the whole feature: index + /recall).
     recall: bool = False
     embed_provider: str = "local"   # local (private, default) | voyage | openai
@@ -390,9 +392,11 @@ def load_config(*, load_env: bool = True) -> Config:
         prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
         prompt_cache_ttl="1h" if (os.getenv("LUMI_PROMPT_CACHE_TTL") or "5m").strip().lower() == "1h" else "5m",
         usage_report=(os.getenv("LUMI_USAGE_REPORT") or "on").strip().lower() in _TRUTHY,  # on by default
+        file_tool=(os.getenv("LUMI_FILE_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
         files_dir=Path(os.getenv("LUMI_FILES_DIR")) if os.getenv("LUMI_FILES_DIR") else DEFAULT_FILES_DIR,
         file_read_lines=int(os.getenv("LUMI_FILE_READ_LINES") or 200),
         file_find_max=int(os.getenv("LUMI_FILE_FIND_MAX") or 50),
+        tool_max_steps=int(os.getenv("LUMI_TOOL_MAX_STEPS") or 8),
         recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,

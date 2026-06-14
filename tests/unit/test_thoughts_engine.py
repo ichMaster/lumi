@@ -30,7 +30,7 @@ class _CacheRec:
         self._record(system, model, cache_prefix)
         return self._text
 
-    def reply_structured(self, system, messages, model, cache_prefix=None):
+    def reply_structured(self, system, messages, model, cache_prefix=None, **_):
         self._record(system, model, cache_prefix)
         return {"reply": self._text, "emotion": "calm", "intensity": 0.5}
 
