@@ -12,12 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.16.0 — Semantic recall (RAG).** Every message is embedded into a **per-user vector store** and
-retrieved by meaning — explicit `/recall <query>` (v0.16) and **automatic per-turn RAG** (v0.17) that
-pulls the relevant past into each reply (with its dialogue context), in the prompt's volatile tail.
-Two seams (`Embedder` — local multilingual by default, **Voyage**/OpenAI optional; `VectorStore` —
-per-user, isolated). Plus a 1-hour prompt-cache TTL, cached proactive thinks, and a status line that
-shows real token consumption across all calls. Off by default per feature (`LUMI_RECALL` / `LUMI_RAG`).
+**0.17.0 — Automatic RAG in the turn.** Each reply automatically pulls the **query-relevant past**
+into the prompt — a `# Релевантні моменти минулого` block in the volatile tail — deduped against the
+window, behind a relevance floor + budget, with **context expansion** (each hit arrives with its ±W
+session neighbours, not an orphan line). `/recall` reuses the same snippets. Rides on the v0.16
+per-user vector store (`Embedder` local-or-Voyage/OpenAI; `VectorStore` per-user, isolated). Also: a
+1-hour prompt-cache TTL + cached proactive thinks, and a status line showing real token consumption
+across all calls. Off by default per feature (`LUMI_RECALL` / `LUMI_RAG`).
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,

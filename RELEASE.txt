@@ -1,16 +1,22 @@
 Lumi — Release notes
 ====================
 
-Version 0.16.0 (2026-06-14)
+Version 0.17.0 (2026-06-14)
 ---------------------------
-- Semantic recall — index & search (v0.16, LUMI-061..065): the Embedder + VectorStore seams (local multilingual default, cloud Voyage/OpenAI optional, mockable); every message embedded into a per-user vector store; index-on-write + lazy startup backfill; an explicit /recall <query> top-K search; a per-user isolation contract test (A's lines never surface for B).
-- Automatic per-turn RAG (v0.17, LUMI-070..074): each reply pulls the query-relevant past into the prompt as a "# Релевантні моменти минулого" block in the VOLATILE TAIL (never the cached prefix); deduped against the live window, behind a relevance floor + count/char cap; CONTEXT EXPANSION injects each hit with its +-W session neighbours (an anchor-marked dialogue snippet, not an orphan line); /recall reuses the same snippets; a per-turn isolation contract. Off by default (LUMI_RAG).
-- Embedder providers: the default is a private local multilingual model; Voyage (Anthropic-recommended, fast) and OpenAI are cloud options with per-provider model defaults and request batching; configurable pre-embed truncation (LUMI_EMBED_MAX_CHARS).
-- Recall robustness fixes: switched to the e5-large retrieval model with asymmetric query/passage prefixes (correct ranking on Ukrainian); vectors stored in an append-only <store>.vectors.jsonl instead of store.json (fixes the indexing freeze); the JSON store is thread-safe; the whole history backfills at startup off-thread; a message-length cap so a huge paste can't hang the embedder.
-- Prompt cache: a 1-hour TTL option (LUMI_PROMPT_CACHE_TTL) and the full-mode proactive think now reuses the cached prefix, so frequent thinks keep the cache warm.
+- Semantic recall II — automatic per-turn RAG (v0.17, LUMI-070..074): each reply pulls the query-relevant past into the prompt as a "# Релевантні моменти минулого" block in the VOLATILE TAIL (never the cached prefix, so v0.15 caching keeps working); deduped against the live window, behind a relevance floor + count/char cap.
+- Context expansion: each hit is injected with its +-W session neighbours as a dated dialogue snippet (the anchor line marked), not an orphan line; overlapping windows merge; /recall reuses the same expanded snippets. Off by default (LUMI_RAG).
+- Prompt cache: a 1-hour TTL option (LUMI_PROMPT_CACHE_TTL) + the full-mode proactive think now reuses the cached prefix, so frequent thinks keep the cache warm instead of paying full price.
 - Status line: shows REAL token consumption across ALL model calls (replies + proactive thinks + summaries/facts/mood/compaction), including cache read/write.
 - Roadmap restructured to 6 versions (a new v1 "Personality"); v0.23 chunking spec added (SEMANTIC_RECALL_CHUNKING.md).
-- Tunables: LUMI_RAG_K / _FLOOR / _W / _MAX_CHARS / _SNIPPET_CHARS, LUMI_RECALL_K, LUMI_EMBED_PROVIDER / _MODEL / key. The locked emotion contract {reply, emotion, intensity} is unchanged; the Repository gained additive vector methods; embedder/store mocked in tests (no paid APIs).
+- RAG tunables: LUMI_RAG_K / _FLOOR / _W / _MAX_CHARS / _SNIPPET_CHARS. No emotion-contract change; mock embedder in tests (no paid APIs).
+(NB: this code shipped together with 0.16.0; this tag marks the v0.17 phase distinctly.)
+
+Version 0.16.0 (2026-06-14)
+---------------------------
+- Semantic recall I — index & search (v0.16, LUMI-061..065): the Embedder + VectorStore seams (local multilingual default, cloud Voyage/OpenAI optional, mockable); every message embedded into a per-user vector store; index-on-write + lazy startup backfill; an explicit /recall <query> top-K search; a per-user isolation contract test (A's lines never surface for B).
+- Embedder providers: the default is a private local multilingual model; Voyage (Anthropic-recommended, fast) and OpenAI are cloud options with per-provider model defaults and request batching; configurable pre-embed truncation (LUMI_EMBED_MAX_CHARS).
+- Recall robustness fixes: switched to the e5-large retrieval model with asymmetric query/passage prefixes (correct ranking on Ukrainian); vectors stored in an append-only <store>.vectors.jsonl instead of store.json (fixes the indexing freeze); the JSON store is thread-safe; the whole history backfills at startup off-thread; a message-length cap so a huge paste can't hang the embedder.
+- Tunables: LUMI_RECALL_K, LUMI_EMBED_PROVIDER / _MODEL / key. The locked emotion contract {reply, emotion, intensity} is unchanged; the Repository gained additive vector methods; embedder/store mocked in tests (no paid APIs).
 
 Version 0.15.0 (2026-06-12)
 ---------------------------
