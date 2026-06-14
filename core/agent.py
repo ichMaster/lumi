@@ -133,6 +133,9 @@ _thoughts_log = logging.getLogger("lumi.thoughts")
 # Semantic-recall indexing is best-effort; failures are logged here, never raised (v0.16).
 _recall_log = logging.getLogger("lumi.recall")
 
+# Per-session usage ledger + cost report is best-effort; failures logged here, never raised.
+_usage_log = logging.getLogger("lumi.usage")
+
 # Cap text length before embedding: the model reads only ~512 tokens, and a huge message (e.g. a
 # pasted book chapter — 100k+ chars) tokenizes pathologically slowly and can hang the embedder.
 # Truncate for embedding AND for the stored display text; the content-addressed msg_id stays on the
@@ -273,6 +276,9 @@ class Core:
         thoughts_context: str = "lean",
         quiet_hours: tuple[int, int] | None = None,
         thoughts_quiet_hours: tuple[int, int] | None = None,
+        usage_ledger_path: Path | None = None,
+        usage_report_path: Path | None = None,
+        usage_cache_ttl: str = "5m",
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -315,6 +321,11 @@ class Core:
         self._quiet_hours = quiet_hours
         # The proactive-think's quiet window is independent of the nudge's (falls back to it in config).
         self._thoughts_quiet_hours = thoughts_quiet_hours
+        # Per-session usage ledger + cost report (written at session close → .lumi/). Off when paths are None.
+        self._usage_ledger_path = usage_ledger_path
+        self._usage_report_path = usage_report_path
+        self._usage_cache_ttl = usage_cache_ttl
+        self._usage_base = (0, 0, 0, 0, 0)  # totals snapshot at the last session boundary (zeros at start)
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
@@ -1179,15 +1190,59 @@ class Core:
         either step degrades to nothing — ending a session never raises
         (ARCHITECTURE §Error handling).
         """
-        history = self._repo.load_messages(session.id)
-        self._repo.end_session(session.id)
-        if not history:
-            return None
-        # Summary + facts run via _housekeeping_reply (extended thinking off) so
-        # this internal extraction stays fast and quitting is snappy.
-        summary = self._write_summary(session, history)
-        self._accumulate_facts(history)
-        return summary
+        try:
+            history = self._repo.load_messages(session.id)
+            self._repo.end_session(session.id)
+            if not history:
+                return None
+            # Summary + facts run via _housekeeping_reply (extended thinking off) so
+            # this internal extraction stays fast and quitting is snappy.
+            summary = self._write_summary(session, history)
+            self._accumulate_facts(history)
+            return summary
+        finally:
+            # Record this session's token usage + refresh the cost report (after summary/facts, so
+            # their cost is attributed to the closing session). Runs even on an empty session.
+            self._record_session_usage(session)
+
+    def _usage_snapshot(self) -> tuple[int, int, int, int, int]:
+        t = self.totals
+        return (t.turns, t.input_tokens, t.output_tokens, t.cache_read_tokens, t.cache_write_tokens)
+
+    def _record_session_usage(self, session: Session) -> None:
+        """Append the closing session's usage delta to the ledger and re-render the cost report.
+
+        Best-effort: a write/render error is logged and swallowed — never blocks session close.
+        """
+        if self._usage_ledger_path is None:
+            return
+        try:
+            from core import usage as usage_mod
+
+            now = self._usage_snapshot()
+            base = self._usage_base
+            self._usage_base = now  # advance the baseline regardless of whether we log this one
+            turns, inp, out, cr, cw = (now[i] - base[i] for i in range(5))
+            if turns + inp + out + cr + cw <= 0:
+                return  # nothing happened this session — don't log an empty row
+            record = usage_mod.UsageRecord(
+                session_id=session.id,
+                user_id=self._user_id,
+                model=self._model,
+                started_at=session.started_at,
+                ended_at=self._clock().isoformat(),
+                turns=turns, input=inp, output=out, cache_read=cr, cache_write=cw,
+                cache_ttl=self._usage_cache_ttl,
+            )
+            usage_mod.append_record(self._usage_ledger_path, record)
+            if self._usage_report_path is not None:
+                usage_mod.write_report(
+                    usage_mod.load_records(self._usage_ledger_path),
+                    self._usage_report_path,
+                    generated_at=self._clock().isoformat(timespec="seconds"),
+                )
+        except Exception:  # noqa: BLE001 — observability must never break session close
+            _usage_log.warning("usage report failed", exc_info=True)
 
     def _write_summary(self, session: Session, history: list) -> ShortSummary | None:
         try:
@@ -1574,4 +1629,7 @@ def build_core(
         thoughts_context=cfg.thoughts_context,
         quiet_hours=cfg.quiet_hours,
         thoughts_quiet_hours=cfg.thoughts_quiet_hours,
+        usage_ledger_path=(cfg.store_path.parent / "usage-ledger.jsonl") if cfg.usage_report else None,
+        usage_report_path=(cfg.store_path.parent / "usage-report.md") if cfg.usage_report else None,
+        usage_cache_ttl=cfg.prompt_cache_ttl,
     )
