@@ -433,6 +433,112 @@ class OpenAICompatibleClient:
             raise LLMError(f"OpenAI-compatible call failed: {exc}") from exc
 
 
+class MiniMaxClient:
+    """MiniMax chat API (``chatcompletion_v2``) via stdlib HTTP — v0.18. No SDK dependency.
+
+    OpenAI-shaped request/response with a MiniMax ``base_resp`` status (non-zero → error). Structured
+    output is requested as JSON and parsed via :func:`parse_emotion_json` → the v0.3 gate. Caching /
+    thinking are Anthropic-only and absent here. A ``_transport`` callable ``(url, headers, body) ->
+    dict`` can be injected for tests (no network).
+    """
+
+    _DEFAULT_BASE = "https://api.minimax.io/v1"
+    _PATH = "/text/chatcompletion_v2"
+    _RETRYABLE_NAMES = {"HTTPError", "URLError", "TimeoutError"}
+
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        base_url: str | None = None,
+        max_tokens: int = 1024,
+        retries: int = 2,
+        backoff: float = 0.5,
+        _transport: Callable[[str, dict, dict], dict] | None = None,
+    ) -> None:
+        if not api_key and _transport is None:
+            raise LLMError("MINIMAX_API_KEY is not set — add it to .env.")
+        self._key = api_key or ""
+        self._base = (base_url or self._DEFAULT_BASE).rstrip("/")
+        self._max_tokens = max_tokens
+        self._retries = retries
+        self._backoff = backoff
+        self._transport = _transport
+        self.last_thinking: str | None = None
+        self.last_stats: ResponseStats | None = None
+
+    def _post(self, payload: dict) -> dict:
+        url = self._base + self._PATH
+        headers = {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
+        if self._transport is not None:
+            return self._transport(url, headers, payload)
+        import urllib.request  # stdlib HTTP path; imported only when actually calling out
+
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(), method="POST", headers=headers
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — fixed https endpoint
+            return json.loads(resp.read())
+
+    def _create(self, system: str, messages: list[Message], model: str, *, structured: bool) -> dict:
+        sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": sys_text}, *messages],
+            "max_tokens": self._max_tokens,
+        }
+        started = time.monotonic()
+        resp = self._run(lambda: self._post(payload))
+        base = resp.get("base_resp") if isinstance(resp, dict) else None
+        if base and base.get("status_code") not in (0, None):
+            raise LLMError(f"MiniMax error {base.get('status_code')}: {base.get('status_msg')}")
+        self._capture(resp, model, int((time.monotonic() - started) * 1000))
+        return resp
+
+    @staticmethod
+    def _content(resp: dict) -> str:
+        try:
+            return resp["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError):
+            return ""
+
+    def _capture(self, resp: dict, model: str, latency_ms: int) -> None:
+        usage = (resp.get("usage") if isinstance(resp, dict) else None) or {}
+        self.last_stats = ResponseStats(
+            model=model,
+            latency_ms=latency_ms,
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            cache_read_tokens=None,
+            cache_write_tokens=None,
+            thinking=False,
+        )
+        self.last_thinking = None
+
+    def reply(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> str:
+        return self._content(self._create(system, messages, model, structured=False))
+
+    def reply_structured(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+    ) -> dict:
+        return parse_emotion_json(self._content(self._create(system, messages, model, structured=True)))
+
+    def _run(self, fn: Callable[[], _T]) -> _T:
+        try:
+            return _call_with_retries(
+                fn,
+                retries=self._retries,
+                backoff=self._backoff,
+                is_retryable=lambda exc: type(exc).__name__ in self._RETRYABLE_NAMES,
+            )
+        except LLMError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — wrap any API/network failure as LLMError (never hang)
+            raise LLMError(f"MiniMax call failed: {exc}") from exc
+
+
 class MockLLMClient:
     """A canned :class:`LLMClient` for tests — never touches the network.
 
@@ -546,15 +652,13 @@ def build_llm(cfg: Config) -> LLMClient:
     if provider in ("openai", "deepseek", "local"):
         base_url, key = _openai_compatible_target(cfg, provider)
         return OpenAICompatibleClient(key, base_url=base_url, max_tokens=cfg.max_tokens)
-    # MiniMax lands in LUMI-077.
-    if provider not in KNOWN_PROVIDERS:
-        raise LLMError(
-            f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "
-            f"{', '.join(KNOWN_PROVIDERS)}."
-        )
+    if provider == "minimax":
+        if not cfg.minimax_api_key:
+            raise LLMError("LUMI_PROVIDER=minimax needs MINIMAX_API_KEY in .env.")
+        return MiniMaxClient(cfg.minimax_api_key, base_url=cfg.llm_base_url or None, max_tokens=cfg.max_tokens)
     raise LLMError(
-        f"Provider {provider!r} is not wired yet (MiniMax arrives in v0.18 LUMI-077). "
-        "Use LUMI_PROVIDER=anthropic / openai / deepseek / local for now."
+        f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "
+        f"{', '.join(KNOWN_PROVIDERS)}."
     )
 
 
