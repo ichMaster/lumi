@@ -12,11 +12,12 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.15.0 — v0.15 Prompt caching.** Cache the stable system-prompt prefix (canon + instructions +
-memory + mood) via Anthropic's ephemeral `cache_control`, while the per-turn tail (ambient, closeness,
-thoughts, style) stays fresh — cutting repeat input cost ~3–4×. `LUMI_PROMPT_CACHE` toggles it; the
-status line and `/prompt` dump now surface in/out + cache read/write tokens and a cache-breakpoint
-marker. Also: closeness drift + ephemeral daily mood-shift, and a non-destructive facts digest.
+**0.16.0 — Semantic recall (RAG).** Every message is embedded into a **per-user vector store** and
+retrieved by meaning — explicit `/recall <query>` (v0.16) and **automatic per-turn RAG** (v0.17) that
+pulls the relevant past into each reply (with its dialogue context), in the prompt's volatile tail.
+Two seams (`Embedder` — local multilingual by default, **Voyage**/OpenAI optional; `VectorStore` —
+per-user, isolated). Plus a 1-hour prompt-cache TTL, cached proactive thinks, and a status line that
+shows real token consumption across all calls. Off by default per feature (`LUMI_RECALL` / `LUMI_RAG`).
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,
