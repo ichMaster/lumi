@@ -12,13 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.17.1 — Face packs, image-gen skills & a usage report.** Two Claude Code skills build the v0.11
-emotion-face wardrobe from a single theme reference via Google Gemini ("Nano Banana"):
-`/generate-faces` does image-to-image expression deltas (copying the reference faithfully), and
-`/place-faces` reshapes to 768² and files them as viewer variants. Six themes shipped — `drowning`,
-`calm-before`, `dissociation`, `furious`, `last-memory`, `im-fine` (9 emotions × 3 each). Plus a
-**per-session token usage + estimated-cost report**: on every session close, `.lumi/usage-report.md`
-is re-rendered with cost by **month / week / day / session** (`LUMI_USAGE_REPORT`, on by default).
+**0.18.0 — More models (provider switching).** Лілі now runs on any of several backends behind one
+`LLMClient` seam, chosen by config with **no code change**: **Anthropic** tiers (Opus / Sonnet /
+Haiku), **OpenAI**, **DeepSeek**, **MiniMax**, or a **local** OpenAI-compatible server (Ollama /
+LM Studio). A `build_llm(cfg)` factory selects the backend from `LUMI_PROVIDER` + `LUMI_MODEL` + the
+matching key (only the active provider's key is needed); each maps its output into the **same locked
+`{reply, emotion, intensity}`** field through the v0.3 validation gate. Extended thinking / `effort` /
+prompt caching stay **Anthropic-only** (silently ignored elsewhere). Switch by editing `.env` — see
+**[docs/MODELS_SETUP.md](docs/MODELS_SETUP.md)**. CI stays paid-call-free (every backend stubbed).
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,
@@ -37,7 +38,7 @@ is re-rendered with cost by **month / week / day / session** (`LUMI_USAGE_REPORT
 
 Queued next: **Telegram voice messages** (LUMI-060) — daemon 2 sending her replies as voice bubbles.
 
-_(Previous: **0.17.0 — Automatic RAG in the turn** — see RELEASE.txt.)_
+_(Previous: **0.17.1 — Face packs, image-gen skills & a usage report** — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 

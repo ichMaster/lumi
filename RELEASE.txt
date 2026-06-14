@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.18.0 (2026-06-14)
+---------------------------
+- More models (v0.18, LUMI-075..079): switch Лілі to any model behind the LLMClient seam via config alone — other Claude tiers (Opus/Sonnet/Haiku), OpenAI, DeepSeek, MiniMax, or a local OpenAI-compatible server (Ollama/LM Studio). No code change; the core depends only on the seam.
+- build_llm(cfg) factory selects the backend from LUMI_PROVIDER + LUMI_MODEL + the matching key (only the active provider's key is required); an unknown provider or a missing key fails fast at startup with a clear, actionable message.
+- New backends: one OpenAI-compatible adapter covering OpenAI / DeepSeek / a local server (JSON-mode structured output; the `openai` SDK is a lazy optional extra, `uv sync --extra models`), and a MiniMax adapter over stdlib HTTP (no dependency). Each maps its output into {reply, emotion, intensity} and feeds the SAME v0.3 validation gate — the locked emotion contract is untouched.
+- Anthropic-only features (extended thinking, effort, prompt caching, task budgets) are ignored — not errors — on other providers; the turn always completes. Stats parity across providers, so the v0.17 usage/cost report works on every backend.
+- Tests: parametrised LLMClient contract + cross-provider Core.reply parity + config-selection + malformed-output, all on stubbed transports / mock SDKs — zero paid API calls. Operator guide added: docs/MODELS_SETUP.md.
+
 Version 0.17.1 (2026-06-14)
 ---------------------------
 - Face-generation skills: /generate-faces builds a theme's 27 emotion×intensity faces from a single reference via Google Gemini "Nano Banana" (gemini-2.5-flash-image) image-to-image, copying the reference faithfully (identity, wardrobe, cool grey-blue eyes); /place-faces reshapes the reviewed images to 768² and files them as the v0.11 viewer variants. Resilient (imageSize fallback, billing-quota message, retry/backoff, --files/--only/--force/--dry-run); GEMINI_API_KEY from env or .env; the raw/ scratch area is gitignored.
