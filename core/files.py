@@ -78,10 +78,19 @@ class FileTools:
     on any failure (never raises), so a file error degrades the reply, never breaks the turn.
     """
 
-    def __init__(self, root: str | Path, *, read_lines: int = 200, find_max: int = 50) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        read_lines: int = 200,
+        find_max: int = 50,
+        read_max_total: int | None = None,
+    ) -> None:
         self._root = Path(root)
         self._read_lines = max(1, read_lines)
         self._find_max = max(1, find_max)
+        self._read_max_total = read_max_total  # per-turn total-read cap (None = unlimited)
+        self._lines_read = 0  # lines read so far this turn (a fresh FileTools per turn = fresh budget)
 
     # --- the executor entry point ----------------------------------------------------------------
     def execute(self, name: str, tool_input: dict | None) -> str:
@@ -164,6 +173,15 @@ class FileTools:
             count = max(0, min(int(inp.get("line_count", self._read_lines)), self._read_lines))
         except (TypeError, ValueError):
             return "error: start_line and line_count must be integers"
+        # Per-turn total-read budget: refuse once the cap is hit; otherwise shrink this read to fit.
+        if self._read_max_total is not None:
+            remaining = self._read_max_total - self._lines_read
+            if remaining <= 0:
+                return (
+                    f"(read limit reached: {self._read_max_total} lines already read this turn; "
+                    "no further reads — work from what you have)"
+                )
+            count = min(count, remaining)
         # Iterate once: count total_lines (so paging knows the end) while keeping only the window.
         window: list[str] = []
         total = 0
@@ -175,6 +193,7 @@ class FileTools:
                     window.append(line.rstrip("\n"))
         if start > total:
             return f"({rel}: start_line {start} is past the end; total_lines={total})"
+        self._lines_read += len(window)  # count toward the per-turn read budget
         body = "\n".join(f"{start + idx}: {ln}" for idx, ln in enumerate(window))
         last = start + len(window) - 1
         return f"{rel} (lines {start}–{last}, total_lines={total}):\n{body}"

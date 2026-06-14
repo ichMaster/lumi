@@ -282,6 +282,7 @@ class Core:
         file_tool_enabled: bool = False,
         files_dir: Path | None = None,
         file_read_lines: int = 200,
+        file_read_max_total: int = 2000,
         file_find_max: int = 50,
         tool_max_steps: int = 8,
     ) -> None:
@@ -335,6 +336,7 @@ class Core:
         self._file_tool_enabled = file_tool_enabled
         self._files_dir = files_dir
         self._file_read_lines = file_read_lines
+        self._file_read_max_total = file_read_max_total
         self._file_find_max = file_find_max
         self._tool_max_steps = tool_max_steps
         self._think_count = 0  # proactive thinks this session (reset in start_session)
@@ -1108,7 +1110,10 @@ class Core:
 
         root = self._files_dir / self._user_id
         root.mkdir(parents=True, exist_ok=True)
-        tools = FileTools(root, read_lines=self._file_read_lines, find_max=self._file_find_max)
+        tools = FileTools(
+            root, read_lines=self._file_read_lines, find_max=self._file_find_max,
+            read_max_total=self._file_read_max_total,
+        )
         return READ_TOOLS, tools.execute
 
     def reply(self, user_text: str, session: Session) -> EmotionState:
@@ -1656,6 +1661,7 @@ def build_core(
         file_tool_enabled=cfg.file_tool,
         files_dir=cfg.files_dir,
         file_read_lines=cfg.file_read_lines,
+        file_read_max_total=cfg.file_read_max_total,
         file_find_max=cfg.file_find_max,
         tool_max_steps=cfg.tool_max_steps,
     )
