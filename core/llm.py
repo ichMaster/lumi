@@ -14,9 +14,12 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
 from core.emotion import Emotion
+
+if TYPE_CHECKING:  # annotation only — build_llm reads cfg attributes, never imports config at runtime
+    from core.config import Config
 
 # A chat message as the core hands it to the model: an Anthropic-style turn.
 Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
@@ -381,3 +384,39 @@ class MockLLMClient:
             return dict(self._state_default)
         # No canned state → derive a valid one from the text reply.
         return {"reply": self._pick_text(system, messages, model), "emotion": "calm", "intensity": 0.5}
+
+
+# --- the provider factory (v0.18) ----------------------------------------------------------------
+
+# Providers selectable via `LUMI_PROVIDER`, each mapping to an LLMClient behind this seam. "openai",
+# "deepseek" and "local" are served by the one OpenAI-compatible adapter (different base_url/key);
+# "minimax" by its own. Adapters register their branch here as they land (LUMI-076/077).
+KNOWN_PROVIDERS = ("anthropic", "openai", "deepseek", "minimax", "local")
+
+
+def build_llm(cfg: Config) -> LLMClient:
+    """Select and build the :class:`LLMClient` for ``cfg.provider`` (model/key/base_url from config).
+
+    Only the **active** provider's key is required; an unknown provider or a missing key raises a
+    clear :class:`LLMError` (surfaced at startup, like the v0.1 ANTHROPIC_API_KEY check). The core
+    never learns which backend it got — it depends only on the :class:`LLMClient` seam.
+    """
+    provider = (cfg.provider or "anthropic").strip().lower()
+    if provider == "anthropic":
+        return AnthropicClient(
+            cfg.api_key,
+            max_tokens=cfg.max_tokens,
+            thinking=cfg.thinking,
+            effort=cfg.effort,
+            cache_ttl=cfg.prompt_cache_ttl,
+        )
+    # The OpenAI-compatible adapter (openai / deepseek / local) lands in LUMI-076; MiniMax in LUMI-077.
+    if provider not in KNOWN_PROVIDERS:
+        raise LLMError(
+            f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "
+            f"{', '.join(KNOWN_PROVIDERS)}."
+        )
+    raise LLMError(
+        f"Provider {provider!r} is not wired yet (arrives in v0.18: OpenAI-compatible LUMI-076, "
+        "MiniMax LUMI-077). Use LUMI_PROVIDER=anthropic for now."
+    )

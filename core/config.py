@@ -242,6 +242,12 @@ class Config:
     # v0.7 viewer: relax the face to calm after this many seconds of an unchanged signal (0 = off).
     face_idle: float = 120.0
     api_key: str | None = field(default=None, repr=False)
+    # v0.18 more models — other providers behind the same LLMClient seam, selected by `provider`.
+    # Only the ACTIVE provider's key is required; secrets are never logged.
+    openai_api_key: str = field(default="", repr=False)
+    deepseek_api_key: str = field(default="", repr=False)
+    minimax_api_key: str = field(default="", repr=False)
+    llm_base_url: str = ""  # override base_url for an OpenAI-compatible / local server (Ollama, LM Studio)
 
 
 def load_config(*, load_env: bool = True) -> Config:
@@ -419,4 +425,8 @@ def load_config(*, load_env: bool = True) -> Config:
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
+        openai_api_key=(os.getenv("OPENAI_API_KEY") or "").strip(),
+        deepseek_api_key=(os.getenv("DEEPSEEK_API_KEY") or "").strip(),
+        minimax_api_key=(os.getenv("MINIMAX_API_KEY") or "").strip(),
+        llm_base_url=(os.getenv("LUMI_LLM_BASE_URL") or "").strip(),
     )

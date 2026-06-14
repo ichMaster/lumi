@@ -46,7 +46,7 @@ from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config,
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
-from core.llm import AnthropicClient, LLMClient, Message, ResponseStats
+from core.llm import LLMClient, Message, ResponseStats, build_llm
 from core.memory import (
     DAY_DAYS,
     MAX_DAY_ROWS,
@@ -1550,13 +1550,7 @@ def build_core(
         repository = JsonRepository(cfg.store_path)
 
     if llm is None:
-        llm = AnthropicClient(
-            cfg.api_key,
-            max_tokens=cfg.max_tokens,
-            thinking=cfg.thinking,
-            effort=cfg.effort,
-            cache_ttl=cfg.prompt_cache_ttl,
-        )
+        llm = build_llm(cfg)  # v0.18: pick the backend from cfg.provider (anthropic by default)
 
     # v0.16 semantic recall: build the embedder only when recall is on. A build failure
     # (e.g. a cloud provider with no key) degrades recall to off rather than crashing startup.
