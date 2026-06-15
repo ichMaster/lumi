@@ -12,14 +12,16 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.18.0 — More models (provider switching).** Лілі now runs on any of several backends behind one
-`LLMClient` seam, chosen by config with **no code change**: **Anthropic** tiers (Opus / Sonnet /
-Haiku), **OpenAI**, **DeepSeek**, **MiniMax**, or a **local** OpenAI-compatible server (Ollama /
-LM Studio). A `build_llm(cfg)` factory selects the backend from `LUMI_PROVIDER` + `LUMI_MODEL` + the
-matching key (only the active provider's key is needed); each maps its output into the **same locked
-`{reply, emotion, intensity}`** field through the v0.3 validation gate. Extended thinking / `effort` /
-prompt caching stay **Anthropic-only** (silently ignored elsewhere). Switch by editing `.env` — see
-**[docs/MODELS_SETUP.md](docs/MODELS_SETUP.md)**. CI stays paid-call-free (every backend stubbed).
+**0.19.0 — Local file tool I: reading.** Лілі can **list, search (→ line numbers), and read files by
+line** in a **per-user sandbox** during a turn — and the core gains its **first bounded tool-loop**
+(the reusable foundation v4.2 web search / v4.3 world context / v5 creative all reuse). The turn loops
+read-tool calls and ends on the terminal `set_state`, so the `{reply, emotion, intensity}` contract is
+untouched. **Sandboxed** (`..`/absolute/symlink rejected), **file content is untrusted data** (never
+instructions, proven end-to-end), **bounded** (per-read/find/total caps + a loop cap), **per-user
+isolated**, **off by default** (`LUMI_FILE_TOOL`, Anthropic provider). Writing (create/append) is v0.20.
+See **[docs/FILE_TOOL_SETUP.md](docs/FILE_TOOL_SETUP.md)**. Plus a **cache optimization** (the in-session
+digest moved off the cached prefix, so compaction stops re-writing it) and an **observability** pass: a
+per-channel **cache monitor** (`.lumi/cache-report.md`) + a **cost breakdown** in the usage report.
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,
@@ -38,7 +40,7 @@ prompt caching stay **Anthropic-only** (silently ignored elsewhere). Switch by e
 
 Queued next: **Telegram voice messages** (LUMI-060) — daemon 2 sending her replies as voice bubbles.
 
-_(Previous: **0.17.1 — Face packs, image-gen skills & a usage report** — see RELEASE.txt.)_
+_(Previous: **0.18.0 — More models (provider switching)** — see RELEASE.txt.)_
 
 See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0.7.x polish).
 

@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.19.0 (2026-06-16)
+---------------------------
+- Local file tool I: reading (v0.19, LUMI-080..084): Лілі can list, search (find_in_file -> line numbers) and read files by line (start_line/line_count + total_lines) in a per-user sandbox during a turn. Sandboxed (../, absolute, symlink escapes rejected before I/O), file content is UNTRUSTED data (never instructions, proven end-to-end), bounded (per-read + per-turn-total + find caps), per-user isolated, OFF by default (LUMI_FILE_TOOL); Anthropic provider only. Writing (create/append) is v0.20.
+- Bounded tool-loop in the LLMClient seam: reply_structured gains tools + tool_executor + max_steps; AnthropicClient loops read-tool calls (each result fed back as an UNTRUSTED tool_result) until the terminal set_state or the cap (final round forces set_state — never hangs). The reusable foundation for v4.2 web search, v4.3 world context, and the v5 creative layer. The {reply, emotion, intensity} emotion contract is unchanged.
+- Cache optimization: moved the in-session digest (## Раніше в цій розмові) off the cached prefix into the per-turn tail, so an in-session compaction no longer re-writes the whole ~22K static head (canon + instructions + facts + mood) — measured as the bulk of a long session's cache writes.
+- Observability: a per-call cache monitor (LUMI_CACHE_MONITOR, off by default) renders .lumi/cache-report.md at session close — cache reads/writes by channel (reply / think / mood / facts / summary) with each write attributed first / expired (idle > TTL) / changed. The usage report gains a per-bucket Cost breakdown + the net cache saving. docs/FILE_TOOL_SETUP.md operator guide added.
+
 Version 0.18.0 (2026-06-14)
 ---------------------------
 - More models (v0.18, LUMI-075..079): switch Лілі to any model behind the LLMClient seam via config alone — other Claude tiers (Opus/Sonnet/Haiku), OpenAI, DeepSeek, MiniMax, or a local OpenAI-compatible server (Ollama/LM Studio). No code change; the core depends only on the seam.
