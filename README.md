@@ -12,7 +12,7 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.19.0 — Local file tool I: reading.** Лілі can **list, search (→ line numbers), and read files by
+**0.19.1 — Local file tool I: reading.** Лілі can **list, search (→ line numbers), and read files by
 line** in a **per-user sandbox** during a turn — and the core gains its **first bounded tool-loop**
 (the reusable foundation v4.2 web search / v4.3 world context / v5 creative all reuse). The turn loops
 read-tool calls and ends on the terminal `set_state`, so the `{reply, emotion, intensity}` contract is
@@ -22,6 +22,8 @@ isolated**, **off by default** (`LUMI_FILE_TOOL`, Anthropic provider). Writing (
 See **[docs/FILE_TOOL_SETUP.md](docs/FILE_TOOL_SETUP.md)**. Plus a **cache optimization** (the in-session
 digest moved off the cached prefix, so compaction stops re-writing it) and an **observability** pass: a
 per-channel **cache monitor** (`.lumi/cache-report.md`) + a **cost breakdown** in the usage report.
+**0.19.1** adds a **tool-call trace** (`LUMI_FILE_TOOL_TRACE` → dim `🔧` lines in the TUI + a live
+`.lumi/tool-log.jsonl`) and moves the file sandbox to **`.lumi/files/`** (alongside the other runtime data).
 
 - **The voicer** — the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It
   **reuses the v0.13 outbox bus** + `state/fifo`: reads her replies from the existing `outbox.jsonl`,
