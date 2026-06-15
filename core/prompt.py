@@ -167,10 +167,12 @@ def build_system_prompt(
 
     - **Stable prefix** (cacheable — byte-identical within a session): the canon (persona) as
       prose, then `# Як відповідати` (emotion + relational read), `# Памʼять про цю людину`
-      (the date-based memory layers coarse→fine + `## Факти` + `## Раніше в цій розмові`), and
-      `# Настрій дня` (locked per local day).
-    - **Per-turn tail** (recomputed each turn → never cached): `# Релевантні моменти минулого`
-      (the v0.17 per-turn RAG block — the query-relevant past, so it changes every turn), `# Зараз`
+      (the date-based memory layers coarse→fine + `## Факти`), and `# Настрій дня` (locked per local
+      day). The in-session digest is **not** here — it changes on compaction (see the tail), so
+      keeping it off the prefix means a compaction never re-writes the static head.
+    - **Per-turn tail** (recomputed each turn → never cached): `# Раніше в цій розмові` (the
+      in-session compaction — grows every `LUMI_COMPACTION_BATCH` messages), `# Релевантні моменти
+      минулого` (the v0.17 per-turn RAG block — the query-relevant past, so it changes every turn), `# Зараз`
       (ambient now/here — its timestamp changes each turn), `# Близькість` (`update_closeness`
       rebuilds it each turn), `# Що в мене на думці` (the last-24h thoughts), and finally — kept
       **last + most salient** — `# Стиль відповіді` (the :data:`STYLE_HEADER`; *form*, never competence).
@@ -200,16 +202,17 @@ def build_system_prompt(
         mem.append("## Останні розмови (детально)\n" + "\n".join(f"- {s}" for s in summaries))
     if facts:
         mem.append("## Факти\n" + "\n".join(f"- {f}" for f in facts))
-    if digest:
-        mem.append("## Раніше в цій розмові\n" + digest)
     if mem:
         prefix.append("# Памʼять про цю людину\n\n" + "\n\n".join(mem))
 
     if mood:
         prefix.append("# Настрій дня\n\n" + f"{MOOD_HEADER}\n{mood}")
 
-    # TAIL — recomputed each turn (recall, ambient timestamp, closeness, thoughts); style stays last.
+    # TAIL — recomputed each turn (digest, recall, ambient timestamp, closeness, thoughts); style last.
     tail = []
+    if digest:  # the in-session compaction grows with the conversation (every LUMI_COMPACTION_BATCH
+        # messages) — kept OFF the cached prefix so a compaction never re-writes the static head.
+        tail.append("# Раніше в цій розмові\n\n" + digest)
     if recall:  # v0.17: the per-turn "relevant past moments" RAG block (query-relevant → never cached)
         tail.append("# Релевантні моменти минулого\n\n" + recall)
     if ambient:

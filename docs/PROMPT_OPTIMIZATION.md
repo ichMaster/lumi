@@ -89,6 +89,18 @@ an active chat). The client already *reads* `cache_read_input_tokens` ([core/llm
 → Cached prefix ~10K @ 10% ≈ 1K effective; volatile tail ~4–6K. **No content/quality change.**
 *(First turn pays +25% to write the cache; every turn after is the win.)*
 
+#### Refinement (2026-06-15) — the in-session digest off the cached prefix
+`## Раніше в цій розмові` (the in-session compaction) was *inside* the cached prefix, but it grows
+every `LUMI_COMPACTION_BATCH` messages — so each compaction re-wrote the **whole** ~22K prefix at the
+**2× write rate** (~1 write per ~20 turns). Measured: a 179-turn session ≈ 17 compactions ≈ ~18 cache
+writes — i.e. **most of that session's cache-write bill** (read:write ratio only ~8:1). Mood (daily)
+and the facts/summary digests (session-boundary) are stable mid-session, so they were *not* the cause.
+**Fix:** move the in-session digest into the **per-turn tail** in `build_system_prompt`, so a
+compaction never re-writes the static head (canon + instructions + facts + mood) — now written **once
+per session** (+ the daily mood flip). The digest rides uncached in the tail (full input rate, but a
+fraction of the prefix it used to re-cache). Pinned by
+`test_in_session_digest_rides_the_tail_not_the_cache_prefix`.
+
 ### Phase 3 — RAG / semantic recall (v0.16–17, the **structural** fix)
 The sessions block (~5–11K) is "dump *all* recent sessions every turn." RAG replaces it with
 **retrieve the relevant past** — the roadmap phase already pulled forward (issues
