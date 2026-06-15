@@ -285,6 +285,9 @@ class Core:
         file_read_max_total: int = 2000,
         file_find_max: int = 50,
         tool_max_steps: int = 8,
+        cache_log_path: Path | None = None,
+        cache_report_path: Path | None = None,
+        cache_monitor: bool = False,
     ) -> None:
         self._llm = llm
         self._repo = repository
@@ -339,6 +342,12 @@ class Core:
         self._file_read_max_total = file_read_max_total
         self._file_find_max = file_find_max
         self._tool_max_steps = tool_max_steps
+        # Per-call prompt-cache monitor (off by default): log each model call's cache behaviour by
+        # channel + attribute the writes (first/expired/changed); render the report at session close.
+        self._cache_log_path = cache_log_path
+        self._cache_report_path = cache_report_path
+        self._cache_monitor = cache_monitor
+        self._cache_last_ts: dict[str, datetime] = {}  # last call time per channel (gap / expiry)
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
@@ -500,7 +509,7 @@ class Core:
                 continue  # count matches the day's sessions → up to date
             try:
                 system, msgs = day_summary_request(texts)
-                summary = clamp_rows(self._housekeeping_reply(system, msgs), self._max_day_rows)
+                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="summary"), self._max_day_rows)
                 if summary:
                     self._repo.set_day_summary(
                         DaySummary(self._user_id, day, summary, len(texts), self._clock().isoformat())
@@ -524,7 +533,7 @@ class Core:
                 continue
             try:
                 system, msgs = week_summary_request(texts)
-                summary = clamp_rows(self._housekeeping_reply(system, msgs), self._max_week_rows)
+                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="summary"), self._max_week_rows)
                 if summary:
                     self._repo.set_week_summary(
                         WeekSummary(self._user_id, week_start, summary, len(texts),
@@ -666,7 +675,7 @@ class Core:
                 system, msgs, seeds, cache_prefix = self._thought_call_lean(
                     directive, session, topic, rng_seed
                 )
-            raw = self._housekeeping_reply(system, msgs, cache_prefix=cache_prefix).strip()
+            raw = self._housekeeping_reply(system, msgs, cache_prefix=cache_prefix, kind="think").strip()
         except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
             return None
         _, raw = split_reasoning(raw)  # strip any <think>…</think> (the full backdrop's directive)
@@ -924,7 +933,8 @@ class Core:
         )
 
     def _housekeeping_reply(
-        self, system: str, messages: list[Message], cache_prefix: str | None = None
+        self, system: str, messages: list[Message], cache_prefix: str | None = None,
+        kind: str = "housekeeping",
     ) -> str:
         """An internal model call with extended thinking forced off.
 
@@ -942,19 +952,19 @@ class Core:
                 system=system, messages=messages, model=self._model,
                 cache_prefix=cache_prefix if self._prompt_cache else None,
             )
-            self._accumulate_stats(turn=False)  # count this background call's real token cost
+            self._accumulate_stats(turn=False, kind=kind)  # count + log this background call
             return text
         finally:
             if prev_thinking:
                 llm._thinking = prev_thinking
 
-    def _accumulate_stats(self, *, turn: bool) -> None:
+    def _accumulate_stats(self, *, turn: bool, kind: str = "reply") -> None:
         """Fold the LLM's most-recent call into the running totals + ``last_stats``.
 
-        Called after **every** model call — user replies (``turn=True``) and background calls
-        (thinks, summaries, facts, mood, compaction; ``turn=False``) — so the status line reflects
-        real consumption. Token fields count everything; ``turns``/``latency_ms`` count user turns
-        only (so the avg stays per-reply)."""
+        Called after **every** model call — user replies (``turn=True``, ``kind="reply"``) and
+        background calls (thinks, summaries, facts, mood, compaction; ``turn=False``) — so the status
+        line reflects real consumption. Token fields count everything; ``turns``/``latency_ms`` count
+        user turns only. ``kind`` labels the channel for the per-call cache monitor."""
         stats = getattr(self._llm, "last_stats", None)
         if stats is None:
             return
@@ -966,6 +976,45 @@ class Core:
         if turn:
             self.totals.turns += 1
             self.totals.latency_ms += stats.latency_ms
+        self._log_cache_event(kind, stats)  # per-call cache monitor (best-effort)
+
+    def _log_cache_event(self, kind: str, stats: ResponseStats) -> None:
+        """Append this call's cache behaviour to the cache log + classify the write. Never raises."""
+        if not self._cache_monitor or self._cache_log_path is None:
+            return
+        try:
+            from core import cache_log
+
+            now = self._clock()
+            last = self._cache_last_ts.get(kind)
+            gap_s = (now - last).total_seconds() if last is not None else None
+            self._cache_last_ts[kind] = now
+            cw = stats.cache_write_tokens or 0
+            cause = cache_log.classify(cw, gap_s, cache_log.ttl_seconds(self._usage_cache_ttl))
+            cache_log.append_event(self._cache_log_path, cache_log.CacheEvent(
+                ts=now.isoformat(timespec="seconds"), kind=kind,
+                cache_read=stats.cache_read_tokens or 0, cache_write=cw,
+                input=stats.input_tokens or 0, output=stats.output_tokens or 0,
+                gap_s=gap_s, cause=cause,
+            ))
+        except Exception:  # noqa: BLE001 — monitoring must never break a turn
+            _usage_log.warning("cache event log failed", exc_info=True)
+
+    def _render_cache_report(self) -> None:
+        """Re-render the per-channel cache report from the log (at session close). Never raises."""
+        if not self._cache_monitor or self._cache_log_path is None or self._cache_report_path is None:
+            return
+        try:
+            from core import cache_log
+
+            events = cache_log.load_events(self._cache_log_path)
+            if events:
+                cache_log.write_cache_report(
+                    events, self._cache_report_path,
+                    generated_at=self._clock().isoformat(timespec="seconds"), ttl=self._usage_cache_ttl,
+                )
+        except Exception:  # noqa: BLE001 — observability must never break session close
+            _usage_log.warning("cache report failed", exc_info=True)
 
     def _maybe_compact(self, session: Session, history: list) -> SessionDigest | None:
         """Fold older-than-window messages into the session digest, in batches.
@@ -985,7 +1034,7 @@ class Core:
         chunk = history[compacted:new_compacted]
         try:
             system, msgs = digest_request(digest.summary if digest else None, chunk)
-            summary = self._housekeeping_reply(system, msgs).strip()
+            summary = self._housekeeping_reply(system, msgs, kind="compaction").strip()
         except Exception:  # noqa: BLE001 — best-effort; keep the prior digest
             return digest
         if not summary:
@@ -1051,7 +1100,7 @@ class Core:
                 themes=self._theme_descriptions or None,  # v0.11: also pick a face theme
                 thoughts=self._recent_thoughts_text() if self._thoughts_enabled else None,  # v0.12
             )
-            reading = self._housekeeping_reply(system, msgs).strip()
+            reading = self._housekeeping_reply(system, msgs, kind="mood").strip()
         except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
             return
         if not reading:
@@ -1092,7 +1141,7 @@ class Core:
             return  # fresh enough — reuse (recent facts ride as a verbatim tail in the prompt)
         try:
             system, msgs = facts_digest_request([f.fact for f in raw], self._facts_digest_max)
-            digest_facts = parse_facts(self._housekeeping_reply(system, msgs).strip())
+            digest_facts = parse_facts(self._housekeeping_reply(system, msgs, kind="facts").strip())
             if digest_facts:
                 self._repo.set_facts_digest(
                     FactsDigest(self._user_id, "\n".join(digest_facts), len(raw), self._clock().isoformat())
@@ -1236,6 +1285,7 @@ class Core:
             # Record this session's token usage + refresh the cost report (after summary/facts, so
             # their cost is attributed to the closing session). Runs even on an empty session.
             self._record_session_usage(session)
+            self._render_cache_report()  # refresh the per-channel cache report (best-effort)
 
     def _usage_snapshot(self) -> tuple[int, int, int, int, int]:
         t = self.totals
@@ -1279,7 +1329,7 @@ class Core:
     def _write_summary(self, session: Session, history: list) -> ShortSummary | None:
         try:
             system, msgs = summary_request(history)
-            summary_text = self._housekeeping_reply(system, msgs).strip()
+            summary_text = self._housekeeping_reply(system, msgs, kind="summary").strip()
         except Exception:  # noqa: BLE001 — never block session end on a model error
             return None
         if not summary_text:
@@ -1546,7 +1596,7 @@ class Core:
     def _accumulate_facts(self, history: list) -> None:
         try:
             system, msgs = facts_request(history)
-            text = self._housekeeping_reply(system, msgs)
+            text = self._housekeeping_reply(system, msgs, kind="facts")
         except Exception:  # noqa: BLE001 — facts are best-effort
             return
         existing = {f.fact for f in self._repo.facts(self._user_id)}
@@ -1664,4 +1714,7 @@ def build_core(
         file_read_max_total=cfg.file_read_max_total,
         file_find_max=cfg.file_find_max,
         tool_max_steps=cfg.tool_max_steps,
+        cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
+        cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,
+        cache_monitor=cfg.cache_monitor,
     )

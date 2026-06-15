@@ -75,6 +75,18 @@ def test_render_report_aggregates_by_period():
     assert "4,000" in day_row and "| 2 |" in day_row     # 2 sessions that day
 
 
+def test_render_report_includes_cost_breakdown_and_cache_saving():
+    # opus: 1M input=$5, 1M output=$25, 2M cache-read=$1.00, 100k cache-write(1h)=$1.00
+    records = [_rec(input=1_000_000, output=1_000_000, cache_read=2_000_000, cache_write=100_000, cache_ttl="1h")]
+    md = render_report(records, generated_at="2026-06-16")
+    assert "## Cost breakdown" in md
+    for bucket in ("input", "output", "cache read", "cache write"):
+        assert f"| {bucket} |" in md
+    cw_row = next(line for line in md.splitlines() if line.startswith("| cache write |"))
+    assert "$10.00" in cw_row              # blended rate for 1h cache write (2× input)
+    assert "saved" in md                   # the net-cache benefit line
+
+
 # --- Core hook -------------------------------------------------------------------------------------
 def _core(tmp_path, *, ledger=None, report=None, ttl="1h"):
     return Core(

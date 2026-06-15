@@ -199,6 +199,48 @@ def _period_table(label: str, groups: dict[str, _Agg]) -> str:
     return "\n".join(rows)
 
 
+def _cost_breakdown(records: list[UsageRecord]) -> str:
+    """Per-bucket cost table (input / output / cache read / cache write) + the net cache benefit.
+
+    Each bucket's cost is summed per record at that record's model price (so mixed models are exact);
+    the rate column shows the blended $/1M. The cache **saves** money when read-savings > write-cost.
+    """
+    cost = {"input": 0.0, "output": 0.0, "cache read": 0.0, "cache write": 0.0}
+    tok = {"input": 0, "output": 0, "cache read": 0, "cache write": 0}
+    read_at_full = 0.0  # what the cache-read tokens would have cost at the full input rate
+    for r in records:
+        p = pricing_for(r.model)
+        cost["input"] += r.input * p.input
+        cost["output"] += r.output * p.output
+        cost["cache read"] += r.cache_read * p.cache_read
+        cost["cache write"] += r.cache_write * p.cache_write(r.cache_ttl)
+        read_at_full += r.cache_read * p.input
+        tok["input"] += r.input
+        tok["output"] += r.output
+        tok["cache read"] += r.cache_read
+        tok["cache write"] += r.cache_write
+    cost = {k: v / 1_000_000 for k, v in cost.items()}
+    read_at_full /= 1_000_000
+    grand = sum(cost.values()) or 1.0
+
+    rows = [
+        "## Cost breakdown\n",
+        "| Bucket | Tokens | Rate /1M | Cost | Share |\n|---|--:|--:|--:|--:|",
+    ]
+    for bucket in ("input", "output", "cache read", "cache write"):
+        t, c = tok[bucket], cost[bucket]
+        rate = f"${(c / t * 1_000_000):,.2f}" if t else "—"
+        rows.append(f"| {bucket} | {_fmt_int(t)} | {rate} | {_fmt_cost(c)} | {c / grand * 100:.0f}% |")
+
+    net = (read_at_full - cost["cache read"]) - cost["cache write"]
+    rows.append(
+        f"\n> Caching **saved ~{_fmt_cost(net)} net** here — the cache reads would have cost "
+        f"{_fmt_cost(read_at_full)} at the full input rate but cost {_fmt_cost(cost['cache read'])} "
+        f"cached, against {_fmt_cost(cost['cache write'])} in cache writes.\n"
+    )
+    return "\n".join(rows)
+
+
 def render_report(records: list[UsageRecord], *, generated_at: str, recent_sessions: int = 50) -> str:
     """Render the full markdown usage report from the ledger records."""
     total = _Agg()
@@ -222,6 +264,8 @@ def render_report(records: list[UsageRecord], *, generated_at: str, recent_sessi
         "(cache read = 10% of input; cache write = 1.25× at 5m TTL, 2× at 1h TTL). "
         "Not a billing source of truth.\n"
     )
+
+    out.append(_cost_breakdown(records))
 
     out.append("## By month\n" + _period_table("Month", _group(records, 0)) + "\n")
     out.append("## By week (ISO)\n" + _period_table("Week", _group(records, 1)) + "\n")
