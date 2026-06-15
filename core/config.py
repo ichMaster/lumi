@@ -200,6 +200,7 @@ class Config:
     file_read_max_total: int = 2000  # max total lines one turn may read across all read_file calls
     file_find_max: int = 50         # max matches find_in_file returns
     tool_max_steps: int = 8         # max tool calls per turn (the bounded tool-loop cap)
+    file_tool_trace: bool = False   # show the file tools used each turn (TUI trace + .lumi/tool-log.jsonl)
     # v0.16 semantic recall (RAG) — off by default (the whole feature: index + /recall).
     recall: bool = False
     embed_provider: str = "local"   # local (private, default) | voyage | openai
@@ -401,6 +402,7 @@ def load_config(*, load_env: bool = True) -> Config:
         file_read_max_total=int(os.getenv("LUMI_FILE_READ_MAX_TOTAL") or 2000),
         file_find_max=int(os.getenv("LUMI_FILE_FIND_MAX") or 50),
         tool_max_steps=int(os.getenv("LUMI_TOOL_MAX_STEPS") or 8),
+        file_tool_trace=(os.getenv("LUMI_FILE_TOOL_TRACE") or "off").strip().lower() in _TRUTHY,  # off by default
         recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,

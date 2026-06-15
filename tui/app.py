@@ -366,6 +366,15 @@ class LumiApp(App[None]):
     def _say_markdown(self, label: str, message: str, color: str) -> None:
         self._emit(f"{label}: {message}", *self._markdown_block(label, message, color))
 
+    def _show_tool_trace(self) -> None:
+        """Show the file tools Лілі used this turn — dim lines above her reply (v0.19; off unless
+        `LUMI_FILE_TOOL_TRACE`). The full detail also streams to `.lumi/tool-log.jsonl`."""
+        for name, args, result in getattr(self._core, "last_tool_calls", ()):
+            arg_str = " ".join(f"{k}={v}" for k, v in args.items())
+            preview = " ".join((result or "").split())[:90]
+            line = f"🔧 {name}({arg_str}) → {preview}"
+            self._emit(line, Text(line, style="grey50"))
+
     def _render_thinking(self, thinking: str | None) -> None:
         """Show the last turn's reasoning in the Thinking box only (empty if none).
 
@@ -567,6 +576,7 @@ class LumiApp(App[None]):
             # Лілі's reasoning goes to the Thinking box only (not the chat);
             # the box shows just this turn's thinking, or clears if there was none.
             self._render_thinking(getattr(self._core, "last_thinking", None))
+            self._show_tool_trace()  # v0.19: the file tools she used this turn (dim, above the reply)
             # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
             self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
             if self._bridge or self._voice:  # mirror ONLY Лілі's reply to the outbox (→ Telegram / voicer)
