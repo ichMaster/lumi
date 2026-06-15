@@ -18,11 +18,11 @@ delete. It is **off by default** and sandboxed.
    ```ini
    LUMI_FILE_TOOL=on
    ```
-2. **Put files in her sandbox** — the per-user folder `state/files/<user_id>/`. With the default
-   single user that is **`state/files/owner/`**:
+2. **Put files in her sandbox** — the per-user folder `.lumi/files/<user_id>/`. With the default
+   single user that is **`.lumi/files/owner/`**:
    ```bash
-   mkdir -p state/files/owner
-   cp ~/Documents/notes.md state/files/owner/
+   mkdir -p .lumi/files/owner
+   cp ~/Documents/notes.md .lumi/files/owner/
    ```
 3. **Restart the TUI** (`./lumi`) — settings are read at startup.
 4. **Ask her** to read something:
@@ -54,12 +54,12 @@ Two natural flows:
 
 ## Where the files live (the sandbox)
 
-- Everything is confined to **`state/files/<user_id>/`** (default user `owner` →
-  `state/files/owner/`). She can only see and read inside that folder.
+- Everything is confined to **`.lumi/files/<user_id>/`** (default user `owner` →
+  `.lumi/files/owner/`). She can only see and read inside that folder.
 - Paths that try to escape — `..`, an absolute path like `/etc/passwd`, or a symlink pointing outside
   — are **refused before any file is opened**. The rest of your disk is never reachable.
 - The folder is created automatically the first time the tool runs; just drop files in it.
-- It's **gitignored** (`state/files/`) — your files are never committed.
+- It's **gitignored** (`.lumi/files/`) — your files are never committed.
 
 Change the location with `LUMI_FILES_DIR` if you want it elsewhere (per-user subfolders are created
 under it).
@@ -95,7 +95,7 @@ All optional except `LUMI_FILE_TOOL`. Restart the TUI after changing any of them
 | Setting | Meaning | Default |
 |---|---|---|
 | `LUMI_FILE_TOOL` | Turn the file tools on | `off` |
-| `LUMI_FILES_DIR` | Sandbox root (per-user subfolders under it) | `state/files` |
+| `LUMI_FILES_DIR` | Sandbox root (per-user subfolders under it) | `.lumi/files` |
 | `LUMI_FILE_READ_LINES` | Max lines returned by **one** `read_file` call | `200` |
 | `LUMI_FILE_READ_MAX_TOTAL` | Max lines one **turn** may read across all reads | `2000` |
 | `LUMI_FILE_FIND_MAX` | Max matches `find_in_file` returns | `50` |
@@ -104,7 +104,7 @@ All optional except `LUMI_FILE_TOOL`. Restart the TUI after changing any of them
 Example `.env` block:
 ```ini
 LUMI_FILE_TOOL=on
-# LUMI_FILES_DIR=state/files
+# LUMI_FILES_DIR=.lumi/files
 # LUMI_FILE_READ_LINES=200
 # LUMI_FILE_READ_MAX_TOTAL=2000
 # LUMI_FILE_FIND_MAX=50
@@ -125,7 +125,7 @@ autonomy** (start at the right section, take only what's needed), not token savi
 ## Troubleshooting
 
 - **"She doesn't read my file."** Check `LUMI_FILE_TOOL=on`, that the file is in
-  `state/files/owner/` (not elsewhere), that you **restarted** the TUI, and that
+  `.lumi/files/owner/` (not elsewhere), that you **restarted** the TUI, and that
   `LUMI_PROVIDER=anthropic`.
 - **"file not found".** The path is relative to her sandbox root — ask for `notes.md`, not a full
   path. List first: *"які файли в тебе є?"*

@@ -73,7 +73,7 @@ both are confined to the sandbox, and both treat the path the same guarded way a
 ## Sandbox and safety
 
 - **Per-user sandbox root.** All paths resolve under one directory per user (e.g.
-  `state/files/<user_id>/`, set by `LUMI_FILES_DIR`). A resolved path that escapes the root — via
+  `.lumi/files/<user_id>/`, set by `LUMI_FILES_DIR`). A resolved path that escapes the root — via
   `..`, an absolute path, or a symlink — is rejected before any I/O. The whole filesystem is never
   reachable.
 - **File contents are untrusted data, not instructions.** A file may contain text like "ignore your
@@ -117,7 +117,7 @@ what the read caps bound.
 | Setting | Meaning | Default |
 |---|---|---|
 | `LUMI_FILE_TOOL` | Enable the file tools at all | off |
-| `LUMI_FILES_DIR` | Sandbox root (per-user subdirs under it) | `state/files` |
+| `LUMI_FILES_DIR` | Sandbox root (per-user subdirs under it) | `.lumi/files` |
 | `LUMI_FILE_READ_LINES` | Default / max lines returned by one `read_file` call | e.g. 200 |
 | `LUMI_FILE_READ_MAX_TOTAL` | Max total lines one turn may read across calls | e.g. 2000 |
 | `LUMI_FILE_FIND_MAX` | Max matches `find_in_file` returns | e.g. 50 |

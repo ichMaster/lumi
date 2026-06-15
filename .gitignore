@@ -223,7 +223,7 @@ __marimo__/
 # Lumi local runtime store (v0.1)
 .lumi/
 state/data/
-state/files/   # v0.19 per-user file-tool sandbox (user content; never committed)
+# v0.19 file-tool sandbox now lives under .lumi/files/ (covered by the .lumi/ ignore above)
 
 # Local chat export (not for the repo)
 chat-export.md

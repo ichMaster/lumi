@@ -64,7 +64,7 @@ DEFAULT_CLOSENESS_PATH = _REPO_ROOT / "core" / "closeness.md"
 
 # Face image packs + theme manifest (v0.7 + v0.11 themes); the viewer renders from here.
 DEFAULT_FACES_DIR = _REPO_ROOT / "viewer" / "faces"
-DEFAULT_FILES_DIR = _REPO_ROOT / "state" / "files"  # v0.19 file-tool sandbox root (per-user subdirs)
+DEFAULT_FILES_DIR = _REPO_ROOT / ".lumi" / "files"  # v0.19 file-tool sandbox root (per-user subdirs)
 
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
