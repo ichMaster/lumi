@@ -133,6 +133,37 @@ def test_session_close_calls_are_tagged(tmp_path):
     assert "session-close" in [e.kind for e in load_events(log)]
 
 
+def test_render_groups_by_session():
+    events = [
+        CacheEvent("2026-06-16T08:00:00", "reply", 20000, 0, 100, 50, 12.0, "none", "claude-opus-4-8", "sess-aaaa1111"),
+        CacheEvent("2026-06-16T08:01:00", "tool", 24000, 5000, 100, 50, 1.0, "changed", "claude-opus-4-8", "sess-aaaa1111"),
+        CacheEvent("2026-06-16T09:00:00", "reply", 20000, 0, 100, 50, 3600.0, "none", "claude-opus-4-8", "sess-bbbb2222"),
+        CacheEvent("2026-06-16T09:05:00", "reply", 0, 22000, 100, 50, None, "first", "claude-opus-4-8", ""),  # legacy (no id)
+    ]
+    md = render_cache_report(events, generated_at="2026-06-16", ttl="1h")
+    assert "## By session (tokens & cost)" in md
+    assert "sess-aaa" in md and "sess-bbb" in md          # short ids, in first-seen order
+    assert "(legacy)" in md                                # pre-field events grouped apart
+    a_row = next(line for line in md.splitlines() if line.startswith("| sess-aaa"))
+    assert "| 2 |" in a_row and "5,000" in a_row           # session A: 2 calls, 5k written
+
+
+def test_core_stamps_cache_events_with_the_active_session(tmp_path):
+    log = tmp_path / "cache-log.jsonl"
+    core = Core(
+        llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=_Clock(datetime(2026, 6, 16, 8, 0, tzinfo=UTC)),
+        mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
+        cache_monitor=True, cache_log_path=log, cache_report_path=tmp_path / "r.md",
+    )
+    s = core.start_session()
+    core.reply("привіт", s)
+    core.end_session(s)
+    sids = {e.session_id for e in load_events(log)}
+    assert sids == {s.id}  # every event (reply + session-close) carries the real session id
+
+
 def test_render_includes_per_activity_cost_table():
     events = [
         CacheEvent("t", "reply", 20000, 0, 4000, 200, 12.0, "none", "claude-opus-4-8"),

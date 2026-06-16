@@ -355,6 +355,7 @@ class Core:
         self._cache_report_path = cache_report_path
         self._cache_monitor = cache_monitor
         self._cache_last_ts: dict[str, datetime] = {}  # last call time per channel (gap / expiry)
+        self._active_session_id = ""  # the session each cache event is stamped with (per-session breakdown)
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
@@ -627,7 +628,9 @@ class Core:
         self.last_style = None
         self._think_count = 0  # v0.12: the proactive-think cap is per session
         self._write_face_signal(DEFAULT_EMOTION.value, DEFAULT_INTENSITY)  # calm before the first turn
-        return self._repo.create_session(self._user_id)
+        session = self._repo.create_session(self._user_id)
+        self._active_session_id = session.id  # stamp cache events with this session
+        return session
 
     def _write_face_signal(self, emotion: str, intensity: float) -> None:
         """Write the viewer signal (v0.7 + v0.11): ``[<theme>] <emotion> <intensity> <stamp>``.
@@ -1013,7 +1016,7 @@ class Core:
                 ts=now.isoformat(timespec="seconds"), kind=kind, model=stats.model,
                 cache_read=stats.cache_read_tokens or 0, cache_write=cw,
                 input=stats.input_tokens or 0, output=stats.output_tokens or 0,
-                gap_s=gap_s, cause=cause,
+                gap_s=gap_s, cause=cause, session_id=self._active_session_id,
             ))
         except Exception:  # noqa: BLE001 — monitoring must never break a turn
             _usage_log.warning("cache event log failed", exc_info=True)
@@ -1216,6 +1219,7 @@ class Core:
         **live tail** (between ``memory_window`` and ``+ batch`` messages) + the
         new line, and persists both messages. The full history stays stored.
         """
+        self._active_session_id = session.id  # stamp this turn's cache events with the session
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
         self.ensure_day_summaries()  # refresh the day digests the prompt will inject (date-based recall)
         self.ensure_week_summaries()  # refresh the week digests (date-based recall)
@@ -1314,6 +1318,7 @@ class Core:
         either step degrades to nothing — ending a session never raises
         (ARCHITECTURE §Error handling).
         """
+        self._active_session_id = session.id  # stamp the wrap-up (summary + facts) cache events
         try:
             history = self._repo.load_messages(session.id)
             self._repo.end_session(session.id)

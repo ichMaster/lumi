@@ -8,8 +8,10 @@ day/week/facts digests), ``session-close`` (the wrap-up summary + facts), ``mood
 the cache read/write, and the **gap since the last call of the same channel** — then classifies each
 write as ``first`` / ``expired`` (gap > TTL) / ``changed`` (warm but the prefix moved).
 
-It renders ``.lumi/cache-report.md`` (per-channel + by-cause) at session close, the diagnostic twin of
-the v0.17 usage report. Off-by-default-friendly; an event is a cheap JSONL append.
+The log is **append-only across all sessions**, so the report is always **all-time cumulative**; it is
+also sliced **per session** (each event carries its ``session_id``). It renders ``.lumi/cache-report.md``
+(by-channel + by-cause + by-activity + by-session) at session close, the diagnostic twin of the v0.17
+usage report. Off-by-default-friendly; an event is a cheap JSONL append.
 """
 from __future__ import annotations
 
@@ -48,9 +50,11 @@ class CacheEvent:
     gap_s: float | None  # seconds since the previous call of the SAME kind (None = first)
     cause: str           # none / first / expired / changed
     model: str = ""      # the model for this call (for the per-activity cost)
+    session_id: str = "" # the session this call belongs to (for the per-session breakdown; "" = legacy)
 
 
-_FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause", "model")
+_FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause", "model",
+           "session_id")
 
 
 def append_event(path: str | Path, event: CacheEvent) -> None:
@@ -156,6 +160,7 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
     )
 
     out.append(_activity_table(events, ttl))
+    out.append(_session_table(events, ttl))
     return "\n".join(out) + "\n"
 
 
@@ -192,6 +197,52 @@ def _activity_table(events: list[CacheEvent], ttl: str) -> str:
         rows.append(
             f"| {kind} | {a['calls']} | {_fmt(a['input'])} | {_fmt(a['output'])} | {_fmt(a['cr'])} | "
             f"{_fmt(a['cw'])} | ${a['cost']:,.4f} | {a['cost'] / grand * 100:.0f}% |"
+        )
+    return "\n".join(rows) + "\n"
+
+
+def _session_table(events: list[CacheEvent], ttl: str) -> str:
+    """Tokens + estimated cost per **session** — the same all-time log, sliced by conversation.
+
+    Events are in chronological append order, so first-seen order = session start order. Calls logged
+    before the ``session_id`` field existed group under ``(legacy)``.
+    """
+    from core.usage import pricing_for  # local import — avoids a module-load cycle
+
+    write_mult = 2.0 if ttl == "1h" else 1.25
+    agg: dict[str, dict] = {}
+    order: list[str] = []
+    for e in events:
+        sid = e.session_id or "(legacy)"
+        if sid not in agg:
+            agg[sid] = {"calls": 0, "cr": 0, "cw": 0, "writes": 0, "cost": 0.0, "first": e.ts, "last": e.ts}
+            order.append(sid)
+        p = pricing_for(e.model)
+        cost = (
+            e.input * p.input + e.output * p.output
+            + e.cache_read * p.cache_read + e.cache_write * (p.input * write_mult)
+        ) / 1_000_000
+        a = agg[sid]
+        a["calls"] += 1
+        a["cr"] += e.cache_read
+        a["cw"] += e.cache_write
+        a["cost"] += cost
+        a["last"] = e.ts
+        if e.cause != "none":
+            a["writes"] += 1
+
+    rows = ["## By session (tokens & cost)\n"]
+    rows.append(
+        "| Session | Calls | Cache read | Cache write | Writes | Est. cost | Started |\n"
+        "|---|--:|--:|--:|--:|--:|---|"
+    )
+    for sid in order:
+        a = agg[sid]
+        short = sid if sid == "(legacy)" else sid[:8]
+        started = a["first"][:16].replace("T", " ")
+        rows.append(
+            f"| {short} | {a['calls']} | {_fmt(a['cr'])} | {_fmt(a['cw'])} | "
+            f"{a['writes']} | ${a['cost']:,.4f} | {started} |"
         )
     return "\n".join(rows) + "\n"
 
