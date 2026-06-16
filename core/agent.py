@@ -986,9 +986,20 @@ class Core:
         self._log_cache_event(kind, stats)  # per-call cache monitor (best-effort)
 
     def _log_cache_event(self, kind: str, stats: ResponseStats) -> None:
-        """Append this call's cache behaviour to the cache log + classify the write. Never raises."""
+        """Append the call(s) of this turn to the cache log. A reply turn is split into its **per-round**
+        calls (each tagged ``tool`` or ``reply`` by the loop); other channels log one event. Never raises."""
         if not self._cache_monitor or self._cache_log_path is None:
             return
+        rounds = getattr(self._llm, "last_round_log", None)
+        if kind == "reply" and rounds:
+            for round_kind, rstats in rounds:
+                if rstats is not None:
+                    self._log_one_cache_event(round_kind, rstats)
+        else:
+            self._log_one_cache_event(kind, stats)
+
+    def _log_one_cache_event(self, kind: str, stats: ResponseStats) -> None:
+        """Append one model call's cache behaviour + classify the write. Never raises."""
         try:
             from core import cache_log
 
@@ -999,7 +1010,7 @@ class Core:
             cw = stats.cache_write_tokens or 0
             cause = cache_log.classify(cw, gap_s, cache_log.ttl_seconds(self._usage_cache_ttl))
             cache_log.append_event(self._cache_log_path, cache_log.CacheEvent(
-                ts=now.isoformat(timespec="seconds"), kind=kind,
+                ts=now.isoformat(timespec="seconds"), kind=kind, model=stats.model,
                 cache_read=stats.cache_read_tokens or 0, cache_write=cw,
                 input=stats.input_tokens or 0, output=stats.output_tokens or 0,
                 gap_s=gap_s, cause=cause,

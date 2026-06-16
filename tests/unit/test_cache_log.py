@@ -98,6 +98,40 @@ def test_core_logs_cache_events_by_channel_with_attribution(tmp_path):
     assert "By channel" in text and "think" in text and "reply" in text
 
 
+def test_core_logs_per_round_tool_and_reply_for_a_file_turn(tmp_path):
+    # A file-tool turn = 2 tool calls + the answer → 3 per-round events (tool, tool, reply), not 1 sum.
+    root = tmp_path / "files" / "owner"
+    root.mkdir(parents=True)
+    (root / "notes.md").write_text("a\nРозділ 4: оплата\nb\n", encoding="utf-8")
+    log = tmp_path / "cache-log.jsonl"
+    mock = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5},
+                         tool_script=[("find_in_file", {"path": "notes.md", "query": "Розділ 4"}),
+                                      ("read_file", {"path": "notes.md", "start_line": 2, "line_count": 1})])
+    core = Core(
+        llm=mock, repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=_Clock(datetime(2026, 6, 16, 8, 0, tzinfo=UTC)),
+        mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
+        cache_monitor=True, cache_log_path=log, cache_report_path=tmp_path / "r.md",
+        file_tool_enabled=True, files_dir=tmp_path / "files", file_read_lines=10,
+    )
+    core.reply("прочитай розділ про оплату", core.start_session())
+    assert [e.kind for e in load_events(log)] == ["tool", "tool", "reply"]  # per round, split out
+
+
+def test_render_includes_per_activity_cost_table():
+    events = [
+        CacheEvent("t", "reply", 20000, 0, 4000, 200, 12.0, "none", "claude-opus-4-8"),
+        CacheEvent("t", "tool", 24000, 5000, 500, 90, 1.0, "changed", "claude-opus-4-8"),
+        CacheEvent("t", "tool", 24000, 5000, 600, 90, 1.0, "changed", "claude-opus-4-8"),
+        CacheEvent("t", "think", 0, 0, 3000, 400, 3600.0, "none", "claude-opus-4-8"),
+    ]
+    md = render_cache_report(events, generated_at="2026-06-16", ttl="1h")
+    assert "## By activity (tokens & cost)" in md
+    for activity in ("reply", "tool", "think"):
+        assert f"| {activity} |" in md
+    assert "Est. cost" in md and "$" in md
+
+
 def test_core_logs_nothing_when_monitor_off(tmp_path):
     core = Core(
         llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),

@@ -38,16 +38,17 @@ def classify(cache_write: int, gap_s: float | None, ttl_s: int) -> str:
 @dataclass
 class CacheEvent:
     ts: str
-    kind: str           # reply / think / mood / facts / summary / housekeeping
+    kind: str            # reply / tool / think / mood / facts / summary / compaction
     cache_read: int
     cache_write: int
     input: int
     output: int
     gap_s: float | None  # seconds since the previous call of the SAME kind (None = first)
     cause: str           # none / first / expired / changed
+    model: str = ""      # the model for this call (for the per-activity cost)
 
 
-_FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause")
+_FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause", "model")
 
 
 def append_event(path: str | Path, event: CacheEvent) -> None:
@@ -151,7 +152,46 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
         f"- **first**-of-channel: {causes['first']}\n"
         f"- **changed**-prefix (warm but moved): {causes['changed']}\n"
     )
+
+    out.append(_activity_table(events, ttl))
     return "\n".join(out) + "\n"
+
+
+def _activity_table(events: list[CacheEvent], ttl: str) -> str:
+    """Tokens + estimated cost per activity (reply / tool / think / housekeeping)."""
+    from core.usage import pricing_for  # local import — avoids a module-load cycle
+
+    write_mult = 2.0 if ttl == "1h" else 1.25
+    agg: dict[str, dict] = {}
+    grand = 0.0
+    for e in events:
+        p = pricing_for(e.model)
+        cost = (
+            e.input * p.input + e.output * p.output
+            + e.cache_read * p.cache_read + e.cache_write * (p.input * write_mult)
+        ) / 1_000_000
+        grand += cost
+        a = agg.setdefault(e.kind, {"calls": 0, "input": 0, "output": 0, "cr": 0, "cw": 0, "cost": 0.0})
+        a["calls"] += 1
+        a["input"] += e.input
+        a["output"] += e.output
+        a["cr"] += e.cache_read
+        a["cw"] += e.cache_write
+        a["cost"] += cost
+
+    rows = ["## By activity (tokens & cost)\n"]
+    rows.append(
+        "| Activity | Calls | Input | Output | Cache read | Cache write | Est. cost | Share |\n"
+        "|---|--:|--:|--:|--:|--:|--:|--:|"
+    )
+    grand = grand or 1.0
+    for kind in sorted(agg, key=lambda k: -agg[k]["cost"]):
+        a = agg[kind]
+        rows.append(
+            f"| {kind} | {a['calls']} | {_fmt(a['input'])} | {_fmt(a['output'])} | {_fmt(a['cr'])} | "
+            f"{_fmt(a['cw'])} | ${a['cost']:,.4f} | {a['cost'] / grand * 100:.0f}% |"
+        )
+    return "\n".join(rows) + "\n"
 
 
 def write_cache_report(events: list[CacheEvent], path: str | Path, *, generated_at: str, ttl: str = "5m") -> None:

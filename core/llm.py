@@ -241,6 +241,9 @@ class AnthropicClient:
         self.last_thinking: str | None = None
         # Per-response stats (latency + token usage) from the last call.
         self.last_stats: ResponseStats | None = None
+        # v0.19+: per-ROUND stats of the last reply_structured call, each tagged "tool" or "reply"
+        # (the tool-loop populates it; a single call has one "reply" entry). For the per-round cache monitor.
+        self.last_round_log: list[tuple[str, ResponseStats]] = []
         self._retries = retries
         self._backoff = backoff
         self._retryable = tuple(
@@ -349,6 +352,7 @@ class AnthropicClient:
             started = time.monotonic()
             resp = self._client.messages.create(**kwargs)
             self._capture(resp, model, int((time.monotonic() - started) * 1000))
+            self.last_round_log = [("reply", self.last_stats)]  # one round → one "reply" entry
             state = self._tool_input(resp, _EMOTION_TOOL["name"])
             if state is not None:
                 return state
@@ -356,6 +360,18 @@ class AnthropicClient:
             return {"reply": self._text_of(resp)}
 
         return self._run(_once, "Claude structured call failed")
+
+    def _round_stats(self, resp: object, model: str, latency_ms: int) -> ResponseStats:
+        """A ResponseStats for ONE round (no accumulation) — for the per-round cache log."""
+        usage = getattr(resp, "usage", None)
+        return ResponseStats(
+            model=model, latency_ms=latency_ms,
+            input_tokens=getattr(usage, "input_tokens", None),
+            output_tokens=getattr(usage, "output_tokens", None),
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", None),
+            cache_write_tokens=getattr(usage, "cache_creation_input_tokens", None),
+            thinking=self._thinking,
+        )
 
     # --- v0.19 bounded tool-loop -----------------------------------------------------------------
     def _tool_loop(
@@ -376,6 +392,7 @@ class AnthropicClient:
         all_tools = [_EMOTION_TOOL, *tools]
         convo: list = list(messages)
         acc = {"input": 0, "output": 0, "cr": 0, "cw": 0, "latency": 0, "think": []}
+        self.last_round_log = []  # per-round (tag, stats) for the cache monitor
         try:
             for step in range(max_steps + 1):
                 kwargs = self._base_kwargs(system, convo, model, cache_prefix)
@@ -387,16 +404,21 @@ class AnthropicClient:
                     kwargs["tool_choice"] = {"type": "auto"}
                 started = time.monotonic()
                 resp = self._create_retried(kwargs)
-                self._accumulate(resp, acc, int((time.monotonic() - started) * 1000))
+                latency = int((time.monotonic() - started) * 1000)
+                self._accumulate(resp, acc, latency)
+                rstats = self._round_stats(resp, model, latency)  # this round's stats (per-round log)
 
                 state = self._tool_input(resp, _EMOTION_TOOL["name"])
-                if state is not None:  # terminal — the turn is done
+                if state is not None:  # terminal — the turn is done (the answer round)
+                    self.last_round_log.append(("reply", rstats))
                     self._finalize_loop(acc, model)
                     return state
                 tool_uses = [b for b in getattr(resp, "content", []) if getattr(b, "type", None) == "tool_use"]
-                if not tool_uses:  # no tool, no set_state → degrade to the text
+                if not tool_uses:  # no tool, no set_state → degrade to the text (still the answer round)
+                    self.last_round_log.append(("reply", rstats))
                     self._finalize_loop(acc, model)
                     return {"reply": self._text_of(resp)}
+                self.last_round_log.append(("tool", rstats))  # this round called a file tool
                 # Feed each tool's result back as an untrusted tool_result, then loop.
                 convo.append({"role": "assistant", "content": resp.content})
                 results = [
@@ -737,6 +759,7 @@ class MockLLMClient:
         # v0.19: a scripted sequence of (tool_name, tool_input) the loop "calls" before set_state.
         self._tool_script = list(tool_script) if tool_script else None
         self.tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — for assertions
+        self.last_round_log: list[tuple[str, ResponseStats]] = []  # per-round (tag, stats) — for the monitor
 
     def _record(self, system: str, messages: list[Message], model: str) -> None:
         self.calls.append({"system": system, "messages": list(messages), "model": model})
@@ -772,11 +795,14 @@ class MockLLMClient:
     ) -> dict:
         self._record(system, messages, model)  # cache_prefix ignored by the mock
         # v0.19: simulate the bounded tool-loop — run each scripted tool via the executor (capped),
-        # recording (name, input, result) — then fall through to the terminal state below.
+        # recording (name, input, result) + a per-round log (tool…tool, reply) — then the terminal state.
+        self.last_round_log = []
         if tool_executor is not None and self._tool_script is not None:
             for name, inp in self._tool_script[:max_steps]:
                 result = tool_executor(name, dict(inp))
                 self.tool_calls.append((name, dict(inp), result))
+                self.last_round_log.append(("tool", ResponseStats(model=model, latency_ms=0)))
+        self.last_round_log.append(("reply", self.last_stats))  # the terminal/answer round
         if self._state_fn is not None:
             return self._state_fn(system, messages, model)
         if self._state_queue:

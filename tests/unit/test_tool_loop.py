@@ -93,6 +93,16 @@ def test_no_tools_is_unchanged_single_call():
     assert out == _STATE and len(fake.messages.calls) == 1
 
 
+def test_loop_records_per_round_log_tagged_tool_and_reply():
+    fake = _queue_fake([_resp([_tooluse("read_file", {"path": "a"})], usage=_usage(10, 5)),
+                        _resp([_tooluse("set_state", _STATE)], usage=_usage(20, 8))])
+    client = AnthropicClient("sk-test", _client=fake)
+    client.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
+                            tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert [tag for tag, _ in client.last_round_log] == ["tool", "reply"]  # round 1 tool, round 2 answer
+    assert client.last_round_log[0][1].input_tokens == 10  # per-ROUND stats, not the summed total
+
+
 def test_loop_accumulates_stats_across_rounds():
     fake = _queue_fake([_resp([_tooluse("read_file", {"path": "a"})], usage=_usage(10, 5)),
                         _resp([_tooluse("set_state", _STATE)], usage=_usage(20, 8))])
