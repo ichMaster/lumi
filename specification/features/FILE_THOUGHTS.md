@@ -109,6 +109,48 @@ also `tail -f` it like the v0.19 tool-log.
 Both `%review` and `%explore` reuse the existing per-user-bound executor (`_file_tool_args`) and the
 bounded loop (`LUMI_TOOL_MAX_STEPS`) — no new sandbox, no new safety surface.
 
+### `%explore` — examples
+
+Each fires the full file tool-loop (read + write) and ends by recording a `Thought(kind="explore")`;
+the loop trace shows the tools she calls, then the thought she keeps and what changed on disk. Sandbox
+root `.lumi/files/<user_id>/` (here `owner`).
+
+**Create — idle, silent (tidying a recurring theme).** The idle nudge fires `%explore`; she gathers a
+thread scattered across her journal into a fresh note.
+```
+list_files {path:"journal"}                              → 2026-06-15.md, 2026-06-16.md
+read_file  {path:"journal/2026-06-16.md"}                → today's entries
+find_in_file {path:"journal/2026-06-15.md", query:"пуер"} → line 4
+create_file {path:"notes/чай.md", content:"# Чай\n\n- пуер тримає на другий день\n"}
+```
+→ thought: «зібрала свої згадки про чай в одне місце — наче маленька колекція»
+→ disk: **new** `notes/чай.md` (didn't exist → `create_file`).
+
+**Append — manual, open with a topic (`%explore! про чай`).** `!` surfaces the thought; she adds to the
+existing note rather than starting over.
+```
+read_file   {path:"notes/чай.md", start_line:1, line_count:20}
+append_file {path:"notes/чай.md", content:"- улун пахне абрикосою, але швидше вихолоняє\n"}
+```
+→ thought (printed): «додала про улун — поряд із пуером він зовсім інший на смак»
+→ disk: one line appended to the **end** of `notes/чай.md` (non-destructive).
+
+**Read-only outcome — she explores but chooses not to write.** `%explore` *may* write; it is never
+*forced* to. Sometimes she only looks.
+```
+list_files {path:"."}
+read_file  {path:"notes/ескізи.md", start_line:1, line_count:30}
+```
+→ thought: «перечитала ескізи — поки не чіпатиму, нехай полежать»
+→ disk: **nothing changed** (read-only). Still a recorded thought.
+
+**The guardrails, shown.** Even if a generation "wants" to replace or clear a file, the v0.20 tools
+refuse it — `create_file` over an existing path → `error: file already exists (no overwrite)`;
+`append_file` to a missing path → `error: file not found (append does not create)`. She adapts within
+the turn (append instead of overwrite; create the missing file) and the thought still records. **No
+overwrite/delete path exists**, so an unattended `%explore` can only ever *grow* her sandbox — never
+clobber it.
+
 ---
 
 ## The store & file layout
