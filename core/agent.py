@@ -288,6 +288,12 @@ class Core:
         file_write_max: int = 65536,
         tool_max_steps: int = 8,
         file_tool_trace: bool = False,
+        wiki_enabled: bool = False,
+        wiki_lang: str = "uk,en",
+        wiki_base_url: str = "",
+        wiki_max_chars: int = 1500,
+        wiki_max_calls: int = 4,
+        wiki_http_get: Callable[[str], str] | None = None,  # injected for tests; None → real urllib
         tool_log_path: Path | None = None,
         cache_log_path: Path | None = None,
         cache_report_path: Path | None = None,
@@ -349,6 +355,13 @@ class Core:
         self._tool_max_steps = tool_max_steps
         # v0.19 tool trace: record the file tools used this turn (for the TUI trace + .lumi/tool-log.jsonl).
         self._file_tool_trace = file_tool_trace
+        # v0.21 Wikipedia tool — custom wiki_search/wiki_read on the same bounded loop (off by default).
+        self._wiki_enabled = wiki_enabled
+        self._wiki_lang = wiki_lang
+        self._wiki_base_url = wiki_base_url
+        self._wiki_max_chars = wiki_max_chars
+        self._wiki_max_calls = wiki_max_calls
+        self._wiki_http_get = wiki_http_get
         self._tool_log_path = tool_log_path
         self.last_tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — reset each turn
         # Per-call prompt-cache monitor (off by default): log each model call's cache behaviour by
@@ -1172,12 +1185,38 @@ class Core:
         except Exception:  # noqa: BLE001 — degrade to raw facts; never break a turn
             pass
 
+    def _turn_tools(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """Assemble this turn's bounded-loop tools + a **name-routing** executor — the v0.19/v0.20 file
+        tools and the v0.21 wiki tools, offered together when both are on. ``(None, None)`` when neither
+        is on (the turn is a single ``set_state`` call, unchanged). Resets the per-turn trace and wraps
+        every call with the v0.19 trace (``LUMI_FILE_TOOL_TRACE``)."""
+        self.last_tool_calls = []  # fresh per turn (the trace)
+        routes: dict[str, Callable[[str, dict], str]] = {}
+        tools: list[dict] = []
+        for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args()):
+            if executor is None:
+                continue
+            tools += tool_list
+            for t in tool_list:
+                routes[t["name"]] = executor
+        if not routes:
+            return None, None
+
+        def dispatch(name: str, tool_input: dict) -> str:
+            executor = routes.get(name)
+            result = executor(name, tool_input) if executor is not None else f"error: unknown tool {name!r}"
+            if self._file_tool_trace:  # one trace point for every tool (file + wiki)
+                self.last_tool_calls.append((name, dict(tool_input or {}), result))
+                self._log_tool_call(name, tool_input, result)
+            return result
+
+        return tools, dispatch
+
     def _file_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
-        """The (tools, executor) for the file tool — bound to **this user's** sandbox; (None, None)
-        when off. The root ``files_dir/<user_id>`` is created lazily; a fresh executor per turn carries
-        the per-turn read budget (LUMI-083). Per-user keying enforces isolation. v0.20 adds the two
-        non-destructive write tools (create/append) to the same executor + tool set."""
-        self.last_tool_calls = []  # fresh per turn
+        """The (tools, **raw** executor) for the file tool — bound to **this user's** sandbox;
+        ``(None, None)`` when off. The root ``files_dir/<user_id>`` is created lazily; a fresh executor
+        per turn carries the per-turn read budget (LUMI-083). Per-user keying enforces isolation. The
+        v0.20 write tools ride the same executor; tracing/routing is applied by :meth:`_turn_tools`."""
         if not self._file_tool_enabled or self._files_dir is None:
             return None, None
         from core.files import READ_TOOLS, WRITE_TOOLS, FileTools
@@ -1188,17 +1227,34 @@ class Core:
             root, read_lines=self._file_read_lines, find_max=self._file_find_max,
             read_max_total=self._file_read_max_total, write_max=self._file_write_max,
         )
-        file_tools = READ_TOOLS + WRITE_TOOLS  # read + non-destructive write, offered together
-        if not self._file_tool_trace:
-            return file_tools, tools.execute
+        return READ_TOOLS + WRITE_TOOLS, tools.execute  # read + non-destructive write
 
-        def traced(name: str, tool_input: dict) -> str:  # v0.19: record each call for the trace + log
-            result = tools.execute(name, tool_input)
-            self.last_tool_calls.append((name, dict(tool_input or {}), result))
-            self._log_tool_call(name, tool_input, result)
-            return result
+    def _wiki_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, **raw** executor) for the v0.21 Wikipedia tool; ``(None, None)`` when off.
 
-        return file_tools, traced
+        The ``wiki_search`` query carries **only what the model passes** — the core never augments it
+        with relationship memory, facts, or secrets (no-personal-data rule). A per-turn closure counter
+        enforces ``LUMI_WIKI_MAX_CALLS`` independently of the file loop cap."""
+        if not self._wiki_enabled:
+            return None, None
+        from core.wiki import WIKI_TOOLS, WikiTools
+
+        kwargs = {"http_get": self._wiki_http_get} if self._wiki_http_get is not None else {}
+        wiki = WikiTools(
+            lang=self._wiki_lang, base_url=self._wiki_base_url, max_chars=self._wiki_max_chars, **kwargs
+        )
+        calls = {"n": 0}
+
+        def capped(name: str, tool_input: dict) -> str:
+            calls["n"] += 1
+            if calls["n"] > self._wiki_max_calls:
+                return (
+                    f"(wiki call limit reached: {self._wiki_max_calls} per turn — "
+                    "answer from what you already found)"
+                )
+            return wiki.execute(name, tool_input)
+
+        return WIKI_TOOLS, capped
 
     def _log_tool_call(self, name: str, tool_input: dict | None, result: str) -> None:
         """Append a file-tool call to .lumi/tool-log.jsonl as it runs (for `tail -f`). Never raises."""
@@ -1246,8 +1302,9 @@ class Core:
             session, recall=self._recall_block(user_text, live)
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
-        # v0.19: when the file tool is on, run the turn as a bounded tool-loop over this user's sandbox.
-        tools, tool_executor = self._file_tool_args()
+        # v0.19/v0.21: when the file tool and/or the wiki tool is on, run the turn as a bounded
+        # tool-loop (file sandbox + Wikipedia), with a name-routing executor.
+        tools, tool_executor = self._turn_tools()
         raw = self._llm.reply_structured(
             system=system, messages=messages, model=self._model,
             cache_prefix=cache_prefix if self._prompt_cache else None,  # v0.15 cache breakpoint
@@ -1768,6 +1825,11 @@ def build_core(
         file_write_max=cfg.file_write_max,
         tool_max_steps=cfg.tool_max_steps,
         file_tool_trace=cfg.file_tool_trace,
+        wiki_enabled=cfg.wiki,
+        wiki_lang=cfg.wiki_lang,
+        wiki_base_url=cfg.wiki_base_url,
+        wiki_max_chars=cfg.wiki_max_chars,
+        wiki_max_calls=cfg.wiki_max_calls,
         tool_log_path=(cfg.store_path.parent / "tool-log.jsonl") if cfg.file_tool_trace else None,
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,
