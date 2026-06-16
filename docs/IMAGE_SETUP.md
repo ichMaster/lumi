@@ -31,6 +31,11 @@ never a command), and is sandboxed + per-user. Generation is **paid** (needs `GE
    подивись на photo.png і опиши
    ```
    She calls `view_image` and describes it.
+5. **Ask her to draw** (generation — **paid**, needs a `GEMINI_API_KEY` in `.env`):
+   ```
+   намалюй кота в окулярах у неоновому місті
+   ```
+   She calls `generate_image`; the PNG lands in `.lumi/files/owner/art/` and is shown.
 
 ---
 
@@ -77,10 +82,14 @@ and shown:
 - **Bounded.** At most `LUMI_VISION_MAX` images per turn; each viewed image is size-capped
   (`LUMI_IMAGE_MAX_BYTES`). A missing / non-image / oversize file degrades to a notice, never a crash.
 - **Off by default.** Nothing happens unless `LUMI_IMAGE=on`.
-- **Privacy note.** A shared (or viewed) image is **sent to the model provider** (Anthropic) for vision
-  — the same as your text. Don't share what you wouldn't send.
-- **Provider.** Vision needs the Anthropic (multimodal) provider; on a non-multimodal backend it's a
-  no-op.
+- **Privacy note.** A shared (or viewed) image is **sent to Anthropic** for vision — the same as your
+  text. A **generation prompt** is sent to **Gemini** (Google). Don't share/describe what you wouldn't
+  send.
+- **Generation is create-only + capped.** `generate_image` only ever **creates** a new PNG (never
+  overwrites/deletes), the prompt carries **no personal data**, and it's bounded by `LUMI_IMAGE_MAX_GEN`
+  per turn; a provider refusal degrades to a notice.
+- **Providers.** Vision needs the Anthropic (multimodal) provider (a non-multimodal backend → vision is a
+  no-op); generation needs a **Gemini** key (`GEMINI_API_KEY`).
 
 ---
 
@@ -112,3 +121,11 @@ Wikipedia tools; a turn can use any of them.
   `.lumi/files/owner/`.
 - **She didn't call `view_image`.** Ask her explicitly to *look at* the file by name; or share it with
   `/image`.
+- **Generation does nothing / "image generation failed".** Check `GEMINI_API_KEY` is set in `.env` and
+  that **billing is enabled** on your Google project — `gemini-2.5-flash-image` (Nano Banana) is **not**
+  on the free tier (quota 0). A safety refusal also degrades to this notice; rephrase the prompt.
+- **"already exists".** `generate_image` won't overwrite — she'll pick a new name, or ask her to draw it
+  under a different filename. Generated PNGs live in `.lumi/files/<user>/art/`.
+- **The generated image doesn't appear in a window.** The TUI is text-only; the PNG's path is named in
+  her reply and written to `.lumi/image.txt` (per `LUMI_IMAGE_SHOW`) for the v0.7 viewer / Telegram to
+  pick up. Open the file directly if you're not running those.
