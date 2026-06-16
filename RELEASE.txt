@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 0.19.2 (2026-06-16)
+---------------------------
+- Cache monitor — per-round logging: a file-tool reply turn is split into its actual model calls (each tagged "tool" or "reply"), so the report attributes cache writes to the round that caused them instead of one summed total. Adds a "By activity (tokens & cost)" table (reply / tool / think / mood / ... with input/output/cache read/write and estimated cost per channel).
+- Cache monitor — session-start / session-close channels: the startup section-building (day/week/facts digests) and the close wrap-up (this session's summary + facts extraction) are now distinct channels in the report, no longer conflated under generic "summary"/"facts".
+- Cache monitor — per-session breakdown: every cache event is stamped with its session id (set at start_session / reply / end_session), and the report gains a "By session (tokens & cost)" table — one row per conversation (calls, cache read/write, writes, est. cost, start time). The log stays append-only/all-time cumulative; events logged before the field group under "(legacy)". No config change — rides the existing LUMI_CACHE_MONITOR flag.
+
 Version 0.19.1 (2026-06-16)
 ---------------------------
 - File-tool call trace (LUMI_FILE_TOOL_TRACE, off by default): the Core records each file tool it calls this turn (name, input, result) and streams it to .lumi/tool-log.jsonl as it runs (tail -f for live); the TUI renders the calls as dim "🔧 name(args) -> preview" lines above her reply. The list resets each turn; best-effort, never blocks a turn.
