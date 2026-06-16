@@ -1,11 +1,13 @@
-# Local file tool — setup & usage (v0.19)
+# Local file tool — setup & usage (v0.19 read · v0.20 write)
 
-Let Лілі **see, search, and read files** in a private per-user folder during a normal chat turn. She
-can list a directory, search inside a file for a string (and get the line numbers), and read a file by
-line to its end — then answer grounded in what she read.
+Let Лілі **see, search, read, and write files** in a private per-user folder during a normal chat turn.
+She can list a directory, search inside a file for a string (and get the line numbers), read a file by
+line to its end, **create a new file**, and **append to an existing one** — then answer grounded in what
+she read or wrote.
 
-This is **read-only** (v0.19). Creating and appending files is **v0.20**; there is no overwrite or
-delete. It is **off by default** and sandboxed.
+Writing (v0.20) is deliberately **non-destructive**: `create_file` is **new-only** and `append_file` is
+**end-only** — there is **no overwrite and no delete**, so a turn can never clobber or destroy your
+files. It is **off by default** and sandboxed.
 
 > Operator guide, not a design spec. The design is in
 > [specification/features/FILE_TOOL.md](../specification/features/FILE_TOOL.md).
@@ -25,17 +27,20 @@ delete. It is **off by default** and sandboxed.
    cp ~/Documents/notes.md .lumi/files/owner/
    ```
 3. **Restart the TUI** (`./lumi`) — settings are read at startup.
-4. **Ask her** to read something:
+4. **Ask her** to read — or write — something:
    ```
    подивись, які файли в тебе є
    знайди в notes.md розділ про оплату і прочитай його
+   запиши мені нотатку todo.md і додай туди перший пункт
    ```
 
-That's it. Within the turn she calls the file tools, reads what she needs, and replies.
+That's it. Within the turn she calls the file tools, reads or writes what she needs, and replies.
 
 ---
 
-## What she can do (the three tools)
+## What she can do (the tools)
+
+**Read (v0.19):**
 
 | Tool | What it does |
 |---|---|
@@ -43,12 +48,24 @@ That's it. Within the turn she calls the file tools, reads what she needs, and r
 | **find_in_file** | Searches a file for a string and returns the **line numbers** of matches (with a short preview), so she can jump to the right place. |
 | **read_file** | Reads a block of lines from a given start line, and reports the file's **total lines**, so she can page to the end. |
 
-Two natural flows:
+**Write (v0.20) — non-destructive:**
+
+| Tool | What it does |
+|---|---|
+| **create_file** | Creates a **new** file with the given content. **Refuses if the path already exists** — it never overwrites. |
+| **append_file** | Appends text to the **end** of an existing file. **Refuses if the file is missing** — it never creates by surprise, and never overwrites earlier content. |
+
+There is **no overwrite and no delete** tool. Overwrite / edit / delete, if ever wanted, are a later,
+separately-gated addition.
+
+Three natural flows:
 
 - **Find and read in one turn.** You: *"прочитай розділ про оплату"*. She runs `find_in_file` for
   "Розділ 4", takes the line number, and `read_file` from there — all in one reply.
 - **She tells you the line, you decide.** You: *"на якому рядку розділ 4?"* → *"212"* → you: *"читай з
   212-го, 40 рядків"*.
+- **She leaves you a note.** You: *"занотуй це і додай рядок нижче"*. She runs `create_file` for a new
+  note, then `append_file` to add to it — building it up over the conversation.
 
 ---
 
@@ -74,7 +91,9 @@ under it).
 - **Per-user isolated.** One person's files are never visible in another person's chat.
 - **Bounded.** Each read and the whole turn are capped (below), and the tool-loop can make only so
   many calls — it can never hang or run away.
-- **Read-only.** No create, overwrite, or delete in v0.19 — she cannot change or destroy your files.
+- **Non-destructive writes.** She can create a **new** file and append to the **end** of an existing
+  one, but there is **no overwrite and no delete** — she can never change earlier content or destroy a
+  file. Each write is size-capped (`LUMI_FILE_WRITE_MAX`).
 - **Off by default.** Nothing happens unless `LUMI_FILE_TOOL=on`.
 
 ---
@@ -99,6 +118,7 @@ All optional except `LUMI_FILE_TOOL`. Restart the TUI after changing any of them
 | `LUMI_FILE_READ_LINES` | Max lines returned by **one** `read_file` call | `200` |
 | `LUMI_FILE_READ_MAX_TOTAL` | Max lines one **turn** may read across all reads | `2000` |
 | `LUMI_FILE_FIND_MAX` | Max matches `find_in_file` returns | `50` |
+| `LUMI_FILE_WRITE_MAX` | Max bytes of **one** `create_file`/`append_file` write | `65536` |
 | `LUMI_TOOL_MAX_STEPS` | Max tool calls per turn (the loop cap) | `8` |
 
 Example `.env` block:
@@ -108,6 +128,7 @@ LUMI_FILE_TOOL=on
 # LUMI_FILE_READ_LINES=200
 # LUMI_FILE_READ_MAX_TOTAL=2000
 # LUMI_FILE_FIND_MAX=50
+# LUMI_FILE_WRITE_MAX=65536
 # LUMI_TOOL_MAX_STEPS=8
 ```
 
@@ -133,4 +154,9 @@ autonomy** (start at the right section, take only what's needed), not token savi
   specific section instead of the whole file.
 - **A path was refused.** That's the sandbox doing its job — `..`, absolute paths, and symlinks out of
   the folder are blocked by design.
+- **"file already exists" / "file not found" on a write.** By design: `create_file` won't overwrite an
+  existing file, and `append_file` won't create a missing one. To add to a file that exists, ask her to
+  *append*; to start a fresh one, ask her to *create* under a new name.
+- **"content too large".** One write exceeded `LUMI_FILE_WRITE_MAX` (default 64 KB); raise it, or ask
+  her to write in smaller appends.
 </content>

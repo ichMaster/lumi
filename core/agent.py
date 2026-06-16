@@ -285,6 +285,7 @@ class Core:
         file_read_lines: int = 200,
         file_read_max_total: int = 2000,
         file_find_max: int = 50,
+        file_write_max: int = 65536,
         tool_max_steps: int = 8,
         file_tool_trace: bool = False,
         tool_log_path: Path | None = None,
@@ -344,6 +345,7 @@ class Core:
         self._file_read_lines = file_read_lines
         self._file_read_max_total = file_read_max_total
         self._file_find_max = file_find_max
+        self._file_write_max = file_write_max
         self._tool_max_steps = tool_max_steps
         # v0.19 tool trace: record the file tools used this turn (for the TUI trace + .lumi/tool-log.jsonl).
         self._file_tool_trace = file_tool_trace
@@ -1171,22 +1173,24 @@ class Core:
             pass
 
     def _file_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
-        """The (tools, executor) for the v0.19 file tool — bound to **this user's** sandbox; (None, None)
+        """The (tools, executor) for the file tool — bound to **this user's** sandbox; (None, None)
         when off. The root ``files_dir/<user_id>`` is created lazily; a fresh executor per turn carries
-        the per-turn read budget (LUMI-083). Per-user keying enforces isolation."""
+        the per-turn read budget (LUMI-083). Per-user keying enforces isolation. v0.20 adds the two
+        non-destructive write tools (create/append) to the same executor + tool set."""
         self.last_tool_calls = []  # fresh per turn
         if not self._file_tool_enabled or self._files_dir is None:
             return None, None
-        from core.files import READ_TOOLS, FileTools
+        from core.files import READ_TOOLS, WRITE_TOOLS, FileTools
 
         root = self._files_dir / self._user_id
         root.mkdir(parents=True, exist_ok=True)
         tools = FileTools(
             root, read_lines=self._file_read_lines, find_max=self._file_find_max,
-            read_max_total=self._file_read_max_total,
+            read_max_total=self._file_read_max_total, write_max=self._file_write_max,
         )
+        file_tools = READ_TOOLS + WRITE_TOOLS  # read + non-destructive write, offered together
         if not self._file_tool_trace:
-            return READ_TOOLS, tools.execute
+            return file_tools, tools.execute
 
         def traced(name: str, tool_input: dict) -> str:  # v0.19: record each call for the trace + log
             result = tools.execute(name, tool_input)
@@ -1194,7 +1198,7 @@ class Core:
             self._log_tool_call(name, tool_input, result)
             return result
 
-        return READ_TOOLS, traced
+        return file_tools, traced
 
     def _log_tool_call(self, name: str, tool_input: dict | None, result: str) -> None:
         """Append a file-tool call to .lumi/tool-log.jsonl as it runs (for `tail -f`). Never raises."""
@@ -1761,6 +1765,7 @@ def build_core(
         file_read_lines=cfg.file_read_lines,
         file_read_max_total=cfg.file_read_max_total,
         file_find_max=cfg.file_find_max,
+        file_write_max=cfg.file_write_max,
         tool_max_steps=cfg.tool_max_steps,
         file_tool_trace=cfg.file_tool_trace,
         tool_log_path=(cfg.store_path.parent / "tool-log.jsonl") if cfg.file_tool_trace else None,

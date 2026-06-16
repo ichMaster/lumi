@@ -61,3 +61,35 @@ def test_executor_is_bound_to_the_active_users_sandbox(tmp_path):
 
     result = mock.tool_calls[0][2]
     assert "ALICE SECRET" not in result and "file not found" in result  # bob's root, isolated
+
+
+# --- v0.20 write tools wired through Core.reply ----------------------------------------------------
+def test_turn_creates_then_appends_a_sandbox_file_when_on(tmp_path):
+    mock = MockLLMClient(states=_STATE, tool_script=[
+        ("create_file", {"path": "todo.md", "content": "пункт 1\n"}),
+        ("append_file", {"path": "todo.md", "content": "пункт 2\n"}),
+    ])
+    core = _core(tmp_path, mock, file_tool=True)
+    state = core.reply("створи todo і додай два пункти", core.start_session())
+
+    assert state.reply == "прочитала" and state.emotion.value == "calm"  # {reply,emotion,intensity} valid
+    assert [c[0] for c in mock.tool_calls] == ["create_file", "append_file"]
+    written = (tmp_path / "files" / "owner" / "todo.md").read_text(encoding="utf-8")
+    assert written == "пункт 1\nпункт 2\n"  # created then appended to the end, in the active user's root
+
+
+def test_write_tools_offered_only_when_on(tmp_path):
+    mock = MockLLMClient(states=_STATE, tool_script=[("create_file", {"path": "x.md", "content": "y"})])
+    core = _core(tmp_path, mock, file_tool=False)
+    core.reply("спробуй записати", core.start_session())
+    assert mock.tool_calls == []  # off → no write (or read) tools offered
+    assert not (tmp_path / "files" / "owner" / "x.md").exists()
+
+
+def test_write_is_bound_to_the_active_users_sandbox(tmp_path):
+    # Bob's create lands under files/bob, never alice's root.
+    mock = MockLLMClient(states=_STATE, tool_script=[("create_file", {"path": "note.md", "content": "BOB\n"})])
+    core_bob = _core(tmp_path, mock, file_tool=True, user="bob")
+    core_bob.reply("занотуй", core_bob.start_session())
+    assert (tmp_path / "files" / "bob" / "note.md").read_text(encoding="utf-8") == "BOB\n"
+    assert not (tmp_path / "files" / "alice" / "note.md").exists()

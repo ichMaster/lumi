@@ -57,3 +57,21 @@ def test_trace_resets_per_turn(tmp_path):
     assert len(core.last_tool_calls) == 2
     core.reply("два", core.start_session())  # fresh turn → fresh list, not appended
     assert len(core.last_tool_calls) == 2
+
+
+def test_trace_wraps_the_v0_20_write_tools(tmp_path):
+    (tmp_path / "files" / "owner").mkdir(parents=True, exist_ok=True)
+    core = Core(
+        llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5},
+                          tool_script=[("create_file", {"path": "todo.md", "content": "пункт 1\n"}),
+                                       ("append_file", {"path": "todo.md", "content": "пункт 2\n"})]),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m", clock=_CLK,
+        mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
+        file_tool_enabled=True, files_dir=tmp_path / "files",
+        file_tool_trace=True, tool_log_path=tmp_path / "tool-log.jsonl",
+    )
+    core.reply("створи todo і додай пункт", core.start_session())
+    assert [c[0] for c in core.last_tool_calls] == ["create_file", "append_file"]  # write tools traced
+    assert core.last_tool_calls[0][2].startswith("created todo.md")
+    recs = [json.loads(line) for line in (tmp_path / "tool-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["kind"] for r in recs] == ["create_file", "append_file"]
