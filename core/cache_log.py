@@ -11,9 +11,11 @@ the cached prefix** each call, so a write is classified by **measurement**, not 
 (the prefix was identical but the cache was dropped early — nothing in the prompt to fix).
 
 The log is **append-only across all sessions**, so the report is always **all-time cumulative**; it is
-also sliced **per session** (each event carries its ``session_id``). It renders ``.lumi/cache-report.md``
-(by-channel + by-cause + by-activity + by-session) at session close, the diagnostic twin of the v0.17
-usage report. Off-by-default-friendly; an event is a cheap JSONL append.
+also sliced **per session** (each event carries its ``session_id``). It renders the unified
+``.lumi/cache-report.md`` at session close — **cache behaviour** (by-channel writes + write cause) **and
+cost** (by activity × operation — input/output/cache-read/cache-write — per session + accumulated, with
+share). One report: the cache view explains *why it writes*, the cost view *where the money goes*.
+Off-by-default-friendly; an event is a cheap JSONL append.
 """
 from __future__ import annotations
 
@@ -145,33 +147,122 @@ def _fmt(n: int) -> str:
     return f"{n:,}"
 
 
+def _usd(x: float) -> str:
+    return f"${x:,.4f}"
+
+
+def _share(x: float, total: float) -> str:
+    return f"{(x / total * 100) if total else 0:.0f}%"
+
+
+@dataclass
+class _Cost:
+    """Cost accumulator for one bucket (a session-activity, an activity total, or a grand total)."""
+
+    calls: int = 0
+    tokens: int = 0
+    c_in: float = 0.0
+    c_out: float = 0.0
+    c_rd: float = 0.0
+    c_wr: float = 0.0
+
+    @property
+    def cost(self) -> float:
+        return self.c_in + self.c_out + self.c_rd + self.c_wr
+
+    def add(self, e: CacheEvent, p, write_rate: float) -> None:
+        self.calls += 1
+        self.tokens += (e.input or 0) + (e.output or 0) + (e.cache_read or 0) + (e.cache_write or 0)
+        self.c_in += (e.input or 0) * p.input / 1_000_000
+        self.c_out += (e.output or 0) * p.output / 1_000_000
+        self.c_rd += (e.cache_read or 0) * p.cache_read / 1_000_000
+        self.c_wr += (e.cache_write or 0) * write_rate / 1_000_000
+
+    def fold(self, o: _Cost) -> None:
+        self.calls += o.calls
+        self.tokens += o.tokens
+        self.c_in += o.c_in
+        self.c_out += o.c_out
+        self.c_rd += o.c_rd
+        self.c_wr += o.c_wr
+
+
+_COST_HEADER = (
+    "| Activity | Calls | Input | Output | Cache read | Cache write | Tokens | Cost | Share |\n"
+    "|---|--:|--:|--:|--:|--:|--:|--:|--:|"
+)
+
+
+def _cost_table(by_act: dict[str, _Cost], scope_total: float) -> list[str]:
+    """A by-activity cost table — the operation columns are **cost $**; closes with a TOTAL row."""
+    lines = [_COST_HEADER]
+    total = _Cost()
+    for kind in sorted(by_act, key=lambda k: -by_act[k].cost):
+        c = by_act[kind]
+        total.fold(c)
+        lines.append(
+            f"| {kind} | {c.calls} | {_usd(c.c_in)} | {_usd(c.c_out)} | {_usd(c.c_rd)} | "
+            f"{_usd(c.c_wr)} | {_fmt(c.tokens)} | {_usd(c.cost)} | {_share(c.cost, scope_total)} |"
+        )
+    lines.append(
+        f"| **TOTAL** | {total.calls} | {_usd(total.c_in)} | {_usd(total.c_out)} | {_usd(total.c_rd)} | "
+        f"{_usd(total.c_wr)} | {_fmt(total.tokens)} | {_usd(total.cost)} | 100% |"
+    )
+    return lines
+
+
 def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str = "5m") -> str:
+    """The unified **prompt-cache & cost** report: cache behaviour (by channel + write cause) **and** cost
+    decomposition (by activity × operation — input/output/cache-read/cache-write — per session and
+    accumulated, with share). One report; the cache view explains *why it writes*, the cost view *where
+    the money goes*."""
+    from core.usage import pricing_for  # local import — avoids a module-load cycle
+
     by_kind: dict[str, _ChannelAgg] = {}
     total = _ChannelAgg()
     causes = {"first": 0, "expired": 0, "moved": 0, "evicted": 0}
+    by_act: dict[str, _Cost] = {}
+    op = _Cost()
+    sessions: dict[str, dict] = {}
+    order: list[str] = []
     for e in events:
         by_kind.setdefault(e.kind, _ChannelAgg()).add(e)
         total.add(e)
         if e.cause in causes:
             causes[e.cause] += 1
+        p = pricing_for(e.model)
+        write_rate = p.cache_write(ttl)
+        by_act.setdefault(e.kind, _Cost()).add(e, p, write_rate)
+        op.add(e, p, write_rate)
+        sid = e.session_id or "(legacy)"
+        if sid not in sessions:
+            sessions[sid] = {"first": e.ts, "by_act": {}}
+            order.append(sid)
+        sessions[sid]["by_act"].setdefault(e.kind, _Cost()).add(e, p, write_rate)
+    grand_total = op.cost or 1.0
 
     out: list[str] = []
-    out.append("# Lumi — prompt-cache behaviour\n")
-    out.append(f"_Generated {generated_at} · {len(events)} model calls logged · TTL {ttl}._\n")
-
+    out.append("# Lumi — prompt-cache & cost\n")
     out.append(
-        f"- **Cache writes:** {_fmt(total.writes)}  ·  **read:write ratio:** {_ratio(total.cache_read, total.cache_write)}\n"
-        f"- **Cache read:** {_fmt(total.cache_read)} tokens  ·  **cache write:** {_fmt(total.cache_write)} tokens\n"
+        f"_Generated {generated_at} · {len(events)} model calls · {len(order)} sessions · TTL {ttl}._\n"
     )
     out.append(
-        "> A write is a cache **miss**. Its cause is **measured** (the prefix is fingerprinted each call): "
-        "**first** (first call of that channel), **expired** (idle > TTL), **moved** (the prefix really "
-        "changed — see which section below), or **evicted** (the prefix was *identical* but the cache was "
-        "dropped early — Anthropic doesn't guarantee a prefix survives its TTL; **nothing in the prompt to "
-        "fix**). A high *evicted* count means the cache is being dropped, not that your prompt churns.\n"
+        f"- **Cache writes:** {_fmt(total.writes)} · **read:write ratio:** "
+        f"{_ratio(total.cache_read, total.cache_write)} · cache read {_fmt(total.cache_read)} / "
+        f"write {_fmt(total.cache_write)} tokens\n"
+        f"- **Total cost:** {_usd(op.cost)} · input {_usd(op.c_in)} ({_share(op.c_in, grand_total)}) · "
+        f"output {_usd(op.c_out)} ({_share(op.c_out, grand_total)}) · cache read {_usd(op.c_rd)} "
+        f"({_share(op.c_rd, grand_total)}) · cache write {_usd(op.c_wr)} ({_share(op.c_wr, grand_total)})\n"
+    )
+    out.append(
+        "> A write is a cache **miss**, classified by **measurement** (the prefix is fingerprinted each "
+        "call): **first** (first call of that channel), **expired** (idle > TTL), **moved** (the prefix "
+        "really changed), or **evicted** (prefix *identical* but the cache was dropped early — Anthropic "
+        "doesn't guarantee a prefix survives its TTL; **nothing in the prompt to fix**). A high *evicted* "
+        "count means the cache is being dropped, not that your prompt churns.\n"
     )
 
-    out.append("## By channel\n")
+    out.append("## By channel (cache behaviour)\n")
     out.append(
         "| Channel | Calls | Cache read | Cache write | Read:Write | Writes (first / expired / moved / evicted) |\n"
         "|---|--:|--:|--:|--:|--:|"
@@ -196,55 +287,36 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
         f"- **evicted** (prefix identical, cache dropped early — nothing to fix): {causes['evicted']}\n"
     )
 
-    out.append(_activity_table(events, ttl))
-    out.append(_session_table(events, ttl))
-    out.append(_session_activity_tables(events, ttl))
+    out.append("## By activity — cost by operation\n")
+    out.append(
+        "> Operation columns are **cost $** (input / output / cache-read / cache-write). "
+        "**Tokens** = total tokens; **Share** = % of total cost.\n"
+    )
+    out.extend(_cost_table(by_act, grand_total))
+    out.append("")
+
+    out.append(_session_table(events, ttl, grand_total))
+
+    out.append("## Per session — cost by activity & operation\n")
+    for sid in order:
+        s = sessions[sid]
+        short = sid if sid == "(legacy)" else sid[:8]
+        started = s["first"][:16].replace("T", " ")
+        sess_total = sum(c.cost for c in s["by_act"].values()) or 1.0
+        out.append(
+            f"### Session `{short}` — started {started} · {_usd(sess_total)} "
+            f"({_share(sess_total, grand_total)} of total)\n"
+        )
+        out.extend(_cost_table(s["by_act"], sess_total))
+        out.append("")
+
     return "\n".join(out) + "\n"
 
 
-def _activity_table(events: list[CacheEvent], ttl: str) -> str:
-    """Tokens + estimated cost per activity (reply / tool / think / housekeeping)."""
-    from core.usage import pricing_for  # local import — avoids a module-load cycle
-
-    write_mult = 2.0 if ttl == "1h" else 1.25
-    agg: dict[str, dict] = {}
-    grand = 0.0
-    for e in events:
-        p = pricing_for(e.model)
-        cost = (
-            e.input * p.input + e.output * p.output
-            + e.cache_read * p.cache_read + e.cache_write * (p.input * write_mult)
-        ) / 1_000_000
-        grand += cost
-        a = agg.setdefault(e.kind, {"calls": 0, "input": 0, "output": 0, "cr": 0, "cw": 0, "cost": 0.0})
-        a["calls"] += 1
-        a["input"] += e.input
-        a["output"] += e.output
-        a["cr"] += e.cache_read
-        a["cw"] += e.cache_write
-        a["cost"] += cost
-
-    rows = ["## By activity (tokens & cost)\n"]
-    rows.append(
-        "| Activity | Calls | Input | Output | Cache read | Cache write | Est. cost | Share |\n"
-        "|---|--:|--:|--:|--:|--:|--:|--:|"
-    )
-    grand = grand or 1.0
-    for kind in sorted(agg, key=lambda k: -agg[k]["cost"]):
-        a = agg[kind]
-        rows.append(
-            f"| {kind} | {a['calls']} | {_fmt(a['input'])} | {_fmt(a['output'])} | {_fmt(a['cr'])} | "
-            f"{_fmt(a['cw'])} | ${a['cost']:,.4f} | {a['cost'] / grand * 100:.0f}% |"
-        )
-    return "\n".join(rows) + "\n"
-
-
-def _session_table(events: list[CacheEvent], ttl: str) -> str:
-    """Tokens + estimated cost per **session** — the same all-time log, sliced by conversation.
-
-    Events are in chronological append order, so first-seen order = session start order. Calls logged
-    before the ``session_id`` field existed group under ``(legacy)``.
-    """
+def _session_table(events: list[CacheEvent], ttl: str, grand_total: float) -> str:
+    """Per-session **overview** — one row per conversation: cache read/write tokens + read:write ratio +
+    cost + share. The cache-token companion to the per-session cost tables below. Calls logged before the
+    ``session_id`` field existed group under ``(legacy)``."""
     from core.usage import pricing_for  # local import — avoids a module-load cycle
 
     write_mult = 2.0 if ttl == "1h" else 1.25
@@ -253,7 +325,7 @@ def _session_table(events: list[CacheEvent], ttl: str) -> str:
     for e in events:
         sid = e.session_id or "(legacy)"
         if sid not in agg:
-            agg[sid] = {"calls": 0, "cr": 0, "cw": 0, "writes": 0, "cost": 0.0, "first": e.ts, "last": e.ts}
+            agg[sid] = {"calls": 0, "cr": 0, "cw": 0, "writes": 0, "cost": 0.0, "first": e.ts}
             order.append(sid)
         p = pricing_for(e.model)
         cost = (
@@ -265,14 +337,13 @@ def _session_table(events: list[CacheEvent], ttl: str) -> str:
         a["cr"] += e.cache_read
         a["cw"] += e.cache_write
         a["cost"] += cost
-        a["last"] = e.ts
         if e.cause != "none":
             a["writes"] += 1
 
-    rows = ["## By session (tokens & cost)\n"]
+    rows = ["## By session (overview)\n"]
     rows.append(
-        "| Session | Calls | Cache read | Cache write | Read:Write | Writes | Est. cost | Started |\n"
-        "|---|--:|--:|--:|--:|--:|--:|---|"
+        "| Session | Calls | Cache read | Cache write | Read:Write | Writes | Cost | Share | Started |\n"
+        "|---|--:|--:|--:|--:|--:|--:|--:|---|"
     )
     for sid in order:
         a = agg[sid]
@@ -280,56 +351,9 @@ def _session_table(events: list[CacheEvent], ttl: str) -> str:
         started = a["first"][:16].replace("T", " ")
         rows.append(
             f"| {short} | {a['calls']} | {_fmt(a['cr'])} | {_fmt(a['cw'])} | "
-            f"{_ratio(a['cr'], a['cw'])} | {a['writes']} | ${a['cost']:,.4f} | {started} |"
+            f"{_ratio(a['cr'], a['cw'])} | {a['writes']} | {_usd(a['cost'])} | "
+            f"{_share(a['cost'], grand_total)} | {started} |"
         )
-    return "\n".join(rows) + "\n"
-
-
-def _session_activity_tables(events: list[CacheEvent], ttl: str) -> str:
-    """**One table per session**, tokens (+ cost) by activity — the per-activity breakdown sliced per
-    conversation. Each row is a channel (reply / tool / think / mood / …) inside that session."""
-    from core.usage import pricing_for  # local import — avoids a module-load cycle
-
-    write_mult = 2.0 if ttl == "1h" else 1.25
-    sessions: dict[str, dict] = {}
-    order: list[str] = []
-    for e in events:
-        sid = e.session_id or "(legacy)"
-        if sid not in sessions:
-            sessions[sid] = {"first": e.ts, "agg": {}}
-            order.append(sid)
-        p = pricing_for(e.model)
-        cost = (
-            e.input * p.input + e.output * p.output
-            + e.cache_read * p.cache_read + e.cache_write * (p.input * write_mult)
-        ) / 1_000_000
-        a = sessions[sid]["agg"].setdefault(
-            e.kind, {"calls": 0, "input": 0, "output": 0, "cr": 0, "cw": 0, "cost": 0.0}
-        )
-        a["calls"] += 1
-        a["input"] += e.input
-        a["output"] += e.output
-        a["cr"] += e.cache_read
-        a["cw"] += e.cache_write
-        a["cost"] += cost
-
-    rows = ["## Per session — tokens by activity\n"]
-    for sid in order:
-        s = sessions[sid]
-        short = sid if sid == "(legacy)" else sid[:8]
-        started = s["first"][:16].replace("T", " ")
-        rows.append(f"### Session `{short}` — started {started}\n")
-        rows.append(
-            "| Activity | Calls | Input | Output | Cache read | Cache write | Read:Write | Est. cost |\n"
-            "|---|--:|--:|--:|--:|--:|--:|--:|"
-        )
-        for kind in sorted(s["agg"], key=lambda k: -s["agg"][k]["cost"]):
-            a = s["agg"][kind]
-            rows.append(
-                f"| {kind} | {a['calls']} | {_fmt(a['input'])} | {_fmt(a['output'])} | "
-                f"{_fmt(a['cr'])} | {_fmt(a['cw'])} | {_ratio(a['cr'], a['cw'])} | ${a['cost']:,.4f} |"
-            )
-        rows.append("")  # blank line between sessions
     return "\n".join(rows) + "\n"
 
 

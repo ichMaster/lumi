@@ -148,25 +148,25 @@ def test_session_close_calls_are_tagged(tmp_path):
     assert "session-close" in [e.kind for e in load_events(log)]
 
 
-def test_render_has_per_session_activity_token_tables():
+def test_render_has_per_session_cost_tables():
     events = [
         CacheEvent("2026-06-16T08:00:00", "reply", 20000, 0, 4000, 200, 12.0, "none", "claude-opus-4-8", "sess-aaaa1111"),
         CacheEvent("2026-06-16T08:01:00", "tool", 24000, 5000, 500, 90, 1.0, "evicted", "claude-opus-4-8", "sess-aaaa1111"),
         CacheEvent("2026-06-16T09:00:00", "think", 0, 0, 3000, 400, 3600.0, "none", "claude-opus-4-8", "sess-bbbb2222"),
     ]
     md = render_cache_report(events, generated_at="2026-06-16", ttl="1h")
-    assert "## Per session — tokens by activity" in md
+    assert "## Per session — cost by activity & operation" in md
     assert "### Session `sess-aaa`" in md and "### Session `sess-bbb`" in md  # one block per session
     # session A's table breaks down by activity (reply + tool); session B has only think
     a_block = md.split("### Session `sess-aaa`")[1].split("### Session `sess-bbb`")[0]
     assert "| reply |" in a_block and "| tool |" in a_block and "| think |" not in a_block
-    assert "Est. cost" in a_block and "$" in a_block
-    assert "Read:Write" in a_block  # the per-activity cache read:write ratio column
-    tool_row = next(line for line in a_block.splitlines() if line.startswith("| tool |"))
-    assert "5:1" in tool_row  # tool: 24000 read / 5000 write ≈ 5:1
+    assert "Cost" in a_block and "Share" in a_block and "**TOTAL**" in a_block
+    # operation columns are cost $: reply input 4000 tok × $5/1M = $0.0200
+    reply_row = next(line for line in a_block.splitlines() if line.startswith("| reply |"))
+    assert "$0.0200" in reply_row
 
 
-def test_render_groups_by_session():
+def test_render_groups_by_session_overview():
     events = [
         CacheEvent("2026-06-16T08:00:00", "reply", 20000, 0, 100, 50, 12.0, "none", "claude-opus-4-8", "sess-aaaa1111"),
         CacheEvent("2026-06-16T08:01:00", "tool", 24000, 5000, 100, 50, 1.0, "changed", "claude-opus-4-8", "sess-aaaa1111"),
@@ -174,12 +174,13 @@ def test_render_groups_by_session():
         CacheEvent("2026-06-16T09:05:00", "reply", 0, 22000, 100, 50, None, "first", "claude-opus-4-8", ""),  # legacy (no id)
     ]
     md = render_cache_report(events, generated_at="2026-06-16", ttl="1h")
-    assert "## By session (tokens & cost)" in md
+    assert "## By session (overview)" in md
     assert "sess-aaa" in md and "sess-bbb" in md          # short ids, in first-seen order
     assert "(legacy)" in md                                # pre-field events grouped apart
     a_row = next(line for line in md.splitlines() if line.startswith("| sess-aaa"))
     assert "| 2 |" in a_row and "5,000" in a_row           # session A: 2 calls, 5k written
     assert "Read:Write" in md and "9:1" in a_row           # session A: 44k read / 5k write ≈ 9:1
+    assert "Share" in md and "$" in a_row                  # overview carries cost + share
 
 
 def test_core_stamps_cache_events_with_the_active_session(tmp_path):
@@ -198,18 +199,27 @@ def test_core_stamps_cache_events_with_the_active_session(tmp_path):
     assert sids == {s.id}  # every event (reply + session-close) carries the real session id
 
 
-def test_render_includes_per_activity_cost_table():
+def test_render_by_activity_cost_by_operation():
+    # the merged report decomposes cost by operation; check the cost math + share + by-operation summary
     events = [
-        CacheEvent("t", "reply", 20000, 0, 4000, 200, 12.0, "none", "claude-opus-4-8"),
-        CacheEvent("t", "tool", 24000, 5000, 500, 90, 1.0, "changed", "claude-opus-4-8"),
-        CacheEvent("t", "tool", 24000, 5000, 600, 90, 1.0, "changed", "claude-opus-4-8"),
-        CacheEvent("t", "think", 0, 0, 3000, 400, 3600.0, "none", "claude-opus-4-8"),
+        CacheEvent("t", "reply", 20000, 5000, 4000, 200, 12.0, "moved", "claude-opus-4-8"),
+        CacheEvent("t", "tool", 24000, 0, 500, 90, 1.0, "none", "claude-opus-4-8"),
+        CacheEvent("t", "think", 3000, 0, 0, 0, 3600.0, "none", "claude-opus-4-8"),
     ]
     md = render_cache_report(events, generated_at="2026-06-16", ttl="1h")
-    assert "## By activity (tokens & cost)" in md
+    assert "# Lumi — prompt-cache & cost" in md          # unified report
+    assert "## By activity — cost by operation" in md
+    assert "**Total cost:**" in md and "cache write" in md  # the by-operation summary line
+    act_sec = md.split("## By activity — cost by operation")[1].split("## By session")[0]
     for activity in ("reply", "tool", "think"):
-        assert f"| {activity} |" in md
-    assert "Est. cost" in md and "$" in md
+        assert f"| {activity} |" in act_sec
+    # reply (opus, 1h): input 4000×$5 + output 200×$25 + cache-rd 20000×$0.5 + cache-wr 5000×$10
+    #   = 0.02 + 0.005 + 0.01 + 0.05 = $0.0850
+    reply_row = next(line for line in act_sec.splitlines() if line.startswith("| reply |"))
+    assert "$0.0200" in reply_row and "$0.0050" in reply_row     # input + output cost columns
+    assert "$0.0100" in reply_row and "$0.0500" in reply_row     # cache-read + cache-write cost columns
+    assert "$0.0850" in reply_row                                # the activity total
+    assert "Share" in act_sec and "**TOTAL**" in act_sec
 
 
 def test_core_logs_nothing_when_monitor_off(tmp_path):

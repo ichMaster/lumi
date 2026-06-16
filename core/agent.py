@@ -297,7 +297,6 @@ class Core:
         tool_log_path: Path | None = None,
         cache_log_path: Path | None = None,
         cache_report_path: Path | None = None,
-        cost_report_path: Path | None = None,
         cache_monitor: bool = False,
     ) -> None:
         self._llm = llm
@@ -369,7 +368,6 @@ class Core:
         # channel + attribute the writes (first/expired/changed); render the report at session close.
         self._cache_log_path = cache_log_path
         self._cache_report_path = cache_report_path
-        self._cost_report_path = cost_report_path
         self._cache_monitor = cache_monitor
         self._cache_last_ts: dict[str, datetime] = {}  # last call time per channel (gap / expiry)
         self._active_session_id = ""  # the session each cache event is stamped with (per-session breakdown)
@@ -1067,23 +1065,6 @@ class Core:
         except Exception:  # noqa: BLE001 — observability must never break session close
             _usage_log.warning("cache report failed", exc_info=True)
 
-    def _render_cost_report(self) -> None:
-        """Re-render the cost-analysis report (session × activity × operation) from the cache log. Never
-        raises. Shares the cache-monitor data + flag (no separate ledger)."""
-        if not self._cache_monitor or self._cache_log_path is None or self._cost_report_path is None:
-            return
-        try:
-            from core import cache_log, cost_report
-
-            events = cache_log.load_events(self._cache_log_path)
-            if events:
-                cost_report.write_cost_report(
-                    events, self._cost_report_path,
-                    generated_at=self._clock().isoformat(timespec="seconds"), ttl=self._usage_cache_ttl,
-                )
-        except Exception:  # noqa: BLE001 — observability must never break session close
-            _usage_log.warning("cost report failed", exc_info=True)
-
     def _maybe_compact(self, session: Session, history: list) -> SessionDigest | None:
         """Fold older-than-window messages into the session digest, in batches.
 
@@ -1427,8 +1408,7 @@ class Core:
             # Record this session's token usage + refresh the cost report (after summary/facts, so
             # their cost is attributed to the closing session). Runs even on an empty session.
             self._record_session_usage(session)
-            self._render_cache_report()  # refresh the per-channel cache report (best-effort)
-            self._render_cost_report()   # refresh the cost-analysis report (best-effort)
+            self._render_cache_report()  # refresh the unified prompt-cache & cost report (best-effort)
 
     def _usage_snapshot(self) -> tuple[int, int, int, int, int]:
         t = self.totals
@@ -1867,6 +1847,5 @@ def build_core(
         tool_log_path=(cfg.store_path.parent / "tool-log.jsonl") if cfg.file_tool_trace else None,
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,
-        cost_report_path=(cfg.store_path.parent / "cost-report.md") if cfg.cache_monitor else None,
         cache_monitor=cfg.cache_monitor,
     )
