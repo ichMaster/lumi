@@ -271,8 +271,8 @@ def _session_table(events: list[CacheEvent], ttl: str) -> str:
 
     rows = ["## By session (tokens & cost)\n"]
     rows.append(
-        "| Session | Calls | Cache read | Cache write | Writes | Est. cost | Started |\n"
-        "|---|--:|--:|--:|--:|--:|---|"
+        "| Session | Calls | Cache read | Cache write | Read:Write | Writes | Est. cost | Started |\n"
+        "|---|--:|--:|--:|--:|--:|--:|---|"
     )
     for sid in order:
         a = agg[sid]
@@ -280,7 +280,7 @@ def _session_table(events: list[CacheEvent], ttl: str) -> str:
         started = a["first"][:16].replace("T", " ")
         rows.append(
             f"| {short} | {a['calls']} | {_fmt(a['cr'])} | {_fmt(a['cw'])} | "
-            f"{a['writes']} | ${a['cost']:,.4f} | {started} |"
+            f"{_ratio(a['cr'], a['cw'])} | {a['writes']} | ${a['cost']:,.4f} | {started} |"
         )
     return "\n".join(rows) + "\n"
 
@@ -320,14 +320,14 @@ def _session_activity_tables(events: list[CacheEvent], ttl: str) -> str:
         started = s["first"][:16].replace("T", " ")
         rows.append(f"### Session `{short}` — started {started}\n")
         rows.append(
-            "| Activity | Calls | Input | Output | Cache read | Cache write | Est. cost |\n"
-            "|---|--:|--:|--:|--:|--:|--:|"
+            "| Activity | Calls | Input | Output | Cache read | Cache write | Read:Write | Est. cost |\n"
+            "|---|--:|--:|--:|--:|--:|--:|--:|"
         )
         for kind in sorted(s["agg"], key=lambda k: -s["agg"][k]["cost"]):
             a = s["agg"][kind]
             rows.append(
                 f"| {kind} | {a['calls']} | {_fmt(a['input'])} | {_fmt(a['output'])} | "
-                f"{_fmt(a['cr'])} | {_fmt(a['cw'])} | ${a['cost']:,.4f} |"
+                f"{_fmt(a['cr'])} | {_fmt(a['cw'])} | {_ratio(a['cr'], a['cw'])} | ${a['cost']:,.4f} |"
             )
         rows.append("")  # blank line between sessions
     return "\n".join(rows) + "\n"

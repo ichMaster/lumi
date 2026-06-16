@@ -161,6 +161,9 @@ def test_render_has_per_session_activity_token_tables():
     a_block = md.split("### Session `sess-aaa`")[1].split("### Session `sess-bbb`")[0]
     assert "| reply |" in a_block and "| tool |" in a_block and "| think |" not in a_block
     assert "Est. cost" in a_block and "$" in a_block
+    assert "Read:Write" in a_block  # the per-activity cache read:write ratio column
+    tool_row = next(line for line in a_block.splitlines() if line.startswith("| tool |"))
+    assert "5:1" in tool_row  # tool: 24000 read / 5000 write ≈ 5:1
 
 
 def test_render_groups_by_session():
@@ -176,6 +179,7 @@ def test_render_groups_by_session():
     assert "(legacy)" in md                                # pre-field events grouped apart
     a_row = next(line for line in md.splitlines() if line.startswith("| sess-aaa"))
     assert "| 2 |" in a_row and "5,000" in a_row           # session A: 2 calls, 5k written
+    assert "Read:Write" in md and "9:1" in a_row           # session A: 44k read / 5k write ≈ 9:1
 
 
 def test_core_stamps_cache_events_with_the_active_session(tmp_path):
