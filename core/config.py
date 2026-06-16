@@ -202,6 +202,12 @@ class Config:
     file_write_max: int = 65536     # max bytes of one create_file/append_file write (v0.20)
     tool_max_steps: int = 8         # max tool calls per turn (the bounded tool-loop cap)
     file_tool_trace: bool = False   # show the file tools used each turn (TUI trace + .lumi/tool-log.jsonl)
+    # v0.21 Wikipedia tool — custom wiki_search/wiki_read on the v0.19 tool-loop. Off by default.
+    wiki: bool = False              # enable the Wikipedia tool (LUMI_WIKI)
+    wiki_lang: str = "uk,en"        # language edition(s), comma-separated; first with a hit wins
+    wiki_base_url: str = ""         # override the host (default https://{lang}.wikipedia.org)
+    wiki_max_chars: int = 1500      # extract size cap for one wiki_read
+    wiki_max_calls: int = 4         # per-turn wiki call cap (the wiring enforces it)
     # v0.16 semantic recall (RAG) — off by default (the whole feature: index + /recall).
     recall: bool = False
     embed_provider: str = "local"   # local (private, default) | voyage | openai
@@ -405,6 +411,11 @@ def load_config(*, load_env: bool = True) -> Config:
         file_write_max=int(os.getenv("LUMI_FILE_WRITE_MAX") or 65536),
         tool_max_steps=int(os.getenv("LUMI_TOOL_MAX_STEPS") or 8),
         file_tool_trace=(os.getenv("LUMI_FILE_TOOL_TRACE") or "off").strip().lower() in _TRUTHY,  # off by default
+        wiki=(os.getenv("LUMI_WIKI") or "off").strip().lower() in _TRUTHY,  # off by default
+        wiki_lang=os.getenv("LUMI_WIKI_LANG") or "uk,en",
+        wiki_base_url=os.getenv("LUMI_WIKI_BASE_URL") or "",
+        wiki_max_chars=int(os.getenv("LUMI_WIKI_MAX_CHARS") or 1500),
+        wiki_max_calls=int(os.getenv("LUMI_WIKI_MAX_CALLS") or 4),
         recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,
