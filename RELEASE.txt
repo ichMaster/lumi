@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.21.0 (2026-06-16)
+---------------------------
+- Wikipedia tool (v0.21, LUMI-088…090): a provider-agnostic custom tool on the v0.19 bounded tool-loop — wiki_search (opensearch -> candidate articles) and wiki_read (REST page/summary -> HTML-free extract + source URL), over an injected http_get (no network in tests). Off by default (LUMI_WIKI); language fallback (uk,en); same safety bounds as web search — returned text is untrusted data, the query carries no personal/memory data, per-turn call cap + extract-size cap, logged. No emotion-contract change (set_state stays terminal).
+- Tool assembly generalized: Core.reply now merges the v0.19/v0.20 file tools and the v0.21 wiki tools into one tool set + a name-routing executor (a turn can use either); the v0.19 trace covers the wiki tools too.
+- Cache & cost monitor: each cache write's cause is now MEASURED (the prefix is fingerprinted) — moved (the prefix actually changed) vs evicted (identical prefix, cache dropped early — nothing to fix) instead of a guessed "changed". The cache report and the separate cost report are merged into one unified .lumi/cache-report.md: cache behaviour (by channel + write cause) AND cost (by activity x operation — input/output/cache-read/cache-write — per session + accumulated), with BOTH a tokens table and a cost ($) table, plus Read:Write ratio and share.
+- Specs (design only, no code): FILE_THOUGHTS / TOOL_THOUGHTS (tool-using thought directives — %note/%review/%explore, %lookup/%learn), IMAGE_TOOL (local vision + generation, planned v0.22/v0.23), and a WIKI_TOOL how-it-works guide. Roadmap: Wikipedia moved before dictation (v0.21); the image tool inserted as v0.22 (vision) + v0.23 (generation), shifting dictation/recall phases down.
+
 Version 0.20.0 (2026-06-16)
 ---------------------------
 - Local file tool II: writing (LUMI-085) — two non-destructive write tools on the v0.19 tool-loop: create_file (new-only — refuses an existing path) and append_file (end-only — refuses a missing file). No overwrite, no delete, so an autonomous turn can never clobber or destroy data. Reuses the v0.19 sandbox + traversal guard; each write is size-capped by LUMI_FILE_WRITE_MAX (default 64 KB). Every failure degrades to an error string (never raises).

@@ -12,7 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.20.0 — Local file tool II: writing.** On the v0.19 tool-loop, Лілі can now **create new files** and
+**0.21.0 — Wikipedia tool (search & read).** On the v0.19 tool-loop, Лілі can **look something up on
+Wikipedia** during a turn — `wiki_search` for an article, then `wiki_read` its summary — answering
+**with the source**. A provider-agnostic **custom tool** (works on any model) over a free REST API (no
+key), with web-search-grade safety: results are **untrusted data**, the query carries **no personal /
+memory data**, per-turn + extract-size caps, **off by default** (`LUMI_WIKI`); the reply turn now
+**merges** the file + wiki tools behind one name-routing executor. See
+**[docs/WIKI_SETUP.md](docs/WIKI_SETUP.md)** + **[docs/WIKI_TOOL.md](docs/WIKI_TOOL.md)**. Plus an
+**observability** pass: the cache monitor now **measures** each write's cause (moved vs evicted) and
+ships a unified **prompt-cache & cost report** (tokens *and* cost by activity × operation, with share).
+
+Builds on **0.20's writing**: on the v0.19 tool-loop, Лілі can **create new files** and
 **append to existing ones** in her per-user sandbox — **non-destructive** by construction (`create_file`
 is new-only, `append_file` is end-only; **no overwrite, no delete**), each write size-capped
 (`LUMI_FILE_WRITE_MAX`, default 64 KB). **No contract change** — `set_state` stays terminal. This builds
