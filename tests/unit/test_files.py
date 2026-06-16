@@ -1,9 +1,19 @@
-"""v0.19 LUMI-080 — the sandboxed read executor + 3 read tools (core/files.py). No model."""
+"""v0.19 LUMI-080 — the sandboxed read executor + 3 read tools (core/files.py). No model.
+
+v0.20 LUMI-085 — the two non-destructive write tools (create_file / append_file) extend the same
+executor (the "--- write tools ---" section below).
+"""
 from __future__ import annotations
 
 import os
 
-from core.files import READ_TOOL_NAMES, READ_TOOLS, FileTools
+from core.files import (
+    READ_TOOL_NAMES,
+    READ_TOOLS,
+    WRITE_TOOL_NAMES,
+    WRITE_TOOLS,
+    FileTools,
+)
 
 
 def _root(tmp_path):
@@ -92,3 +102,74 @@ def test_executor_never_raises(tmp_path):
     assert ft.execute("read_file", {"path": "nope.md"}).startswith("error:")
     assert ft.execute("bogus_tool", {"path": "x"}).startswith("error: unknown file tool")
     assert ft.execute("read_file", {"path": "notes.md", "start_line": "x"}).startswith("error:")
+
+
+# --- write tools (v0.20 LUMI-085) -----------------------------------------------------------------
+def test_write_tools_shape():
+    assert WRITE_TOOL_NAMES == {"create_file", "append_file"}
+    for t in WRITE_TOOLS:
+        assert {"name", "description", "input_schema"} <= t.keys()
+        assert t["input_schema"]["required"] == ["path", "content"]
+
+
+def test_create_file_writes_a_new_file(tmp_path):
+    ft = FileTools(tmp_path)
+    out = ft.execute("create_file", {"path": "note.md", "content": "привіт\nсвіт\n"})
+    assert out.startswith("created note.md")
+    assert (tmp_path / "note.md").read_text(encoding="utf-8") == "привіт\nсвіт\n"
+
+
+def test_create_file_makes_parent_dirs_under_root(tmp_path):
+    ft = FileTools(tmp_path)
+    assert ft.execute("create_file", {"path": "sub/deep/n.md", "content": "x"}).startswith("created")
+    assert (tmp_path / "sub" / "deep" / "n.md").read_text(encoding="utf-8") == "x"
+
+
+def test_create_file_refuses_existing_and_leaves_it_intact(tmp_path):
+    (tmp_path / "keep.md").write_text("ORIGINAL\n", encoding="utf-8")
+    ft = FileTools(tmp_path)
+    out = ft.execute("create_file", {"path": "keep.md", "content": "CLOBBER"})
+    assert "already exists" in out and "no overwrite" in out
+    assert (tmp_path / "keep.md").read_text(encoding="utf-8") == "ORIGINAL\n"  # untouched
+
+
+def test_append_file_appends_to_the_end(tmp_path):
+    (tmp_path / "log.md").write_text("рядок1\n", encoding="utf-8")
+    ft = FileTools(tmp_path)
+    out = ft.execute("append_file", {"path": "log.md", "content": "рядок2\n"})
+    assert out.startswith("appended")
+    assert (tmp_path / "log.md").read_text(encoding="utf-8") == "рядок1\nрядок2\n"  # order preserved
+
+
+def test_append_file_refuses_missing_file(tmp_path):
+    ft = FileTools(tmp_path)
+    out = ft.execute("append_file", {"path": "ghost.md", "content": "x"})
+    assert "file not found" in out and "does not create" in out
+    assert not (tmp_path / "ghost.md").exists()  # no implicit create
+
+
+def test_write_size_cap_refuses_oversize(tmp_path):
+    ft = FileTools(tmp_path, write_max=8)
+    out = ft.execute("create_file", {"path": "big.md", "content": "x" * 9})
+    assert "too large" in out
+    assert not (tmp_path / "big.md").exists()  # refused before any write
+
+
+def test_write_missing_content(tmp_path):
+    ft = FileTools(tmp_path)
+    assert "missing 'content'" in ft.execute("create_file", {"path": "a.md"})
+    assert "missing 'content'" in ft.execute("append_file", {"path": "a.md", "content": 123})
+
+
+def test_write_tools_are_sandboxed(tmp_path):
+    ft = FileTools(tmp_path)
+    assert "traversal" in ft.execute("create_file", {"path": "../escape.md", "content": "x"})
+    assert "absolute path" in ft.execute("create_file", {"path": "/tmp/escape.md", "content": "x"})
+    assert not (tmp_path.parent / "escape.md").exists()  # nothing written outside the root
+
+
+def test_no_overwrite_or_delete_tool_exists(tmp_path):
+    # The executor knows only the read + the two non-destructive write tools — nothing destructive.
+    ft = FileTools(tmp_path)
+    for destructive in ("write_file", "overwrite_file", "delete_file", "rm"):
+        assert ft.execute(destructive, {"path": "x", "content": "y"}).startswith("error: unknown file tool")

@@ -1,18 +1,22 @@
-"""Local file tool — the sandboxed read executor + read tool definitions (v0.19).
+"""Local file tool — the sandboxed read + write executor + tool definitions (v0.19 read, v0.20 write).
 
-Лілі can **list**, **search** (`find_in_file` → line numbers), and **read** files by line in a
-**per-user sandbox** during a turn. This module is pure and model-free: it defines the three read
-tools and a :class:`FileTools` executor that runs them against one root. The bounded tool-loop
-(LUMI-081) calls ``FileTools.execute(name, input)``; the reply turn wires it per-user (LUMI-082).
+Лілі can **list**, **search** (`find_in_file` → line numbers), and **read** files by line, and
+**create** new files + **append** to existing ones, all in a **per-user sandbox** during a turn. This
+module is pure and model-free: it defines the tools and a :class:`FileTools` executor that runs them
+against one root. The bounded tool-loop (LUMI-081) calls ``FileTools.execute(name, input)``; the reply
+turn wires it per-user (LUMI-082/086).
 
 Hard rules (FILE_TOOL.md §Sandbox and safety):
 - **Sandboxed.** Every path resolves under the root; ``..`` / absolute / symlink-out escapes are
   rejected **before any I/O** — the wider filesystem is never reachable.
 - **File content is untrusted data, never instructions** (the framing is applied by the loop).
 - **Bounded.** Per-call line cap (``read_lines``) and find-match cap (``find_max``); the per-turn
-  total-read cap arrives in LUMI-083 (a fresh :class:`FileTools` per turn carries that budget).
+  total-read cap (a fresh :class:`FileTools` per turn carries that budget); per-write size cap
+  (``write_max``).
 - **Never raises.** Any error (missing file, denied path, bad input) degrades to an **error string**.
-- **Read-only.** No create/overwrite/delete here — writing is v0.20.
+- **Non-destructive writes (v0.20).** ``create_file`` is **new-only** (errors if the path exists) and
+  ``append_file`` is **end-only** (errors if the file is missing). There is **no overwrite and no
+  delete**, so an autonomous turn can never clobber or destroy existing data.
 """
 from __future__ import annotations
 
@@ -66,6 +70,43 @@ READ_TOOLS: list[dict] = [
 
 READ_TOOL_NAMES = frozenset(t["name"] for t in READ_TOOLS)
 
+# Anthropic-style tool schemas for the two **non-destructive** WRITE tools (v0.20). create_file is
+# new-only and append_file is end-only — no overwrite, no delete — so a turn can never clobber data.
+WRITE_TOOLS: list[dict] = [
+    {
+        "name": "create_file",
+        "description": (
+            "Створює НОВИЙ файл із заданим вмістом у пісочниці Лілі. Помилка, якщо шлях уже існує — "
+            "нічого не перезаписує (без перезапису й видалення)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Новий файл відносно кореня пісочниці."},
+                "content": {"type": "string", "description": "Вміст нового файлу."},
+            },
+            "required": ["path", "content"],
+        },
+    },
+    {
+        "name": "append_file",
+        "description": (
+            "Додає текст у КІНЕЦЬ наявного файлу в пісочниці Лілі. Помилка, якщо файлу немає — "
+            "нічого не створює і не перезаписує."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Наявний файл відносно кореня пісочниці."},
+                "content": {"type": "string", "description": "Текст, який додати в кінець."},
+            },
+            "required": ["path", "content"],
+        },
+    },
+]
+
+WRITE_TOOL_NAMES = frozenset(t["name"] for t in WRITE_TOOLS)
+
 
 class _Denied(Exception):
     """A sandbox/validation rejection — caught by ``execute`` and returned as an error string."""
@@ -85,11 +126,13 @@ class FileTools:
         read_lines: int = 200,
         find_max: int = 50,
         read_max_total: int | None = None,
+        write_max: int = 65536,
     ) -> None:
         self._root = Path(root)
         self._read_lines = max(1, read_lines)
         self._find_max = max(1, find_max)
         self._read_max_total = read_max_total  # per-turn total-read cap (None = unlimited)
+        self._write_max = max(1, write_max)  # per-write content-size cap, bytes (v0.20)
         self._lines_read = 0  # lines read so far this turn (a fresh FileTools per turn = fresh budget)
 
     # --- the executor entry point ----------------------------------------------------------------
@@ -102,6 +145,10 @@ class FileTools:
                 return self._find_in_file(inp)
             if name == "read_file":
                 return self._read_file(inp)
+            if name == "create_file":
+                return self._create_file(inp)
+            if name == "append_file":
+                return self._append_file(inp)
             return f"error: unknown file tool {name!r}"
         except _Denied as exc:
             return f"error: {exc}"
@@ -197,3 +244,36 @@ class FileTools:
         body = "\n".join(f"{start + idx}: {ln}" for idx, ln in enumerate(window))
         last = start + len(window) - 1
         return f"{rel} (lines {start}–{last}, total_lines={total}):\n{body}"
+
+    # --- the two non-destructive write tools (v0.20) ---------------------------------------------
+    def _content(self, inp: dict) -> bytes:
+        """Validate + size-cap the write payload (raises :class:`_Denied` → caught as an error string)."""
+        content = inp.get("content")
+        if not isinstance(content, str):
+            raise _Denied("missing 'content'")
+        data = content.encode("utf-8")
+        if len(data) > self._write_max:
+            raise _Denied(f"content too large: {len(data)} bytes > {self._write_max} cap")
+        return data
+
+    def _create_file(self, inp: dict) -> str:
+        """Create a **new** file — refuse if the path already exists (no overwrite)."""
+        rel = inp.get("path")
+        data = self._content(inp)
+        f = self._safe(rel)
+        if f.exists():
+            return f"error: file already exists (no overwrite): {rel!r}"
+        f.parent.mkdir(parents=True, exist_ok=True)  # parents stay under the root (validated by _safe)
+        f.write_bytes(data)
+        return f"created {rel} ({len(data)} bytes)"
+
+    def _append_file(self, inp: dict) -> str:
+        """Append to the **end** of an existing file — refuse if it is missing (no implicit create)."""
+        rel = inp.get("path")
+        data = self._content(inp)
+        f = self._safe(rel)
+        if not f.is_file():
+            return f"error: file not found (append does not create): {rel!r}"
+        with f.open("ab") as fh:
+            fh.write(data)
+        return f"appended {len(data)} bytes to {rel} (now {f.stat().st_size} bytes)"
