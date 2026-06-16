@@ -516,7 +516,7 @@ class Core:
                 continue  # count matches the day's sessions → up to date
             try:
                 system, msgs = day_summary_request(texts)
-                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="summary"), self._max_day_rows)
+                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="session-start"), self._max_day_rows)
                 if summary:
                     self._repo.set_day_summary(
                         DaySummary(self._user_id, day, summary, len(texts), self._clock().isoformat())
@@ -540,7 +540,7 @@ class Core:
                 continue
             try:
                 system, msgs = week_summary_request(texts)
-                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="summary"), self._max_week_rows)
+                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="session-start"), self._max_week_rows)
                 if summary:
                     self._repo.set_week_summary(
                         WeekSummary(self._user_id, week_start, summary, len(texts),
@@ -1159,7 +1159,7 @@ class Core:
             return  # fresh enough — reuse (recent facts ride as a verbatim tail in the prompt)
         try:
             system, msgs = facts_digest_request([f.fact for f in raw], self._facts_digest_max)
-            digest_facts = parse_facts(self._housekeeping_reply(system, msgs, kind="facts").strip())
+            digest_facts = parse_facts(self._housekeeping_reply(system, msgs, kind="session-start").strip())
             if digest_facts:
                 self._repo.set_facts_digest(
                     FactsDigest(self._user_id, "\n".join(digest_facts), len(raw), self._clock().isoformat())
@@ -1372,7 +1372,7 @@ class Core:
     def _write_summary(self, session: Session, history: list) -> ShortSummary | None:
         try:
             system, msgs = summary_request(history)
-            summary_text = self._housekeeping_reply(system, msgs, kind="summary").strip()
+            summary_text = self._housekeeping_reply(system, msgs, kind="session-close").strip()
         except Exception:  # noqa: BLE001 — never block session end on a model error
             return None
         if not summary_text:
@@ -1639,7 +1639,7 @@ class Core:
     def _accumulate_facts(self, history: list) -> None:
         try:
             system, msgs = facts_request(history)
-            text = self._housekeeping_reply(system, msgs, kind="facts")
+            text = self._housekeeping_reply(system, msgs, kind="session-close")
         except Exception:  # noqa: BLE001 — facts are best-effort
             return
         existing = {f.fact for f in self._repo.facts(self._user_id)}

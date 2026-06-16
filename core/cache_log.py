@@ -2,9 +2,11 @@
 
 The reply turn and the proactive thoughts use **separate** prompt caches (different prompt shapes →
 different cache entries), so a write to one never affects the other. To explain "why is cache write
-big?", this logs **one event per model call** with its **channel** (reply / think / mood / facts /
-summary), the cache read/write tokens, and the **gap since the last call of the same channel** — then
-classifies each write as ``first`` / ``expired`` (gap > TTL) / ``changed`` (warm but the prefix moved).
+big?", this logs **one event per model call** with its **channel** — ``reply`` (the answer), ``tool``
+(file-tool loop rounds), ``think`` (proactive %think), ``session-start`` (building the prompt sections:
+day/week/facts digests), ``session-close`` (the wrap-up summary + facts), ``mood``, ``compaction`` —
+the cache read/write, and the **gap since the last call of the same channel** — then classifies each
+write as ``first`` / ``expired`` (gap > TTL) / ``changed`` (warm but the prefix moved).
 
 It renders ``.lumi/cache-report.md`` (per-channel + by-cause) at session close, the diagnostic twin of
 the v0.17 usage report. Off-by-default-friendly; an event is a cheap JSONL append.
@@ -38,7 +40,7 @@ def classify(cache_write: int, gap_s: float | None, ttl_s: int) -> str:
 @dataclass
 class CacheEvent:
     ts: str
-    kind: str            # reply / tool / think / mood / facts / summary / compaction
+    kind: str            # reply / tool / think / mood / session-start / session-close / compaction
     cache_read: int
     cache_write: int
     input: int

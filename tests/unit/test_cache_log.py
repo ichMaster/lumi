@@ -118,6 +118,21 @@ def test_core_logs_per_round_tool_and_reply_for_a_file_turn(tmp_path):
     assert [e.kind for e in load_events(log)] == ["tool", "tool", "reply"]  # per round, split out
 
 
+def test_session_close_calls_are_tagged(tmp_path):
+    log = tmp_path / "cache-log.jsonl"
+    core = Core(
+        llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=_Clock(datetime(2026, 6, 16, 8, 0, tzinfo=UTC)),
+        mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
+        cache_monitor=True, cache_log_path=log, cache_report_path=tmp_path / "r.md",
+    )
+    s = core.start_session()
+    core.reply("привіт", s)
+    core.end_session(s)  # → the wrap-up summary + facts extraction, tagged "session-close"
+    assert "session-close" in [e.kind for e in load_events(log)]
+
+
 def test_render_includes_per_activity_cost_table():
     events = [
         CacheEvent("t", "reply", 20000, 0, 4000, 200, 12.0, "none", "claude-opus-4-8"),
