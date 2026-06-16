@@ -47,6 +47,7 @@ from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config,
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
+from core.images import is_image_block
 from core.llm import LLMClient, Message, ResponseStats, build_llm
 from core.memory import (
     DAY_DAYS,
@@ -157,6 +158,14 @@ def _snippet(text: str, limit: int = _RAG_SNIPPET_CHARS) -> str:
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
+
+
+def _tool_trace_repr(result: object) -> str:
+    """A short, string trace line for a tool result — an image block becomes a marker (not its base64)."""
+    if is_image_block(result):
+        n_bytes = len(result.get("data", "")) * 3 // 4  # base64 → ~bytes
+        return f"🖼 image {result.get('media_type', '?')} (~{n_bytes} bytes)"
+    return str(result)
 
 
 def _monday_of(date_str: str) -> str:
@@ -294,6 +303,9 @@ class Core:
         wiki_max_chars: int = 1500,
         wiki_max_calls: int = 4,
         wiki_http_get: Callable[[str], str] | None = None,  # injected for tests; None → real urllib
+        image_enabled: bool = False,
+        vision_max: int = 4,
+        image_max_bytes: int = 5_242_880,
         tool_log_path: Path | None = None,
         cache_log_path: Path | None = None,
         cache_report_path: Path | None = None,
@@ -362,6 +374,10 @@ class Core:
         self._wiki_max_chars = wiki_max_chars
         self._wiki_max_calls = wiki_max_calls
         self._wiki_http_get = wiki_http_get
+        # v0.22 vision: view_image (sandbox) + shared-image input; off by default.
+        self._image_enabled = image_enabled
+        self._vision_max = vision_max
+        self._image_max_bytes = image_max_bytes
         self._tool_log_path = tool_log_path
         self.last_tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — reset each turn
         # Per-call prompt-cache monitor (off by default): log each model call's cache behaviour by
@@ -1204,9 +1220,9 @@ class Core:
         is on (the turn is a single ``set_state`` call, unchanged). Resets the per-turn trace and wraps
         every call with the v0.19 trace (``LUMI_FILE_TOOL_TRACE``)."""
         self.last_tool_calls = []  # fresh per turn (the trace)
-        routes: dict[str, Callable[[str, dict], str]] = {}
+        routes: dict[str, Callable[[str, dict], str | dict]] = {}
         tools: list[dict] = []
-        for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args()):
+        for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args(), self._image_tool_args()):
             if executor is None:
                 continue
             tools += tool_list
@@ -1215,15 +1231,41 @@ class Core:
         if not routes:
             return None, None
 
-        def dispatch(name: str, tool_input: dict) -> str:
+        def dispatch(name: str, tool_input: dict) -> str | dict:
             executor = routes.get(name)
             result = executor(name, tool_input) if executor is not None else f"error: unknown tool {name!r}"
-            if self._file_tool_trace:  # one trace point for every tool (file + wiki)
-                self.last_tool_calls.append((name, dict(tool_input or {}), result))
-                self._log_tool_call(name, tool_input, result)
+            if self._file_tool_trace:  # one trace point for every tool (file + wiki + image)
+                shown = _tool_trace_repr(result)  # an image result → a short marker, not the base64 dict
+                self.last_tool_calls.append((name, dict(tool_input or {}), shown))
+                self._log_tool_call(name, tool_input, shown)
             return result
 
         return tools, dispatch
+
+    def _image_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
+        """The (tools, **raw** executor) for the v0.22 vision tool ``view_image``; ``(None, None)`` off.
+
+        Bound to **this user's** sandbox (the same per-user root as the file tool). A per-turn closure
+        counter enforces ``LUMI_VISION_MAX``; the executor returns an **image block** (→ an image
+        tool_result) or an error string."""
+        if not self._image_enabled or self._files_dir is None:
+            return None, None
+        from core.imagetool import VIEW_TOOLS, ImageTools
+
+        root = self._files_dir / self._user_id
+        root.mkdir(parents=True, exist_ok=True)
+        images = ImageTools(root, max_bytes=self._image_max_bytes)
+        seen = {"n": 0}  # successful image loads this turn (errors don't count toward the cap)
+
+        def capped(name: str, tool_input: dict) -> str | dict:
+            if seen["n"] >= self._vision_max:
+                return f"(image view limit reached: {self._vision_max} per turn)"
+            result = images.execute(name, tool_input)
+            if is_image_block(result):
+                seen["n"] += 1
+            return result
+
+        return VIEW_TOOLS, capped
 
     def _file_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
         """The (tools, **raw** executor) for the file tool — bound to **this user's** sandbox;
@@ -1844,6 +1886,9 @@ def build_core(
         wiki_base_url=cfg.wiki_base_url,
         wiki_max_chars=cfg.wiki_max_chars,
         wiki_max_calls=cfg.wiki_max_calls,
+        image_enabled=cfg.image,
+        vision_max=cfg.vision_max,
+        image_max_bytes=cfg.image_max_bytes,
         tool_log_path=(cfg.store_path.parent / "tool-log.jsonl") if cfg.file_tool_trace else None,
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,

@@ -112,6 +112,26 @@ class _Denied(Exception):
     """A sandbox/validation rejection — caught by ``execute`` and returned as an error string."""
 
 
+def safe_path(root: str | Path, rel: object) -> Path:
+    """Resolve ``rel`` under ``root``, rejecting any escape (``..`` / absolute / symlink-out) BEFORE I/O.
+
+    Raises :class:`_Denied` on rejection. Shared by the file tools (v0.19/0.20) and the image tool
+    (v0.22 ``view_image``) so there is one sandbox guard.
+    """
+    if not isinstance(rel, str) or not rel.strip():
+        raise _Denied("missing 'path'")
+    p = Path(rel)
+    if p.is_absolute():
+        raise _Denied(f"absolute path not allowed: {rel!r}")
+    if ".." in p.parts:
+        raise _Denied(f"path traversal ('..') not allowed: {rel!r}")
+    base = Path(root).resolve()
+    target = (base / p).resolve()  # resolves symlinks → an out-of-root link is caught below
+    if target != base and base not in target.parents:
+        raise _Denied(f"path escapes the sandbox: {rel!r}")
+    return target
+
+
 class FileTools:
     """Runs the read tools against one sandbox ``root``. One instance per turn (LUMI-082).
 
@@ -159,19 +179,8 @@ class FileTools:
 
     # --- sandbox guard ---------------------------------------------------------------------------
     def _safe(self, rel: object) -> Path:
-        """Resolve ``rel`` under the root, rejecting any escape BEFORE I/O."""
-        if not isinstance(rel, str) or not rel.strip():
-            raise _Denied("missing 'path'")
-        p = Path(rel)
-        if p.is_absolute():
-            raise _Denied(f"absolute path not allowed: {rel!r}")
-        if ".." in p.parts:
-            raise _Denied(f"path traversal ('..') not allowed: {rel!r}")
-        root = self._root.resolve()
-        target = (root / p).resolve()  # resolves symlinks → an out-of-root link is caught below
-        if target != root and root not in target.parents:
-            raise _Denied(f"path escapes the sandbox: {rel!r}")
-        return target
+        """Resolve ``rel`` under the root, rejecting any escape BEFORE I/O (shared :func:`safe_path`)."""
+        return safe_path(self._root, rel)
 
     # --- the three read tools --------------------------------------------------------------------
     def _list_files(self, inp: dict) -> str:

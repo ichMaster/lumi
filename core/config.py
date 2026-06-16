@@ -208,6 +208,10 @@ class Config:
     wiki_base_url: str = ""         # override the host (default https://{lang}.wikipedia.org)
     wiki_max_chars: int = 1500      # extract size cap for one wiki_read
     wiki_max_calls: int = 4         # per-turn wiki call cap (the wiring enforces it)
+    # v0.22 local image tool I: vision — view_image on the v0.19 tool-loop + shared-image input. Off by default.
+    image: bool = False             # enable vision (view_image + shared-image input) (LUMI_IMAGE)
+    vision_max: int = 4             # max images viewed/attached per turn (the wiring enforces it)
+    image_max_bytes: int = 5_242_880  # max size of one viewed image (≈5 MB)
     # v0.16 semantic recall (RAG) — off by default (the whole feature: index + /recall).
     recall: bool = False
     embed_provider: str = "local"   # local (private, default) | voyage | openai
@@ -416,6 +420,9 @@ def load_config(*, load_env: bool = True) -> Config:
         wiki_base_url=os.getenv("LUMI_WIKI_BASE_URL") or "",
         wiki_max_chars=int(os.getenv("LUMI_WIKI_MAX_CHARS") or 1500),
         wiki_max_calls=int(os.getenv("LUMI_WIKI_MAX_CALLS") or 4),
+        image=(os.getenv("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
+        vision_max=int(os.getenv("LUMI_VISION_MAX") or 4),
+        image_max_bytes=int(os.getenv("LUMI_IMAGE_MAX_BYTES") or 5_242_880),
         recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,
