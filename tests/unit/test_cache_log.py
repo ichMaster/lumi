@@ -8,7 +8,9 @@ from core.cache_log import (
     CacheEvent,
     append_event,
     classify,
+    diff_sections,
     load_events,
+    prefix_sections,
     render_cache_report,
     ttl_seconds,
 )
@@ -23,7 +25,20 @@ def test_classify_write_cause():
     assert classify(0, 100, ttl) == "none"
     assert classify(100, None, ttl) == "first"    # first call of this channel
     assert classify(100, 7200, ttl) == "expired"  # gap > TTL → the entry timed out
-    assert classify(100, 60, ttl) == "changed"    # warm, but the prefix moved
+    assert classify(100, 60, ttl, prefix_changed=True) == "moved"      # warm + the prefix actually changed
+    assert classify(100, 60, ttl, prefix_changed=False) == "evicted"   # warm + identical → cache dropped early
+
+
+def test_prefix_sections_and_diff():
+    p1 = "ти лілі\n\n# Памʼять про цю людину\n\nфакти\n\n# Настрій дня\n\nспокій"
+    secs = prefix_sections(p1)
+    assert set(secs) == {"(canon)", "# Памʼять про цю людину", "# Настрій дня"}
+    assert prefix_sections("") == {}
+    assert diff_sections(None, secs) == (True, "")                 # first call of the group
+    assert diff_sections(secs, secs) == (False, "")                # identical → not changed
+    p2 = p1.replace("спокій", "радість")                           # only the mood section moves
+    changed, which = diff_sections(secs, prefix_sections(p2))
+    assert changed and which == "# Настрій дня"
 
 
 def test_ttl_seconds():
@@ -50,9 +65,9 @@ def test_render_groups_by_channel_and_cause():
     md = render_cache_report(events, generated_at="2026-06-16", ttl="1h")
     assert "## By channel" in md and "## Writes by cause" in md
     think_row = next(line for line in md.splitlines() if line.startswith("| think"))
-    assert "2 (2 / 0 / 0)" in think_row              # think: 2 writes, both expired
+    assert "2 (0 / 2 / 0 / 0)" in think_row          # think: 2 writes, both expired (first/expired/moved/evicted)
     reply_row = next(line for line in md.splitlines() if line.startswith("| reply"))
-    assert "1 (0 / 1 / 0)" in reply_row              # reply: 1 write, first-of-channel
+    assert "1 (1 / 0 / 0 / 0)" in reply_row          # reply: 1 write, first-of-channel
     assert "**expired** (idle > TTL): 2" in md
 
 
@@ -91,7 +106,7 @@ def test_core_logs_cache_events_by_channel_with_attribution(tmp_path):
 
     evs = load_events(log)
     assert [e.kind for e in evs] == ["reply", "think", "think", "think"]
-    assert [e.cause for e in evs] == ["first", "first", "expired", "changed"]
+    assert [e.cause for e in evs] == ["first", "first", "expired", "moved"]  # no prefix set → defaults to moved
 
     core._render_cache_report()
     text = rep.read_text(encoding="utf-8")
@@ -131,6 +146,21 @@ def test_session_close_calls_are_tagged(tmp_path):
     core.reply("привіт", s)
     core.end_session(s)  # → the wrap-up summary + facts extraction, tagged "session-close"
     assert "session-close" in [e.kind for e in load_events(log)]
+
+
+def test_render_has_per_session_activity_token_tables():
+    events = [
+        CacheEvent("2026-06-16T08:00:00", "reply", 20000, 0, 4000, 200, 12.0, "none", "claude-opus-4-8", "sess-aaaa1111"),
+        CacheEvent("2026-06-16T08:01:00", "tool", 24000, 5000, 500, 90, 1.0, "evicted", "claude-opus-4-8", "sess-aaaa1111"),
+        CacheEvent("2026-06-16T09:00:00", "think", 0, 0, 3000, 400, 3600.0, "none", "claude-opus-4-8", "sess-bbbb2222"),
+    ]
+    md = render_cache_report(events, generated_at="2026-06-16", ttl="1h")
+    assert "## Per session — tokens by activity" in md
+    assert "### Session `sess-aaa`" in md and "### Session `sess-bbb`" in md  # one block per session
+    # session A's table breaks down by activity (reply + tool); session B has only think
+    a_block = md.split("### Session `sess-aaa`")[1].split("### Session `sess-bbb`")[0]
+    assert "| reply |" in a_block and "| tool |" in a_block and "| think |" not in a_block
+    assert "Est. cost" in a_block and "$" in a_block
 
 
 def test_render_groups_by_session():

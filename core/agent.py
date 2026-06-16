@@ -371,6 +371,8 @@ class Core:
         self._cache_monitor = cache_monitor
         self._cache_last_ts: dict[str, datetime] = {}  # last call time per channel (gap / expiry)
         self._active_session_id = ""  # the session each cache event is stamped with (per-session breakdown)
+        self._active_cache_prefix: str | None = None  # the cached prefix of the current model call
+        self._cache_prefix_sig: dict[str, dict[str, str]] = {}  # cache-group → last prefix fingerprint
         self._think_count = 0  # proactive thinks this session (reset in start_session)
         self._memory_window = memory_window
         self._compaction_batch = compaction_batch
@@ -972,6 +974,7 @@ class Core:
         prev_thinking = getattr(llm, "_thinking", None)
         if prev_thinking:
             llm._thinking = False
+        self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted by the monitor
         try:
             text = llm.reply(
                 system=system, messages=messages, model=self._model,
@@ -1026,12 +1029,22 @@ class Core:
             gap_s = (now - last).total_seconds() if last is not None else None
             self._cache_last_ts[kind] = now
             cw = stats.cache_write_tokens or 0
-            cause = cache_log.classify(cw, gap_s, cache_log.ttl_seconds(self._usage_cache_ttl))
+            # Measure (don't guess) whether the cached prefix changed: fingerprint it and diff against the
+            # last call of the same cache group (reply + its tool rounds share one prefix; think has its own).
+            group = "think" if kind == "think" else "main"
+            sections = cache_log.prefix_sections(self._active_cache_prefix or "")
+            prefix_changed, changed_section = cache_log.diff_sections(self._cache_prefix_sig.get(group), sections)
+            if sections:
+                self._cache_prefix_sig[group] = sections
+            cause = cache_log.classify(
+                cw, gap_s, cache_log.ttl_seconds(self._usage_cache_ttl), prefix_changed=prefix_changed
+            )
             cache_log.append_event(self._cache_log_path, cache_log.CacheEvent(
                 ts=now.isoformat(timespec="seconds"), kind=kind, model=stats.model,
                 cache_read=stats.cache_read_tokens or 0, cache_write=cw,
                 input=stats.input_tokens or 0, output=stats.output_tokens or 0,
                 gap_s=gap_s, cause=cause, session_id=self._active_session_id,
+                changed_section=changed_section if cause == "moved" else "",
             ))
         except Exception:  # noqa: BLE001 — monitoring must never break a turn
             _usage_log.warning("cache event log failed", exc_info=True)
@@ -1302,6 +1315,7 @@ class Core:
             session, recall=self._recall_block(user_text, live)
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
+        self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted for the cache monitor
         # v0.19/v0.21: when the file tool and/or the wiki tool is on, run the turn as a bounded
         # tool-loop (file sandbox + Wikipedia), with a name-routing executor.
         tools, tool_executor = self._turn_tools()
