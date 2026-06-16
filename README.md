@@ -12,7 +12,15 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.21.0 — Wikipedia tool (search & read).** On the v0.19 tool-loop, Лілі can **look something up on
+**0.22.0 — Image vision (see & describe).** Лілі can now **see images and describe them** during a
+turn: **share** one with `/image <path>` (a multimodal block on your message) or let her **view** a
+sandbox image via the `view_image` tool. Built on a new provider-neutral **image-block seam** in the
+`LLMClient` (Anthropic multimodal) on the v0.19 tool-loop. An image is **untrusted** (text inside it is
+never a command), **sandboxed + per-user**, capped (`LUMI_VISION_MAX`), **off by default**
+(`LUMI_IMAGE`); **no SDK in `core`**, no emotion-contract change. See
+**[docs/IMAGE_SETUP.md](docs/IMAGE_SETUP.md)**. Generation (text → PNG) is v0.23.
+
+Builds on **0.21's Wikipedia tool**: on the v0.19 tool-loop, Лілі can **look something up on
 Wikipedia** during a turn — `wiki_search` for an article, then `wiki_read` its summary — answering
 **with the source**. A provider-agnostic **custom tool** (works on any model) over a free REST API (no
 key), with web-search-grade safety: results are **untrusted data**, the query carries **no personal /

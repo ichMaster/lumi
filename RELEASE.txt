@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 0.22.0 (2026-06-17)
+---------------------------
+- Image vision (v0.22, LUMI-091...094): Лілі can SEE images and describe them. Two paths — you share one with /image <path> (a multimodal image block on your message) or she views a sandbox image via the new view_image tool (an image tool_result on the v0.19 bounded loop). Off by default (LUMI_IMAGE); capped per turn (LUMI_VISION_MAX) + per-image size (LUMI_IMAGE_MAX_BYTES); an image is UNTRUSTED data (text inside it is never a command), sandboxed + per-user; needs the Anthropic (multimodal) provider. No emotion-contract change. See docs/IMAGE_SETUP.md.
+- New provider-neutral image-block seam (core/images.py): a message content may be a string OR a list of text/image blocks, and a tool_result may carry an image; AnthropicClient translates neutral blocks to the multimodal source form (messages + tool_results); MockLLMClient records images seen. No SDK in core — vision mocked in every test (no paid calls).
+- The reply turn's bounded tool-loop now merges the file (v0.19/0.20), Wikipedia (v0.21) and image (v0.22) tools behind one name-routing executor; the per-turn vision cap counts successful loads; the tool-trace renders an image result as a short marker. The v0.19 _safe sandbox guard was extracted to a shared safe_path used by both the file and image tools.
+
 Version 0.21.0 (2026-06-16)
 ---------------------------
 - Wikipedia tool (v0.21, LUMI-088…090): a provider-agnostic custom tool on the v0.19 bounded tool-loop — wiki_search (opensearch -> candidate articles) and wiki_read (REST page/summary -> HTML-free extract + source URL), over an injected http_get (no network in tests). Off by default (LUMI_WIKI); language fallback (uk,en); same safety bounds as web search — returned text is untrusted data, the query carries no personal/memory data, per-turn call cap + extract-size cap, logged. No emotion-contract change (set_state stays terminal).
