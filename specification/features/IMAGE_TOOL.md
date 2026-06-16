@@ -14,7 +14,8 @@ the **viewer** (v0.7) + **Telegram photo** (v0.13) for display. The MCP/async/pr
 per-user gallery, music, co-creation canvas — remains [GALLERY_MCP.md](GALLERY_MCP.md) /
 [CREATIVE_MCP.md](CREATIVE_MCP.md) at v5; this is the precursor.
 
-> **Proposed** feature. The building blocks are shipped; the tools, the generation seam, and the vision
+> **Vision (v0.22) + generation (v0.23) are shipped.** The remaining piece is **`send_image`** (v0.24 —
+> send a sandbox picture to Telegram). What follows kept its original framing; the building blocks, the tools, the generation seam, and the vision
 > input path are not. The markers below say exactly what's done vs. not.
 
 ---
@@ -29,13 +30,14 @@ per-user gallery, music, co-creation canvas — remains [GALLERY_MCP.md](GALLERY
 | **Telegram photo** output (sends a PNG as a photo) | ✅ **shipped** (v0.13, `LUMI_TELEGRAM_PHOTO`) |
 | **Gemini image** generation (text→PNG over `urllib`) | ✅ **exists in the faces skill** — lift into a `core` `ImageGen` seam |
 | `_turn_tools` (merges file + wiki tools; would merge image too) | ✅ **shipped** (v0.21) |
-| Model **multimodal input** (image content blocks) in the `LLMClient` seam | 🔲 **not built** — messages are text-only today |
-| `view_image` / `generate_image` tools | 🔲 **not built** |
-| Shared-image **input handling** in the TUI / bridge | 🔲 **not built** |
-| Image **display wiring** (viewer signal / Telegram / path) for non-face images | 🔲 **not built** |
-| Config flags | 🔲 **not built** |
+| Model **multimodal input** (image content blocks) in the `LLMClient` seam | ✅ **shipped** (v0.22, `core/images.py`) |
+| `view_image` (vision) / `generate_image` (generation) tools | ✅ **shipped** (v0.22 / v0.23) |
+| Shared-image **input handling** in the TUI (`/image`) | ✅ **shipped** (v0.22) |
+| Image **display wiring** (path / viewer signal `.lumi/image.txt`) via `LUMI_IMAGE_SHOW` | ✅ **shipped** (v0.23) — viewer/Telegram *consumers* of the signal pending |
+| Config flags (`LUMI_IMAGE` / `LUMI_VISION_MAX` / `LUMI_IMAGE_*`) | ✅ **shipped** (v0.22/0.23) |
+| **`send_image`** — send a sandbox picture to Telegram (the injected sink + the daemon `photo` field) | 🔲 **not built** (v0.24) |
 
-**Bottom line:** the loop, the sandbox, the displays, and a working Gemini caller all exist. The new
+**Bottom line:** vision (v0.22) + generation (v0.23) are **shipped**; the loop, the sandbox, the displays, and a working Gemini caller all exist. The new
 work is (1) an image-input path in the model seam, (2) two tools, and (3) wiring the result to a display.
 
 ---
@@ -160,7 +162,7 @@ Mirrors the file tool's read-before-write split: the **safe, no-new-API half fir
 **creates-artifacts half second**. Hard-deps all shipped (v0.19 loop, v0.7 viewer, v0.13 photo, the
 Gemini caller).
 
-### v0.22 — Local image tool I: vision (see & describe) 🔲
+### v0.22 — Local image tool I: vision (see & describe) ✅ shipped
 **Goal.** Лілі can see an image — one you share, or one in her sandbox — and describe / discuss it.
 **Tasks.** Extend the `LLMClient` seam (+ `MockLLMClient`) to accept **image content blocks**; add the
 `view_image` tool (loads a sandbox image as a multimodal block) on the v0.19 loop behind `LUMI_IMAGE`;
@@ -172,7 +174,7 @@ sandboxed + per-user; off → no vision; the `{reply, emotion, intensity}` contr
 and the model describes it; untrusted-image content not acted upon; isolation (A's image not in B);
 vision cap. No paid calls.
 
-### v0.23 — Local image tool II: generation (text → PNG) 🔲
+### v0.23 — Local image tool II: generation (text → PNG) ✅ shipped
 **Goal.** Лілі can make a PNG from a prompt, saved to her sandbox and shown.
 **Tasks.** A `core` `ImageGen` seam (default = the Gemini Nano Banana caller, injected for tests); the
 `generate_image` tool (create-only into the sandbox) on the loop behind `LUMI_IMAGE`; **display wiring**
@@ -184,6 +186,27 @@ refusal/error degrades to an error string and the turn completes; per-turn cap h
 contract unchanged.
 **Tests.** Mocked `ImageGen` (canned PNG): a turn writes the file + signals display; create-only (no
 overwrite); no personal data in the prompt; cap; error degrades; isolation. **No paid image calls.**
+
+### v0.24 — Local image tool III: send to Telegram (`send_image`) 🔲
+**Goal.** Лілі can **send a picture from her sandbox to your Telegram** — she *chooses* to share an image
+(generated, or one you dropped in), as a normal tool act.
+**Why a tool, not the v0.23 auto-push.** The `LUMI_IMAGE_SHOW=telegram` target only wrote a signal; a
+**`send_image`** tool is explicit + in-character (she decides) and works for **any** sandbox image, not
+just the just-generated one. It supersedes that auto-target.
+**Tasks.** A `send_image(path)` tool (`safe_path` + image-type check) on the v0.19 loop behind
+`LUMI_IMAGE`; it calls an **injected `telegram_sink`** — the **core never touches Telegram/the outbox**;
+the **TUI** (already the single `outbox.jsonl` writer) supplies the sink, appending a **`photo` record**
+(no second writer). The **outbound daemon** sends a record's `photo` via the v0.13 `send_photo` (always,
+not the `LUMI_TELEGRAM_PHOTO` probability; sent on its own, caption-cap reused). Config + docs.
+**DoD.** With `LUMI_IMAGE` on **and** the bridge connected, `send_image` of a sandbox picture arrives in
+the **owner's** Telegram as a **photo** (the reply as caption); a non-image / traversal / missing / **no
+bridge** case degrades to a notice and the turn completes; off → no tool; per-user isolated; the
+`{reply, emotion, intensity}` contract is unchanged (`send_image` returns a string, never raises).
+**Tests.** A **fake `telegram_sink`** (no real Telegram): `send_image` calls it with the resolved sandbox
+path; non-image / traversal / no-sink degrade; isolation; the **outbound daemon** sends a `photo` record
+via a **mocked bot**; the contract holds. **No real Telegram, no paid calls.**
+Depends on **v0.22** (the image surface), **v0.23** (the images to send), **v0.13** (the Telegram bridge:
+outbox + `send_photo`).
 
 ---
 
