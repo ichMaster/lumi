@@ -31,6 +31,7 @@ from core.config import load_config
 from core.cycle import format_cycle
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
+from core.images import image_block, media_type_for
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.prompt import mark_cache_breakpoint
 from core.repository import Session
@@ -266,6 +267,8 @@ class LumiApp(App[None]):
         self._nudge_enabled = cfg.idle_nudge
         self._idle_seconds = cfg.idle_seconds
         self._quiet_hours = cfg.quiet_hours
+        self._image_enabled = cfg.image  # v0.22: /image shares a picture for her to see + describe
+        self._vision_max = cfg.vision_max
         self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
         now = self._core.clock()
         self._last_activity = self._last_nudge_ts = self._last_think_ts = now
@@ -510,6 +513,10 @@ class LumiApp(App[None]):
             await self._new_session()
             prompt.focus()
             return
+        if text.startswith("/image "):  # v0.22: share an image for her to see + describe
+            await self._image_command(text)
+            prompt.focus()
+            return
 
         # %directive (v0.12) — her mind acts, not a chat message. Unknown %name → falls through.
         if text.startswith("%") and self._session is not None:
@@ -547,13 +554,44 @@ class LumiApp(App[None]):
         if not busy:
             prompt.focus()
 
-    async def _run_turn(self, text: str, *, hidden: bool = False, mirror_input: bool = False) -> None:
+    async def _image_command(self, text: str) -> None:
+        """``/image <path> [message]`` (v0.22) — share an image for Лілі to see + describe.
+
+        Reads the file you point at (any path you own), attaches it as a multimodal block on the turn,
+        and lets her reply. Gated by ``LUMI_IMAGE``; a non-image / missing file shows a notice."""
+        if not self._image_enabled:
+            self.notify("Vision is off — set LUMI_IMAGE=on to share images.", severity="warning", timeout=3)
+            return
+        parts = text[len("/image"):].strip().split(None, 1)
+        path = parts[0].strip() if parts else ""
+        message = parts[1].strip() if len(parts) > 1 else "Подивись, будь ласка, на це зображення."
+        p = Path(path).expanduser()
+        if media_type_for(p) is None:
+            self.notify("Not an image (png/jpg/gif/webp).", severity="warning", timeout=3)
+            return
+        if not p.is_file():
+            self.notify(f"No such file: {path}", severity="warning", timeout=3)
+            return
+        try:
+            block = image_block(p)
+        except OSError as exc:
+            self.notify(f"Couldn't read the image: {exc}", severity="warning", timeout=3)
+            return
+        self._last_activity = self._core.clock()
+        await self._run_turn(message, images=[block], mirror_input=True, display_text=f"🖼 {path} — {message}")
+
+    async def _run_turn(
+        self, text: str, *, hidden: bool = False, mirror_input: bool = False,
+        images: list[dict] | None = None, display_text: str | None = None,
+    ) -> None:
         """Run one model turn. A ``hidden`` turn (the idle nudge) suppresses the user
         line entirely — only Лілі's reply is shown — so she appears to speak first.
-        ``mirror_input`` (keyboard turns only) also sends your typed line to Telegram."""
+        ``mirror_input`` (keyboard turns only) also sends your typed line to Telegram.
+        ``images`` (v0.22) attaches shared image blocks to the turn; ``display_text`` overrides the
+        shown user line (e.g. an image marker)."""
         self._set_busy(True)
         if not hidden:
-            self._say(USER_LABEL, text, USER_COLOR)
+            self._say(USER_LABEL, display_text or text, USER_COLOR)
             if mirror_input and self._bridge:  # v0.13: your keyboard line → Telegram (not echoed inbox lines)
                 mirror_user(self._outbox_path, text)
             if self._sound_on:
@@ -561,7 +599,7 @@ class LumiApp(App[None]):
         self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
         try:
             assert self._session is not None
-            state = await asyncio.to_thread(self._core.reply, text, self._session)
+            state = await asyncio.to_thread(self._core.reply, text, self._session, images=images)
             self._connected = True
             self._last_reply = state.reply
             # Route the validated state through the renderer (logs the field) — the

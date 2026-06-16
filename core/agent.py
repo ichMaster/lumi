@@ -1326,13 +1326,17 @@ class Core:
         except Exception:  # noqa: BLE001 — tracing must never break a turn
             _usage_log.warning("tool log failed", exc_info=True)
 
-    def reply(self, user_text: str, session: Session) -> EmotionState:
+    def reply(self, user_text: str, session: Session, *, images: list[dict] | None = None) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
         Compacts older-than-window messages into the session digest (in batches),
         then calls the model with the system prompt (+ digest) + the verbatim
         **live tail** (between ``memory_window`` and ``+ batch`` messages) + the
         new line, and persists both messages. The full history stays stored.
+
+        ``images`` (v0.22) — provider-neutral image blocks (``core.images.image_block``) you shared this
+        turn; attached to the user message (so she **sees** them) only when ``LUMI_IMAGE`` is on, capped
+        at ``LUMI_VISION_MAX``. They are ephemeral — the turn's text is persisted, the image is not.
         """
         self._active_session_id = session.id  # stamp this turn's cache events with the session
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
@@ -1349,7 +1353,12 @@ class Core:
         messages: list[Message] = [
             {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live
         ]
-        messages.append({"role": "user", "content": f"[{format_stamp(turn_ts)}] {user_text}"})
+        stamped = f"[{format_stamp(turn_ts)}] {user_text}"
+        if images and self._image_enabled:  # v0.22: she sees the shared image(s) this turn (capped)
+            shared = list(images)[: max(0, self._vision_max)]
+            messages.append({"role": "user", "content": [{"type": "text", "text": stamped}, *shared]})
+        else:
+            messages.append({"role": "user", "content": stamped})
 
         # v0.17: automatic per-turn RAG — the incoming message is the query; inject the relevant past
         # (deduped against the live window so it never repeats a line already in context).
