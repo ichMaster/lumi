@@ -157,14 +157,21 @@ def _share(x: float, total: float) -> str:
 
 @dataclass
 class _Cost:
-    """Cost accumulator for one bucket (a session-activity, an activity total, or a grand total)."""
+    """Tokens **and** cost per operation for one bucket (a session-activity, an activity total, …)."""
 
     calls: int = 0
-    tokens: int = 0
+    t_in: int = 0
+    t_out: int = 0
+    t_rd: int = 0
+    t_wr: int = 0
     c_in: float = 0.0
     c_out: float = 0.0
     c_rd: float = 0.0
     c_wr: float = 0.0
+
+    @property
+    def tokens(self) -> int:
+        return self.t_in + self.t_out + self.t_rd + self.t_wr
 
     @property
     def cost(self) -> float:
@@ -172,29 +179,50 @@ class _Cost:
 
     def add(self, e: CacheEvent, p, write_rate: float) -> None:
         self.calls += 1
-        self.tokens += (e.input or 0) + (e.output or 0) + (e.cache_read or 0) + (e.cache_write or 0)
+        self.t_in += e.input or 0
+        self.t_out += e.output or 0
+        self.t_rd += e.cache_read or 0
+        self.t_wr += e.cache_write or 0
         self.c_in += (e.input or 0) * p.input / 1_000_000
         self.c_out += (e.output or 0) * p.output / 1_000_000
         self.c_rd += (e.cache_read or 0) * p.cache_read / 1_000_000
         self.c_wr += (e.cache_write or 0) * write_rate / 1_000_000
 
     def fold(self, o: _Cost) -> None:
-        self.calls += o.calls
-        self.tokens += o.tokens
-        self.c_in += o.c_in
-        self.c_out += o.c_out
-        self.c_rd += o.c_rd
-        self.c_wr += o.c_wr
+        for f in ("calls", "t_in", "t_out", "t_rd", "t_wr", "c_in", "c_out", "c_rd", "c_wr"):
+            setattr(self, f, getattr(self, f) + getattr(o, f))
 
 
+_TOKENS_HEADER = (
+    "| Activity | Calls | Input | Output | Cache read | Cache write | Read:Write | Cost | Share |\n"
+    "|---|--:|--:|--:|--:|--:|--:|--:|--:|"
+)
 _COST_HEADER = (
     "| Activity | Calls | Input | Output | Cache read | Cache write | Tokens | Cost | Share |\n"
     "|---|--:|--:|--:|--:|--:|--:|--:|--:|"
 )
 
 
+def _tokens_table(by_act: dict[str, _Cost], scope_total: float) -> list[str]:
+    """A by-activity **tokens** table (operation columns are token counts) + read:write, cost, share."""
+    lines = [_TOKENS_HEADER]
+    total = _Cost()
+    for kind in sorted(by_act, key=lambda k: -by_act[k].cost):
+        c = by_act[kind]
+        total.fold(c)
+        lines.append(
+            f"| {kind} | {c.calls} | {_fmt(c.t_in)} | {_fmt(c.t_out)} | {_fmt(c.t_rd)} | {_fmt(c.t_wr)} | "
+            f"{_ratio(c.t_rd, c.t_wr)} | {_usd(c.cost)} | {_share(c.cost, scope_total)} |"
+        )
+    lines.append(
+        f"| **TOTAL** | {total.calls} | {_fmt(total.t_in)} | {_fmt(total.t_out)} | {_fmt(total.t_rd)} | "
+        f"{_fmt(total.t_wr)} | {_ratio(total.t_rd, total.t_wr)} | {_usd(total.cost)} | 100% |"
+    )
+    return lines
+
+
 def _cost_table(by_act: dict[str, _Cost], scope_total: float) -> list[str]:
-    """A by-activity cost table — the operation columns are **cost $**; closes with a TOTAL row."""
+    """A by-activity **cost** table (operation columns are cost $) + total tokens, cost, share."""
     lines = [_COST_HEADER]
     total = _Cost()
     for kind in sorted(by_act, key=lambda k: -by_act[k].cost):
@@ -212,10 +240,10 @@ def _cost_table(by_act: dict[str, _Cost], scope_total: float) -> list[str]:
 
 
 def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str = "5m") -> str:
-    """The unified **prompt-cache & cost** report: cache behaviour (by channel + write cause) **and** cost
-    decomposition (by activity × operation — input/output/cache-read/cache-write — per session and
-    accumulated, with share). One report; the cache view explains *why it writes*, the cost view *where
-    the money goes*."""
+    """The unified **prompt-cache & cost** report: cache behaviour (by channel + write cause) and, by
+    activity × operation, **two** breakdowns — **tokens** and **cost $** — per session and accumulated,
+    each with share. One report; the cache view explains *why it writes*, the cost view *where the money
+    goes*."""
     from core.usage import pricing_for  # local import — avoids a module-load cycle
 
     by_kind: dict[str, _ChannelAgg] = {}
@@ -287,17 +315,21 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
         f"- **evicted** (prefix identical, cache dropped early — nothing to fix): {causes['evicted']}\n"
     )
 
-    out.append("## By activity — cost by operation\n")
-    out.append(
-        "> Operation columns are **cost $** (input / output / cache-read / cache-write). "
-        "**Tokens** = total tokens; **Share** = % of total cost.\n"
-    )
+    out.append("## By activity — tokens\n")
+    out.append("> Operation columns are **token counts**. **Read:Write** = cache read:write ratio; "
+               "**Share** = % of total cost.\n")
+    out.extend(_tokens_table(by_act, grand_total))
+    out.append("")
+
+    out.append("## By activity — cost\n")
+    out.append("> Operation columns are **cost $** (input / output / cache-read / cache-write). "
+               "**Tokens** = total tokens; **Share** = % of total cost.\n")
     out.extend(_cost_table(by_act, grand_total))
     out.append("")
 
     out.append(_session_table(events, ttl, grand_total))
 
-    out.append("## Per session — cost by activity & operation\n")
+    out.append("## Per session — by activity (tokens & cost)\n")
     for sid in order:
         s = sessions[sid]
         short = sid if sid == "(legacy)" else sid[:8]
@@ -307,6 +339,10 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
             f"### Session `{short}` — started {started} · {_usd(sess_total)} "
             f"({_share(sess_total, grand_total)} of total)\n"
         )
+        out.append("**Tokens**\n")
+        out.extend(_tokens_table(s["by_act"], sess_total))
+        out.append("")
+        out.append("**Cost**\n")
         out.extend(_cost_table(s["by_act"], sess_total))
         out.append("")
 
@@ -315,7 +351,7 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
 
 def _session_table(events: list[CacheEvent], ttl: str, grand_total: float) -> str:
     """Per-session **overview** — one row per conversation: cache read/write tokens + read:write ratio +
-    cost + share. The cache-token companion to the per-session cost tables below. Calls logged before the
+    cost + share. The cache-token companion to the per-session breakdowns below. Calls logged before the
     ``session_id`` field existed group under ``(legacy)``."""
     from core.usage import pricing_for  # local import — avoids a module-load cycle
 
