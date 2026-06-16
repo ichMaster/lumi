@@ -212,6 +212,12 @@ class Config:
     image: bool = False             # enable vision (view_image + shared-image input) (LUMI_IMAGE)
     vision_max: int = 4             # max images viewed/attached per turn (the wiring enforces it)
     image_max_bytes: int = 5_242_880  # max size of one viewed image (≈5 MB)
+    # v0.23 local image tool II: generation — generate_image (text → PNG). Needs GEMINI_API_KEY (paid).
+    image_provider: str = "gemini"  # generation backend (LUMI_IMAGE_PROVIDER)
+    image_model: str = "gemini-2.5-flash-image"  # generation model (LUMI_IMAGE_MODEL)
+    image_size: int = 768           # generated PNG size hint (LUMI_IMAGE_SIZE)
+    image_max_gen: int = 2          # max generations per turn (paid; the wiring enforces it)
+    image_show: str = "path,viewer,telegram"  # display targets for a generated PNG (LUMI_IMAGE_SHOW)
     # v0.16 semantic recall (RAG) — off by default (the whole feature: index + /recall).
     recall: bool = False
     embed_provider: str = "local"   # local (private, default) | voyage | openai
@@ -423,6 +429,11 @@ def load_config(*, load_env: bool = True) -> Config:
         image=(os.getenv("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
         vision_max=int(os.getenv("LUMI_VISION_MAX") or 4),
         image_max_bytes=int(os.getenv("LUMI_IMAGE_MAX_BYTES") or 5_242_880),
+        image_provider=os.getenv("LUMI_IMAGE_PROVIDER") or "gemini",
+        image_model=os.getenv("LUMI_IMAGE_MODEL") or "gemini-2.5-flash-image",
+        image_size=int(os.getenv("LUMI_IMAGE_SIZE") or 768),
+        image_max_gen=int(os.getenv("LUMI_IMAGE_MAX_GEN") or 2),
+        image_show=os.getenv("LUMI_IMAGE_SHOW") or "path,viewer,telegram",
         recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,
