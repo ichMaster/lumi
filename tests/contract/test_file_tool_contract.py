@@ -1,4 +1,5 @@
-"""v0.19 LUMI-084 — contract: per-user isolation, untrusted content, sandbox, emotion contract.
+"""v0.19 LUMI-084 + v0.20 LUMI-087 — contract: per-user isolation, untrusted content, sandbox,
+emotion contract, over the read tools and the two non-destructive write tools.
 
 All against stubbed clients — no model, no network, no paid calls.
 """
@@ -25,13 +26,13 @@ def _sandbox(tmp_path, user, name, text):
     return root
 
 
-def _core(tmp_path, llm, *, user="owner"):
+def _core(tmp_path, llm, *, user="owner", file_write_max=65536):
     repo = JsonRepository(tmp_path / f"{user}.json")
     core = Core(
         llm=llm, repository=repo, canon="C", model="m", clock=_CLK, user_id=user,
         mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
         file_tool_enabled=True, files_dir=tmp_path / "files",
-        file_read_lines=50, file_find_max=10, tool_max_steps=4,
+        file_read_lines=50, file_find_max=10, file_write_max=file_write_max, tool_max_steps=4,
     )
     return core, repo
 
@@ -117,4 +118,77 @@ def test_emotion_contract_holds_with_tool_loop(tmp_path):
     session = core.start_session()
     state = core.reply("читай doc", session)
     assert isinstance(state, EmotionState) and state.emotion.value == "thoughtful" and 0 <= state.intensity <= 1
+    assert [m.role for m in repo.load_messages(session.id)] == ["user", "lili"]  # both persisted
+
+
+# === v0.20 LUMI-087 — the two non-destructive write tools =========================================
+
+# --- per-user isolation over the write tools ------------------------------------------------------
+def test_user_cannot_write_into_another_users_sandbox(tmp_path):
+    _sandbox(tmp_path, "alice", "keep.md", "ALICE\n")
+    mock = MockLLMClient(states=_STATE, tool_script=[
+        ("create_file", {"path": "../alice/evil.md", "content": "HACK"}),  # traversal → denied
+        ("append_file", {"path": "../alice/keep.md", "content": "HACK"}),  # traversal → denied
+        ("create_file", {"path": "mine.md", "content": "BOB\n"}),          # lands only in bob's root
+    ])
+    core_bob, _ = _core(tmp_path, mock, user="bob")
+    state = core_bob.reply("write into alice", core_bob.start_session())
+    assert isinstance(state, EmotionState)
+    assert "traversal" in mock.tool_calls[0][2] and "traversal" in mock.tool_calls[1][2]
+    assert not (tmp_path / "files" / "alice" / "evil.md").exists()                  # nothing created in A
+    assert (tmp_path / "files" / "alice" / "keep.md").read_text(encoding="utf-8") == "ALICE\n"  # intact
+    assert (tmp_path / "files" / "bob" / "mine.md").read_text(encoding="utf-8") == "BOB\n"       # bob's root
+
+
+# --- non-destructive: create-over-existing & append-to-missing refused, original intact -----------
+def test_create_over_existing_is_refused_and_leaves_it_intact(tmp_path):
+    _sandbox(tmp_path, "owner", "keep.md", "ORIGINAL\n")
+    mock = MockLLMClient(states=_STATE, tool_script=[("create_file", {"path": "keep.md", "content": "CLOBBER"})])
+    core, _ = _core(tmp_path, mock)
+    core.reply("перезапиши keep", core.start_session())
+    assert "already exists" in mock.tool_calls[0][2]
+    assert (tmp_path / "files" / "owner" / "keep.md").read_text(encoding="utf-8") == "ORIGINAL\n"  # untouched
+
+
+def test_append_to_missing_is_refused_and_creates_nothing(tmp_path):
+    mock = MockLLMClient(states=_STATE, tool_script=[("append_file", {"path": "ghost.md", "content": "x"})])
+    core, _ = _core(tmp_path, mock)
+    core.reply("додай у ghost", core.start_session())
+    assert "file not found" in mock.tool_calls[0][2]
+    assert not (tmp_path / "files" / "owner" / "ghost.md").exists()  # no implicit create
+
+
+# --- size cap through a full Core turn ------------------------------------------------------------
+def test_oversize_write_refused_through_core(tmp_path):
+    mock = MockLLMClient(states=_STATE, tool_script=[("create_file", {"path": "big.md", "content": "x" * 100})])
+    core, _ = _core(tmp_path, mock, file_write_max=16)
+    state = core.reply("запиши багато", core.start_session())
+    assert isinstance(state, EmotionState)
+    assert "too large" in mock.tool_calls[0][2]
+    assert not (tmp_path / "files" / "owner" / "big.md").exists()  # refused before any write
+
+
+# --- sandbox escapes denied over the write tools (through a full turn) -----------------------------
+def test_write_sandbox_escapes_denied_through_core(tmp_path):
+    mock = MockLLMClient(states=_STATE, tool_script=[
+        ("create_file", {"path": "../../tmp/evil.md", "content": "x"}),
+        ("create_file", {"path": "/tmp/evil.md", "content": "x"}),
+    ])
+    core, _ = _core(tmp_path, mock)
+    state = core.reply("escape via write", core.start_session())
+    assert isinstance(state, EmotionState)
+    assert "traversal" in mock.tool_calls[0][2] and "absolute path" in mock.tool_calls[1][2]
+    assert not (tmp_path / "tmp" / "evil.md").exists()
+
+
+# --- the emotion contract still holds with the write tools active ---------------------------------
+def test_emotion_contract_holds_with_write_tools(tmp_path):
+    mock = MockLLMClient(states={"reply": "записала", "emotion": "tender", "intensity": 0.7},
+                         tool_script=[("create_file", {"path": "todo.md", "content": "пункт 1\n"}),
+                                      ("append_file", {"path": "todo.md", "content": "пункт 2\n"})])
+    core, repo = _core(tmp_path, mock)
+    session = core.start_session()
+    state = core.reply("створи todo", session)
+    assert isinstance(state, EmotionState) and state.emotion.value == "tender" and 0 <= state.intensity <= 1
+    assert (tmp_path / "files" / "owner" / "todo.md").read_text(encoding="utf-8") == "пункт 1\nпункт 2\n"
     assert [m.role for m in repo.load_messages(session.id)] == ["user", "lili"]  # both persisted
