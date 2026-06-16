@@ -306,6 +306,12 @@ class Core:
         image_enabled: bool = False,
         vision_max: int = 4,
         image_max_bytes: int = 5_242_880,
+        image_model: str = "gemini-2.5-flash-image",
+        image_size: int = 768,
+        image_max_gen: int = 2,
+        image_show: str = "path,viewer,telegram",
+        image_signal_path: Path | None = None,
+        image_gen: Callable[..., bytes] | None = None,  # injected for tests; None → real Gemini
         tool_log_path: Path | None = None,
         cache_log_path: Path | None = None,
         cache_report_path: Path | None = None,
@@ -378,6 +384,13 @@ class Core:
         self._image_enabled = image_enabled
         self._vision_max = vision_max
         self._image_max_bytes = image_max_bytes
+        # v0.23 generation: generate_image (text → PNG); image_gen injected for tests (None → real Gemini).
+        self._image_model = image_model
+        self._image_size = image_size
+        self._image_max_gen = image_max_gen
+        self._image_show = image_show
+        self._image_signal_path = image_signal_path
+        self._image_gen = image_gen
         self._tool_log_path = tool_log_path
         self.last_tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — reset each turn
         # Per-call prompt-cache monitor (off by default): log each model call's cache behaviour by
@@ -1222,7 +1235,8 @@ class Core:
         self.last_tool_calls = []  # fresh per turn (the trace)
         routes: dict[str, Callable[[str, dict], str | dict]] = {}
         tools: list[dict] = []
-        for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args(), self._image_tool_args()):
+        for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args(),
+                                    self._image_tool_args(), self._imagegen_tool_args()):
             if executor is None:
                 continue
             tools += tool_list
@@ -1266,6 +1280,48 @@ class Core:
             return result
 
         return VIEW_TOOLS, capped
+
+    def _imagegen_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, executor) for the v0.23 ``generate_image`` tool; ``(None, None)`` off.
+
+        Bound to **this user's** sandbox (create-only). A per-turn closure counter enforces
+        ``LUMI_IMAGE_MAX_GEN`` (paid). The prompt carries **only what the model passes** — the core never
+        augments it with memory/personal data. On a successful generation, the saved PNG is **shown** per
+        ``LUMI_IMAGE_SHOW``. The ``ImageGen`` is injected (tests) or the real Gemini caller."""
+        if not self._image_enabled or self._files_dir is None:
+            return None, None
+        from core.imagegen import GENERATE_TOOLS, ImageMaker, gemini_image_gen
+
+        gen = self._image_gen if self._image_gen is not None else gemini_image_gen(model=self._image_model)
+        root = self._files_dir / self._user_id
+        root.mkdir(parents=True, exist_ok=True)
+        maker = ImageMaker(root, image_gen=gen, size=self._image_size)
+        made = {"n": 0}
+
+        def capped(name: str, tool_input: dict) -> str:
+            if made["n"] >= self._image_max_gen:
+                return f"(image generation limit reached: {self._image_max_gen} per turn)"
+            result = maker.execute(name, tool_input)
+            if result.startswith("created "):  # a new PNG landed → count it + show it
+                made["n"] += 1
+                self._emit_image_display(result, root)
+            return result
+
+        return GENERATE_TOOLS, capped
+
+    def _emit_image_display(self, result: str, root: Path) -> None:
+        """Show a freshly-generated PNG per ``LUMI_IMAGE_SHOW`` — write its path to the display signal the
+        v0.7 viewer / v0.13 Telegram daemon can pick up. **path** is always satisfied (the tool result
+        names the file). Best-effort: a display failure never breaks the turn."""
+        targets = {t.strip() for t in (self._image_show or "").split(",") if t.strip()}
+        if self._image_signal_path is None or not ({"viewer", "telegram"} & targets):
+            return  # only "path" requested (or no signal configured) → nothing to emit
+        try:
+            rel = result.split(" ", 2)[1]  # "created art/cat.png (123 bytes)" → "art/cat.png"
+            self._image_signal_path.parent.mkdir(parents=True, exist_ok=True)
+            self._image_signal_path.write_text(str(root / rel), encoding="utf-8")
+        except Exception:  # noqa: BLE001 — display must never break a turn
+            _usage_log.warning("image display signal failed", exc_info=True)
 
     def _file_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
         """The (tools, **raw** executor) for the file tool — bound to **this user's** sandbox;
@@ -1898,6 +1954,11 @@ def build_core(
         image_enabled=cfg.image,
         vision_max=cfg.vision_max,
         image_max_bytes=cfg.image_max_bytes,
+        image_model=cfg.image_model,
+        image_size=cfg.image_size,
+        image_max_gen=cfg.image_max_gen,
+        image_show=cfg.image_show,
+        image_signal_path=(cfg.store_path.parent / "image.txt") if cfg.image else None,
         tool_log_path=(cfg.store_path.parent / "tool-log.jsonl") if cfg.file_tool_trace else None,
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,
