@@ -12,13 +12,19 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.22.0 — Image vision (see & describe).** Лілі can now **see images and describe them** during a
-turn: **share** one with `/image <path>` (a multimodal block on your message) or let her **view** a
-sandbox image via the `view_image` tool. Built on a new provider-neutral **image-block seam** in the
-`LLMClient` (Anthropic multimodal) on the v0.19 tool-loop. An image is **untrusted** (text inside it is
-never a command), **sandboxed + per-user**, capped (`LUMI_VISION_MAX`), **off by default**
-(`LUMI_IMAGE`); **no SDK in `core`**, no emotion-contract change. See
-**[docs/IMAGE_SETUP.md](docs/IMAGE_SETUP.md)**. Generation (text → PNG) is v0.23.
+**0.23.0 — Image generation (text → PNG).** Лілі can now **make a picture** during a turn: ask her to
+draw and she calls the new **`generate_image`** tool — a PNG rendered by **Gemini** (`gemini-2.5-flash-image`)
+behind an injected **`ImageGen`** seam, saved **create-only** into her per-user sandbox (`art/`) and shown
+per `LUMI_IMAGE_SHOW`. **Paid** (needs `GEMINI_API_KEY`), **bounded** per turn (`LUMI_IMAGE_MAX_GEN`),
+**non-destructive** (never overwrites/deletes), with **no personal/memory data** in the prompt; **off by
+default** (`LUMI_IMAGE`). **No SDK in `core`** (the generator is mocked in every test — no paid calls), no
+emotion-contract change. See **[docs/IMAGE_SETUP.md](docs/IMAGE_SETUP.md)**.
+
+Builds on **0.22's vision (see & describe)**: Лілі can **see images and describe them** — **share** one
+with `/image <path>` (a multimodal block on your message) or let her **view** a sandbox image via the
+`view_image` tool, on a provider-neutral **image-block seam** in the `LLMClient` (Anthropic multimodal).
+An image is **untrusted** (text inside it is never a command), **sandboxed + per-user**, capped
+(`LUMI_VISION_MAX`), **off by default** (`LUMI_IMAGE`).
 
 Builds on **0.21's Wikipedia tool**: on the v0.19 tool-loop, Лілі can **look something up on
 Wikipedia** during a turn — `wiki_search` for an article, then `wiki_read` its summary — answering

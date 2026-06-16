@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.23.0 (2026-06-17)
+---------------------------
+- Image generation (v0.23, LUMI-095...097): Лілі can MAKE a PNG during a turn. Ask her to draw and she calls the new generate_image tool — a picture rendered by Gemini (gemini-2.5-flash-image, "Nano Banana") behind an injected ImageGen seam, saved create-only into her per-user sandbox (art/) and shown per LUMI_IMAGE_SHOW (path / viewer / telegram). Off by default (LUMI_IMAGE); bounded per turn (LUMI_IMAGE_MAX_GEN); non-destructive (never overwrites or deletes — a name clash is refused); the prompt carries NO personal/memory data; a provider refusal degrades to a notice. No emotion-contract change (set_state stays terminal). Paid — needs GEMINI_API_KEY.
+- core/imagegen.py (LUMI-095): the ImageGen = Callable[..., bytes] seam + gemini_image_gen caller + ImageMaker (generate_image, create-only via the shared safe_path sandbox guard, PNG bytes -> art/<slug>.png). No SDK in core — the generator is injected and mocked in every test (no paid calls in CI).
+- Wired into Core.reply (LUMI-096) behind LUMI_IMAGE: the reply turn's bounded tool-loop now also offers generate_image (merged with the file/wiki/vision tools under one name-routing executor); a per-turn generation cap counts only successful creations; the saved path is named in her reply and written to .lumi/image.txt per LUMI_IMAGE_SHOW for the v0.7 viewer / v0.13 Telegram daemon.
+- Contract + safety tests (LUMI-097): generation is create-only (refuses an existing path), carries no personal data in the prompt, is capped per turn, and degrades on provider error; the {reply, emotion, intensity} contract still validates. New config: LUMI_IMAGE_PROVIDER / _MODEL / _SIZE / _MAX_GEN / _SHOW + GEMINI_API_KEY, documented in .env.example and docs/IMAGE_SETUP.md.
+- Roadmap planning (specs only, no code): v0.24 — send_image (she chooses to send a sandbox picture to your Telegram via an injected telegram_sink); v0.25 — News tool (Guardian: search & read, on the v0.19 tool-loop), shifting the recall/dictation phases +1.
+
 Version 0.22.0 (2026-06-17)
 ---------------------------
 - Image vision (v0.22, LUMI-091...094): Лілі can SEE images and describe them. Two paths — you share one with /image <path> (a multimodal image block on your message) or she views a sandbox image via the new view_image tool (an image tool_result on the v0.19 bounded loop). Off by default (LUMI_IMAGE); capped per turn (LUMI_VISION_MAX) + per-image size (LUMI_IMAGE_MAX_BYTES); an image is UNTRUSTED data (text inside it is never a command), sandboxed + per-user; needs the Anthropic (multimodal) provider. No emotion-contract change. See docs/IMAGE_SETUP.md.
