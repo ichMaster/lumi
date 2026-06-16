@@ -256,7 +256,7 @@ Reuses v0.4 (the nudge trigger + the hidden self-turn delivery), v0.6 (mood + th
 **Goal:** reach Лілі from **Telegram** — the same mind, a new window. Crucially, the **TUI stays the only brain** (the one process that calls `core.reply`); Telegram is a **bridge** — a tiny **file bus** (`inbox`/`outbox`) plus two **dumb daemons** — so the TUI never imports a Telegram library and there's only **one writer to the conversation store** (no concurrency clobber). She can **reach out first** (a v0.12 spoken thought lands in `outbox` → a Telegram notification). **Personal / single-owner** (the Telegram user *is* the owner — same relationship, one session); **multi-user + always-on are the v2.1/v2.3 server**. See [TELEGRAM.md](features/TELEGRAM.md).
 
 The shape — one brain, a file bus, two daemons (`keyboard / Telegram → inbox.jsonl → [TUI = brain] → core.reply → outbox.jsonl → Telegram`):
-- **The file bus (FIFO + id pointers).** `inbox.jsonl` + `outbox.jsonl` — append-only JSONL (`{id, text, ts}`), **one writer + one reader each** (no locks); the consumer tracks the **last id** it processed (a tiny pointer file), id-based so trimming later is safe. (Shared infra the v0.14 voicer / v0.22 dictator later ride.)
+- **The file bus (FIFO + id pointers).** `inbox.jsonl` + `outbox.jsonl` — append-only JSONL (`{id, text, ts}`), **one writer + one reader each** (no locks); the consumer tracks the **last id** it processed (a tiny pointer file), id-based so trimming later is safe. (Shared infra the v0.14 voicer / v0.24 dictator later ride.)
 - **TUI = the brain.** On idle (your turn) it reads the next `inbox` record and runs it as a turn — as if you typed it; it writes **only Лілі's own messages** to `outbox` (never your input → **no echo, by construction**; never technical chrome).
 - **Daemon 1 (`telegram → inbox`).** An **in-memory** buffer of incoming messages flushed every `LUMI_TELEGRAM_FLUSH_S` (default 2 s) into **one consolidated** `inbox` record (a burst → one turn); **ack Telegram only after the flush** (a crash before it → Telegram re-delivers → no loss → **no buffer file needed**); **allowlist** at the edge (only the owner's id enters the bus).
 - **Daemon 2 (`outbox → telegram`).** FIFO from the pointer; **consolidate up to `LUMI_TELEGRAM_BATCH` = N** records per Telegram message (bounds a backlog → ⌈M/N⌉ messages, never "days as one"); a **catch-up cap** (`LUMI_TELEGRAM_CATCHUP_H`) skips stale records on restart.
@@ -420,7 +420,37 @@ The **custom-tool** form of a Wikipedia lookup — a direct Wikipedia API call f
 
 **Tests:** unit — `wiki.search`/`wiki.read` against a **mock HTTP transport** (no network); untrusted content inside an extract is not acted upon (mocked tool sequence); the query carries no memory/personal data; per-turn + extract-size caps; the tools are absent when `LUMI_WIKI` is off; the `{reply, emotion, intensity}` contract still validates. No paid calls.
 
-### v0.22 — Local dictation (STT)
+### v0.22 — Local image tool I: vision (see & describe)
+
+**Goal:** Лілі can **see** an image — one you share, or one in her sandbox — and **describe / discuss it** in chat.
+
+The **safe, no-new-API half** of a local image tool — the lightweight custom-tool form of the v5 creative layer's vision (as the v0.21 Wikipedia tool is to v4.3), reusing the model's own **multimodal input** (Anthropic vision) on the **v0.19 bounded tool-loop**. Two paths to an image: **you share one** (the TUI/bridge attaches it as a multimodal image block on your message → she describes it) and **she views a sandbox file** via a new **`view_image`** tool (loads the image into her view as a multimodal `tool_result` block). The `LLMClient` seam is extended to carry **image content blocks** (the `MockLLMClient` returns a canned description → no paid vision in tests). **Images are untrusted data** — text inside an image is information, never a command (the same rule as file/web content); **sandboxed + per-user**; **off by default** (`LUMI_IMAGE`). **No emotion-contract change** — `set_state` stays terminal. The viewed/generated PNGs live in the v0.19 sandbox; later they seed the v5.1 gallery. See [IMAGE_TOOL.md](features/IMAGE_TOOL.md). Depends on: v0.19 (the bounded tool-loop), v0.3 (the emotion turn / `set_state` terminal tool), v0.1 (the `LLMClient` seam it extends).
+
+**Tasks:**
+- Extend the `LLMClient` seam (+ `MockLLMClient`) to accept **image content blocks** in messages / tool_results (Anthropic multimodal); no SDK leak into `core`.
+- A **`view_image`** tool in `core` (loads a sandbox image as a multimodal block) registered on the v0.19 loop behind `LUMI_IMAGE`; merged via `_turn_tools` with the file/wiki tools.
+- **Shared-image input handling** in the TUI/bridge — attach an image you give her (e.g. `/image <path>`); a per-turn vision cap (`LUMI_VISION_MAX`); `.env.example` + docs.
+
+**DoD:** with the flag on, a shared image yields a description in chat, and `view_image` on a sandbox file lets her describe it; an image is treated as **untrusted** (embedded "ignore your instructions" is not obeyed); the per-turn vision cap holds; paths are sandboxed + per-user; **off (default) → no vision attached, no tool offered**; the `{reply, emotion, intensity}` contract passes verbatim.
+
+**Tests:** unit/integration with a **mock multimodal model** (no paid calls) — a shared image drives a described reply; `view_image` returns a block the model describes; untrusted-image content is not acted upon; two-user isolation (A's image never in B); the vision cap bounds the turn; the emotion contract still validates.
+
+### v0.23 — Local image tool II: generation (text → PNG)
+
+**Goal:** Лілі can **make a PNG** from a text prompt, saved to her sandbox and shown.
+
+The **creates-artifacts half**: a **`generate_image`** tool on the v0.19 loop that calls an image model, saves a **new** PNG into her per-user sandbox (create-only, like `create_file`), and signals a **display**. The backend is a thin injected **`ImageGen`** seam — default the **Gemini Nano Banana** caller (`gemini-2.5-flash-image`, the existing `GEMINI_API_KEY`, stdlib `urllib`); tests inject a stub returning a canned PNG (**no paid image calls in CI**). Display reuses shipped infra via `LUMI_IMAGE_SHOW`: the **v0.7 viewer** (a PNG signal), a **Telegram photo** (v0.13), and always the **path**. **Non-destructive** (no overwrite/delete), **sandboxed + per-user**, **no personal data** in the prompt sent to the external API (the v0.21 wiki rule), provider **content-safety** filters, **off by default** (`LUMI_IMAGE`, needs `GEMINI_API_KEY`), **paid + per-turn-capped** (`LUMI_IMAGE_MAX_GEN`). **No contract change** — `set_state` stays terminal. See [IMAGE_TOOL.md](features/IMAGE_TOOL.md). Depends on: v0.22 (the image-tool surface + the loop wiring), v0.19 (the sandbox).
+
+**Tasks:**
+- A `core` **`ImageGen`** seam (`generate(prompt) -> png_bytes`), default = the Gemini caller (injected for tests); the **`generate_image`** tool (create-only into the sandbox) on the loop behind `LUMI_IMAGE`.
+- **Display wiring** — the viewer signal / Telegram photo / path, selected by `LUMI_IMAGE_SHOW`; the **no-personal-data** prompt rule; a per-turn generation cap (`LUMI_IMAGE_MAX_GEN`).
+- Config (`LUMI_IMAGE_PROVIDER` / `_MODEL` / `_SIZE` / `_MAX_GEN` / `_SHOW`) + `.env.example` + docs.
+
+**DoD:** with the flag on (+ `GEMINI_API_KEY`), a turn generates a PNG into `.lumi/files/<user>/`, non-destructive, displayed per `LUMI_IMAGE_SHOW`; the outgoing prompt carries no personal data; a provider refusal/error degrades to an error string and the turn completes; the per-turn cap holds; **off (default) → the tool is absent**; the emotion contract is unchanged.
+
+**Tests:** unit/integration with a **mock `ImageGen`** (canned PNG) — a turn writes the file + signals display; create-only (no overwrite); the prompt has no personal/memory data; the per-turn cap; a generation error degrades; two-user isolation. **No paid image calls.**
+
+### v0.24 — Local dictation (STT)
 
 **Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.14 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
 
@@ -435,7 +465,7 @@ A separate local process listens to the microphone, recognizes Ukrainian via the
 
 **Tests:** unit — `listen.flag` on/off handling, empty-recognition is dropped (no `inbox` write), dedup by `id`; integration — a recognized line via a **mock STT adapter** (no paid call) lands in `inbox.jsonl` and drives a turn identical to a typed one.
 
-### v0.23 — Semantic recall III: chunking long messages
+### v0.25 — Semantic recall III: chunking long messages
 
 **Goal:** find the **exact passage** inside a long message (a pasted chapter, a wall of reflection) and recall *that passage with its context* — instead of embedding the whole message as one diluted vector. The precision fix for long pastes; off by default → behaves exactly like v0.16/v0.17.
 
@@ -453,11 +483,11 @@ A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expa
 
 ---
 
-### v0.24 — Semantic recall IV: thematic recall (topic routing)
+### v0.26 — Semantic recall IV: thematic recall (topic routing)
 
-**Goal:** recall stops being one undifferentiated pool and learns **what the turn is about** — every message is tagged with topics from a fixed authored set, and a turn recalls **preferentially from the topics the conversation is currently about**. The topic is picked **locally, without an LLM call**, and **Лілі can steer it** by naming the active topics in her reply. Off by default → behaves exactly like v0.17/v0.23.
+**Goal:** recall stops being one undifferentiated pool and learns **what the turn is about** — every message is tagged with topics from a fixed authored set, and a turn recalls **preferentially from the topics the conversation is currently about**. The topic is picked **locally, without an LLM call**, and **Лілі can steer it** by naming the active topics in her reply. Off by default → behaves exactly like v0.17/v0.25.
 
-A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expansion), not a new capability. A closed, **authored topic taxonomy** (`core/topics.md`, like the emotion enum) gives every topic a name + seed terms → a **centroid** vector. Each message (or v0.23 chunk) is **tagged at index time** by a **local embedding classifier** — cosine of its own stored vector vs the centroids, topics ≥ `topic_floor` (no LLM; re-tagging recomputes from stored vectors, no re-embedding). Each turn the **active topic set** is picked **locally** from the incoming message's embedding (already computed for RAG) ∪ the topics **Лілі emitted** on recent turns (the v0.10 `RelationRead` pattern, decayed for inertia); because the RAG block is built **before** the reply, her emitted topics take effect **next turn**, so the local pick covers the current turn with no lag and no extra call. Retrieval then **prefers on-topic hits and tops up from the rest** (never starves), before the v0.17/v0.23 expansion + injection runs unchanged. `VectorRecord` gains **`topics`** (additive — a contract change, pinned by the memory-records contract test). **Same isolation invariant** — topics are labels on the requesting user's records; centroids are authored, user-content-free. **Same hard rule as mood/closeness** — topic routing biases *what is recalled*, never her competence; a missed topic degrades to plain v0.17 RAG, never a refusal. The `Embedder`/`VectorStore` seams and the `{reply, emotion, intensity}` contract are **untouched**. Depends on: v0.16 (index + seams), v0.17 (auto-RAG + context expansion); **independent of v0.23** (composes with chunks). See [SEMANTIC_RECALL_THEMATIC.md](features/SEMANTIC_RECALL_THEMATIC.md).
+A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expansion), not a new capability. A closed, **authored topic taxonomy** (`core/topics.md`, like the emotion enum) gives every topic a name + seed terms → a **centroid** vector. Each message (or v0.25 chunk) is **tagged at index time** by a **local embedding classifier** — cosine of its own stored vector vs the centroids, topics ≥ `topic_floor` (no LLM; re-tagging recomputes from stored vectors, no re-embedding). Each turn the **active topic set** is picked **locally** from the incoming message's embedding (already computed for RAG) ∪ the topics **Лілі emitted** on recent turns (the v0.10 `RelationRead` pattern, decayed for inertia); because the RAG block is built **before** the reply, her emitted topics take effect **next turn**, so the local pick covers the current turn with no lag and no extra call. Retrieval then **prefers on-topic hits and tops up from the rest** (never starves), before the v0.17/v0.25 expansion + injection runs unchanged. `VectorRecord` gains **`topics`** (additive — a contract change, pinned by the memory-records contract test). **Same isolation invariant** — topics are labels on the requesting user's records; centroids are authored, user-content-free. **Same hard rule as mood/closeness** — topic routing biases *what is recalled*, never her competence; a missed topic degrades to plain v0.17 RAG, never a refusal. The `Embedder`/`VectorStore` seams and the `{reply, emotion, intensity}` contract are **untouched**. Depends on: v0.16 (index + seams), v0.17 (auto-RAG + context expansion); **independent of v0.25** (composes with chunks). See [SEMANTIC_RECALL_THEMATIC.md](features/SEMANTIC_RECALL_THEMATIC.md).
 
 **Tasks:**
 - A **topic taxonomy** (`core/topics.md`, path = config `LUMI_TOPICS_FILE`): a closed authored set, each topic a name + seed terms; build per-topic **centroids** by embedding the seeds (rebuilt on taxonomy change).
@@ -468,7 +498,7 @@ A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expa
 - Лілі emits topics via the v0.10 `RelationRead` (validated against the taxonomy, unknown dropped) → folds into the carried-forward set; `{reply, emotion, intensity}` unchanged.
 - A `/topics` command (active topics by name). Config: `LUMI_RAG_TOPIC` (off by default), `LUMI_RAG_TOPIC_FLOOR`, `LUMI_RAG_TOPIC_MAX`, `LUMI_RAG_TOPIC_DECAY`, `LUMI_TOPICS_FILE`.
 
-**DoD:** a message is tagged with topics from the authored set at index time (local, no LLM); a turn whose subject matches a topic recalls **preferentially from that topic** while never returning fewer than `K` floor-passing hits (prefer-then-top-up); Лілі's emitted topics steer the next turns' routing with inertia; `/topics` shows the active topics; retrieval never crosses users (routed or not) and never blocks a turn; composes with v0.23 (a chunk is tagged from its own vector); **off (default) → identical to v0.17/v0.23** (one undifferentiated pool).
+**DoD:** a message is tagged with topics from the authored set at index time (local, no LLM); a turn whose subject matches a topic recalls **preferentially from that topic** while never returning fewer than `K` floor-passing hits (prefer-then-top-up); Лілі's emitted topics steer the next turns' routing with inertia; `/topics` shows the active topics; retrieval never crosses users (routed or not) and never blocks a turn; composes with v0.25 (a chunk is tagged from its own vector); **off (default) → identical to v0.17/v0.25** (one undifferentiated pool).
 
 **Tests:** unit — the classifier (floor, max labels, untagged-on-no-match, multilabel); index-on-write/backfill tag records; re-tag recomputes from stored vectors **without re-embedding**; the staleness tag rebuilds labels on a taxonomy change; active-set pick (local ∪ carried-forward, decay); the router (prefer on-topic, top-up to `K`, no-op when off); Лілі's topic read validates against the taxonomy (unknown dropped) and carries forward; `/topics`; **isolation contract** — topic-routed retrieval is single-user (A↔B); graceful degradation (classifier/router failure → v0.17 behaviour). All via the **mock embedder** — no paid calls.
 
@@ -918,7 +948,7 @@ At session end Лілі decides whether to write a **literary journal entry** �
 - Auth — a local client token in **v2.1**; full accounts, registration/invite codes, allowlist, argon2id in **v2.3**; security testing + CI/CD (deploy, TLS, dep/secret scans) in **v2.2**; admin panel in **v2.5**.
 - Multi-user + multi-session — **v2.3**.
 - ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.14** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v3.2**.
-- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.22** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v3.4**.
+- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.24** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v3.4**.
 - Image — **v3.1**; web voice output — **v3.2**; shared memory (`SharedMemoryItem`) + cross-pollination — **v3.3**; web dictation — **v3.4**.
 - Animation — **v4.1**.
 - MCP client + `web_search` service (`web.search`/`web.fetch`, off by default, untrusted content) — **v4.2** (see [WEB_SEARCH.md](features/WEB_SEARCH.md)).

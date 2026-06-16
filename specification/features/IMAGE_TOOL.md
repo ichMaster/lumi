@@ -160,7 +160,7 @@ Mirrors the file tool's read-before-write split: the **safe, no-new-API half fir
 **creates-artifacts half second**. Hard-deps all shipped (v0.19 loop, v0.7 viewer, v0.13 photo, the
 Gemini caller).
 
-### v0.25 — Image vision (see & describe) 🔲
+### v0.22 — Local image tool I: vision (see & describe) 🔲
 **Goal.** Лілі can see an image — one you share, or one in her sandbox — and describe / discuss it.
 **Tasks.** Extend the `LLMClient` seam (+ `MockLLMClient`) to accept **image content blocks**; add the
 `view_image` tool (loads a sandbox image as a multimodal block) on the v0.19 loop behind `LUMI_IMAGE`;
@@ -172,7 +172,7 @@ sandboxed + per-user; off → no vision; the `{reply, emotion, intensity}` contr
 and the model describes it; untrusted-image content not acted upon; isolation (A's image not in B);
 vision cap. No paid calls.
 
-### v0.26 — Image generation (text → PNG) 🔲
+### v0.23 — Local image tool II: generation (text → PNG) 🔲
 **Goal.** Лілі can make a PNG from a prompt, saved to her sandbox and shown.
 **Tasks.** A `core` `ImageGen` seam (default = the Gemini Nano Banana caller, injected for tests); the
 `generate_image` tool (create-only into the sandbox) on the loop behind `LUMI_IMAGE`; **display wiring**
