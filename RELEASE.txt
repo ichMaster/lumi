@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 0.20.0 (2026-06-16)
+---------------------------
+- Local file tool II: writing (LUMI-085) — two non-destructive write tools on the v0.19 tool-loop: create_file (new-only — refuses an existing path) and append_file (end-only — refuses a missing file). No overwrite, no delete, so an autonomous turn can never clobber or destroy data. Reuses the v0.19 sandbox + traversal guard; each write is size-capped by LUMI_FILE_WRITE_MAX (default 64 KB). Every failure degrades to an error string (never raises).
+- Wired into Core.reply (LUMI-086) — when LUMI_FILE_TOOL is on, the turn now offers READ_TOOLS + WRITE_TOOLS; file_write_max threaded build_core -> Core -> FileTools. The v0.19 tool-trace (LUMI_FILE_TOOL_TRACE) covers the write tools too. .env.example + docs/FILE_TOOL_SETUP.md document LUMI_FILE_WRITE_MAX and the non-destructive boundary. No emotion-contract change — set_state stays terminal.
+- Tests (LUMI-087) — +20 across unit/integration/contract: create-over-existing and append-to-missing refused (original intact), oversize write refused, sandbox escapes denied over the write tools, per-user isolation holds over create + append, and the {reply, emotion, intensity} contract validates with the write tools active. Model mocked — no paid API calls (full suite 719 pass).
+
 Version 0.19.2 (2026-06-16)
 ---------------------------
 - Cache monitor — per-round logging: a file-tool reply turn is split into its actual model calls (each tagged "tool" or "reply"), so the report attributes cache writes to the round that caused them instead of one summed total. Adds a "By activity (tokens & cost)" table (reply / tool / think / mood / ... with input/output/cache read/write and estimated cost per channel).

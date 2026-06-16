@@ -12,13 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.19.2 — Local file tool I: reading.** Лілі can **list, search (→ line numbers), and read files by
+**0.20.0 — Local file tool II: writing.** On the v0.19 tool-loop, Лілі can now **create new files** and
+**append to existing ones** in her per-user sandbox — **non-destructive** by construction (`create_file`
+is new-only, `append_file` is end-only; **no overwrite, no delete**), each write size-capped
+(`LUMI_FILE_WRITE_MAX`, default 64 KB). **No contract change** — `set_state` stays terminal. This builds
+on **0.19's reading**: Лілі can **list, search (→ line numbers), and read files by
 line** in a **per-user sandbox** during a turn — and the core gains its **first bounded tool-loop**
 (the reusable foundation v4.2 web search / v4.3 world context / v5 creative all reuse). The turn loops
 read-tool calls and ends on the terminal `set_state`, so the `{reply, emotion, intensity}` contract is
 untouched. **Sandboxed** (`..`/absolute/symlink rejected), **file content is untrusted data** (never
 instructions, proven end-to-end), **bounded** (per-read/find/total caps + a loop cap), **per-user
-isolated**, **off by default** (`LUMI_FILE_TOOL`, Anthropic provider). Writing (create/append) is v0.20.
+isolated**, **off by default** (`LUMI_FILE_TOOL`, Anthropic provider).
 See **[docs/FILE_TOOL_SETUP.md](docs/FILE_TOOL_SETUP.md)**. Plus a **cache optimization** (the in-session
 digest moved off the cached prefix, so compaction stops re-writing it) and an **observability** pass: a
 per-channel **cache monitor** (`.lumi/cache-report.md`) + a **cost breakdown** in the usage report.
