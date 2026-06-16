@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
 from core.emotion import Emotion
+from core.images import images_in_messages, is_image_block
 
 if TYPE_CHECKING:  # annotation only — build_llm reads cfg attributes, never imports config at runtime
     from core.config import Config
@@ -27,8 +28,41 @@ if TYPE_CHECKING:  # annotation only — build_llm reads cfg attributes, never i
 # Provider selection + degradation notes are logged here (e.g. thinking/effort on a non-Anthropic backend).
 _log = logging.getLogger("lumi.llm")
 
-# A chat message as the core hands it to the model: an Anthropic-style turn.
-Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
+# A chat message as the core hands it to the model: an Anthropic-style turn. ``content`` is a string, or
+# (v0.22) a list of content blocks — text + provider-neutral image blocks (see core/images.py).
+Message = dict[str, object]  # {"role": "user" | "assistant", "content": str | list[dict]}
+
+
+def _anthropic_image(block: dict) -> dict:
+    """A provider-neutral image block → Anthropic's multimodal ``image`` source form (v0.22)."""
+    return {"type": "image",
+            "source": {"type": "base64", "media_type": block["media_type"], "data": block["data"]}}
+
+
+def _anthropic_content(content: object) -> object:
+    """Translate a message/tool_result ``content`` to Anthropic shape — neutral image blocks become the
+    ``source`` form; text blocks, SDK objects, and already-translated blocks pass through unchanged."""
+    if not isinstance(content, list):
+        return content
+    out: list = []
+    for b in content:
+        if is_image_block(b) and "source" not in b:
+            out.append(_anthropic_image(b))
+        elif isinstance(b, dict) and b.get("type") == "tool_result" and isinstance(b.get("content"), list):
+            out.append({**b, "content": _anthropic_content(b["content"])})
+        else:
+            out.append(b)
+    return out
+
+
+def _anthropic_messages(messages: list[Message]) -> list:
+    """Translate each message's content (image blocks → provider form); back-compatible with strings."""
+    return [
+        {**m, "content": _anthropic_content(m["content"])}
+        if isinstance(m, dict) and isinstance(m.get("content"), (str, list))
+        else m
+        for m in messages
+    ]
 
 _T = TypeVar("_T")
 
@@ -152,7 +186,7 @@ class LLMClient(Protocol):
         cache_prefix: str | None = None,
         *,
         tools: list[dict] | None = None,
-        tool_executor: Callable[[str, dict], str] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
         """Return the raw structured ``{reply, emotion, intensity}`` (the core validates it).
@@ -273,7 +307,7 @@ class AnthropicClient:
             "model": model,
             "system": system_field,
             "max_tokens": self._max_tokens,
-            "messages": messages,
+            "messages": _anthropic_messages(messages),  # v0.22: translate any image blocks to provider form
         }
         if cached and self._cache_ttl == "1h":  # the 1h cache is behind a beta header
             kwargs["extra_headers"] = {"anthropic-beta": "extended-cache-ttl-2025-04-11"}
@@ -334,7 +368,7 @@ class AnthropicClient:
         cache_prefix: str | None = None,
         *,
         tools: list[dict] | None = None,
-        tool_executor: Callable[[str, dict], str] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
         if tools and tool_executor is not None:  # v0.19 bounded tool-loop
@@ -381,7 +415,7 @@ class AnthropicClient:
         model: str,
         cache_prefix: str | None,
         tools: list[dict],
-        tool_executor: Callable[[str, dict], str],
+        tool_executor: Callable[[str, dict], str | dict],
         max_steps: int,
     ) -> dict:
         """Loop the model with extra tools + ``set_state`` until terminal or ``max_steps`` (then force).
@@ -419,17 +453,17 @@ class AnthropicClient:
                     self._finalize_loop(acc, model)
                     return {"reply": self._text_of(resp)}
                 self.last_round_log.append(("tool", rstats))  # this round called a file tool
-                # Feed each tool's result back as an untrusted tool_result, then loop.
+                # Feed each tool's result back as an untrusted tool_result, then loop. A tool may return
+                # an IMAGE block (v0.22 view_image) → the result is [untrusted-note, image], else text.
                 convo.append({"role": "assistant", "content": resp.content})
-                results = [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": getattr(tu, "id", None),
-                        "content": _UNTRUSTED_PREFIX + str(tool_executor(getattr(tu, "name", ""),
-                                                                        dict(getattr(tu, "input", {}) or {}))),
-                    }
-                    for tu in tool_uses
-                ]
+                results = []
+                for tu in tool_uses:
+                    raw = tool_executor(getattr(tu, "name", ""), dict(getattr(tu, "input", {}) or {}))
+                    content: object = (
+                        [{"type": "text", "text": _UNTRUSTED_PREFIX.strip()}, raw]
+                        if is_image_block(raw) else _UNTRUSTED_PREFIX + str(raw)
+                    )
+                    results.append({"type": "tool_result", "tool_use_id": getattr(tu, "id", None), "content": content})
                 convo.append({"role": "user", "content": results})
             self._finalize_loop(acc, model)
             return {"reply": ""}  # safety net — the forced final round returns above
@@ -575,7 +609,7 @@ class OpenAICompatibleClient:
         cache_prefix: str | None = None,
         *,
         tools: list[dict] | None = None,
-        tool_executor: Callable[[str, dict], str] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
         # The v0.19 tool-loop is Anthropic-only; this backend ignores the tool args (single call).
@@ -688,7 +722,7 @@ class MiniMaxClient:
         cache_prefix: str | None = None,
         *,
         tools: list[dict] | None = None,
-        tool_executor: Callable[[str, dict], str] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
         # The v0.19 tool-loop is Anthropic-only; this backend ignores the tool args (single call).
@@ -760,9 +794,11 @@ class MockLLMClient:
         self._tool_script = list(tool_script) if tool_script else None
         self.tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — for assertions
         self.last_round_log: list[tuple[str, ResponseStats]] = []  # per-round (tag, stats) — for the monitor
+        self.images_seen: list[dict] = []  # v0.22: image blocks the core sent (shared input + view_image)
 
     def _record(self, system: str, messages: list[Message], model: str) -> None:
         self.calls.append({"system": system, "messages": list(messages), "model": model})
+        self.images_seen.extend(images_in_messages(messages))  # v0.22: any shared-image blocks
         self.last_thinking = self._thinking_text
         self.last_stats = ResponseStats(model=model, latency_ms=0, thinking=False)
 
@@ -790,7 +826,7 @@ class MockLLMClient:
         cache_prefix: str | None = None,
         *,
         tools: list[dict] | None = None,
-        tool_executor: Callable[[str, dict], str] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
         self._record(system, messages, model)  # cache_prefix ignored by the mock
@@ -801,6 +837,8 @@ class MockLLMClient:
             for name, inp in self._tool_script[:max_steps]:
                 result = tool_executor(name, dict(inp))
                 self.tool_calls.append((name, dict(inp), result))
+                if is_image_block(result):  # v0.22: a tool (view_image) returned an image block
+                    self.images_seen.append(result)
                 self.last_round_log.append(("tool", ResponseStats(model=model, latency_ms=0)))
         self.last_round_log.append(("reply", self.last_stats))  # the terminal/answer round
         if self._state_fn is not None:
