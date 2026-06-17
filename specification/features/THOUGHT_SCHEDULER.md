@@ -128,7 +128,18 @@ topic = "{interest}"
 directive = "learn"
 at    = "23:00"
 topic = "{hungriest_need}"
+
+# the OPEN directive — any custom task you author, on any clock (see TOOL_THOUGHTS §%prompt)
+[[schedule]]
+directive = "prompt"
+at    = "08:00"
+topic = "напиши коротке хайку про сьогоднішню погоду: {weather}"
 ```
+
+The **`%prompt`** directive ([TOOL_THOUGHTS.md](TOOL_THOUGHTS.md) §The open directive) is what makes the
+scheduler open-ended: instead of only the authored directives, you can schedule **any instruction** — the
+topic *is* the instruction. A scheduled `%prompt` is "ask Лілі to do *X* every morning," with placeholders
+filling in the live seed. (Trusted because the owner authored it; tool results it pulls stay untrusted.)
 
 **Placeholders resolve at fire time, in the TUI — not in the cron.** The scheduler passes the **raw**
 `{placeholder}` topic through to the queue; the TUI's `run_directive` → `resolve` expands it against live

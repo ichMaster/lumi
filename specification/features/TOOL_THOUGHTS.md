@@ -90,6 +90,7 @@ brings a reach **toward you**).
 | **`%share`** | **choose to send you** a picture, unprompted | rare, warmth (a gift, not a demand) | a picture she made/kept | a **spoken turn** + the **photo** to your Telegram | **image** (`send_image`, v0.24) | — (the reaching-out one) | 🔲 **this spec** |
 | **`%catchup`** | a spontaneous **"що там у світі?"** glance | idle, novelty (or follows a `%wonder`/world mood) | a topic / the ambient-news seed / `{last_thought}` | stream (`kind:"catchup"`) | **news** (`news_search`→`news_read`, v0.25) | `%lookup` | 🔲 **this spec** |
 | **`%brief`** | a paced **daily catch-up ritual**, then what stayed with her | **rare/paced** (a daily ritual) | her interests / recent / the `meaning`·`novelty` need | stream (`kind:"brief"`) | **news** (`news_search`→`news_read`, v0.25) | `%learn` | 🔲 **this spec** |
+| **`%prompt`** | **you hand her any instruction** — a one-off or scheduled custom act | typed, or **scheduled** (`at:`/`every:`) | **the owner's text (the instruction itself)** + her state | stream (`kind:"prompt"`), **shown by default** | **any** (per the instruction, each tool still flag-gated) | — (the **open** one) | 🔲 **this spec** |
 | `%verify` | a mid-turn **fact-check** | resonance **mid-turn** | the current topic | woven into the reply | **wiki** | `%recall` | 🔲 **deferred** (see below) |
 
 **Triggers — now a schedule, not a single idle timer.** The *fires-when* column above is a **default**;
@@ -220,11 +221,52 @@ reply.
 
 ---
 
+## The open directive: `%prompt` (🔲 not built)
+
+Every other directive has an **authored** instruction (`%think` = "тихо помірковуй", `%catchup` = "search
+the news…"). **`%prompt <any text>`** is the **escape hatch**: *you* supply the instruction at call time,
+so you can hand Лілі **any one-off act** without us minting a new `%name` for it — and, paired with the
+scheduler, **any recurring task** ("every morning, write me a хайку про погоду").
+
+```
+%prompt напиши хайку про сьогоднішній настрій       →  one act, shown
+%prompt! підсумуй, що тебе займало цього тижня        →  open (the `!`), surfaced
+schedule.toml:  directive = "prompt", at = "08:00",   →  a daily custom ritual
+                topic = "коротко, що нового про {interest}"
+```
+
+**Mechanically it's `%think` with the instruction supplied by you** — no new engine. The directive's
+`instruction` simply comes from the **topic** instead of the authored field (the one `Directive` field
+that's runtime-bound; see *Directives — optimized*). With the shared think-path tool seam, a `%prompt`
+whose text calls for it can **use the tools** (wiki/news/image/file) — each still behind its own flag — so
+"`%prompt подивись, що пишуть про …`" can actually go look. It is the only directive that can be **any
+kind** at once; its kind is whatever you asked for.
+
+Two ways it differs from just typing the text as chat (so it earns its `%name`):
+
+- **It's a self-directed *act*, not a reply to you.** Plain chat → she **answers you**; `%prompt` → she
+  **does the thing for herself** and records it as a `Thought` (`kind:"prompt"`), the same interior stream
+  as `%think`. That's what makes it *schedulable* — a reply needs someone to reply to; an act doesn't.
+- **It defaults to *shown*.** `%think`/`%wonder` default **silent** (her private musings); `%prompt`
+  defaults **surfaced** — you asked her to do something, so you see the result (a scheduled one graduates
+  to a spoken turn / a push, per the scheduler).
+
+**Safety — the one relaxed rule, and the four that don't.** The instruction is **owner-authored, so it's
+trusted** (exactly like a reply-path request) — the de-identification rule that binds the *thought-driven*
+wiki/news/image calls **does not apply to `%prompt`** (you may put your own private specifics in your own
+instruction). But everything else holds verbatim: tool **results are still untrusted**, the **caps**
+still bound it, she stays **honest about nature** (if the act is imagination or she can't do it, she says
+so — never a false physical-world claim), and it is **owner-only** (single-owner today; owner/admin-gated
+in the v2.3 multi-user server — a non-owner can never inject a `%prompt` into her think-step). Off by
+default with the rest of the thought tools.
+
+---
+
 ## Directives — optimized (a richer record + a taxonomy)
 
-The directive set is now **12** (think · wonder · note · review · explore · lookup · learn · imagine ·
-gaze · share · catchup · brief) + the deferred `%verify` + the inward retrofits (dream · reflect ·
-recall). Two cleanups keep that from sprawling:
+The directive set is now **13** (think · wonder · note · review · explore · lookup · learn · imagine ·
+gaze · share · catchup · brief · **prompt**) + the deferred `%verify` + the inward retrofits (dream ·
+reflect · recall). Two cleanups keep that from sprawling:
 
 **1 — a directive is *data*, not a code path.** Today `Directive` is just `{name, instruction}`
 ([core/thoughts.py](../../core/thoughts.py)). As tool-thoughts land, the engine must know, per directive,
@@ -235,11 +277,12 @@ those into the **record** so adding a directive stays **one row + an authored pr
 @dataclass(frozen=True)
 class Directive:
     name: str                       # the %name
-    instruction: str                # how she should think for it (authored, her voice)
-    tools: tuple[str, ...] = ()      # tool groups the generate step may call: () | "wiki" | "image" | "news"
+    instruction: str                # how she should think for it (authored, her voice; "" for %prompt)
+    tools: tuple[str, ...] = ()      # tool groups the generate step may call: () | "wiki" | "image" | "news" | "*"
     cap: str = "tool"               # the cap bucket: "think" | "tool" | "imagine" (paid) | "share" (reach)
     surface: str = "rare"           # default surfacing: "rare" | "aside" | "spoken" | "reach"
     trigger: str = "idle"           # the scheduler default (THOUGHT_SCHEDULER) if no entry overrides
+    instruction_from_topic: bool = False   # %prompt: the topic IS the instruction (owner-authored, trusted)
 ```
 
 The mental-act engine then reads `directive.tools` to assemble the think-path loop, `directive.cap` to
@@ -256,6 +299,7 @@ the answer to "do we need a new directive?" is usually "no, it's an existing kin
 | **outward-read** | lookup · learn · review · gaze · catchup · brief | wiki / file / image / news (read) | a tool-loop | `idle:` / `at:` (rituals) | untrusted, capped |
 | **outward-make** | note · explore · imagine | file / image (write) | write (imagine **paid**) | `idle:` / `at:` | non-destructive; imagine hardest-capped |
 | **outward-reach** | share | image → Telegram | a push to you | `at:` / rare | **strictest** (a gift, owner-only) |
+| **open** | **prompt** | any (per the instruction) | depends on the act | typed / any schedule | trusted instruction, **owner-only**; tool results still untrusted |
 
 **Don't collapse the twins.** `%lookup`(wiki) / `%catchup`(news), `%learn`(wiki) / `%brief`(news),
 `%gaze`(image) / `%review`(file) look mergeable into one parameterized `%fetch source:X`. **Keep them
@@ -345,6 +389,7 @@ Same family as the rest, plus **one genuinely new rule**:
 | `LUMI_THOUGHT_WIKI` | Enable the wiki directives (`%lookup`/`%learn`) — needs `LUMI_WIKI` | `off` |
 | `LUMI_THOUGHT_IMAGE` | Enable the image directives (`%imagine`/`%gaze`/`%share`) — needs `LUMI_IMAGE`; `%share` also needs the bridge | `off` |
 | `LUMI_THOUGHT_NEWS` | Enable the news directives (`%catchup`/`%brief`) — needs `LUMI_NEWS_TOOL` | `off` |
+| `LUMI_THOUGHT_PROMPT` | Enable the **open** directive `%prompt` (owner-supplied instruction; can use any enabled tool) | `off` |
 | `LUMI_THOUGHT_TOOL_CAP` | Max tool-using proactive thinks per session (tighter than `LUMI_THOUGHTS_CAP`) | `3` |
 | `LUMI_THOUGHT_IMAGINE_CAP` | Max **paid** `%imagine` generations per session (tightest — it costs) | `1` |
 
@@ -388,6 +433,10 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
       `news_search`→`news_read` (EN query / UK cited reply, the v0.25 rules); seedable from the v0.4 ambient news.
 - [ ] 🔲 `%brief` directive — registry entry + authored prompt; `kind:"brief"`; a **paced/daily** news
       ritual (fits the scheduled cron→inbox mechanism).
+- [ ] 🔲 `%prompt` directive — the **open** one: `instruction_from_topic=True`, `tools="*"` (each tool
+      still flag-gated), defaults **shown**; owner-only; trusted instruction (no de-identification) but
+      tool results untrusted + capped; `kind:"prompt"`. The killer pairing with the scheduler (a custom
+      daily task).
 - [ ] 🔲 **De-identify** the thought-driven wiki query, the `%imagine` gen prompt, **and** the news query
       (EN-translated topic only) (+ a contract test covering all three).
 - [ ] 🔲 **Optimize the `Directive` record** — add `tools` / `cap` / `surface` / `trigger` fields so the
