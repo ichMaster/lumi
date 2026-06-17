@@ -312,6 +312,7 @@ class Core:
         image_show: str = "path,viewer,telegram",
         image_signal_path: Path | None = None,
         image_gen: Callable[..., bytes] | None = None,  # injected for tests; None → real Gemini
+        telegram_sink: Callable[[str, str], None] | None = None,  # v0.24: TUI supplies it; None → not connected
         tool_log_path: Path | None = None,
         cache_log_path: Path | None = None,
         cache_report_path: Path | None = None,
@@ -391,6 +392,9 @@ class Core:
         self._image_show = image_show
         self._image_signal_path = image_signal_path
         self._image_gen = image_gen
+        # v0.24 send_image: the injected sink the TUI supplies (it is the single outbox writer). The core
+        # never imports the bridge or writes the outbox — it only calls this callable. None → not connected.
+        self._telegram_sink = telegram_sink
         self._tool_log_path = tool_log_path
         self.last_tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — reset each turn
         # Per-call prompt-cache monitor (off by default): log each model call's cache behaviour by
@@ -1236,7 +1240,8 @@ class Core:
         routes: dict[str, Callable[[str, dict], str | dict]] = {}
         tools: list[dict] = []
         for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args(),
-                                    self._image_tool_args(), self._imagegen_tool_args()):
+                                    self._image_tool_args(), self._imagegen_tool_args(),
+                                    self._sendimage_tool_args()):
             if executor is None:
                 continue
             tools += tool_list
@@ -1308,6 +1313,23 @@ class Core:
             return result
 
         return GENERATE_TOOLS, capped
+
+    def _sendimage_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, executor) for the v0.24 ``send_image`` tool; ``(None, None)`` off.
+
+        Offered whenever the image tool is on (the same ``LUMI_IMAGE`` gate + the per-user sandbox);
+        the **injected ``telegram_sink``** the TUI supplies does the actual outbox write (single writer).
+        When the sink is ``None`` (the bridge isn't connected), the tool degrades to a "not connected"
+        notice — it is still offered so she can try and learn the bridge is off. The core never touches
+        Telegram or the outbox here."""
+        if not self._image_enabled or self._files_dir is None:
+            return None, None
+        from core.sendimage import SEND_TOOLS, SendImageTools
+
+        root = self._files_dir / self._user_id
+        root.mkdir(parents=True, exist_ok=True)
+        sender = SendImageTools(root, telegram_sink=self._telegram_sink)
+        return SEND_TOOLS, sender.execute
 
     def _emit_image_display(self, result: str, root: Path) -> None:
         """Show a freshly-generated PNG per ``LUMI_IMAGE_SHOW`` — write its path to the display signal the
@@ -1847,12 +1869,15 @@ def build_core(
     llm: LLMClient | None = None,
     repository: Repository | None = None,
     user_id: str = DEFAULT_USER_ID,
+    telegram_sink: Callable[[str, str], None] | None = None,
 ) -> Core:
     """Wire a :class:`Core` from config.
 
     Defaults to the real Anthropic backend and the local JSON store; tests inject
     a ``MockLLMClient`` and a temp-file ``JsonRepository``. The Anthropic SDK is
-    only reached when ``llm`` is not supplied.
+    only reached when ``llm`` is not supplied. ``telegram_sink`` (v0.24) is the
+    callable the TUI supplies for ``send_image`` (the single outbox writer); ``None``
+    → the tool reports the bridge isn't connected.
     """
     cfg = config or load_config()
 
@@ -1959,6 +1984,7 @@ def build_core(
         image_max_gen=cfg.image_max_gen,
         image_show=cfg.image_show,
         image_signal_path=(cfg.store_path.parent / "image.txt") if cfg.image else None,
+        telegram_sink=telegram_sink,
         tool_log_path=(cfg.store_path.parent / "tool-log.jsonl") if cfg.file_tool_trace else None,
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,
