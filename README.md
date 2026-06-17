@@ -12,14 +12,16 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.26.0 — Local dictation (STT).** Talk *to* Лілі — a separate local process **hears your speech and
-types it into the chat**, the mirror of the v0.14 voicer (voice *out* → voice *in*). Press **Ctrl+D**, speak
-Ukrainian, press it again: a `/voice` **STT adapter** (Deepgram Nova / ElevenLabs Scribe / offline Whisper)
-recognizes it and the dictator writes your line into `inbox.jsonl` — the same channel the keyboard feeds,
-so **the core can't tell typed from dictated**. The TUI's inbox drain generalizes from bridge-only to
-**bridge-or-dictation**; empty/low-confidence is dropped; **off by default** (`LUMI_DICTATION`); recording
-is **local** (cloud only for the STT call, or run **offline Whisper**). **No emotion-contract / core
-change.** See **[docs/DICTATION_SETUP.md](docs/DICTATION_SETUP.md)**.
+**0.26 — Local dictation (STT) + Telegram voice in.** Talk *to* Лілі — a separate local process **hears
+your speech and types it into the chat**, the mirror of the v0.14 voicer (voice *out* → voice *in*). Press
+**Ctrl+D**, speak Ukrainian, press it again: a `/voice` **STT adapter** (Deepgram Nova / ElevenLabs Scribe /
+offline Whisper) recognizes it and the dictator writes your line into `inbox.jsonl` — the same channel the
+keyboard feeds, so **the core can't tell typed from dictated**. The TUI's inbox drain generalizes from
+bridge-only to **bridge-or-dictation**; empty/low-confidence is dropped; **off by default** (`LUMI_DICTATION`);
+recording is **local** (cloud only for the STT call, or run **offline Whisper**). **0.26.1** extends the same
+adapter to **Telegram voice messages** (`LUMI_TELEGRAM_STT`) — daemon 1 transcribes an inbound voice note to
+`inbox.jsonl`, so a Telegram voice message is answered identically to a typed line. **No emotion-contract /
+core change.** See **[docs/DICTATION_SETUP.md](docs/DICTATION_SETUP.md)** + **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)**.
 
 Builds on **0.25's news tool (Guardian)**: ask what's happening and Лілі calls **`news_search`** →
 **`news_read`** (one outlet, single-host allowlist, an injected `NewsProvider` seam), answering **in

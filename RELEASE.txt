@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 0.26.1 (2026-06-17)
+---------------------------
+- Inbound Telegram voice messages (LUMI_TELEGRAM_STT): you can now send Лілі a VOICE MESSAGE from Telegram. The inbound twin of the outbound voice mode + the v0.26 dictator's mirror over Telegram — daemon 1 detects a voice note, downloads it, runs it through the SAME /voice STT adapter (Deepgram by default, reusing LUMI_STT_*), and forwards the transcript to inbox.jsonl, so Лілі answers it identically to a typed line (the core can't tell typed, dictated, or Telegram-voiced apart). Off by default; allowlisted senders only. Pair with LUMI_TELEGRAM_VOICE for a full voice conversation over Telegram.
+- voice_to_text (telegram/inbound.py): downloads a Telegram voice note and recognizes it via the injected STT (testable with a fake bot + MockSTT, no real Telegram/STT); a bad/empty note degrades to "" (dropped) and still advances the Telegram offset (a receive() empty-guard) so it's never re-downloaded/re-billed. The STT seam gained a content_type arg so a Telegram OGG/Opus note is sent as audio/ogg (the mic dictator stays audio/wav).
+- Config + docs: LUMI_TELEGRAM_STT (off by default) in .env.example + the TELEGRAM_SETUP "Voice messages in" section. STT mocked in all tests — no audio, no network, no paid calls. Full suite 871 tests.
+
 Version 0.26.0 (2026-06-17)
 ---------------------------
 - Local dictation / STT (v0.26, LUMI-104...106): talk TO Лілі. A separate local process hears your speech and types it into the chat — the mirror of the v0.14 voicer (voice out -> voice in). Press Ctrl+D in the TUI, speak Ukrainian, press it again; a /voice STT adapter recognizes it and the dictator writes your line into inbox.jsonl (the same channel the keyboard feeds), so the core can't tell typed from dictated. Off by default (LUMI_DICTATION); local (cloud only for the STT call, or run offline Whisper). No emotion-contract / core change.
