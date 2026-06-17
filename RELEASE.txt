@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.27.0 (2026-06-18)
+---------------------------
+- Web lookup (v0.27, LUMI-107...109): Лілі pulls a FRESH, grounded answer from the live internet during a turn via Gemini + Google Search grounding (web_lookup) — the "AI Overview" mechanism, collapsing search -> read -> synthesize into one call. Answer-first, in Ukrainian, in her own voice, DATE-ANCHORED to today (the v0.4 clock) so "this week"/"upcoming" resolve against the real today. Reaches the current/fast-moving web that Wikipedia (timeless) and Guardian news (one outlet) can't. Off by default (LUMI_WEB_LOOKUP); PAID — reuses GEMINI_API_KEY (the same key image generation uses, no new key). No emotion-contract / core change.
+- /web <query> TUI command (aliases /search, /w): fire one web lookup yourself and let Лілі answer from it — the sibling of /recall (reads her memory) but reading the live web for this turn.
+- GeminiSearch seam keeps core SDK-free (the same philosophy as LLMClient / ImageGen / NewsProvider); the default gemini_search runs gemini-2.5-flash + tools:[{google_search:{}}] over stdlib urllib (the v0.23 caller pattern). Answer is UNTRUSTED data (EN+UK injection ignored); the query carries NO personal/memory data; bounded (LUMI_WEB_LOOKUP_MAX_CALLS / _MAX_CHARS); never raises (an HTTP/key/refusal/empty error degrades to a string). Operator guide: docs/WEB_LOOKUP_SETUP.md.
+- Tests mock Gemini via a stub GeminiSearch (+ a monkeypatched urlopen for the default impl) — no network, no key, no paid calls in CI. Full suite 897 tests.
+- Spec/roadmap: redesigned the journal into a LOCAL day-summary tool (journal_write/read/list + /journal, auto-stamped mood/biorhythm/forecast — v0.28) and added the %journal directive; added file tool III (v0.34: created/modified dates + create_folder + copy_file, non-destructive); pulled web lookup forward to v0.27 in the v0 tail.
+
 Version 0.26.1 (2026-06-17)
 ---------------------------
 - Inbound Telegram voice messages (LUMI_TELEGRAM_STT): you can now send Лілі a VOICE MESSAGE from Telegram. The inbound twin of the outbound voice mode + the v0.26 dictator's mirror over Telegram — daemon 1 detects a voice note, downloads it, runs it through the SAME /voice STT adapter (Deepgram by default, reusing LUMI_STT_*), and forwards the transcript to inbox.jsonl, so Лілі answers it identically to a typed line (the core can't tell typed, dictated, or Telegram-voiced apart). Off by default; allowlisted senders only. Pair with LUMI_TELEGRAM_VOICE for a full voice conversation over Telegram.

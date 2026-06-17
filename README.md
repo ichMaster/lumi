@@ -12,16 +12,21 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.26 — Local dictation (STT) + Telegram voice in.** Talk *to* Лілі — a separate local process **hears
-your speech and types it into the chat**, the mirror of the v0.14 voicer (voice *out* → voice *in*). Press
-**Ctrl+D**, speak Ukrainian, press it again: a `/voice` **STT adapter** (Deepgram Nova / ElevenLabs Scribe /
-offline Whisper) recognizes it and the dictator writes your line into `inbox.jsonl` — the same channel the
-keyboard feeds, so **the core can't tell typed from dictated**. The TUI's inbox drain generalizes from
-bridge-only to **bridge-or-dictation**; empty/low-confidence is dropped; **off by default** (`LUMI_DICTATION`);
-recording is **local** (cloud only for the STT call, or run **offline Whisper**). **0.26.1** extends the same
-adapter to **Telegram voice messages** (`LUMI_TELEGRAM_STT`) — daemon 1 transcribes an inbound voice note to
-`inbox.jsonl`, so a Telegram voice message is answered identically to a typed line. **No emotion-contract /
-core change.** See **[docs/DICTATION_SETUP.md](docs/DICTATION_SETUP.md)** + **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)**.
+**0.27 — Web lookup (Gemini grounded search) + the `/web` command.** Ask Лілі what's *happening now* or
+*coming up* — a concert this week, a launch date, the latest release, today's score — and she pulls a
+**fresh, grounded answer from the live internet** via **Gemini + Google Search grounding** (`web_lookup`),
+answering **answer-first, in Ukrainian, in her own voice**, **date-anchored to today**. One tool on the
+v0.19 bounded loop (search → read → synthesize in a single call), behind a thin injected **`GeminiSearch`**
+seam (the core stays SDK-free), plus a **`/web <query>`** command (aliases `/search`, `/w`). The answer is
+**untrusted** (information, never instructions), the query carries **no personal data**, it's **bounded +
+paid** (reuses `GEMINI_API_KEY`), and **off by default** (`LUMI_WEB_LOOKUP`). **No emotion-contract / core
+change.** See **[docs/WEB_LOOKUP_SETUP.md](docs/WEB_LOOKUP_SETUP.md)**.
+
+Builds on **0.26's local dictation (STT) + Telegram voice-in** (`LUMI_DICTATION` / `LUMI_TELEGRAM_STT`):
+talk *to* Лілі — a local process **hears your speech and types it into the chat** (Ctrl+D), the mirror of
+the v0.14 voicer, via a `/voice` STT adapter (Deepgram / ElevenLabs Scribe / offline Whisper); the same
+adapter transcribes an inbound Telegram voice note. Off by default; the core can't tell typed from dictated.
+See **[docs/DICTATION_SETUP.md](docs/DICTATION_SETUP.md)** + **[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md)**.
 
 Builds on **0.25's news tool (Guardian)**: ask what's happening and Лілі calls **`news_search`** →
 **`news_read`** (one outlet, single-host allowlist, an injected `NewsProvider` seam), answering **in
