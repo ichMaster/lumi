@@ -231,7 +231,7 @@ instead of waiting for the whole server + creative layer.
 
 ## Mapping to the roadmap
 
-**v0.27 — Journal tool (day-summary diary + read-by-date, auto-stamped mood/biorhythm/forecast)**, a
+**v0.28 — Journal tool (day-summary diary + read-by-date, auto-stamped mood/biorhythm/forecast)**, a
 reply-path tool on the v0.19 loop + the `/journal` command; off by default, local, mocked in tests. It
 composes the metadata header from the v0.6 mood + v0.8 biorhythms + v0.4 clock and writes through the
 v0.19/v0.20 file sandbox — **all shipped**. Per-user, isolated, non-destructive; off by default → behaves
