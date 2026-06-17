@@ -117,7 +117,10 @@ def run() -> None:  # pragma: no cover - mic capture + STT glue (no audio/paid C
                     stream = None
                 audio = _wav(b"".join(recording), samplerate)
                 rid = recognize_and_append(audio, cfg.inbox_path, stt, lang=cfg.stt_lang, log=log)
-                log.info("recognized → inbox id=%s" if rid else "nothing recognized", rid)
+                if rid:
+                    log.info("recognized → inbox id=%s", rid)
+                else:
+                    log.info("nothing recognized")
             was_on = on
         except Exception as exc:  # noqa: BLE001 — a transient error must not kill the dictator
             log.error("dictator loop error (retrying): %s", exc)

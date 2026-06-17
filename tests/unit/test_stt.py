@@ -9,7 +9,14 @@ import pytest
 
 from state import fifo
 from voice.dictator import read_flag, recognize_and_append
-from voice.stt import DeepgramSTT, ElevenLabsScribeSTT, MockSTT, WhisperSTT, build_stt
+from voice.stt import (
+    DeepgramSTT,
+    ElevenLabsScribeSTT,
+    MockSTT,
+    WhisperSTT,
+    _deepgram_transcript,
+    build_stt,
+)
 
 
 # --- the STT seam -----------------------------------------------------------------------------------
@@ -39,6 +46,15 @@ def test_build_stt_model_override():
     assert build_stt("deepgram", api_key="k").model == "nova-3"          # default
     assert build_stt("deepgram", api_key="k", model="nova-2").model == "nova-2"  # overridden
     assert build_stt("deepgram", api_key="k", model="").model == "nova-3"  # "" → default
+
+
+def test_deepgram_transcript_parse():
+    ok = {"results": {"channels": [{"alternatives": [{"transcript": "привіт світ", "confidence": 0.98}]}]}}
+    assert _deepgram_transcript(ok) == "привіт світ"
+    # silence / malformed shapes → "" (so recognize_and_append drops them), never a KeyError
+    assert _deepgram_transcript({"results": {"channels": [{"alternatives": [{"transcript": ""}]}]}}) == ""
+    assert _deepgram_transcript({}) == ""
+    assert _deepgram_transcript({"results": {"channels": []}}) == ""
 
 
 # --- read_flag --------------------------------------------------------------------------------------
@@ -87,7 +103,9 @@ def test_ids_are_monotonic_for_dedup(tmp_path):
 
 
 def test_config_dictation_defaults():
-    from core.config import load_config
-    c = load_config()
-    assert c.dictation is False and c.stt_provider in {"deepgram", "elevenlabs", "whisper"}
-    assert c.stt_lang == "uk" and c.listen_flag_path.name == "listen.flag"
+    from core.config import (
+        Config,  # the dataclass defaults (hermetic — not the developer's live .env)
+    )
+    c = Config()
+    assert c.dictation is False and c.stt_provider == "deepgram"
+    assert c.stt_model == "" and c.stt_lang == "uk" and c.listen_flag_path.name == "listen.flag"

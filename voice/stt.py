@@ -21,21 +21,36 @@ class STT(Protocol):
     def recognize(self, audio: bytes, *, lang: str = "uk") -> str: ...
 
 
+def _deepgram_transcript(data: dict) -> str:
+    """Pull the transcript out of a Deepgram ``/v1/listen`` JSON response (pure — testable, no network)."""
+    channels = ((data.get("results") or {}).get("channels")) or [{}]
+    alternatives = (channels[0].get("alternatives")) or [{}]
+    return (alternatives[0].get("transcript") or "").strip()
+
+
 class DeepgramSTT:
-    """Recognize via Deepgram (Nova-3, Ukrainian). ``deepgram-sdk`` is imported lazily inside
-    :meth:`recognize`, so the adapter constructs (and the module imports) without the dep installed."""
+    """Recognize via Deepgram's prerecorded **REST** API (Nova-*, Ukrainian) over stdlib ``urllib`` — no
+    SDK, so it's immune to SDK version churn (the same raw endpoint the pyramid firmware uses). The audio
+    is sent as WAV; the host is fixed."""
+
+    URL = "https://api.deepgram.com/v1/listen"
 
     def __init__(self, api_key: str, *, model: str = "nova-3") -> None:
         self.model = model
         self._api_key = api_key  # secret — never logged
 
     def recognize(self, audio: bytes, *, lang: str = "uk") -> str:  # pragma: no cover - network
-        from deepgram import DeepgramClient, PrerecordedOptions
+        import json
+        import urllib.parse
+        import urllib.request
 
-        dg = DeepgramClient(self._api_key)
-        opts = PrerecordedOptions(model=self.model, language=lang, smart_format=True)
-        resp = dg.listen.prerecorded.v("1").transcribe_file({"buffer": audio}, opts)
-        return (resp.results.channels[0].alternatives[0].transcript or "").strip()
+        params = urllib.parse.urlencode({"model": self.model, "language": lang, "smart_format": "true"})
+        req = urllib.request.Request(
+            f"{self.URL}?{params}", data=audio, method="POST",
+            headers={"Authorization": f"Token {self._api_key}", "Content-Type": "audio/wav"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 — fixed Deepgram host
+            return _deepgram_transcript(json.loads(resp.read()))
 
 
 class ElevenLabsScribeSTT:
