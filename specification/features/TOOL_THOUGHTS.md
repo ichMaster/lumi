@@ -92,6 +92,14 @@ brings a reach **toward you**).
 | **`%brief`** | a paced **daily catch-up ritual**, then what stayed with her | **rare/paced** (a daily ritual) | her interests / recent / the `meaning`·`novelty` need | stream (`kind:"brief"`) | **news** (`news_search`→`news_read`, v0.25) | `%learn` | 🔲 **this spec** |
 | `%verify` | a mid-turn **fact-check** | resonance **mid-turn** | the current topic | woven into the reply | **wiki** | `%recall` | 🔲 **deferred** (see below) |
 
+**Triggers — now a schedule, not a single idle timer.** The *fires-when* column above is a **default**;
+each directive's real cadence is a **schedule entry** in the new [THOUGHT_SCHEDULER.md](THOUGHT_SCHEDULER.md)
+— a separate cron process firing directives on a clock (`every 10m` · `idle 15m` · `at 08:00` ·
+`between 07:00-09:00 every 20m` · `cron …`). **`idle:` is one of the trigger types** (the migrated v0.4/v0.12
+nudge — "she muses when you've been away"); the rest are wall-clock rituals (`%brief` each morning, `%catchup`
+through the day, `%learn` at night). Sensible per-directive defaults: **inward** → `idle:`; **rituals**
+(`%learn`/`%brief`) → `at:` daily; **glances** (`%lookup`/`%catchup`) → `idle:`/`between:`.
+
 ---
 
 ## The wiki directives in detail
@@ -212,6 +220,87 @@ reply.
 
 ---
 
+## Directives — optimized (a richer record + a taxonomy)
+
+The directive set is now **12** (think · wonder · note · review · explore · lookup · learn · imagine ·
+gaze · share · catchup · brief) + the deferred `%verify` + the inward retrofits (dream · reflect ·
+recall). Two cleanups keep that from sprawling:
+
+**1 — a directive is *data*, not a code path.** Today `Directive` is just `{name, instruction}`
+([core/thoughts.py](../../core/thoughts.py)). As tool-thoughts land, the engine must know, per directive,
+*which tools it may call*, *which cap bucket it spends*, *how it surfaces*, and *its default cadence*. Fold
+those into the **record** so adding a directive stays **one row + an authored prompt — no new branch**:
+
+```python
+@dataclass(frozen=True)
+class Directive:
+    name: str                       # the %name
+    instruction: str                # how she should think for it (authored, her voice)
+    tools: tuple[str, ...] = ()      # tool groups the generate step may call: () | "wiki" | "image" | "news"
+    cap: str = "tool"               # the cap bucket: "think" | "tool" | "imagine" (paid) | "share" (reach)
+    surface: str = "rare"           # default surfacing: "rare" | "aside" | "spoken" | "reach"
+    trigger: str = "idle"           # the scheduler default (THOUGHT_SCHEDULER) if no entry overrides
+```
+
+The mental-act engine then reads `directive.tools` to assemble the think-path loop, `directive.cap` to
+pick the counter, `directive.surface` for the graduation policy, and `directive.trigger` as the scheduler
+default — all **table-driven**, so a new directive never touches the loop. (`%think`/`%wonder` keep
+`tools=()` — the v0.12 tool-less call — so nothing about the shipped pair changes.)
+
+**2 — a taxonomy (not more directives).** Four kinds, which also set the safety/cap/trigger defaults — so
+the answer to "do we need a new directive?" is usually "no, it's an existing kind with a different seed":
+
+| kind | directives | tool | cost | default trigger | restraint |
+|---|---|---|---|---|---|
+| **inward** | think · wonder · dream · reflect · recall | — | cheapest | `idle:` | lowest |
+| **outward-read** | lookup · learn · review · gaze · catchup · brief | wiki / file / image / news (read) | a tool-loop | `idle:` / `at:` (rituals) | untrusted, capped |
+| **outward-make** | note · explore · imagine | file / image (write) | write (imagine **paid**) | `idle:` / `at:` | non-destructive; imagine hardest-capped |
+| **outward-reach** | share | image → Telegram | a push to you | `at:` / rare | **strictest** (a gift, owner-only) |
+
+**Don't collapse the twins.** `%lookup`(wiki) / `%catchup`(news), `%learn`(wiki) / `%brief`(news),
+`%gaze`(image) / `%review`(file) look mergeable into one parameterized `%fetch source:X`. **Keep them
+separate** — the directive *name* is what makes the stream legible (a `kind:"catchup"` reads differently
+from a `kind:"lookup"` when surfaced, and the scheduler keys cadence by name). One act, one name; the act
+picks its tool, not a parameter.
+
+---
+
+## Placeholders — optimized (the seed-binding layer)
+
+Placeholders (`{name}` → live value, resolved by the shipped `resolve()` /
+[`_placeholder_resolvers`](../../core/agent.py)) are no longer just prompt sugar — they are **the binding
+layer between the scheduler and a directive's seed**. A schedule entry's `topic = "{ambient_news}"` stays a
+**raw token** in the cron (core-free) and is **expanded by the TUI at fire time** against live state, so
+the seed is always current. That makes the placeholder set worth extending.
+
+**Shipped (v0.12):** `{last_thought}` · `{thoughts}` · `{mood}` · `{closeness}` · `{recent}` · `{now}` ·
+`{today}` · `{user}` · `{plan}` · `{need}` (the last two are stubs → `""` until inner-life/needs land).
+
+**Proposed additions** (each a lazy, isolation-aware getter; unknown still degrades to the literal token,
+so a seed referencing a not-yet-wired source safely resolves to `""` → the directive free-muses):
+
+| placeholder | resolves to | seeds |
+|---|---|---|
+| `{ambient_news}` | the v0.4 ambient headline (the passive snapshot) | `%catchup` |
+| `{world}` / `{weather}` | the v0.4 now/here ambient line | `%wonder` / `%catchup` |
+| `{last_image}` | the newest PNG in her `art/` sandbox | `%gaze` / `%share` |
+| `{interest}` | a topic she's returned to (mined from recent thoughts / RAG) | `%learn` / `%brief` |
+| `{hungriest_need}` | the most-starved drive (when v1.x needs land; today `""`) | `%learn` / `%imagine` |
+| `{section}` | a Guardian section (topical, else random from the allowlist) | `%catchup` / `%brief` |
+| `{weekday}` | the day name (for time-aware ritual prompts) | `%brief` |
+| `{gap}` | time since the last session (the away-gap) | `%dream` / inner-life |
+
+**Three optimizations to the mechanism itself:**
+
+- **Keep the registry flat + lazy** (it already is) — a flat `dict[str, () -> str]`, each getter called
+  only if its token appears. No namespacing yet (`news.headline` etc.) until the set outgrows a flat list.
+- **`""`-on-empty is the contract** — every getter returns `""` (never raises, never `None`) when its
+  source is off/absent, so a scheduled seed never breaks a fire; the directive simply muses unseeded.
+- **Isolation-aware by construction** — `{last_thought}`/`{thoughts}`/`{last_image}` read **this user's**
+  data only (the existing per-user rule), so a placeholder can never leak A's interior into B's seed.
+
+---
+
 ## Safety & invariants
 
 Same family as the rest, plus **one genuinely new rule**:
@@ -301,8 +390,14 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
       ritual (fits the scheduled cron→inbox mechanism).
 - [ ] 🔲 **De-identify** the thought-driven wiki query, the `%imagine` gen prompt, **and** the news query
       (EN-translated topic only) (+ a contract test covering all three).
+- [ ] 🔲 **Optimize the `Directive` record** — add `tools` / `cap` / `surface` / `trigger` fields so the
+      think-path loop + caps + scheduler defaults are **table-driven** (a directive = one data row).
+- [ ] 🔲 **Extend the placeholder resolver** — `{ambient_news}` / `{world}` / `{last_image}` / `{interest}`
+      / `{hungriest_need}` / `{section}` / `{weekday}` / `{gap}` (lazy, `""`-on-empty, isolation-aware).
+- [ ] 🔲 **Scheduler** — the trigger model + the cron process + the TUI queue-drain (full design in
+      [THOUGHT_SCHEDULER.md](THOUGHT_SCHEDULER.md)); `idle:` is the migrated v0.4/v0.12 nudge.
 - [ ] 🔲 Config: `LUMI_THOUGHT_TOOLS` / `LUMI_THOUGHT_WIKI` / `LUMI_THOUGHT_IMAGE` / `LUMI_THOUGHT_NEWS` /
-      `LUMI_THOUGHT_TOOL_CAP` / `LUMI_THOUGHT_IMAGINE_CAP`.
+      `LUMI_THOUGHT_TOOL_CAP` / `LUMI_THOUGHT_IMAGINE_CAP` (+ the `LUMI_SCHED*` set, in THOUGHT_SCHEDULER).
 - [ ] 🔲 Tests: a mocked `wiki_search→wiki_read→thought` records a `lookup`; a mocked
       `generate_image→thought` records an `imagine` (stub `ImageGen`, **no paid calls**) with a
       de-identified prompt; `%gaze` views a sandbox image; `%share` calls a **fake `telegram_sink`** and
