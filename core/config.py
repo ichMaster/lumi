@@ -208,6 +208,16 @@ class Config:
     wiki_base_url: str = ""         # override the host (default https://{lang}.wikipedia.org)
     wiki_max_chars: int = 1500      # extract size cap for one wiki_read
     wiki_max_calls: int = 4         # per-turn wiki call cap (the wiring enforces it)
+    # v0.25 Guardian news tool — custom news_search/news_read on the v0.19 tool-loop. Off by default.
+    # Distinct from the v0.4 AMBIENT news (LUMI_NEWS_URL/_CAP above) — fresh namespace, no collision.
+    news_tool: bool = False         # enable the news tool (LUMI_NEWS_TOOL)
+    news_api_key: str = ""          # the Guardian developer key (LUMI_NEWS_API_KEY)
+    news_api_url: str = "https://content.guardianapis.com"  # API base (override for tests/mirror)
+    news_sections: str = "world,politics,business,technology,science,environment,culture,sport"  # topic allowlist
+    news_max_results: int = 8       # candidates per news_search
+    news_max_chars: int = 3000      # body size cap for one news_read
+    news_max_calls: int = 4         # per-turn news call cap (the wiring enforces it)
+    news_days: int = 7              # default recency window for a search (from-date)
     # v0.22 local image tool I: vision — view_image on the v0.19 tool-loop + shared-image input. Off by default.
     image: bool = False             # enable vision (view_image + shared-image input) (LUMI_IMAGE)
     vision_max: int = 4             # max images viewed/attached per turn (the wiring enforces it)
@@ -426,6 +436,15 @@ def load_config(*, load_env: bool = True) -> Config:
         wiki_base_url=os.getenv("LUMI_WIKI_BASE_URL") or "",
         wiki_max_chars=int(os.getenv("LUMI_WIKI_MAX_CHARS") or 1500),
         wiki_max_calls=int(os.getenv("LUMI_WIKI_MAX_CALLS") or 4),
+        news_tool=(os.getenv("LUMI_NEWS_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
+        news_api_key=os.getenv("LUMI_NEWS_API_KEY") or "",
+        news_api_url=os.getenv("LUMI_NEWS_API_URL") or "https://content.guardianapis.com",
+        news_sections=os.getenv("LUMI_NEWS_SECTIONS")
+        or "world,politics,business,technology,science,environment,culture,sport",
+        news_max_results=int(os.getenv("LUMI_NEWS_MAX_RESULTS") or 8),
+        news_max_chars=int(os.getenv("LUMI_NEWS_MAX_CHARS") or 3000),
+        news_max_calls=int(os.getenv("LUMI_NEWS_MAX_CALLS") or 4),
+        news_days=int(os.getenv("LUMI_NEWS_DAYS") or 7),
         image=(os.getenv("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
         vision_max=int(os.getenv("LUMI_VISION_MAX") or 4),
         image_max_bytes=int(os.getenv("LUMI_IMAGE_MAX_BYTES") or 5_242_880),
