@@ -182,19 +182,19 @@ async def send_photo_record(bot, chats, record, *, emoji_map=None, fs_input=None
     """
     wrap = fs_input or (lambda p: p)
     photo = Path(record.get("photo", "") or "")
-    caption = caption_for(record, emoji_map)
+    text = render([record], emoji_map)  # her words + emoji (full — NOT pre-capped, so we can decide below)
     for chat in chats:
         if photo.is_file():
-            if len(caption) <= CAPTION_LIMIT:
-                await bot.send_photo(chat, wrap(str(photo)), caption=caption)
-            else:  # caption too long for a photo → photo, then the text as message(s)
+            if len(text) <= CAPTION_LIMIT:
+                await bot.send_photo(chat, wrap(str(photo)), caption=text)
+            else:  # text too long for a caption → photo, then the words as message(s)
                 await bot.send_photo(chat, wrap(str(photo)))
-                for piece in chunk(caption, MESSAGE_LIMIT):
+                for piece in chunk(text, MESSAGE_LIMIT):
                     await bot.send_message(chat, piece)
         else:  # the file vanished between the turn and the send — send the words, don't crash
             if log is not None:
                 log.warning("send_image file missing (id=%s): %s", record.get("id"), photo)
-            for piece in chunk(caption, MESSAGE_LIMIT):
+            for piece in chunk(text, MESSAGE_LIMIT):
                 await bot.send_message(chat, piece)
 
 
