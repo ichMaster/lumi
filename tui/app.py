@@ -37,7 +37,7 @@ from core.prompt import mark_cache_breakpoint
 from core.repository import Session
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
-from tui.bridge import drain_inbox, mirror_reply, mirror_user
+from tui.bridge import drain_inbox_records, mirror_reply, mirror_user, set_listen_flag
 from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
@@ -53,6 +53,8 @@ CANCELLED_LINE = "Cancelled."
 USER_COLOR = "cyan"
 TELEGRAM_LABEL = "📱 Telegram"  # v0.13: an incoming line from the Telegram bridge
 TELEGRAM_COLOR = "blue"
+VOICE_LABEL = "🎤 ти"  # v0.26: a dictated line (source="voice") — shown as your own line
+VOICE_COLOR = "cyan"
 LILI_COLOR = "green"
 ERROR_COLOR = "red"
 SYSTEM_COLOR = "yellow"
@@ -151,6 +153,7 @@ class LumiApp(App[None]):
         Binding("ctrl+l", "clear", "Clear screen", priority=True),
         Binding("ctrl+t", "toggle_mouse", "Mouse select", priority=True),
         Binding("ctrl+s", "toggle_sound", "Sound", priority=True),
+        Binding("ctrl+d", "toggle_listen", "Dictate", priority=True),
     ]
     CSS = """
     #thinking {
@@ -222,6 +225,10 @@ class LumiApp(App[None]):
         self._inbox_pos: Path | None = None
         self._outbox_path: Path | None = None
         self._inbox_busy: bool = False  # avoid overlapping inbox drains
+        # v0.26 dictation: the TUI flips listen.flag on a key; the dictator records + writes inbox.
+        self._dictation: bool = False
+        self._listen_flag_path: Path | None = None
+        self._listening: bool = False  # the current listen.flag state (the TUI is the sole writer)
         # When True the app releases the mouse so the terminal can select text.
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
@@ -284,13 +291,18 @@ class LumiApp(App[None]):
         # mirrors Лілі's replies to the outbox FIFO (→ Telegram). Off unless LUMI_BRIDGE=on.
         self._bridge = cfg.bridge
         self._voice = cfg.voice  # v0.14: the local voicer also consumes the outbox
+        self._dictation = cfg.dictation  # v0.26: the dictator writes inbox; the TUI drains it
         # The outbox is written when EITHER the Telegram bridge or the local voicer wants it.
         if self._bridge or self._voice:
             self._outbox_path = cfg.outbox_path
-        if self._bridge:  # the inbox poller is Telegram-only
+        # The inbox is drained when EITHER the Telegram bridge or local dictation feeds it.
+        if self._bridge or self._dictation:
             self._inbox_path = cfg.inbox_path
             self._inbox_pos = cfg.inbox_path.with_suffix(".pos")
             self.set_interval(1, self._poll_inbox)
+        if self._dictation:
+            self._listen_flag_path = cfg.listen_flag_path
+            set_listen_flag(self._listen_flag_path, False)  # start not-listening (the TUI owns the flag)
 
     async def _refresh_world(self) -> None:
         """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
@@ -545,6 +557,23 @@ class LumiApp(App[None]):
         self.notify(f"Sound {'on' if self._sound_on else 'off'}.", timeout=1)
         self._render_status()
 
+    def action_toggle_listen(self) -> None:
+        """Toggle dictation listening (Ctrl+D, v0.26) — flip the `listen.flag` the dictator reads.
+
+        The TUI is the **only** writer of the flag: ``on`` → the dictator records; ``off`` → it recognizes
+        and writes your line to `inbox` (which the TUI then drains). A no-op when dictation is off."""
+        if not self._dictation or self._listen_flag_path is None:
+            self.notify("Dictation is off (set LUMI_DICTATION=on + run the dictator).",
+                        severity="warning", timeout=2)
+            return
+        self._listening = not self._listening
+        set_listen_flag(self._listen_flag_path, self._listening)
+        if self._listening:
+            self._say(VOICE_LABEL, "🎙 слухаю…", VOICE_COLOR)  # "listening…"
+        else:
+            self.notify("Stopped listening — recognizing…", timeout=1)
+        self._render_status()
+
     def _set_busy(self, busy: bool) -> None:
         """Toggle the working state and **lock the input box** while Лілі replies — the
         box is disabled until it's your turn, then re-enabled and refocused."""
@@ -689,19 +718,28 @@ class LumiApp(App[None]):
             self._think_busy = False
 
     def _poll_inbox(self) -> None:
-        """Bridge tick (v0.13): drain the `inbox` FIFO (Telegram → file) on idle and run each line as a
-        turn. Gated on the bridge being on, not-busy, an open session, and no overlapping drain."""
-        if not self._bridge or self._busy or self._session is None or self._inbox_busy:
+        """Inbox tick (v0.13/v0.26): drain the `inbox` FIFO (Telegram → file, or dictation → file) on idle
+        and run each line as a turn. Gated on bridge **or** dictation, not-busy, a session, no overlap."""
+        if not (self._bridge or self._dictation) or self._busy or self._session is None or self._inbox_busy:
             return
         self.run_worker(self._drain_inbox(), exclusive=False)
 
     async def _drain_inbox(self) -> None:
-        """Run each unread `inbox` line as a turn (shown tagged), advancing the pointer."""
+        """Run each unread `inbox` line as a turn (shown tagged by source), advancing the pointer.
+
+        A ``source="voice"`` record is a v0.26 dictated line (shown as **your** line); anything else is a
+        v0.13 Telegram line. Either way the core runs it identically to a typed turn — it can't tell them
+        apart (``source`` is reference only).
+        """
         self._inbox_busy = True
         try:
-            for text in drain_inbox(self._inbox_path, self._inbox_pos):
-                self._say(TELEGRAM_LABEL, text, TELEGRAM_COLOR)  # show what arrived
-                self._last_activity = self._core.clock()  # a Telegram line is real activity
+            for rec in drain_inbox_records(self._inbox_path, self._inbox_pos):
+                text = rec["text"]
+                if rec.get("source") == "voice":
+                    self._say(VOICE_LABEL, text, VOICE_COLOR)  # your dictated line
+                else:
+                    self._say(TELEGRAM_LABEL, text, TELEGRAM_COLOR)  # an incoming Telegram line
+                self._last_activity = self._core.clock()  # a dictated / Telegram line is real activity
                 await self._run_turn(text, hidden=True)  # reply (the line was already shown)
         finally:
             self._inbox_busy = False

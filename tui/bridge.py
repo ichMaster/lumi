@@ -15,12 +15,29 @@ from core.emotion import EmotionState
 from state import fifo
 
 
-def drain_inbox(inbox_path: str | Path, pos_path: str | Path) -> list[str]:
-    """The unread `inbox` lines (oldest first); advances the pointer past them. Empty when caught up."""
+def drain_inbox_records(inbox_path: str | Path, pos_path: str | Path) -> list[dict]:
+    """The unread `inbox` **records** (oldest first); advances the pointer past them. Empty when caught up.
+
+    Each record carries its ``source`` (``"voice"`` for a v0.26 dictated line, else a Telegram line), so
+    the consumer can tag it; :func:`drain_inbox` is the text-only convenience over this.
+    """
     records = fifo.read_since(inbox_path, fifo.load_pointer(pos_path))
     if records:
         fifo.save_pointer(pos_path, records[-1]["id"])
-    return [r["text"] for r in records]
+    return records
+
+
+def drain_inbox(inbox_path: str | Path, pos_path: str | Path) -> list[str]:
+    """The unread `inbox` lines (oldest first); advances the pointer past them. Empty when caught up."""
+    return [r["text"] for r in drain_inbox_records(inbox_path, pos_path)]
+
+
+def set_listen_flag(flag_path: str | Path, on: bool) -> None:
+    """Write the v0.26 dictation `listen.flag` (``on``/``off``). The TUI is the **only** writer; the
+    dictator process reads it to know when to record. Best-effort — the parent dir is created."""
+    p = Path(flag_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("on" if on else "off", encoding="utf-8")
 
 
 def mirror_reply(outbox_path: str | Path, state: EmotionState) -> int:
