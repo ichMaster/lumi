@@ -220,6 +220,12 @@ class Config:
     news_max_chars: int = 3000      # body size cap for one news_read
     news_max_calls: int = 4         # per-turn news call cap (the wiring enforces it)
     news_days: int = 7              # default recency window for a search (from-date)
+    # v0.27 web lookup — custom web_lookup (Gemini + Google Search grounding) on the v0.19 tool-loop.
+    # Off by default; PAID — reuses GEMINI_API_KEY (no new key), same key generate_image uses.
+    web_lookup: bool = False        # enable the web lookup tool (+ /web command) (LUMI_WEB_LOOKUP)
+    web_lookup_model: str = "gemini-2.5-flash"  # the Gemini grounding model (LUMI_WEB_LOOKUP_MODEL)
+    web_lookup_max_calls: int = 2   # per-turn grounded-call cap (paid — keep small)
+    web_lookup_max_chars: int = 2000  # cap on the answer length folded into the reply
     # v0.22 local image tool I: vision — view_image on the v0.19 tool-loop + shared-image input. Off by default.
     image: bool = False             # enable vision (view_image + shared-image input) (LUMI_IMAGE)
     vision_max: int = 4             # max images viewed/attached per turn (the wiring enforces it)
@@ -455,6 +461,10 @@ def load_config(*, load_env: bool = True) -> Config:
         news_max_chars=int(os.getenv("LUMI_NEWS_MAX_CHARS") or 3000),
         news_max_calls=int(os.getenv("LUMI_NEWS_MAX_CALLS") or 4),
         news_days=int(os.getenv("LUMI_NEWS_DAYS") or 7),
+        web_lookup=(os.getenv("LUMI_WEB_LOOKUP") or "off").strip().lower() in _TRUTHY,  # v0.27, off by default
+        web_lookup_model=os.getenv("LUMI_WEB_LOOKUP_MODEL") or "gemini-2.5-flash",
+        web_lookup_max_calls=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CALLS") or 2),
+        web_lookup_max_chars=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CHARS") or 2000),
         image=(os.getenv("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
         vision_max=int(os.getenv("LUMI_VISION_MAX") or 4),
         image_max_bytes=int(os.getenv("LUMI_IMAGE_MAX_BYTES") or 5_242_880),
