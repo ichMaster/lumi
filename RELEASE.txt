@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.26.0 (2026-06-17)
+---------------------------
+- Local dictation / STT (v0.26, LUMI-104...106): talk TO Лілі. A separate local process hears your speech and types it into the chat — the mirror of the v0.14 voicer (voice out -> voice in). Press Ctrl+D in the TUI, speak Ukrainian, press it again; a /voice STT adapter recognizes it and the dictator writes your line into inbox.jsonl (the same channel the keyboard feeds), so the core can't tell typed from dictated. Off by default (LUMI_DICTATION); local (cloud only for the STT call, or run offline Whisper). No emotion-contract / core change.
+- voice/stt.py (LUMI-104): the /voice STT adapter seam — the mirror of tts.py. An STT Protocol (recognize(audio, *, lang) -> str), DeepgramSTT (raw /v1/listen REST over stdlib urllib — no SDK, version-proof), ElevenLabsScribeSTT, offline WhisperSTT, MockSTT, and build_stt. The model is configurable (LUMI_STT_MODEL; default deepgram nova-3, pin nova-2 if preferred). voice/dictator.py — the voicer's mirror: watch listen.flag, record the mic, recognize on stop, append {id, text, source:"voice"} to inbox; empty/low-confidence and errors degrade to a dropped line (never raise); dedup via the fifo id.
+- TUI integration (LUMI-105): a Ctrl+D listen toggle writes listen.flag (the TUI is the sole writer) + shows "слухаю…"; the inbox drain generalizes from bridge-only to bridge-OR-dictation; a source="voice" line is shown as your line (🎤 ти) vs a Telegram line, and drives a turn identical to typed. .env.example + docs/DICTATION_SETUP.md; the stale v0.21 dictation refs fixed to v0.26 in DICTATION_LOCAL.md.
+- Tests (LUMI-106) + a `dictation` install extra: an integration/contract suite proving a recognized line (mock STT) reaches the core identical to a typed one, empty-drop + dedup + bridge-independence, with the {reply, emotion, intensity} contract intact. STT mocked everywhere — no audio, no network, no paid calls. Full suite 867 tests.
+- Config: LUMI_DICTATION / LUMI_STT_PROVIDER / LUMI_STT_MODEL / LUMI_STT_LANG / LUMI_LISTEN_FLAG / DEEPGRAM_API_KEY.
+
 Version 0.25.0 (2026-06-17)
 ---------------------------
 - News tool (v0.25, LUMI-101...103): Лілі can READ FRESH NEWS on demand during a turn, from one outlet — The Guardian Open Platform. Ask what's happening and she calls news_search (by topic -> candidates: title + summary + an opaque per-turn id, no bodies) then news_read (one article by a this-turn id -> full text capped + the source URL), answering in Ukrainian, in her own voice, with the link. Off by default (LUMI_NEWS_TOOL + a free Guardian key). No emotion-contract change (set_state stays terminal). Distinct from the v0.4 ambient news (LUMI_NEWS_URL/_CAP) — separate namespace.

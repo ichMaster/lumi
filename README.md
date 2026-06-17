@@ -12,16 +12,19 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.25.0 — News tool (Guardian: search & read).** Лілі can now **read fresh news on demand** during a
-turn: ask what's happening and she calls **`news_search`** (Guardian by topic → candidates with an opaque
-per-turn id) then **`news_read`** (one article by that id → full text + the source), answering **in
-Ukrainian, in her own voice, with the link**. One outlet (The Guardian) so the allowlist is a **single
-host** by construction; a thin injected **`NewsProvider`** seam (default `GuardianProvider` over the v0.4
-`http_get`) keeps `core` SDK-free. The query goes out **English** (only the topic — no personal data), the
-reply comes back **Ukrainian, cited, honest** it's an English source. **Untrusted bodies** (EN+UK injection
-ignored), **bounded** (`LUMI_NEWS_MAX_CALLS`/`_MAX_RESULTS`/`_MAX_CHARS`), **off by default**
-(`LUMI_NEWS_TOOL` + a Guardian key); distinct from the v0.4 ambient news. **No emotion-contract change.**
-See **[docs/NEWS_SETUP.md](docs/NEWS_SETUP.md)**.
+**0.26.0 — Local dictation (STT).** Talk *to* Лілі — a separate local process **hears your speech and
+types it into the chat**, the mirror of the v0.14 voicer (voice *out* → voice *in*). Press **Ctrl+D**, speak
+Ukrainian, press it again: a `/voice` **STT adapter** (Deepgram Nova / ElevenLabs Scribe / offline Whisper)
+recognizes it and the dictator writes your line into `inbox.jsonl` — the same channel the keyboard feeds,
+so **the core can't tell typed from dictated**. The TUI's inbox drain generalizes from bridge-only to
+**bridge-or-dictation**; empty/low-confidence is dropped; **off by default** (`LUMI_DICTATION`); recording
+is **local** (cloud only for the STT call, or run **offline Whisper**). **No emotion-contract / core
+change.** See **[docs/DICTATION_SETUP.md](docs/DICTATION_SETUP.md)**.
+
+Builds on **0.25's news tool (Guardian)**: ask what's happening and Лілі calls **`news_search`** →
+**`news_read`** (one outlet, single-host allowlist, an injected `NewsProvider` seam), answering **in
+Ukrainian, with the source** — English-topical query, untrusted bodies, off by default. See
+**[docs/NEWS_SETUP.md](docs/NEWS_SETUP.md)**.
 
 Builds on **0.24's send-to-Telegram (`send_image`)**: Лілі can **choose** to send you a sandbox picture
 (generated or dropped-in) to your **Telegram** as a photo — the core calls an injected **`telegram_sink`**
