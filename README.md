@@ -12,14 +12,21 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.24.0 — Send an image to Telegram (`send_image`).** Лілі can now **choose** to send you a picture from
-her sandbox — one she drew (v0.23) or one you dropped in — straight to your **Telegram**: she calls the new
-**`send_image`** tool and it arrives as a **photo**, her words as the caption. The core never touches
-Telegram — it calls an injected **`telegram_sink`** the **TUI** supplies (the TUI is the single outbox
-writer, so there's no second writer and no core ↔ bridge coupling), and the v0.13 outbound daemon sends the
-record's photo — **always** (not the random face), **on its own** (never N-batched), and **in voice mode
-too**. **Sandboxed + per-user**, **owner-only**, **off by default** (`LUMI_IMAGE` + the bridge connected →
-else "Telegram not connected"); **no emotion-contract change**. See **[docs/IMAGE_SETUP.md](docs/IMAGE_SETUP.md)**.
+**0.25.0 — News tool (Guardian: search & read).** Лілі can now **read fresh news on demand** during a
+turn: ask what's happening and she calls **`news_search`** (Guardian by topic → candidates with an opaque
+per-turn id) then **`news_read`** (one article by that id → full text + the source), answering **in
+Ukrainian, in her own voice, with the link**. One outlet (The Guardian) so the allowlist is a **single
+host** by construction; a thin injected **`NewsProvider`** seam (default `GuardianProvider` over the v0.4
+`http_get`) keeps `core` SDK-free. The query goes out **English** (only the topic — no personal data), the
+reply comes back **Ukrainian, cited, honest** it's an English source. **Untrusted bodies** (EN+UK injection
+ignored), **bounded** (`LUMI_NEWS_MAX_CALLS`/`_MAX_RESULTS`/`_MAX_CHARS`), **off by default**
+(`LUMI_NEWS_TOOL` + a Guardian key); distinct from the v0.4 ambient news. **No emotion-contract change.**
+See **[docs/NEWS_SETUP.md](docs/NEWS_SETUP.md)**.
+
+Builds on **0.24's send-to-Telegram (`send_image`)**: Лілі can **choose** to send you a sandbox picture
+(generated or dropped-in) to your **Telegram** as a photo — the core calls an injected **`telegram_sink`**
+the TUI supplies (single outbox writer), and the v0.13 daemon sends it (always, on its own, in voice mode
+too). **Owner-only**, **off by default**. See **[docs/IMAGE_SETUP.md](docs/IMAGE_SETUP.md)**.
 
 Builds on **0.23's generation (text → PNG)**: ask her to draw and she calls **`generate_image`** — a PNG
 rendered by **Gemini** (`gemini-2.5-flash-image`) behind an injected **`ImageGen`** seam, saved
