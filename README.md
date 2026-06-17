@@ -12,13 +12,20 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.23.0 — Image generation (text → PNG).** Лілі can now **make a picture** during a turn: ask her to
-draw and she calls the new **`generate_image`** tool — a PNG rendered by **Gemini** (`gemini-2.5-flash-image`)
-behind an injected **`ImageGen`** seam, saved **create-only** into her per-user sandbox (`art/`) and shown
-per `LUMI_IMAGE_SHOW`. **Paid** (needs `GEMINI_API_KEY`), **bounded** per turn (`LUMI_IMAGE_MAX_GEN`),
-**non-destructive** (never overwrites/deletes), with **no personal/memory data** in the prompt; **off by
-default** (`LUMI_IMAGE`). **No SDK in `core`** (the generator is mocked in every test — no paid calls), no
-emotion-contract change. See **[docs/IMAGE_SETUP.md](docs/IMAGE_SETUP.md)**.
+**0.24.0 — Send an image to Telegram (`send_image`).** Лілі can now **choose** to send you a picture from
+her sandbox — one she drew (v0.23) or one you dropped in — straight to your **Telegram**: she calls the new
+**`send_image`** tool and it arrives as a **photo**, her words as the caption. The core never touches
+Telegram — it calls an injected **`telegram_sink`** the **TUI** supplies (the TUI is the single outbox
+writer, so there's no second writer and no core ↔ bridge coupling), and the v0.13 outbound daemon sends the
+record's photo — **always** (not the random face), **on its own** (never N-batched), and **in voice mode
+too**. **Sandboxed + per-user**, **owner-only**, **off by default** (`LUMI_IMAGE` + the bridge connected →
+else "Telegram not connected"); **no emotion-contract change**. See **[docs/IMAGE_SETUP.md](docs/IMAGE_SETUP.md)**.
+
+Builds on **0.23's generation (text → PNG)**: ask her to draw and she calls **`generate_image`** — a PNG
+rendered by **Gemini** (`gemini-2.5-flash-image`) behind an injected **`ImageGen`** seam, saved
+**create-only** into her per-user sandbox (`art/`) and shown per `LUMI_IMAGE_SHOW`. **Paid** (needs
+`GEMINI_API_KEY`), **bounded** per turn (`LUMI_IMAGE_MAX_GEN`), **non-destructive**, with **no
+personal/memory data** in the prompt; **off by default** (`LUMI_IMAGE`).
 
 Builds on **0.22's vision (see & describe)**: Лілі can **see images and describe them** — **share** one
 with `/image <path>` (a multimodal block on your message) or let her **view** a sandbox image via the
