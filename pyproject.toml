@@ -25,6 +25,11 @@ telegram = [
 voice = [
     "elevenlabs>=1",  # v0.14 local voicer (TTS); imported lazily, not needed by core/tests
 ]
+dictation = [
+    "sounddevice>=0.4",  # v0.26 dictator mic capture (separate process; lazy; not needed by core/tests)
+    "deepgram-sdk>=3",   # v0.26 default cloud STT (Nova-3 uk); imported lazily
+    # offline option: `pip install openai-whisper` (heavy, CPU/GPU); ElevenLabs Scribe reuses the `voice` extra
+]
 embed = [
     "fastembed>=0.3",  # v0.16 local multilingual embedder (semantic recall); imported lazily
     "numpy>=1.26",     # v0.16 brute-force cosine in the local vector store
