@@ -40,7 +40,7 @@ class Inbound:
         if update_id <= self.pending_offset:
             return  # dedup the re-delivery
         self.pending_offset = update_id
-        if user_id in self._allow:
+        if user_id in self._allow and (text or "").strip():  # empty (e.g. a failed voice STT) only acks
             self._buffer.append(text)
 
     def flush(self) -> int | None:
@@ -64,6 +64,26 @@ class Inbound:
         return len(self._buffer)
 
 
+async def voice_to_text(bot, voice, stt, *, lang: str = "uk", log=None) -> str:
+    """Download a Telegram **voice note** (OGG/Opus) and recognize it → text (``""`` on any failure).
+
+    The inbound twin of the v0.13 outbound voice mode + the v0.26 dictator's mirror over Telegram: the
+    audio arrives from Telegram instead of the mic, runs through the **same `/voice` STT adapter**, and the
+    transcript is forwarded to ``inbox`` exactly like a typed line. ``bot``/``stt`` are injected so this is
+    testable with a fake bot (canned audio) + a ``MockSTT`` — no real Telegram, no real STT. Best-effort:
+    a bad note returns ``""`` (dropped, the daemon advances the offset), never crashes.
+    """
+    try:
+        file = await bot.get_file(voice.file_id)
+        downloaded = await bot.download_file(file.file_path)
+        audio = downloaded.read() if hasattr(downloaded, "read") else bytes(downloaded)
+        return (stt.recognize(audio, lang=lang, content_type="audio/ogg") or "").strip()
+    except Exception as exc:  # noqa: BLE001 — best-effort; a bad note drops, never kills the daemon
+        if log is not None:
+            log.warning("voice transcription failed (dropped): %s", exc)
+        return ""
+
+
 def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no paid CI)
     """Long-poll Telegram and feed an ``Inbound`` (ack-after-flush). Requires ``aiogram`` + a token."""
     import asyncio
@@ -84,7 +104,14 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
     allow = set(cfg.telegram_allowlist)
     inbound = Inbound(cfg.inbox_path, allow)
     bot = Bot(cfg.telegram_token)
-    log.info("inbound up: allowlist=%s, flush=%ss, inbox=%s", sorted(allow), cfg.telegram_flush_s, cfg.inbox_path)
+    # v0.26.x: transcribe inbound Telegram voice messages via the /voice STT adapter (off by default).
+    stt = None
+    if cfg.telegram_stt:
+        from voice.stt import build_stt
+
+        stt = build_stt(cfg.stt_provider, api_key=cfg.deepgram_api_key or cfg.elevenlabs_api_key, model=cfg.stt_model)
+    log.info("inbound up: allowlist=%s, flush=%ss, voice_stt=%s, inbox=%s",
+             sorted(allow), cfg.telegram_flush_s, cfg.telegram_stt, cfg.inbox_path)
 
     async def _flusher() -> None:
         while True:
@@ -106,10 +133,19 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
                 continue
             for u in updates:
                 msg = getattr(u, "message", None)
-                if msg and msg.text and msg.from_user:
+                if not (msg and msg.from_user):
+                    continue
+                text = msg.text or ""
+                handled_voice = False
+                if not text and stt is not None and getattr(msg, "voice", None) and msg.from_user.id in allow:
+                    text = await voice_to_text(bot, msg.voice, stt, lang=cfg.stt_lang, log=log)
+                    handled_voice = True
+                    if text:
+                        log.info("transcribed a voice message (update=%s) → %d chars", u.update_id, len(text))
+                if text or handled_voice:  # a text line, or a voice we handled (empty → just acks the offset)
                     if msg.from_user.id not in allow:
                         log.warning("ignored non-allowlisted id=%s", msg.from_user.id)
-                    inbound.receive(u.update_id, msg.from_user.id, msg.text)
+                    inbound.receive(u.update_id, msg.from_user.id, text)
 
     try:
         asyncio.run(_main())

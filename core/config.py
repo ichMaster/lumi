@@ -264,6 +264,7 @@ class Config:
     telegram_catchup_h: int = 24  # daemon 2: skip outbox records older than this on restart
     telegram_photo: float = 0.0  # daemon 2: probability 0..1 of sending the face photo (0=never, 1=always)
     telegram_voice: bool = False  # daemon 2: send replies as VOICE messages (needs the LUMI_VOICE_* key/id)
+    telegram_stt: bool = False  # daemon 1: transcribe inbound Telegram VOICE messages via the /voice STT adapter
     # v0.14 local voice (the voicer reads the outbox; the key is a secret — never logged/committed).
     voice: bool = False  # the TUI writes the outbox for the voicer (like bridge); off by default
     elevenlabs_api_key: str = ""
@@ -493,6 +494,7 @@ def load_config(*, load_env: bool = True) -> Config:
         telegram_catchup_h=int(os.getenv("LUMI_TELEGRAM_CATCHUP_H") or 24),
         telegram_photo=_parse_probability(os.getenv("LUMI_TELEGRAM_PHOTO")),
         telegram_voice=(os.getenv("LUMI_TELEGRAM_VOICE") or "off").strip().lower() in _TRUTHY,
+        telegram_stt=(os.getenv("LUMI_TELEGRAM_STT") or "off").strip().lower() in _TRUTHY,  # v0.26.x, off by default
         voice=(os.getenv("LUMI_VOICE") or "off").strip().lower() in _TRUTHY,
         elevenlabs_api_key=(os.getenv("ELEVENLABS_API_KEY") or "").strip(),
         voice_id=(os.getenv("LUMI_VOICE_ID") or "").strip(),

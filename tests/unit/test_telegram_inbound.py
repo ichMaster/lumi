@@ -1,7 +1,13 @@
-"""Daemon 1 — telegram → inbox: buffer, 2s flush, ack-after-flush, allowlist (v0.13, LUMI-055)."""
+"""Daemon 1 — telegram → inbox: buffer, 2s flush, ack-after-flush, allowlist (v0.13, LUMI-055).
+
+Plus v0.26.x inbound voice: a Telegram voice note → STT → inbox (voice_to_text, mock bot + MockSTT).
+"""
+
+import io
 
 from state import fifo
-from telegram.inbound import Inbound
+from telegram.inbound import Inbound, voice_to_text
+from voice.stt import MockSTT
 
 OWNER, STRANGER = 111, 999
 
@@ -53,3 +59,55 @@ def test_redelivery_is_deduped(tmp_path):
     assert inb.buffered == 1
     inb.flush()
     assert fifo.read_since(inbox, 0)[0]["text"] == "hi"  # once, not "hi\nhi"
+
+
+def test_empty_text_acks_but_buffers_nothing(tmp_path):
+    # v0.26.x: a failed voice STT yields "" → advance the offset (no re-poll/re-bill) but buffer nothing.
+    inb, inbox = _inbound(tmp_path)
+    inb.receive(7, OWNER, "")
+    inb.receive(8, OWNER, "   ")  # whitespace-only too
+    assert inb.buffered == 0 and inb.pending_offset == 8
+    inb.flush()
+    assert fifo.read_since(inbox, 0) == [] and inb.acked_offset == 8
+
+
+# --- inbound voice: a Telegram voice note → STT → text (mock bot + MockSTT) ------------------------
+class _Voice:
+    file_id = "v1"
+
+
+class _File:
+    file_path = "voice/file.ogg"
+
+
+class _Bot:
+    """A fake aiogram bot — get_file + download_file return canned audio (no network)."""
+
+    def __init__(self, audio=b"OGGDATA", boom=False):
+        self._audio, self._boom = audio, boom
+        self.downloaded: list[str] = []
+
+    async def get_file(self, file_id):
+        if self._boom:
+            raise RuntimeError("telegram down")
+        return _File()
+
+    async def download_file(self, path):
+        self.downloaded.append(path)
+        return io.BytesIO(self._audio)
+
+
+async def test_voice_to_text_transcribes(tmp_path):
+    bot, stt = _Bot(b"OGGDATA"), MockSTT("привіт з телеграму")
+    text = await voice_to_text(bot, _Voice(), stt)
+    assert text == "привіт з телеграму"
+    assert bot.downloaded == ["voice/file.ogg"]
+    assert stt.calls == [(len(b"OGGDATA"), "uk")]  # the downloaded audio reached the STT
+
+
+async def test_voice_to_text_empty_recognition_drops():
+    assert await voice_to_text(_Bot(), _Voice(), MockSTT("")) == ""  # silence → "" (dropped)
+
+
+async def test_voice_to_text_failure_never_raises():
+    assert await voice_to_text(_Bot(boom=True), _Voice(), MockSTT("x")) == ""  # network error → "" not a crash

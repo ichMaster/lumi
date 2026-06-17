@@ -16,9 +16,13 @@ from typing import Protocol
 
 
 class STT(Protocol):
-    """The voice-in seam: recorded audio (+ language) → recognized text."""
+    """The voice-in seam: recorded audio (+ language, + container ``content_type``) → recognized text.
 
-    def recognize(self, audio: bytes, *, lang: str = "uk") -> str: ...
+    ``content_type`` is the audio container — ``audio/wav`` (the mic dictator) or ``audio/ogg`` (a
+    Telegram voice note). Adapters that auto-detect the format may ignore it.
+    """
+
+    def recognize(self, audio: bytes, *, lang: str = "uk", content_type: str = "audio/wav") -> str: ...
 
 
 def _deepgram_transcript(data: dict) -> str:
@@ -39,7 +43,8 @@ class DeepgramSTT:
         self.model = model
         self._api_key = api_key  # secret — never logged
 
-    def recognize(self, audio: bytes, *, lang: str = "uk") -> str:  # pragma: no cover - network
+    def recognize(self, audio: bytes, *, lang: str = "uk",
+                  content_type: str = "audio/wav") -> str:  # pragma: no cover - network
         import json
         import urllib.parse
         import urllib.request
@@ -47,7 +52,7 @@ class DeepgramSTT:
         params = urllib.parse.urlencode({"model": self.model, "language": lang, "smart_format": "true"})
         req = urllib.request.Request(
             f"{self.URL}?{params}", data=audio, method="POST",
-            headers={"Authorization": f"Token {self._api_key}", "Content-Type": "audio/wav"},
+            headers={"Authorization": f"Token {self._api_key}", "Content-Type": content_type},
         )
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 — fixed Deepgram host
             return _deepgram_transcript(json.loads(resp.read()))
@@ -60,7 +65,8 @@ class ElevenLabsScribeSTT:
         self.model = model
         self._api_key = api_key  # secret — never logged
 
-    def recognize(self, audio: bytes, *, lang: str = "uk") -> str:  # pragma: no cover - network
+    def recognize(self, audio: bytes, *, lang: str = "uk",
+                  content_type: str = "audio/wav") -> str:  # noqa: ARG002 — auto-detected  # pragma: no cover
         import io
 
         from elevenlabs.client import ElevenLabs
@@ -80,14 +86,16 @@ class WhisperSTT:
         self.model = model
         self._loaded = None
 
-    def recognize(self, audio: bytes, *, lang: str = "uk") -> str:  # pragma: no cover - local model
+    def recognize(self, audio: bytes, *, lang: str = "uk",
+                  content_type: str = "audio/wav") -> str:  # pragma: no cover - local model
         import tempfile
 
         import whisper
 
         if self._loaded is None:
             self._loaded = whisper.load_model(self.model)
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as f:
+        suffix = ".ogg" if "ogg" in content_type else ".wav"  # the container ffmpeg/whisper decodes
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as f:
             f.write(audio)
             f.flush()
             result = self._loaded.transcribe(f.name, language=lang)
@@ -103,7 +111,7 @@ class MockSTT:
         self._text = text
         self.calls: list[tuple[int, str]] = []  # (audio length, lang) per call
 
-    def recognize(self, audio: bytes, *, lang: str = "uk") -> str:
+    def recognize(self, audio: bytes, *, lang: str = "uk", content_type: str = "audio/wav") -> str:  # noqa: ARG002
         self.calls.append((len(audio or b""), lang))
         return self._text
 

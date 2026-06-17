@@ -255,6 +255,7 @@ rm -f .lumi/inbox.jsonl .lumi/inbox.pos .lumi/outbox.jsonl .lumi/outbox.sent
 | `LUMI_TELEGRAM_CATCHUP_H` | `24` | daemon 2: skip replies older than this on restart (no flood) |
 | `LUMI_TELEGRAM_PHOTO` | `0` | daemon 2: probability 0..1 of attaching the face photo (`0`=never, `0.2`≈1/5, `1`=always) |
 | `LUMI_TELEGRAM_VOICE` | `off` | daemon 2: send replies as **voice messages** (reuses the `LUMI_VOICE_*` key/id + `ffmpeg`) |
+| `LUMI_TELEGRAM_STT` | `off` | daemon 1: **transcribe** inbound Telegram **voice messages** (reuses the `LUMI_STT_*` adapter) |
 | `LUMI_INBOX_PATH` | `.lumi/inbox.jsonl` | inbound queue file |
 | `LUMI_OUTBOX_PATH` | `.lumi/outbox.jsonl` | outbound queue file |
 | `LUMI_LOG_LEVEL` | `INFO` | daemon log verbosity (`DEBUG`/`INFO`/`WARNING`) |
@@ -280,6 +281,18 @@ the decorative face) and **on its own** — a chosen picture is never merged int
 as the caption (caption-capped, with the same long-text fallback). If the file has vanished by send time,
 the daemon sends just her words rather than crash. This holds **in voice mode too** (`LUMI_TELEGRAM_VOICE`):
 her spoken replies are voiced, but a picture she chose to send still arrives as a **photo**, not voiced.
+
+## Voice messages *in* (`LUMI_TELEGRAM_STT`)
+
+The inbound twin of voice mode, and the [dictator](DICTATION_SETUP.md)'s mirror over Telegram: with
+`LUMI_TELEGRAM_STT=on`, **daemon 1 transcribes a voice message you send the bot**. It downloads the voice
+note (OGG/Opus), runs it through the same **`/voice` STT adapter** you configured for dictation
+(`LUMI_STT_PROVIDER` / `LUMI_STT_MODEL` / a key — Deepgram by default), and forwards the **transcript** to
+`inbox.jsonl` exactly like a typed line — so Лілі answers it identically (the core can't tell typed,
+dictated, or Telegram-voiced apart). Off by default; only **allowlisted** senders are transcribed; an
+empty / failed recognition is dropped (the offset still advances, so a bad note isn't re-billed). It pairs
+naturally with `LUMI_TELEGRAM_VOICE` for a **full voice conversation** over Telegram — you speak, she
+speaks back.
 
 ## Security & scope
 
