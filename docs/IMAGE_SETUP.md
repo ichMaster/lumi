@@ -40,6 +40,23 @@ never a command), and is sandboxed + per-user. Generation is **paid** (needs `GE
 
 ---
 
+## Tools & commands at a glance
+
+Four entry points — one **command** you type, three **tools** Лілі calls herself during a turn:
+
+| Entry point | Kind | Inputs | What it does | Needs |
+|---|---|---|---|---|
+| `/image <path> [msg]` | command (you) | a file path you own + optional message | attaches the picture as a multimodal block on your turn → she sees & replies | `LUMI_IMAGE` + Anthropic provider |
+| `view_image` | tool (she) | `path` (sandbox-relative) | pulls a **sandbox** image into her view and describes it | `LUMI_IMAGE` + Anthropic provider |
+| `generate_image` | tool (she) | `prompt`, optional `filename` | makes a **new** PNG under `art/` (create-only) and shows it | `LUMI_IMAGE` + `GEMINI_API_KEY` (**paid**) |
+| `send_image` | tool (she) | `path` (sandbox-relative), optional `caption` | sends a **sandbox** picture to your Telegram as a photo | `LUMI_IMAGE` + the Telegram bridge |
+
+All three tools are **off** unless `LUMI_IMAGE=on`, can be on **alongside** the file + Wikipedia tools,
+and degrade to a notice (never a crash) on any error. Accepted image formats: `png` / `jpg` / `jpeg` /
+`gif` / `webp`.
+
+---
+
 ## The two paths to an image
 
 | Path | How | What happens |
@@ -99,6 +116,40 @@ caption). It works for **any** sandbox image, not just freshly-generated ones.
   outbound daemon sends it — **always** as a photo (independent of the random `LUMI_TELEGRAM_PHOTO` face),
   **on its own** (never merged into a reply batch).
 - **No new config.** It reuses `LUMI_IMAGE` + the `LUMI_TELEGRAM_*` bridge settings — nothing to add.
+
+**End-to-end (draw, then send):**
+
+```
+ти: намалюй мені світанок над морем
+Лілі: *малює* …ось, дивись 🌅            ← generate_image → .lumi/files/owner/art/<slug>.png
+ти: гарно! надішли в телеграм
+Лілі: відправила 💛                        ← send_image → arrives in your Telegram as a photo
+```
+
+The two tools chain naturally: `generate_image` puts the PNG in her sandbox, and `send_image` later picks
+**any** sandbox file by name — so she can send something she drew minutes (or days) ago.
+
+---
+
+## Where the files live
+
+Everything is under her **per-user sandbox**, `.lumi/files/<user>/` (the default user is `owner`):
+
+```
+.lumi/
+├── files/
+│   └── owner/                # the sandbox root for view_image / generate_image / send_image
+│       ├── art/              # generated PNGs land here (generate_image)
+│       └── <your drops>      # anything you place here is viewable / sendable by name
+└── image.txt                 # the display signal (a generated PNG's path) the v0.7 viewer polls
+```
+
+- `view_image` / `send_image` take a **sandbox-relative** path (e.g. `art/cat.png`, `photo.png`) — `..`,
+  absolute paths, and symlinks out are refused.
+- `generate_image` always writes under `art/` with a slug (or your `filename`); it never overwrites.
+- To hand Лілі a picture for `view_image`/`send_image`, drop it into `.lumi/files/owner/`. (The `/image`
+  command is different — it reads **any** path you own, since you're the one sharing it.)
+- **Per-user isolation:** one user's sandbox is never reachable from another's turn.
 
 ---
 
