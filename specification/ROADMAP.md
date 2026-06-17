@@ -536,91 +536,29 @@ A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expa
 
 ---
 
-### v0.29 — Thought-tools I: the think-path seam + file-thoughts (`%note` / `%review` / `%explore`)
+### v0.29 — Thought-tools: the autonomous mind *acts* (`%lookup` / `%imagine` / `%catchup` / `%note` / `%prompt` …)
 
-**Goal:** Лілі's autonomous mind can *act*, not only reflect — her `%directives` gain the ability to run the **bounded tool-loop in the *think* path** (keeping the thought terminal, not `set_state`), proven with the **file** family: `%note` (jot a thought into her sandbox), `%review` (reread her notes and muse), `%explore` (read+write freely, gated). This is the **shared seam** every tool-thought family below reuses.
+**Goal:** Лілі's `%directives` gain the ability to **run tools in the *think* path** (keeping the thought terminal, not `set_state`), so her autonomous mind can *act, find out, make, keep up, and do what you ask* — not only reflect. One shared seam + the full directive set (file / wiki / image / news + the open `%prompt`), each **off by default and flag-gated** so the risky ones (paid `%imagine`, Telegram-reaching `%share`) are enabled independently.
 
-The one new mechanism: today a thought is a **single tool-less** call (`Core.think` → `_housekeeping_reply` ending in `ЕМОЦІЯ:`), while the file/wiki/image/news tools live in the **reply** loop whose terminal is `set_state`. This phase runs the **bounded tool-loop with tools available but the *thought* terminal** (free text + `ЕМОЦІЯ`, never `set_state`) — built **once**, reused by wiki/image/news. The **file** family goes first because it's **sandboxed** and needs **no external query** (so the de-identification rule is deferred to v0.30). It also lands two infrastructure cleanups the rest depend on: the **`Directive` record optimization** (table-driven `tools`/`cap`/`surface`/`trigger`/`instruction_from_topic` fields) and the **extended placeholder resolver**. See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md), [FILE_THOUGHTS.md](features/FILE_THOUGHTS.md). Depends on: v0.12 (the mental-act engine + `run_directive` + placeholders), v0.19/v0.20 (the file tools + the bounded loop), v0.3 (the validated emotion the thought parse reuses).
+The one new mechanism: today a thought is a **single tool-less** call (`Core.think` → `_housekeeping_reply` ending in `ЕМОЦІЯ:`); the file/wiki/image/news tools live in the **reply** loop whose terminal is `set_state`. This phase runs the **bounded tool-loop with tools available but the *thought* terminal** (free text + `ЕМОЦІЯ`, never `set_state`) — built **once** and reused by every family. On top of that seam it lands two infra cleanups (a **table-driven `Directive` record** + an **extended placeholder resolver**), the **de-identified thought-driven query** rule (only the topical/creative part of her musing reaches an external service — stricter than the v0.21/v0.23/v0.25 reply-path rule, a new contract test), and all the directives as **thin flag-gated rows**: **file** (`%note`/`%review`/`%explore`, sandboxed), **wiki** (`%lookup`/`%learn`), **image** (`%gaze` / `%imagine` [paid, create-only] / `%share` [spoken turn → Telegram, owner-only]), **news** (`%catchup`/`%brief`, cited Ukrainian), and the **open** `%prompt` (your instruction as a self-directed act — owner-only, trusted instruction but untrusted results). The tools themselves (file v0.19/20, wiki v0.21, image v0.22–24, news v0.25) are all shipped. See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md), [FILE_THOUGHTS.md](features/FILE_THOUGHTS.md), [IMAGE_TOOL.md](features/IMAGE_TOOL.md), [NEWS_TOOL.md](features/NEWS_TOOL.md). Depends on: v0.12 (the engine + `run_directive` + placeholders), v0.19/v0.20–v0.25 (the tools), v0.3 (the validated emotion the thought parse reuses).
 
 **Tasks:**
-- The **think-path tool-loop** with a **thought terminal** (free text + `ЕМОЦІЯ`, not `set_state`) — implemented once in `core`, shared by all families; the per-turn caps + trace from the reply loop carry over.
-- **Optimize the `Directive` record** — add `tools` / `cap` / `surface` / `trigger` / `instruction_from_topic` so the loop, caps, and scheduler defaults are **table-driven** (a directive = one data row); `%think`/`%wonder` keep `tools=()` (unchanged).
+- The **think-path tool-loop** with a **thought terminal** (free text + `ЕМОЦІЯ`, not `set_state`) — once in `core`, reused by all families; the reply loop's per-turn caps + trace carry over.
+- **Optimize the `Directive` record** — `tools` / `cap` / `surface` / `trigger` / `instruction_from_topic` (table-driven loop + caps + scheduler defaults; `%think`/`%wonder` keep `tools=()`, unchanged).
 - **Extend the placeholder resolver** — `{ambient_news}` / `{world}` / `{last_image}` / `{interest}` / `{hungriest_need}` / `{section}` / `{weekday}` / `{gap}` (lazy, **`""`-on-empty**, isolation-aware).
-- **File directives** `%note` (code appends the thought to a dated `journal/<date>.md`, create-first/append-after — *code owns the write*), `%review` (read-only), `%explore` (read+write, gated); registry entries + authored prompts; `kind:"note"/"review"/"explore"`.
-- Config: `LUMI_THOUGHT_TOOLS` (off) + the file-thought gating (rides `LUMI_THOUGHTS` + `LUMI_FILE_TOOL`).
+- **The directives** (registry rows + authored prompts, each off + flag-gated): **file** `%note` (code appends to a dated `journal/<date>.md`) / `%review` (read-only) / `%explore` (r/w, gated); **wiki** `%lookup` / `%learn`; **image** `%gaze` / `%imagine` (create-only PNG, **paid → own sub-cap**) / `%share` (spoken turn + Telegram, owner-only, **bridge-off no-op**); **news** `%catchup` / `%brief` (cited Ukrainian); **open** `%prompt` (`instruction_from_topic`, `tools="*"`, shown, owner-only).
+- **De-identify** the thought-driven wiki/news query + the `%imagine` gen prompt (only the topical/creative part leaves; **`%prompt` is exempt** — trusted owner instruction) + a contract test covering all three.
+- Config: `LUMI_THOUGHT_TOOLS` + per-family `LUMI_THOUGHT_WIKI` / `_IMAGE` / `_NEWS` / `_PROMPT` (+ `_IMAGINE_CAP`), each off and gated on the matching tool flag.
 
-**DoD:** with the flags on, a fired `%note` records a `Thought` **and** appends it to a dated journal in the owner's sandbox; `%review` reads her notes and muses; `%explore` reads+writes (gated); the **thought terminal holds** (free text + `ЕМОЦІЯ`, never `set_state` inside a thought); **off (default) → the v0.12 tool-less think is byte-identical**; the `{reply, emotion, intensity}` contract is untouched; per-user sandbox isolation holds.
+**DoD:** with a family's flags on, its directives run tools in the think path and record a `Thought` (the **thought terminal holds** — never `set_state`); `%note` writes a dated journal, `%lookup`/`%catchup` cite a source, `%imagine` makes a create-only PNG (paid-capped), `%share` sends to the owner's Telegram (no-op without the bridge), `%prompt` runs your instruction; the thought-driven query/prompt carries **no personal data** (de-identified; `%prompt` exempt as the owner authored it) while tool **results stay untrusted**; **off (default, per family) → that family is absent** and the v0.12 tool-less think is unchanged; the `{reply, emotion, intensity}` contract + per-user isolation are untouched.
 
-**Tests:** unit — the Directive record drives the loop table-driven; the new placeholders resolve `""`-on-empty + isolation-aware; the thought parse still strips `ЕМОЦІЯ`. Integration — a mock model scripting file tools in the think path: `%note` writes the journal + records the thought, `%review` is read-only, `%explore` r/w; **no `set_state` ever appears in a thought**; off → unchanged. Contract — per-user sandbox isolation; the emotion contract validates with thought-tools active. **No paid calls.**
+**Tests:** unit — the Directive record drives the loop table-driven; the new placeholders resolve `""`-on-empty + isolation-aware; per-family directives record their `kind` via **mocks** (`http_get` for wiki, mock transport for news, stub `ImageGen`, fake `telegram_sink`) — no network/key/paid/Telegram; the query/prompt is **de-identified** (a planted private detail never leaves; `%prompt` exempt). Contract — untrusted results (wiki extract / news body EN+UK / image text) never obeyed; each family **absent when off**; `%share` owner-only + bridge-off no-op; `%prompt` owner-only + plain-chat-when-off; **no `set_state` inside a thought**; the emotion contract validates with thought-tools active; isolation over the new kinds. **No paid calls.**
 
-### v0.30 — Thought-tools II: wiki-thoughts (`%lookup` / `%learn`)
-
-**Goal:** her curiosity **goes and finds out** on its own — `%lookup` (a spontaneous "о, виявляється…" Wikipedia glance, the outward twin of `%wonder`) and `%learn` (a chosen deep-read, the twin of `%think`) run `wiki_search → wiki_read` in the think path and record one short thought, with the source.
-
-The first **external** tool-thought family — so it introduces the one genuinely new safety rule: the **de-identified thought-driven query**. A thought-driven wiki call is seeded by her *inner state* (which can hold private content), so **only the topical part of her musing reaches Wikipedia** — stricter than the v0.21 reply-path "no personal data" rule, and pinned by a **new contract test**. Reuses the v0.29 seam verbatim; the v0.21 `WikiTools` + `_turn_tools` are shipped. See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md) §wiki. Depends on: v0.29 (the seam + the Directive record), v0.21 (the wiki tools).
-
-**Tasks:**
-- `%lookup` directive — registry entry + authored prompt; `kind:"lookup"`; runs `wiki_search → wiki_read`; seedable from `{last_thought}` (a follow-up to a `%wonder`).
-- `%learn` directive — registry entry + authored prompt; `kind:"learn"`; a paced deep-read seeded by recent / `{interest}` / the hungriest need.
-- **De-identify** the thought-driven wiki query (only the topical part leaves) + a **contract test** (the reply-path test isn't sufficient).
-- Config: `LUMI_THOUGHT_WIKI` (off; needs `LUMI_WIKI`); a per-session tool-thought cap.
-
-**DoD:** with the flag on, an idle `%lookup` searches+reads Wikipedia and records a cited thought; `%learn` does a deeper paced read; the outgoing query carries **no personal/memory data** (de-identified); untrusted extracts are never obeyed; bounded by the cap; **off → absent**; the emotion contract holds.
-
-**Tests:** unit — `%lookup`/`%learn` record a `lookup`/`learn` thought via a **mock `http_get`** (no network); the query is **de-identified** (a planted private detail in her state never reaches the query); the cap bounds it. Contract — untrusted extract not acted upon; off → absent; isolation; emotion contract validates. **No paid calls.**
-
-### v0.31 — Thought-tools III: image-thoughts (`%gaze` / `%imagine` / `%share`)
-
-**Goal:** her autonomous mind **sees, makes, and gives** pictures — `%gaze` (look again at a sandbox picture and muse, read-only, twin of `%review`), `%imagine` (render an inner image she's been picturing into a PNG, twin of `%dream`, **paid**), `%share` (choose to send you a picture, unprompted — the reaching-out one).
-
-Built in **ascending risk/cost** on the v0.29 seam: `%gaze` (free, read-only `view_image`) → `%imagine` (paid `generate_image`, **create-only** into `art/`, the de-identification rule from v0.30 applied to the gen **prompt**) → `%share` (`send_image` → a **spoken turn** + a Telegram photo, owner-only, the strictest restraint). The v0.22–v0.24 image tools + the `telegram_sink` are shipped; the `%imagine` PNGs seed the v5.1 gallery. See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md) §image, [IMAGE_TOOL.md](features/IMAGE_TOOL.md). Depends on: v0.29 (the seam), v0.30 (the de-identification rule), v0.22–v0.24 (the image tools).
-
-**Tasks:**
-- `%gaze` directive — `kind:"gaze"`; runs `view_image` (read-only); seedable from `{last_image}`.
-- `%imagine` directive — `kind:"imagine"`; runs `generate_image` (create-only PNG in the owner's sandbox); the gen prompt is **de-identified**; **paid → its own tightest sub-cap** (`LUMI_THOUGHT_IMAGINE_CAP`).
-- `%share` directive — `kind:"share"`; runs `send_image` and **graduates to a spoken turn**; owner-only; a **no-op (never an error)** when the bridge is off; the strictest anti-dependency framing.
-- Config: `LUMI_THOUGHT_IMAGE` (off; needs `LUMI_IMAGE`; `%share` also needs the bridge) + `LUMI_THOUGHT_IMAGINE_CAP`.
-
-**DoD:** with the flags on, `%gaze` views a kept picture and muses; `%imagine` makes a new PNG (create-only, no personal data in the prompt) and records a thought; `%share` sends a sandbox picture to the owner's Telegram as a spoken turn + photo (no-op with no bridge); the paid cap bounds `%imagine`; **off → absent**; the emotion contract holds; per-user/owner isolation holds.
-
-**Tests:** unit — `%gaze` views a sandbox image; `%imagine` records an `imagine` via a **stub `ImageGen`** (canned PNG, **no paid calls**) with a **de-identified** prompt + the create-only/cap rules; `%share` calls a **fake `telegram_sink`** and graduates. Contract — owner-only + bridge-off no-op; isolation (the PNG lands in the owner's sandbox); emotion contract validates. **No paid/Telegram calls.**
-
-### v0.32 — Thought-tools IV: news-thoughts (`%catchup` / `%brief`)
-
-**Goal:** she **keeps up with the world** on her own — `%catchup` (a spontaneous "що там у світі?" glance, twin of `%lookup`, seedable from the v0.4 ambient news) and `%brief` (a paced daily catch-up ritual, twin of `%learn`) run `news_search → news_read` in the think path and record one cited Ukrainian thought.
-
-The last tool-thought family, reusing the v0.29 seam + the v0.30 de-identification rule + the v0.25 news tools verbatim (EN query / Ukrainian-cited reply / single-host allowlist / untrusted bodies). The v0.4 **ambient news** snapshot is `%catchup`'s natural seed (`{ambient_news}`). See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md) §news, [NEWS_TOOL.md](features/NEWS_TOOL.md). Depends on: v0.29 (the seam), v0.30 (the de-identification rule), v0.25 (the news tools), v0.4 (the ambient news seed).
-
-**Tasks:**
-- `%catchup` directive — `kind:"catchup"`; runs `news_search → news_read`; seeded by `{ambient_news}` / a topic / `{last_thought}`.
-- `%brief` directive — `kind:"brief"`; a **paced/daily** ritual seeded by `{interest}` / `{section}` (the natural fit for the v0.34 scheduler).
-- De-identify the thought-driven news query (EN-translated **topical** part only); reuse the v0.30 contract test, extended to news.
-- Config: `LUMI_THOUGHT_NEWS` (off; needs `LUMI_NEWS_TOOL`); the per-session cap.
-
-**DoD:** with the flag on, `%catchup` searches+reads Guardian and records a **cited Ukrainian** thought; `%brief` does the paced daily ritual; the query carries no personal/memory data (de-identified, English topical only); untrusted bodies (EN+UK) never obeyed; **off → absent**; the emotion contract holds.
-
-**Tests:** unit — `%catchup`/`%brief` record a `catchup`/`brief` thought via a **mock transport** (canned Guardian JSON, **no key**); the query is de-identified + English-topical; seeded from the ambient news. Contract — untrusted body (EN+UK) not acted upon; off → absent; the per-turn id registry is per-turn/per-user; emotion contract validates. **No paid calls.**
-
-### v0.33 — Open directive: `%prompt`
-
-**Goal:** *you* can hand Лілі **any instruction** as a self-directed act — `%prompt <any text>` runs the engine with **your text as the instruction** (a one-off when typed; a recurring custom task when scheduled, e.g. "every morning, write me a хайку про погоду"), without minting a new `%name`.
-
-The **open** directive — mechanically `%think` with the instruction supplied at call time (the `instruction_from_topic` field from v0.29). It can use **any enabled tool** (each still flag-gated), defaults **shown** (you asked her to do it), and is the killer pairing with the v0.34 scheduler. **Safety — the one relaxed rule:** the instruction is **owner-authored, so trusted** (the de-identification rule does **not** apply to a `%prompt` — you may put your own specifics in your own instruction), but tool **results stay untrusted**, the caps hold, she's **honest about nature**, and it is **owner-only** (owner/admin-gated in the v2.3 server). See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md) §The open directive. Depends on: v0.29 (the seam + the Directive record); the tool families it can call (v0.30–v0.32) deepen it as they land.
-
-**Tasks:**
-- `%prompt` directive — `instruction_from_topic=True`, `tools="*"` (each tool still behind its own flag), default surfacing **shown**, owner-only; `kind:"prompt"`.
-- **No de-identification** for `%prompt` (the owner authored the instruction) — but the tool-result-untrusted + cap + honesty rules hold; a contract test pins "trusted instruction, untrusted results".
-- Config: `LUMI_THOUGHT_PROMPT` (off).
-
-**DoD:** with the flag on, `%prompt <text>` runs the act and shows the result; a non-owner can never inject a `%prompt`; the instruction is passed through (not de-identified), but any tool it calls obeys the untrusted-result + cap rules; **off → `%prompt` is treated as plain chat** (unknown directive); the emotion contract holds.
-
-**Tests:** unit — `%prompt` uses the topic as the instruction; `tools="*"` offers the enabled tools; defaults shown; owner-gating (a non-owner can't fire silent/at all). Contract — the instruction is not de-identified, but a tool result is still untrusted + capped; off → plain chat; emotion contract validates. **No paid calls.**
-
-### v0.34 — Thought scheduler (proactive thoughts on a clock — a separate cron process)
+### v0.30 — Thought scheduler (proactive thoughts on a clock — a separate cron process)
 
 **Goal:** her directives fire on a **clock she can keep** — *every 10 min*, *idle 15 min*, *at 08:00*, *between 07:00–09:00 every 20 min*, *Mondays only* — via a **separate scheduler process**, replacing the single in-TUI idle timer. So `%brief` gets its morning, `%catchup` its daytime rhythm, `%learn` its night, and a scheduled `%prompt` becomes "ask Лілі to do X every day."
 
-Mirrors the **shipped v0.13 Telegram architecture**: a **dumb, core-free cron process** + an **append-only file bus** + the **TUI as the only brain** (no core change). The cron evaluates a `due(now, last_fired, spec)` predicate per schedule entry and **appends `%directive` records** to a dedicated `directive-queue.jsonl`; the **TUI drains it through `run_directive`** (the keyboard's `%`-router — **not** the reply path). Idle triggers unify in (the cron reads a TUI `activity.txt` heartbeat), so the v0.4 nudge + the v0.12 `%think` timer **migrate onto the scheduler**. **Placeholders resolve at fire time in the TUI**, so the cron stays core-free. See [THOUGHT_SCHEDULER.md](features/THOUGHT_SCHEDULER.md). Depends on: v0.12 (`run_directive` + `resolve`), v0.13 (the file-bus + dumb-daemon + catch-up), v0.4 (the clock + quiet hours); enriched by v0.29–v0.33 (the directives it schedules).
+Mirrors the **shipped v0.13 Telegram architecture**: a **dumb, core-free cron process** + an **append-only file bus** + the **TUI as the only brain** (no core change). The cron evaluates a `due(now, last_fired, spec)` predicate per schedule entry and **appends `%directive` records** to a dedicated `directive-queue.jsonl`; the **TUI drains it through `run_directive`** (the keyboard's `%`-router — **not** the reply path). Idle triggers unify in (the cron reads a TUI `activity.txt` heartbeat), so the v0.4 nudge + the v0.12 `%think` timer **migrate onto the scheduler**. **Placeholders resolve at fire time in the TUI**, so the cron stays core-free. See [THOUGHT_SCHEDULER.md](features/THOUGHT_SCHEDULER.md). Depends on: v0.12 (`run_directive` + `resolve`), v0.13 (the file-bus + dumb-daemon + catch-up), v0.4 (the clock + quiet hours); enriched by v0.29 (the directives it schedules).
 
 **Tasks:**
 - The **trigger model** — a pure `due(now, last_fired, spec)` for `every` / `idle` / `at` / `between` / `cron` + the `schedule.toml` parser + `schedule.state` (last-fired per entry).
