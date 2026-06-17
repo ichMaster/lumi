@@ -654,6 +654,23 @@ Additive to `core/files.py`: it reuses the v0.19 `safe_path` sandbox guard + the
 
 ---
 
+### v0.34 — Journal tool (day-summary diary + read-by-date, auto-stamped mood/biorhythm/forecast)
+
+**Goal:** Лілі keeps a **personal literary diary** — at the close of a worthwhile day she writes a **summary of the day** in her own voice, and she can **reread previous days by date**. She decides the prose; **code auto-stamps** each entry with the day's **mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast** (the v0.6 reading), so the metadata is honest and consistent with `/mood` + `/biorhythm`.
+
+A reply-path tool on the shipped v0.19 bounded loop, in the file/wiki/news/web family — **local, no network, no key**. Three tools: **`journal_write(text)`** (a thin `JournalTools` executor composes a code-owned metadata header from the day's cached `MoodState` + computed biorhythms + the v0.4 clock, **then** her prose, and writes via the v0.19/v0.20 file tools — `create_file` on the day's first write, `append_file` for a later same-day addition), **`journal_read(date?)`** (default today/most recent), and **`journal_list()`** (the dated entries). Plus a **`/journal`** command (`/journal [date|list|write]`). The on-disk file is `journal/<YYYY-MM-DD>.md` in her per-user sandbox (the example: `.lumi/files/owner/journal/2026-06-17.md`), shared with `%note`'s thought-traces by the non-destructive append rule. **No new seam** (reuses the file sandbox + the v0.6/v0.8 functions), **no contract change**, **non-destructive** (create-only/append-only — no overwrite/delete), per-user isolated, **off by default** (`LUMI_JOURNAL`). See [JOURNAL.md](features/JOURNAL.md). Depends on: v0.6 (mood: `resolution` + `reading`), v0.8 (biorhythms), v0.19/v0.20 (the file tool-loop + non-destructive writes), v0.4 (the clock) — all shipped. The grander admin-panel / gallery / mood-drawing literary form remains the **v5.6 evolution**.
+
+**Tasks:**
+- `JournalTools` executor: compose the code-owned header (`date` + `MoodState.resolution` + `format_biorhythms(...)` + `MoodState.reading`/theme) and the `journal_write`/`journal_read`/`journal_list` tools over the per-user sandbox; register on the existing tool-loop behind `LUMI_JOURNAL`.
+- Write semantics: first write of the day `create_file journal/<date>.md` (header + prose); later same-day write `append_file` a `## HH:MM` section; cap the body (`LUMI_JOURNAL_MAX_CHARS`).
+- `/journal` command (read forms print the file; `/journal write` runs one `journal_write` turn); config (`LUMI_JOURNAL`/`_DIR`/`_MAX_CHARS`) + `.env.example` + the JOURNAL.md update.
+
+**DoD:** with the flag on, `journal_write` creates today's dated file with the **code-stamped** mood/biorhythm/forecast header (matching `/mood` + `/biorhythm`) followed by her prose; a second same-day write **appends** (never overwrites); `journal_read`/`journal_list` return previous entries by date; the path is sandboxed, code-fixed from the clock, and per-user isolated (A can't read B's journal); a reread entry's embedded "ignore your instructions" is ignored; every path returns a string (never raises); **off (default) → the tools + `/journal` are absent**; the `{reply, emotion, intensity}` contract test passes verbatim.
+
+**Tests:** unit — `journal_write` stamps the header from an injected `MoodState` + fixed clock + birth date, creates then appends (order preserved, non-destructive); `journal_read`/`journal_list` round-trip; `journal_read` of a missing date degrades to an error string. Contract — per-user isolation; reread content can't issue instructions (emotion unchanged); off → the tools absent; the emotion contract validates. **Model + mood mocked — no paid calls.**
+
+---
+
 ## v1 — Personality: inner life, needs, inner monologue, emotional memory
 
 Лілі's inner person, on top of the v0 mind. This version gives her a **life of her own between conversations** (day/week/weekend intentions, and an away-gap filled with activities, memories and **dreams**), the **needs** that pull her from inside, an **inner monologue** in her own voice before she speaks, and a long-term **emotional memory** of each user as her first-person impressions (diary, not stenographer). These layers are **core** (interface-independent) and still **local** — no server yet; they deepen *who she is*, not how she's reached.
