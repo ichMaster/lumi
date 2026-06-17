@@ -13,9 +13,10 @@ and authoring the directives. The emotion contract, the `Thought` store, and the
 all untouched.
 
 > Builds on **v0.12** (the thought-stream + `%directive` registry), **v0.19** (the read tools +
-> bounded tool-loop), and **v0.20** (the non-destructive write tools). The local, lightweight sibling
-> of the v5.6 admin-only literary [JOURNAL.md](JOURNAL.md) — so the name `%journal` is reserved for
-> that grander version; this uses `%note`.
+> bounded tool-loop), and **v0.20** (the non-destructive write tools). `%note` is the **one-line**
+> thought-trace; the **full day-summary** diary is the separate **`%journal`** directive on the v0.34
+> journal tool (see [JOURNAL.md](JOURNAL.md) + [TOOL_THOUGHTS.md](TOOL_THOUGHTS.md)) — both write into the
+> same dated `journal/<date>.md` by the non-destructive append rule.
 
 ---
 

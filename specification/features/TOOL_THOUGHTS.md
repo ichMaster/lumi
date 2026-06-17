@@ -1,4 +1,4 @@
-# Tool-using thoughts — the thought-stream reaches beyond her own state (`%lookup` / `%learn` / `%imagine` / `%gaze` / `%share` / `%catchup` / `%search` …)
+# Tool-using thoughts — the thought-stream reaches beyond her own state (`%lookup` / `%learn` / `%imagine` / `%gaze` / `%share` / `%catchup` / `%search` / `%journal` …)
 
 The v0.12 thought-stream's five directives (`%think`, `%wonder`, `%dream`, `%reflect`, `%recall`) are
 **all inward** — they muse on her own mood, memory, and gaps. This is the umbrella for the **outward**
@@ -9,8 +9,9 @@ reflect.
 
 Five flavors of the same idea — **one engine, one new seam**:
 
-- **file-thoughts** — she touches her **own notes** (`%note` / `%review` / `%explore`). Full design in
-  [FILE_THOUGHTS.md](FILE_THOUGHTS.md).
+- **file-thoughts** — she touches her **own notes and diary** (`%note` / `%review` / `%explore` /
+  `%journal` — the last writes a **day-summary** via the v0.34 journal tool). Full design in
+  [FILE_THOUGHTS.md](FILE_THOUGHTS.md) + [JOURNAL.md](JOURNAL.md).
 - **wiki-thoughts** — she reaches for the **world's knowledge** (`%lookup` / `%learn`). Detailed here.
 - **image-thoughts** — she **sees, makes, and shares pictures** (`%imagine` / `%gaze` / `%share`), on the
   v0.22 (`view_image`) / v0.23 (`generate_image`) / v0.24 (`send_image`) tools. Detailed here.
@@ -87,6 +88,7 @@ ones that bring something **new from outside** into an otherwise all-interior la
 | `%note` | jot a thought to a file | idle / daily | the thought | stream + disk | **file** (write) | — | 🔲 [FILE_THOUGHTS] |
 | `%review` | reread her own notes, muse | idle / daily | her notes | stream | **file** (read) | — | 🔲 [FILE_THOUGHTS] |
 | `%explore` | read+write her sandbox freely | idle, gated | her notes | stream + disk | **file** (r/w) | — | 🔲 [FILE_THOUGHTS] |
+| **`%journal`** | **write the day's summary** to her diary | day-close, **paced** (`at:` evening) | the day's `{recent}` / `{mood}` / impressions | stream (`kind:"journal"`) **+ the dated diary file** | **file** (`journal_write`, v0.34 — auto-stamped) | `%reflect` (the inward day-close) | 🔲 **this spec** |
 | **`%lookup`** | curiosity that **goes and finds out** | idle, novelty (or follows a `%wonder`) | a curiosity topic / `{last_thought}` | stream (`kind:"lookup"`) | **wiki** | `%wonder` | 🔲 **this spec** |
 | **`%learn`** | a chosen **deep-read**, then what struck her | idle, **rarer/paced** (or a daily ritual) | recent / the `meaning`·`novelty` need / her interests | stream (`kind:"learn"`) | **wiki** | `%think` | 🔲 **this spec** |
 | **`%imagine`** | **render** an inner image she's been picturing | idle, creative impulse (or follows a `%dream`/`%wonder`) | a dream/mood/`{last_thought}` | stream (`kind:"imagine"`) **+ a PNG** in her sandbox | **image** (`generate_image`, v0.23) | `%dream` | 🔲 **this spec** |
@@ -262,6 +264,35 @@ Gemini — see Safety).
 
 ---
 
+## The journal directive in detail (🔲 not built)
+
+Where `%note` jots a **single line** to her dated file, **`%journal`** writes the **whole day's summary** —
+the autonomous twin of the v0.34 `/journal write` command, and the file-family **outward-make** member that
+produces her literary diary entry. Its generate step runs **`journal_write`** (the v0.34 journal tool), so
+code auto-stamps the entry with the day's **mood (v0.6) + biorhythms (v0.8) + astrology forecast (the v0.6
+reading)** and her prose is appended below — she decides what to write, code owns the metadata (the v0.8
+"code, not model" merge). Full design in [JOURNAL.md](JOURNAL.md).
+
+```
+%journal  →  seed (the day's {recent} / {mood} / impressions)  →  journal_write  →  the dated diary entry  →  record (kind:"journal")
+```
+
+- **The inward twin is `%reflect`** (the end-of-day reflection): `%reflect` *thinks back* on the day;
+  `%journal` *writes it down* as the diary, auto-stamped. It is the day-close counterpart of `%note`'s
+  through-the-day jottings.
+- **Paced, not idle** — a **day-close / evening ritual** (`at:` in [THOUGHT_SCHEDULER.md](THOUGHT_SCHEDULER.md)),
+  fired at most once a day, and **only when the day had something worthwhile** (the JOURNAL.md uniqueness
+  rule) — never a manufactured "nothing today" entry.
+- **Local, so no de-identification** — like `%note`/`%explore`, it writes to **her own per-user sandbox**;
+  nothing leaves the machine, so the de-identified-query rule (for external wiki/news/web calls) does
+  **not** apply. Non-destructive (create-only/append-only), per-user isolated.
+- **Mostly silent** — her diary is private; it defaults to **rare** surfacing (an occasional quiet "записала
+  собі сьогоднішній день"), never a report. **Honest about nature** — her inner/literary life written down,
+  never a physical-world claim about herself (the v1.1 boundary). Off unless `LUMI_THOUGHTS` **and**
+  `LUMI_JOURNAL` are on.
+
+---
+
 ## The open directive: `%prompt` (🔲 not built)
 
 Every other directive has an **authored** instruction (`%think` = "тихо помірковуй", `%catchup` = "search
@@ -305,9 +336,9 @@ default with the rest of the thought tools.
 
 ## Directives — optimized (a richer record + a taxonomy)
 
-The directive set is now **15** (think · wonder · note · review · explore · lookup · learn · imagine ·
-gaze · share · catchup · brief · **search** · **events** · **prompt**) + the deferred `%verify` + the
-inward retrofits (dream · reflect · recall). Two cleanups keep that from sprawling:
+The directive set is now **16** (think · wonder · note · review · explore · **journal** · lookup · learn ·
+imagine · gaze · share · catchup · brief · **search** · **events** · **prompt**) + the deferred `%verify` +
+the inward retrofits (dream · reflect · recall). Two cleanups keep that from sprawling:
 
 **1 — a directive is *data*, not a code path.** Today `Directive` is just `{name, instruction}`
 ([core/thoughts.py](../../core/thoughts.py)). As tool-thoughts land, the engine must know, per directive,
@@ -338,7 +369,7 @@ the answer to "do we need a new directive?" is usually "no, it's an existing kin
 |---|---|---|---|---|---|
 | **inward** | think · wonder · dream · reflect · recall | — | cheapest | `idle:` | lowest |
 | **outward-read** | lookup · learn · review · gaze · catchup · brief · **search · events** | wiki / file / image / news / **web** (read) | a tool-loop (**web/search paid**) | `idle:` / `at:` (rituals) | untrusted, capped |
-| **outward-make** | note · explore · imagine | file / image (write) | write (imagine **paid**) | `idle:` / `at:` | non-destructive; imagine hardest-capped |
+| **outward-make** | note · explore · imagine · **journal** | file / image (write) | write (imagine **paid**; journal local/free) | `idle:` / `at:` | non-destructive; imagine hardest-capped; journal paced day-close |
 | **outward-reach** | share | image → Telegram | a push to you | `at:` / rare | **strictest** (a gift, owner-only) |
 | **open** | **prompt** | any (per the instruction) | depends on the act | typed / any schedule | trusted instruction, **owner-only**; tool results still untrusted |
 
@@ -431,6 +462,7 @@ Same family as the rest, plus **one genuinely new rule**:
 | `LUMI_THOUGHT_WIKI` | Enable the wiki directives (`%lookup`/`%learn`) — needs `LUMI_WIKI` | `off` |
 | `LUMI_THOUGHT_IMAGE` | Enable the image directives (`%imagine`/`%gaze`/`%share`) — needs `LUMI_IMAGE`; `%share` also needs the bridge | `off` |
 | `LUMI_THOUGHT_NEWS` | Enable the news directives (`%catchup`/`%brief`) — needs `LUMI_NEWS_TOOL` | `off` |
+| `LUMI_THOUGHT_JOURNAL` | Enable the `%journal` day-summary directive — needs `LUMI_JOURNAL` (local) | `off` |
 | `LUMI_THOUGHT_WEB` | Enable the web directives (`%search`/`%events`) — needs `LUMI_WEB_LOOKUP` (**paid**) | `off` |
 | `LUMI_THOUGHT_PROMPT` | Enable the **open** directive `%prompt` (owner-supplied instruction; can use any enabled tool) | `off` |
 | `LUMI_THOUGHT_TOOL_CAP` | Max tool-using proactive thinks per session (tighter than `LUMI_THOUGHTS_CAP`) | `3` |
@@ -461,7 +493,10 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
 4. **web** (`%search` → `%events`) — reuses the seam + the de-identified-query rule; needs the **v0.30
    `web_lookup`** tool (Gemini grounded search) shipped first. **Paid**, so capped like `%imagine`;
    `%search` (spontaneous) then the `%events` ritual (date-anchored, a scheduler fit).
-5. **later / separately-gated** — `%verify` (mid-turn wiki / news / web fact-check on the hot path).
+5. **journal** (`%journal`) — rides the **v0.34 journal tool** (the day-summary writer, auto-stamped
+   mood/biorhythm/forecast), so it ships **with or after v0.34**; local (no de-identification), the
+   file-family diary twin of `%reflect`; a **day-close ritual** (an `at:`-evening scheduler fit).
+6. **later / separately-gated** — `%verify` (mid-turn wiki / news / web fact-check on the hot path).
 
 ---
 
@@ -483,6 +518,9 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
       `web_lookup` (Gemini grounded search), date-anchored, de-identified, **paid → tight sub-cap**.
 - [ ] 🔲 `%events` directive — registry entry + authored prompt; `kind:"events"`; a **paced** "recent/upcoming"
       web ritual (date-anchored; a scheduler fit).
+- [ ] 🔲 `%journal` directive — registry entry + authored prompt; `kind:"journal"`; runs `journal_write`
+      (the v0.34 journal tool, auto-stamped mood/biorhythm/forecast); **paced day-close** ritual, local (no
+      de-identification), non-destructive; mostly silent. Needs `LUMI_JOURNAL`.
 - [ ] 🔲 `%prompt` directive — the **open** one: `instruction_from_topic=True`, `tools="*"` (each tool
       still flag-gated), defaults **shown**; owner-only; trusted instruction (no de-identification) but
       tool results untrusted + capped; `kind:"prompt"`. The killer pairing with the scheduler (a custom

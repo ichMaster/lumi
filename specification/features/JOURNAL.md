@@ -118,8 +118,13 @@ top of the day's file (the mood/biorhythm/forecast are daily constants).
   /`journal_list` previous days first to keep continuity.
 - **On request.** You can ask her to write today's entry, or to read a past one — directly, or via the
   `/journal` command below.
-- **Not on a schedule** by itself — spontaneity keeps it alive. (A scheduled nudge to *consider* writing can
-  ride the v0.32 thought-scheduler later; the write itself is still her choice.)
+- **On her own — the `%journal` directive.** The autonomous twin of `/journal write`: a day-close
+  thought-directive that runs `journal_write` from her own mind (the file-family **outward-make** member,
+  the diary twin of `%reflect`) — paced as an evening ritual, fired at most once a day and only when the day
+  was worthwhile, mostly silent. Full design in [TOOL_THOUGHTS.md](TOOL_THOUGHTS.md); it ships **with or
+  after** this tool (it reuses the thought-tools think-path seam). The write itself is still her choice.
+- **Not on a fixed schedule otherwise** — spontaneity keeps it alive; `%journal`'s cadence is a
+  [THOUGHT_SCHEDULER.md](THOUGHT_SCHEDULER.md) `at:`-evening entry, not a hard cron.
 
 ---
 
