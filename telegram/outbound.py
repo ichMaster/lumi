@@ -148,25 +148,34 @@ def mp3_to_ogg(mp3: bytes) -> bytes:  # pragma: no cover - ffmpeg subprocess
     return out.stdout
 
 
-async def voice_to_telegram(outbox_path, sent_path, *, tts, to_ogg, send_voice, caption_for, log=None) -> int:
+async def voice_to_telegram(outbox_path, sent_path, *, tts, to_ogg, send_voice, caption_for,
+                            send_photo=None, log=None) -> int:
     """Send each new ``kind="lili"`` reply as a Telegram **voice message** (one per reply); return count.
 
     Skips ``kind="user"`` (advances the pointer past them). ``synth → to_ogg → send_voice(ogg, caption)``
     per reply; on a synth/convert/send **failure**, stop **without** advancing (retry next loop) — the
     same resilience as the text path. ``send_voice`` is awaited; ``tts`` / ``to_ogg`` / ``caption_for``
     are injected so this is testable with a mock TTS + a fake bot (no network).
+
+    A **v0.24 chosen `send_image`** record (it carries a ``photo``) is **always sent as a photo**, even in
+    voice mode — voice mode governs how her *spoken replies* are delivered, not whether a deliberately-sent
+    picture goes. When ``send_photo`` (an injected ``async (record) -> None``) is given, such a record is
+    routed there instead of being voiced; without it (legacy callers) the record is voiced as before.
     """
     count = 0
     for rec in fifo.read_since(outbox_path, fifo.load_pointer(sent_path)):
-        if rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
-            try:
+        try:
+            if send_photo is not None and is_photo_record(rec):  # a chosen image → always a photo
+                await send_photo(rec)
+                count += 1
+            elif rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
                 ogg = to_ogg(tts.synth(rec["text"], emotion=rec.get("emotion")))
                 await send_voice(ogg, caption_for(rec))
-            except Exception as exc:  # noqa: BLE001 — leave the pointer before this id → retry next loop
-                if log is not None:
-                    log.error("voice send failed for id=%s (retrying): %s", rec.get("id"), exc)
-                break
-            count += 1
+                count += 1
+        except Exception as exc:  # noqa: BLE001 — leave the pointer before this id → retry next loop
+            if log is not None:
+                log.error("voice/photo send failed for id=%s (retrying): %s", rec.get("id"), exc)
+            break
         fifo.save_pointer(sent_path, rec["id"])
     return count
 
@@ -237,6 +246,9 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
             for chat in chats:
                 await bot.send_voice(chat, BufferedInputFile(ogg, "voice.ogg"), caption=caption)
 
+    async def _send_photo(rec: dict) -> None:  # v0.24: a chosen send_image — a photo even in voice mode
+        await send_photo_record(bot, chats, rec, emoji_map=emoji_map, fs_input=FSInputFile, log=log)
+
     log.info(
         "outbound up: voice=%s, batch=%d, catchup=%dh, photo=%s, chats=%s",
         cfg.telegram_voice, cfg.telegram_batch, cfg.telegram_catchup_h, cfg.telegram_photo, sorted(chats),
@@ -262,10 +274,11 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
             if cfg.telegram_voice:  # VOICE mode: one voice message per reply (no batching)
                 n = await voice_to_telegram(
                     cfg.outbox_path, sent_path, tts=tts, to_ogg=mp3_to_ogg,
-                    send_voice=send_voice, caption_for=lambda r: caption_for(r, emoji_map), log=log,
+                    send_voice=send_voice, caption_for=lambda r: caption_for(r, emoji_map),
+                    send_photo=_send_photo, log=log,
                 )
                 if n:
-                    log.info("voiced %d reply(ies) → %d chat(s)", n, len(chats))
+                    log.info("voiced/sent %d reply(ies) → %d chat(s)", n, len(chats))
                 await asyncio.sleep(1)
                 continue
             new = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))

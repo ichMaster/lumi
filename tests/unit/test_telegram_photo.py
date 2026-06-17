@@ -7,12 +7,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from state import fifo
 from telegram.outbound import (
     CAPTION_LIMIT,
     batches,
     is_photo_record,
     send_photo_record,
+    voice_to_telegram,
 )
+from voice.tts import MockTTS
 
 _NOW = datetime(2026, 6, 17, 12, 0, tzinfo=UTC)
 
@@ -102,3 +105,46 @@ async def test_send_photo_record_each_chat(tmp_path):
     bot = _Bot()
     await send_photo_record(bot, ["a", "b"], _photo(1, "hi", img), fs_input=str)
     assert [p[0] for p in bot.photos] == ["a", "b"]  # one photo per allowlisted chat
+
+
+# --- voice mode: a chosen image is a PHOTO, not voiced (0.24.1 fix) --------------------------------
+async def test_voice_mode_sends_photo_not_voiced(tmp_path):
+    outbox, sent = tmp_path / "outbox.jsonl", tmp_path / "outbox.sent"
+    img = tmp_path / "cat.png"
+    img.write_bytes(b"PNG")
+    fifo.append(outbox, "привіт", kind="lili", emotion="joy")             # a spoken reply → voiced
+    fifo.append(outbox, "ось малюнок", kind="lili", emotion="calm", photo=str(img))  # a chosen image → photo
+    fifo.append(outbox, "моя репліка", kind="user")                       # your mirrored line → skipped
+    voiced, photos = [], []
+
+    async def fake_send_voice(ogg, caption):
+        voiced.append(caption)
+
+    async def fake_send_photo(rec):
+        photos.append(rec["text"])
+
+    n = await voice_to_telegram(
+        outbox, sent, tts=MockTTS(), to_ogg=lambda b: b,
+        send_voice=fake_send_voice, caption_for=lambda r: r["text"],
+        send_photo=fake_send_photo,
+    )
+    assert n == 2                          # the reply (voiced) + the image (photo); the user line skipped
+    assert voiced == ["привіт"]            # only the spoken reply was voiced (not the image's caption)
+    assert photos == ["ось малюнок"]       # the chosen image went out as a PHOTO, not voiced
+    assert fifo.load_pointer(sent) == 3    # advanced past all three
+
+
+async def test_voice_mode_without_send_photo_falls_back_to_voicing(tmp_path):
+    """Legacy callers (no send_photo injected) still advance — the photo record is voiced as before."""
+    outbox, sent = tmp_path / "outbox.jsonl", tmp_path / "outbox.sent"
+    fifo.append(outbox, "ось", kind="lili", emotion="calm", photo="/x/cat.png")
+    voiced = []
+
+    async def fake_send_voice(ogg, caption):
+        voiced.append(caption)
+
+    n = await voice_to_telegram(
+        outbox, sent, tts=MockTTS(), to_ogg=lambda b: b,
+        send_voice=fake_send_voice, caption_for=lambda r: r["text"],  # no send_photo
+    )
+    assert n == 1 and voiced == ["ось"] and fifo.load_pointer(sent) == 1  # back-compat: voiced, advanced

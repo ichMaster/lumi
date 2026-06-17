@@ -278,7 +278,8 @@ to send you a real picture from her sandbox via the `send_image` tool (see [IMAG
 Daemon 2 sends such a record as a **photo always** (independent of `LUMI_TELEGRAM_PHOTO`, which only governs
 the decorative face) and **on its own** — a chosen picture is never merged into an N-batch. Her words ride
 as the caption (caption-capped, with the same long-text fallback). If the file has vanished by send time,
-the daemon sends just her words rather than crash.
+the daemon sends just her words rather than crash. This holds **in voice mode too** (`LUMI_TELEGRAM_VOICE`):
+her spoken replies are voiced, but a picture she chose to send still arrives as a **photo**, not voiced.
 
 ## Security & scope
 
