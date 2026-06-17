@@ -312,6 +312,11 @@ class Core:
         news_max_calls: int = 4,
         news_days: int = 7,
         news_http_get: Callable[[str], str] | None = None,  # injected for tests; None → real urllib
+        web_lookup_enabled: bool = False,
+        web_lookup_model: str = "gemini-2.5-flash",
+        web_lookup_max_calls: int = 2,
+        web_lookup_max_chars: int = 2000,
+        web_search: Callable[..., str] | None = None,  # injected GeminiSearch for tests; None → real Gemini
         image_enabled: bool = False,
         vision_max: int = 4,
         image_max_bytes: int = 5_242_880,
@@ -400,6 +405,12 @@ class Core:
         self._news_max_calls = news_max_calls
         self._news_days = news_days
         self._news_http_get = news_http_get
+        # v0.27 web lookup — custom web_lookup (Gemini grounded search) on the same bounded loop (off by default).
+        self._web_lookup_enabled = web_lookup_enabled
+        self._web_lookup_model = web_lookup_model
+        self._web_lookup_max_calls = web_lookup_max_calls
+        self._web_lookup_max_chars = web_lookup_max_chars
+        self._web_search = web_search  # injected GeminiSearch (tests); None → the real Gemini caller
         # v0.22 vision: view_image (sandbox) + shared-image input; off by default.
         self._image_enabled = image_enabled
         self._vision_max = vision_max
@@ -1000,6 +1011,11 @@ class Core:
             from core.news import NEWS_DIRECTIVE
 
             canon = f"{canon}\n\n{NEWS_DIRECTIVE}"
+        # v0.27: when the web tool is on, add the authored "how she delivers a web answer" line.
+        if self._web_lookup_enabled:
+            from core.weblookup import WEB_LOOKUP_DIRECTIVE
+
+            canon = f"{canon}\n\n{WEB_LOOKUP_DIRECTIVE}"
         return build_system_prompt(
             canon,
             summaries=summaries,
@@ -1265,7 +1281,7 @@ class Core:
         routes: dict[str, Callable[[str, dict], str | dict]] = {}
         tools: list[dict] = []
         for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args(),
-                                    self._news_tool_args(),
+                                    self._news_tool_args(), self._web_tool_args(),
                                     self._image_tool_args(), self._imagegen_tool_args(),
                                     self._sendimage_tool_args()):
             if executor is None:
@@ -1444,6 +1460,25 @@ class Core:
             return news.execute(name, tool_input)
 
         return NEWS_TOOLS, capped
+
+    def _web_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, executor) for the v0.27 web lookup tool; ``(None, None)`` when off.
+
+        A fresh ``WebLookupTools`` per turn — bound to the injected ``GeminiSearch`` (the real Gemini
+        caller, or a test stub) and **today** from the v0.4 clock (so "upcoming/this week" anchors to the
+        real today) — with the per-turn call + answer caps on the instance. The query carries **only what
+        the model passes** — the core never augments it with relationship memory, facts, or secrets
+        (no-personal-data rule). Paid (a grounded Gemini call); off by default."""
+        if not self._web_lookup_enabled:
+            return None, None
+        from core.weblookup import WEB_LOOKUP_TOOLS, WebLookupTools, gemini_search
+
+        search = self._web_search if self._web_search is not None else gemini_search(model=self._web_lookup_model)
+        web = WebLookupTools(
+            search=search, today=self._clock().strftime("%Y-%m-%d"),
+            max_chars=self._web_lookup_max_chars, max_calls=self._web_lookup_max_calls,
+        )
+        return WEB_LOOKUP_TOOLS, web.execute
 
     def _log_tool_call(self, name: str, tool_input: dict | None, result: str) -> None:
         """Append a file-tool call to .lumi/tool-log.jsonl as it runs (for `tail -f`). Never raises."""
@@ -2040,6 +2075,10 @@ def build_core(
         news_max_chars=cfg.news_max_chars,
         news_max_calls=cfg.news_max_calls,
         news_days=cfg.news_days,
+        web_lookup_enabled=cfg.web_lookup,
+        web_lookup_model=cfg.web_lookup_model,
+        web_lookup_max_calls=cfg.web_lookup_max_calls,
+        web_lookup_max_chars=cfg.web_lookup_max_chars,
         image_enabled=cfg.image,
         vision_max=cfg.vision_max,
         image_max_bytes=cfg.image_max_bytes,

@@ -252,7 +252,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /recall /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /recall /web /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -276,6 +276,7 @@ class LumiApp(App[None]):
         self._quiet_hours = cfg.quiet_hours
         self._image_enabled = cfg.image  # v0.22: /image shares a picture for her to see + describe
         self._vision_max = cfg.vision_max
+        self._web_lookup_enabled = cfg.web_lookup  # v0.27: /web fires a live web lookup
         self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
         now = self._core.clock()
         self._last_activity = self._last_nudge_ts = self._last_think_ts = now
@@ -515,6 +516,10 @@ class LumiApp(App[None]):
             return
         if text == "/recall" or text.startswith("/recall "):
             self._recall_command(text)
+            prompt.focus()
+            return
+        if text in ("/web", "/search", "/w") or text.startswith(("/web ", "/search ", "/w ")):
+            await self._web_command(text)
             prompt.focus()
             return
         if text == "/theme" or text.startswith("/theme "):
@@ -812,6 +817,21 @@ class LumiApp(App[None]):
         else:
             body = f"**Згадую про «{query}»:**\n\n" + "\n\n".join(moments)
         self._emit(body, Markdown(body))
+
+    async def _web_command(self, text: str) -> None:
+        """``/web <query>`` (v0.27, aliases ``/search`` ``/w``) — fire **one** live web lookup; Лілі answers
+        from it in her own voice. The sibling of ``/recall`` (reads her memory) — this reads the **web** for
+        this turn, via the v0.27 ``web_lookup`` tool. Gated by ``LUMI_WEB_LOOKUP`` (+ ``GEMINI_API_KEY``)."""
+        if not self._web_lookup_enabled:
+            self.notify("Web lookup is off — set LUMI_WEB_LOOKUP=on (+ GEMINI_API_KEY).",
+                        severity="warning", timeout=3)
+            return
+        query = text.split(None, 1)[1].strip() if " " in text else ""
+        if not query:
+            self.notify("Що знайти в інтернеті? /web <запит>", severity="warning", timeout=3)
+            return
+        self._last_activity = self._core.clock()  # a typed command resets the idle timer
+        await self._run_turn(query, mirror_input=True)  # a normal turn — she looks it up + answers
 
     def _show_closeness(self) -> None:
         """Show the current relationship level by name — the `/closeness` command (v0.10).
