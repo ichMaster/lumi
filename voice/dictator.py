@@ -87,10 +87,10 @@ def run() -> None:  # pragma: no cover - mic capture + STT glue (no audio/paid C
     )
     log = logging.getLogger("lumi.dictation")
     key = cfg.deepgram_api_key or cfg.elevenlabs_api_key
-    stt = build_stt(cfg.stt_provider, api_key=key)
+    stt = build_stt(cfg.stt_provider, api_key=key, model=cfg.stt_model)
     log.info(
-        "dictator up: provider=%s, lang=%s, flag=%s, inbox=%s",
-        cfg.stt_provider, cfg.stt_lang, cfg.listen_flag_path, cfg.inbox_path,
+        "dictator up: provider=%s, model=%s, lang=%s, flag=%s, inbox=%s",
+        cfg.stt_provider, cfg.stt_model or "(default)", cfg.stt_lang, cfg.listen_flag_path, cfg.inbox_path,
     )
 
     import sounddevice as sd  # lazy: a separate process records; the TUI never captures audio

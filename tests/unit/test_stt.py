@@ -35,6 +35,12 @@ def test_build_stt_picks_provider():
         build_stt("nonsense")
 
 
+def test_build_stt_model_override():
+    assert build_stt("deepgram", api_key="k").model == "nova-3"          # default
+    assert build_stt("deepgram", api_key="k", model="nova-2").model == "nova-2"  # overridden
+    assert build_stt("deepgram", api_key="k", model="").model == "nova-3"  # "" → default
+
+
 # --- read_flag --------------------------------------------------------------------------------------
 def test_read_flag_on_off(tmp_path):
     flag = tmp_path / "listen.flag"
