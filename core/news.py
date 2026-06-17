@@ -72,6 +72,15 @@ NEWS_TOOLS: list[dict] = [
 
 NEWS_TOOL_NAMES = frozenset(t["name"] for t in NEWS_TOOLS)
 
+# The authored "how she delivers news" line — injected into the system prompt only when the news tool is
+# on (LUMI-102). English source → Ukrainian voice, selective, cited, honest it's a summary.
+NEWS_DIRECTIVE = (
+    "Якщо користуєшся новинним інструментом (news_search/news_read): джерело — англомовний Guardian. "
+    "Запит до пошуку формуй англійською і лише з теми, яку людина прямо просить (без особистих даних). "
+    "Переказуй новину УКРАЇНСЬКОЮ, своїм голосом, вибірково — не як стрічку заголовків; будь чесною, що це "
+    "переказ англомовного джерела (напр. «читала в Guardian…»), і завжди додавай посилання-джерело."
+)
+
 
 @dataclass
 class NewsItem:

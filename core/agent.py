@@ -303,6 +303,15 @@ class Core:
         wiki_max_chars: int = 1500,
         wiki_max_calls: int = 4,
         wiki_http_get: Callable[[str], str] | None = None,  # injected for tests; None → real urllib
+        news_enabled: bool = False,
+        news_api_key: str = "",
+        news_api_url: str = "https://content.guardianapis.com",
+        news_sections: str = "",
+        news_max_results: int = 8,
+        news_max_chars: int = 3000,
+        news_max_calls: int = 4,
+        news_days: int = 7,
+        news_http_get: Callable[[str], str] | None = None,  # injected for tests; None → real urllib
         image_enabled: bool = False,
         vision_max: int = 4,
         image_max_bytes: int = 5_242_880,
@@ -381,6 +390,16 @@ class Core:
         self._wiki_max_chars = wiki_max_chars
         self._wiki_max_calls = wiki_max_calls
         self._wiki_http_get = wiki_http_get
+        # v0.25 Guardian news tool — custom news_search/news_read on the same bounded loop (off by default).
+        self._news_enabled = news_enabled
+        self._news_api_key = news_api_key
+        self._news_api_url = news_api_url
+        self._news_sections = news_sections
+        self._news_max_results = news_max_results
+        self._news_max_chars = news_max_chars
+        self._news_max_calls = news_max_calls
+        self._news_days = news_days
+        self._news_http_get = news_http_get
         # v0.22 vision: view_image (sandbox) + shared-image input; off by default.
         self._image_enabled = image_enabled
         self._vision_max = vision_max
@@ -975,8 +994,14 @@ class Core:
             closeness = closeness_block(self._closeness_levels, level)
         # Append the reasoning directive to the canon so any pre-answer reasoning is
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
+        # v0.25: when the news tool is on, add the authored "how she delivers news" line (EN→UK, cited).
+        canon = f"{self._canon}\n\n{REASONING_DIRECTIVE}"
+        if self._news_enabled:
+            from core.news import NEWS_DIRECTIVE
+
+            canon = f"{canon}\n\n{NEWS_DIRECTIVE}"
         return build_system_prompt(
-            f"{self._canon}\n\n{REASONING_DIRECTIVE}",
+            canon,
             summaries=summaries,
             day_summaries=day_summaries,
             week_summaries=week_summaries,
@@ -1240,6 +1265,7 @@ class Core:
         routes: dict[str, Callable[[str, dict], str | dict]] = {}
         tools: list[dict] = []
         for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args(),
+                                    self._news_tool_args(),
                                     self._image_tool_args(), self._imagegen_tool_args(),
                                     self._sendimage_tool_args()):
             if executor is None:
@@ -1388,6 +1414,36 @@ class Core:
             return wiki.execute(name, tool_input)
 
         return WIKI_TOOLS, capped
+
+    def _news_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, executor) for the v0.25 Guardian news tool; ``(None, None)`` when off.
+
+        A fresh ``NewsTools`` (its own per-turn id registry) + a per-turn call cap (``LUMI_NEWS_MAX_CALLS``,
+        independent of the loop + wiki caps). The query carries **only what the model passes** — the core
+        never augments it with relationship memory, facts, or secrets (no-personal-data rule)."""
+        if not self._news_enabled:
+            return None, None
+        from core.news import NEWS_TOOLS, GuardianProvider, NewsTools
+
+        kwargs = {"http_get": self._news_http_get} if self._news_http_get is not None else {}
+        provider = GuardianProvider(
+            api_key=self._news_api_key, base_url=self._news_api_url, sections=self._news_sections, **kwargs
+        )
+        news = NewsTools(
+            provider, max_results=self._news_max_results, max_chars=self._news_max_chars, days=self._news_days
+        )
+        calls = {"n": 0}
+
+        def capped(name: str, tool_input: dict) -> str:
+            calls["n"] += 1
+            if calls["n"] > self._news_max_calls:
+                return (
+                    f"(news call limit reached: {self._news_max_calls} per turn — "
+                    "answer from what you already found)"
+                )
+            return news.execute(name, tool_input)
+
+        return NEWS_TOOLS, capped
 
     def _log_tool_call(self, name: str, tool_input: dict | None, result: str) -> None:
         """Append a file-tool call to .lumi/tool-log.jsonl as it runs (for `tail -f`). Never raises."""
@@ -1976,6 +2032,14 @@ def build_core(
         wiki_base_url=cfg.wiki_base_url,
         wiki_max_chars=cfg.wiki_max_chars,
         wiki_max_calls=cfg.wiki_max_calls,
+        news_enabled=cfg.news_tool,
+        news_api_key=cfg.news_api_key,
+        news_api_url=cfg.news_api_url,
+        news_sections=cfg.news_sections,
+        news_max_results=cfg.news_max_results,
+        news_max_chars=cfg.news_max_chars,
+        news_max_calls=cfg.news_max_calls,
+        news_days=cfg.news_days,
         image_enabled=cfg.image,
         vision_max=cfg.vision_max,
         image_max_bytes=cfg.image_max_bytes,
