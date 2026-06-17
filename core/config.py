@@ -72,6 +72,8 @@ DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
 # v0.13 bridge file bus (gitignored runtime data): the TUI reads inbox, writes outbox.
 DEFAULT_INBOX_PATH = _REPO_ROOT / ".lumi" / "inbox.jsonl"
 DEFAULT_OUTBOX_PATH = _REPO_ROOT / ".lumi" / "outbox.jsonl"
+# v0.26 dictation: the TUI flips this on the listen key; the dictator reads it (on/off).
+DEFAULT_LISTEN_FLAG = _REPO_ROOT / ".lumi" / "listen.flag"
 
 # Rolling window: how many recent messages are kept verbatim in context. Older
 # messages of the current session are folded into a running digest (compaction),
@@ -270,6 +272,12 @@ class Config:
     # On EVERY start, skip the replies missed while the voicer was off (speak only new ones).
     # Off (default) = resume — voice the backlog that piled up while it was stopped.
     voice_skip_missed: bool = False
+    # v0.26 local dictation (STT) — the mirror of the voicer: mic → inbox. Off by default.
+    dictation: bool = False  # the TUI drains inbox + shows the listen toggle (like bridge); the dictator runs
+    stt_provider: str = "deepgram"  # deepgram (Nova-3 uk) / elevenlabs (Scribe) / whisper (offline)
+    stt_lang: str = "uk"  # recognition language
+    listen_flag_path: Path = DEFAULT_LISTEN_FLAG  # the on/off signal the TUI writes, the dictator reads
+    deepgram_api_key: str = ""  # cloud STT key (secret — never logged); Whisper needs none
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
     # v0.8 hormonal (menstrual) cycle — a phased body rhythm merged into the mood. On by default.
@@ -489,6 +497,11 @@ def load_config(*, load_env: bool = True) -> Config:
         voice_id=(os.getenv("LUMI_VOICE_ID") or "").strip(),
         voice_model=(os.getenv("LUMI_VOICE_MODEL") or "eleven_multilingual_v2").strip(),
         voice_skip_missed=(os.getenv("LUMI_VOICE_SKIP_MISSED") or "off").strip().lower() in _TRUTHY,
+        dictation=(os.getenv("LUMI_DICTATION") or "off").strip().lower() in _TRUTHY,  # v0.26, off by default
+        stt_provider=(os.getenv("LUMI_STT_PROVIDER") or "deepgram").strip().lower(),
+        stt_lang=(os.getenv("LUMI_STT_LANG") or "uk").strip(),
+        listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else DEFAULT_LISTEN_FLAG,
+        deepgram_api_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
         face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
