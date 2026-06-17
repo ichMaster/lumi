@@ -636,6 +636,22 @@ Mirrors the **shipped v0.13 Telegram architecture**: a **dumb, core-free cron pr
 
 **Tests:** unit — `due(now, last_fired, spec)` per trigger type (fixed clock, **no sleeps**); the `schedule.toml` parse; the catch-up cap skips stale. Integration — the queue round-trips (a cron append → the TUI drains via `run_directive` → a `Thought` is recorded); quiet-hours + per-day caps suppress; a `%prompt` schedule entry resolves its placeholder at fire time; isolation holds. **No real sleeps, no paid calls.**
 
+### v0.33 — Local file tool III: metadata + create-folder + copy (non-destructive)
+
+**Goal:** Лілі (or you, through her) can **see a file's created/modified dates**, **make a folder**, and **copy a file** in her sandbox — a small extension of the shipped v0.19/v0.20 file tool that **keeps the non-destructive guarantee**.
+
+Additive to `core/files.py`: it reuses the v0.19 `safe_path` sandbox guard + the bounded loop, adds **no new seam** and **no contract change**, and stays **create-only** (no overwrite/delete/move). Three things: **dates** on `list_files` + a new **`stat_file(path)`** (read-only metadata — `st_mtime` for modified; `st_birthtime` for created where the OS provides it, the macOS/BSD case, with an `st_ctime` fallback labelled honestly elsewhere); **`create_folder(path)`** (create-only, refuse if it exists); and **`copy_file(src, dest)`** (both paths sandboxed, source must be a file, **dest create-only** — a clash is refused, no overwrite — `shutil.copy2` preserving metadata, bounded by a new `LUMI_FILE_COPY_MAX` source-size cap separate from the content `LUMI_FILE_WRITE_MAX`). Off by default (`LUMI_FILE_TOOL`), per-user isolated, every path returns an error string on failure (never raises). See [FILE_TOOL.md](features/FILE_TOOL.md). Depends on: v0.19 (the loop + `safe_path`), v0.20 (the write tools) — both shipped. **Placed at the end of v0** as a standalone enhancement (its position is immaterial — it could equally ship as a `0.20.x`).
+
+**Tasks:**
+- **Dates:** `list_files` reports each entry's **created + modified** date (alongside size); a new `stat_file(path)` read tool returns one file's size + dates (`st_mtime` / `st_birthtime`→`st_ctime` fallback).
+- **`create_folder(path)`** — create-only (refuse if it exists); parents under the root via `safe_path`.
+- **`copy_file(src, dest)`** — both paths sandboxed; source a file; **dest create-only** (refuse a clash); `shutil.copy2`; bounded by `LUMI_FILE_COPY_MAX`.
+- Register all on the existing executor behind `LUMI_FILE_TOOL`; config (`LUMI_FILE_COPY_MAX`) + `.env.example` + the FILE_TOOL.md update.
+
+**DoD:** with the flag on, a listing / `stat_file` shows **created + modified** dates; `create_folder` makes a new directory and refuses an existing one; `copy_file` copies to a **new** dest and refuses an existing one (no overwrite), an oversize / missing source, and any traversal/escape on either path; **no overwrite/delete/move path exists**; per-user isolation holds; **off (default) → the new tools are absent**; the `{reply, emotion, intensity}` contract test passes verbatim.
+
+**Tests:** unit — `list_files`/`stat_file` report dates (created falls back to `st_ctime` where `st_birthtime` is absent); `create_folder` create-only + escape refused; `copy_file` create-only at dest + source-size cap + traversal on either path refused. Contract — per-user isolation (A can't copy/stat B's file); off → the tools absent; the emotion contract validates. **Model mocked — no paid calls.**
+
 ---
 
 ## v1 — Personality: inner life, needs, inner monologue, emotional memory

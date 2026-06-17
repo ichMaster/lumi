@@ -17,15 +17,21 @@ final, validated output.
 
 | Tool | Read / Write | What it does |
 |---|---|---|
-| `list_files` | read | Returns the names (and sizes) of files in a directory under the sandbox root. |
+| `list_files` | read | Returns the names, **sizes, and created/modified dates** of files in a directory under the sandbox root (v0.33). |
+| `stat_file` | read | Returns one file's **size + created + modified date** (v0.33) — the metadata of a single path without listing the whole directory. |
 | `find_in_file` | read | Searches a file for a string and returns the **line numbers** of matches, each with a short preview of the line, so Лілі can locate a section before reading it. |
 | `read_file` | read | Reads `line_count` lines starting at a 1-based `start_line`, and reports the file's `total_lines`, so Лілі can read from anywhere and page to the end (see below). |
 | `create_file` | write | Creates a **new** file with the given content. Fails if the path already exists. |
 | `append_file` | write | Appends content to the **end** of an existing file. |
+| `create_folder` | write | Creates a **new** directory under the sandbox (v0.33). Fails if it already exists. |
+| `copy_file` | write | Copies a sandbox file to a **new** destination (v0.33). Fails if the destination already exists. |
 
-There is deliberately **no overwrite and no delete** in this first version. `create_file` only
-creates, `append_file` only adds to the end, so an autonomous turn can never clobber or destroy
-existing data. Overwrite, edit, and delete are a later, separately-gated addition if ever needed.
+There is deliberately **no overwrite, no delete, and no move/rename** here. Every write tool is
+**create-only or end-only**: `create_file` only creates, `append_file` only adds to the end, and the
+v0.33 tools keep the rule — `create_folder` only creates (errors if it exists), `copy_file` only writes a
+**new** destination (errors if it exists, never overwrites). So an autonomous turn can never clobber or
+destroy existing data. Overwrite, edit, delete, and move are a later, separately-gated addition if ever
+needed.
 
 ## Finding where to start (search inside a file)
 
@@ -69,6 +75,31 @@ roughly the file size times the number of loop rounds it stays in context.
 so it never silently replaces content. `append_file` opens an existing file and adds the given text
 to its end, returning an error if the file does not exist. Both create parent directories as needed,
 both are confined to the sandbox, and both treat the path the same guarded way as the read tools.
+
+## Metadata and filesystem tools (v0.33)
+
+A small extension of the shipped read + write tools — **dates** on listings and **two non-destructive
+filesystem tools** — all on the same sandboxed executor, with no contract change.
+
+**Dates (read).** `list_files` now reports each entry's **created** and **modified** date alongside its
+size, and a new **`stat_file(path)`** returns those for a single file without listing the directory. Both
+read `os.stat` once — the modified date is `st_mtime`; the **created** date is `st_birthtime` where the OS
+provides it (macOS / BSD) and falls back to `st_ctime` (the metadata-change time) elsewhere, labelled
+honestly. Read-only, so the non-destructive invariant is untouched.
+
+**`create_folder(path)` (write).** Creates a **new** directory under the sandbox, refusing if the path
+already exists (create-only, like `create_file`). Parents are created as needed and stay under the root
+(the same `safe_path` guard). No overwrite, no delete.
+
+**`copy_file(src, dest)` (write).** Copies an existing sandbox file to a **new** destination. Both paths go
+through the sandbox guard; the source must exist and be a file; the **destination must not exist** — a
+clash is refused (no overwrite), keeping the non-destructive rule. The copy preserves the file's metadata
+(`shutil.copy2`). Bounded by `LUMI_FILE_COPY_MAX` (separate from the model-content `LUMI_FILE_WRITE_MAX`,
+since a copy moves *existing* bytes, not model-supplied content) — an oversize source is refused.
+
+All four reuse the v0.19 `safe_path` sandbox guard + the bounded loop, return an **error string** on any
+failure (never raise), are **per-user** and **off** unless `LUMI_FILE_TOOL` is on. **No `{reply, emotion,
+intensity}` change.**
 
 ## Sandbox and safety
 
@@ -122,6 +153,7 @@ what the read caps bound.
 | `LUMI_FILE_READ_MAX_TOTAL` | Max total lines one turn may read across calls | e.g. 2000 |
 | `LUMI_FILE_FIND_MAX` | Max matches `find_in_file` returns | e.g. 50 |
 | `LUMI_FILE_WRITE_MAX` | Max size of one write/append | e.g. 64 KB |
+| `LUMI_FILE_COPY_MAX` | Max source size for one `copy_file` (v0.33; separate from the content write cap) | e.g. 5 MB |
 | `LUMI_TOOL_MAX_STEPS` | Max tool calls per turn (loop cap) | e.g. 8 |
 
 ## Mapping to the roadmap — v0.19 (reading) + v0.20 (writing)
@@ -179,3 +211,34 @@ calls.
 else it needs (the reply turn, the `Repository`, per-user scoping, the `LLMClient` seam) already exists
 at v0.17. Nothing between v0.17 and v4.2 needs the loop, so v0.19 lands as the next phase, and the loop
 it adds is reused by web search (v4.2), world context (v4.3), and the creative layer (v5).
+
+### v0.33 — file tool III: metadata + create-folder + copy (non-destructive)
+
+**Goal.** Лілі (or you, through her) can **see a file's created/modified dates**, **make a folder**, and
+**copy a file** in her sandbox — a small extension of the v0.19/v0.20 file tool, keeping the
+non-destructive guarantee.
+
+**Tasks.**
+- **Dates:** `list_files` reports each entry's **created + modified** date (alongside size); a new
+  **`stat_file(path)`** read tool returns one file's size + dates. `st_mtime` for modified;
+  `st_birthtime` for created where the OS has it (macOS/BSD), `st_ctime` fallback elsewhere, labelled.
+- **`create_folder(path)`** write tool — create-only (refuse if it exists); parents under the root via
+  `safe_path`. **`copy_file(src, dest)`** write tool — both paths sandboxed, source must be a file,
+  **dest create-only** (refuse a clash, no overwrite), `shutil.copy2` (preserves metadata), bounded by a
+  new `LUMI_FILE_COPY_MAX` (source-size cap, separate from the content `LUMI_FILE_WRITE_MAX`).
+- Register all on the existing executor behind `LUMI_FILE_TOOL`; update `.env.example` + this doc.
+
+**Definition of done.** With the flag on, a listing/`stat_file` shows created + modified dates;
+`create_folder` makes a new directory and refuses an existing one; `copy_file` copies to a **new** dest
+and refuses an existing one (no overwrite), an oversize source, a missing source, and any
+traversal/escape; **no overwrite/delete/move path exists**; per-user isolation holds; the `{reply,
+emotion, intensity}` contract still validates.
+
+**Tests.** `list_files`/`stat_file` report dates (created falls back to `st_ctime` where `st_birthtime`
+is absent); `create_folder` create-only + escape refused; `copy_file` create-only at dest + source-size
+cap + traversal on either path refused + isolation (A can't copy B's file); the emotion contract still
+validates. Model mocked — no paid calls.
+
+**Why here.** A small, standalone extension of the shipped v0.19/v0.20 file tool (no new seam, no
+contract change). Placed at the end of v0 — independent of the recall/web/thought phases, so its position
+is immaterial; it could equally ship as a `0.20.x` enhancement.
