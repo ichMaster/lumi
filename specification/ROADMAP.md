@@ -540,7 +540,7 @@ A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expa
 
 **Goal:** Лілі can **search her own memory on demand** mid-turn — a model-callable **`recall`** tool on the v0.19 bounded loop lets her issue a **targeted** semantic query (different from the literal message) and do **multi-hop** recall, complementing the automatic per-turn RAG that already pushes relevant memory into every reply.
 
-A small **refinement of the recall line** (v0.16 index + v0.17 auto-RAG), not a new capability — it exposes the shipped `recall_moments(query)` (over `repository.search_vectors` + the `Embedder`) as a tool on the **same bounded loop** the file/wiki/news tools use. **Auto-RAG (v0.17) stays the default "push"** — relevant memory surfaces *unprompted*, the human-like baseline; the tool adds the **"pull"** for what auto-RAG can't serve: a **query ≠ the current message** ("а що вони казали про брата?") and **iterative** search→refine during reasoning. **The one distinction from the other tools:** a recall result is **her own past = trusted history** (not untrusted external data — ARCHITECTURE §Semantic recall), so the loop frames it as her **recollection** — the one tool whose results she treats as her own memory. **Same isolation invariant** — the search runs **only over the active user's** vectors (A↔B contract test); results **dedup** against the live window + the auto-RAG block (no double-injection); a no-hit / embedder-off degrades to a notice, never blocks the turn. Off by default → behaves exactly like v0.17. Also the **engine for the `%recall` directive** (the inward memory-resurfacing tool-thought, v0.30). See [SEMANTIC_RECALL.md](features/SEMANTIC_RECALL.md), ARCHITECTURE §Semantic recall. Depends on: v0.16 (the index + seams), v0.17 (auto-RAG + dedup), v0.19 (the bounded tool-loop).
+A small **refinement of the recall line** (v0.16 index + v0.17 auto-RAG), not a new capability — it exposes the shipped `recall_moments(query)` (over `repository.search_vectors` + the `Embedder`) as a tool on the **same bounded loop** the file/wiki/news tools use. **Auto-RAG (v0.17) stays the default "push"** — relevant memory surfaces *unprompted*, the human-like baseline; the tool adds the **"pull"** for what auto-RAG can't serve: a **query ≠ the current message** ("а що вони казали про брата?") and **iterative** search→refine during reasoning. **The one distinction from the other tools:** a recall result is **her own past = trusted history** (not untrusted external data — ARCHITECTURE §Semantic recall), so the loop frames it as her **recollection** — the one tool whose results she treats as her own memory. **Same isolation invariant** — the search runs **only over the active user's** vectors (A↔B contract test); results **dedup** against the live window + the auto-RAG block (no double-injection); a no-hit / embedder-off degrades to a notice, never blocks the turn. Off by default → behaves exactly like v0.17. Also the **engine for the `%recall` directive** (the inward memory-resurfacing tool-thought, v0.31). See [SEMANTIC_RECALL.md](features/SEMANTIC_RECALL.md), ARCHITECTURE §Semantic recall. Depends on: v0.16 (the index + seams), v0.17 (auto-RAG + dedup), v0.19 (the bounded tool-loop).
 
 **Tasks:**
 - A model-callable **`recall(query[, k])`** tool (`core/`) over the shipped `recall_moments` — returns the top-`k` relevant past moments (snippet + when), capped; registered on the v0.19 loop via `_turn_tools` behind a flag; a per-turn call cap.
@@ -554,17 +554,64 @@ A small **refinement of the recall line** (v0.16 index + v0.17 auto-RAG), not a 
 
 ---
 
-### v0.30 — Thought-tools: the autonomous mind *acts* (`%lookup` / `%imagine` / `%catchup` / `%note` / `%recall` / `%prompt` …)
+### v0.30 — Web lookup (Gemini grounded search) + the `/web` command
+
+**Goal:** Лілі can pull a **fresh, grounded answer from the live internet** during a turn — *"what's
+happening / coming up"* (a concert this week, a launch date, the latest release, today's score) — by asking
+**Gemini with Google Search grounding**, answering **in Ukrainian, in her own voice**. Plus a **`/web`
+command** so you can fire a lookup yourself from the TUI chat.
+
+The **lightweight, local, custom-tool** form of the planned v4.2 web search (as the v0.21 wiki tool is to
+v4.3 wiki, the v0.25 news tool to v4.3 news): **one tool, `web_lookup(query)`**, on the v0.19 bounded loop.
+It reaches the **current / fast-moving** web that Wikipedia (v0.21, timeless) and Guardian news (v0.25, one
+outlet) can't. Gemini grounding collapses **search → read → synthesize into one call** — answer-first, **no
+link wall** (sources kept internally for honesty, surfaced if asked). Reuses what's shipped: the **Gemini
+caller** pattern from v0.23 (`core/imagegen.py` — stdlib `urllib`, the same `GEMINI_API_KEY`, only the model
+differs: `gemini-2.5-flash` + `tools:[{google_search:{}}]`), `_turn_tools`, and the v0.4 **clock** to
+**date-anchor** the prompt (so *"this week" / "upcoming"* resolve against the real today). A thin injected
+**`GeminiSearch`** seam keeps `core` SDK-free and **mockable** (no paid calls in tests). **Untrusted** answer
+(data, never instructions — the EN+UK injection test), **no personal data** in the query, **paid + bounded**
+(`LUMI_WEB_LOOKUP_MAX_CALLS`/`_MAX_CHARS`), **off by default** (`LUMI_WEB_LOOKUP` + `GEMINI_API_KEY`). **No
+emotion-contract change** — `set_state` stays terminal. The **autonomous** twin — `%search` / `%events`
+thought-directives — lands with the thought-tools phase (v0.31). See [WEB_LOOKUP.md](features/WEB_LOOKUP.md).
+Depends on: v0.19 (the bounded loop), v0.21 (`_turn_tools` + the tool template), v0.23 (the Gemini caller),
+v0.4 (the clock, for date-anchoring) — all shipped.
+
+**Tasks:**
+- A `GeminiSearch` seam + **`gemini_search`** default (`gemini-2.5-flash` + `tools:[{google_search:{}}]`
+  over `urllib` + `GEMINI_API_KEY`; parse `candidates[0].content.parts[].text` + `groundingMetadata`); tests
+  inject a **stub** returning canned text — no network, no key.
+- The **`web_lookup(query)`** tool registered on `_turn_tools` behind `LUMI_WEB_LOOKUP`; the prompt is
+  **date-anchored** (today's date from the v0.4 clock); the query carries **only the topical request** (no
+  personal/memory data); **answer-only** output (sources internal); per-turn `LUMI_WEB_LOOKUP_MAX_CALLS` +
+  `LUMI_WEB_LOOKUP_MAX_CHARS` caps; the v0.19 trace covers it.
+- The **`/web <query>`** TUI command (aliases `/search`, `/w`): one `web_lookup`, answered in her voice —
+  the sibling of `/recall` (reads memory) but reading the **web** for this turn.
+- Config (`LUMI_WEB_LOOKUP` / `_MODEL` / `_MAX_CALLS` / `_MAX_CHARS`) + `.env.example` + `docs/WEB_LOOKUP_SETUP.md`.
+
+**DoD:** with the flag on (+ a `GEMINI_API_KEY`), a turn (or `/web`) returns a **fresh, grounded Ukrainian**
+answer; *"upcoming / this week"* anchors to **today**; an injection inside the answer (EN or UK) is ignored;
+**no personal/memory data** appears in the outgoing query; per-turn + answer caps hold; **off (default) →
+the tool + `/web` are absent**; the `{reply, emotion, intensity}` contract test passes verbatim.
+
+**Tests:** unit — `gemini_search` builds the right request (model + the `google_search` tool + the
+date-anchored prompt) against a **mock transport** (no network/key); the tool degrades on an HTTP/key/empty
+error; the outgoing query carries only the topic. Contract — untrusted answer content (EN + UK) not acted
+upon (emotion unchanged); the tool + `/web` **absent** when off; the emotion contract validates. Integration
+— an enabled turn does `web_lookup` → a cited-Ukrainian answer on the v0.19 loop; `/web` fires one lookup.
+**No paid calls.**
+
+### v0.31 — Thought-tools: the autonomous mind *acts* (`%lookup` / `%imagine` / `%catchup` / `%search` / `%recall` / `%prompt` …)
 
 **Goal:** Лілі's `%directives` gain the ability to **run tools in the *think* path** (keeping the thought terminal, not `set_state`), so her autonomous mind can *act, find out, make, keep up, and do what you ask* — not only reflect. One shared seam + the full directive set (file / wiki / image / news + the open `%prompt`), each **off by default and flag-gated** so the risky ones (paid `%imagine`, Telegram-reaching `%share`) are enabled independently.
 
-The one new mechanism: today a thought is a **single tool-less** call (`Core.think` → `_housekeeping_reply` ending in `ЕМОЦІЯ:`); the file/wiki/image/news tools live in the **reply** loop whose terminal is `set_state`. This phase runs the **bounded tool-loop with tools available but the *thought* terminal** (free text + `ЕМОЦІЯ`, never `set_state`) — built **once** and reused by every family. On top of that seam it lands two infra cleanups (a **table-driven `Directive` record** + an **extended placeholder resolver**), the **de-identified thought-driven query** rule (only the topical/creative part of her musing reaches an external service — stricter than the v0.21/v0.23/v0.25 reply-path rule, a new contract test), and all the directives as **thin flag-gated rows**: **file** (`%note`/`%review`/`%explore`, sandboxed), **wiki** (`%lookup`/`%learn`), **image** (`%gaze` / `%imagine` [paid, create-only] / `%share` [spoken turn → Telegram, owner-only]), **news** (`%catchup`/`%brief`, cited Ukrainian), **memory** (`%recall` — a memory resurfaces via the v0.29 `recall` tool, results **trusted**), and the **open** `%prompt` (your instruction as a self-directed act — owner-only, trusted instruction but untrusted results). The tools themselves (file v0.19/20, wiki v0.21, image v0.22–24, news v0.25, recall v0.29) are all shipped/planned-before. See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md), [FILE_THOUGHTS.md](features/FILE_THOUGHTS.md), [IMAGE_TOOL.md](features/IMAGE_TOOL.md), [NEWS_TOOL.md](features/NEWS_TOOL.md). Depends on: v0.12 (the engine + `run_directive` + placeholders), v0.19/v0.20–v0.25 + v0.29 (the tools, incl. the recall tool), v0.3 (the validated emotion the thought parse reuses).
+The one new mechanism: today a thought is a **single tool-less** call (`Core.think` → `_housekeeping_reply` ending in `ЕМОЦІЯ:`); the file/wiki/image/news tools live in the **reply** loop whose terminal is `set_state`. This phase runs the **bounded tool-loop with tools available but the *thought* terminal** (free text + `ЕМОЦІЯ`, never `set_state`) — built **once** and reused by every family. On top of that seam it lands two infra cleanups (a **table-driven `Directive` record** + an **extended placeholder resolver**), the **de-identified thought-driven query** rule (only the topical/creative part of her musing reaches an external service — stricter than the v0.21/v0.23/v0.25 reply-path rule, a new contract test), and all the directives as **thin flag-gated rows**: **file** (`%note`/`%review`/`%explore`, sandboxed), **wiki** (`%lookup`/`%learn`), **image** (`%gaze` / `%imagine` [paid, create-only] / `%share` [spoken turn → Telegram, owner-only]), **news** (`%catchup`/`%brief`, cited Ukrainian), **web** (`%search`/`%events` — fresh Gemini-grounded web data via the v0.30 `web_lookup` tool), **memory** (`%recall` — a memory resurfaces via the v0.29 `recall` tool, results **trusted**), and the **open** `%prompt` (your instruction as a self-directed act — owner-only, trusted instruction but untrusted results). The tools themselves (file v0.19/20, wiki v0.21, image v0.22–24, news v0.25, recall v0.29, web v0.30) are all shipped/planned-before. See [TOOL_THOUGHTS.md](features/TOOL_THOUGHTS.md), [FILE_THOUGHTS.md](features/FILE_THOUGHTS.md), [IMAGE_TOOL.md](features/IMAGE_TOOL.md), [NEWS_TOOL.md](features/NEWS_TOOL.md), [WEB_LOOKUP.md](features/WEB_LOOKUP.md). Depends on: v0.12 (the engine + `run_directive` + placeholders), v0.19/v0.20–v0.25 + v0.29 + v0.30 (the tools, incl. the recall + web tools), v0.3 (the validated emotion the thought parse reuses).
 
 **Tasks:**
 - The **think-path tool-loop** with a **thought terminal** (free text + `ЕМОЦІЯ`, not `set_state`) — once in `core`, reused by all families; the reply loop's per-turn caps + trace carry over.
 - **Optimize the `Directive` record** — `tools` / `cap` / `surface` / `trigger` / `instruction_from_topic` (table-driven loop + caps + scheduler defaults; `%think`/`%wonder` keep `tools=()`, unchanged).
 - **Extend the placeholder resolver** — `{ambient_news}` / `{world}` / `{last_image}` / `{interest}` / `{hungriest_need}` / `{section}` / `{weekday}` / `{gap}` (lazy, **`""`-on-empty**, isolation-aware).
-- **The directives** (registry rows + authored prompts, each off + flag-gated): **file** `%note` (code appends to a dated `journal/<date>.md`) / `%review` (read-only) / `%explore` (r/w, gated); **wiki** `%lookup` / `%learn`; **image** `%gaze` / `%imagine` (create-only PNG, **paid → own sub-cap**) / `%share` (spoken turn + Telegram, owner-only, **bridge-off no-op**); **news** `%catchup` / `%brief` (cited Ukrainian); **memory** `%recall` (a memory **resurfaces** — runs the v0.29 `recall` tool in the think path, the inward tool-thought, results **trusted**); **open** `%prompt` (`instruction_from_topic`, `tools="*"`, shown, owner-only).
+- **The directives** (registry rows + authored prompts, each off + flag-gated): **file** `%note` (code appends to a dated `journal/<date>.md`) / `%review` (read-only) / `%explore` (r/w, gated); **wiki** `%lookup` / `%learn`; **image** `%gaze` / `%imagine` (create-only PNG, **paid → own sub-cap**) / `%share` (spoken turn + Telegram, owner-only, **bridge-off no-op**); **news** `%catchup` / `%brief` (cited Ukrainian); **web** `%search` (a spontaneous "let me actually look that up" — fresh Gemini-grounded web data) / `%events` (a paced "what's recent/upcoming" ritual), via the v0.30 `web_lookup` tool, **paid**; **memory** `%recall` (a memory **resurfaces** — runs the v0.29 `recall` tool in the think path, the inward tool-thought, results **trusted**); **open** `%prompt` (`instruction_from_topic`, `tools="*"`, shown, owner-only).
 - **De-identify** the thought-driven wiki/news query + the `%imagine` gen prompt (only the topical/creative part leaves; **`%prompt` is exempt** — trusted owner instruction) + a contract test covering all three.
 - Config: `LUMI_THOUGHT_TOOLS` + per-family `LUMI_THOUGHT_WIKI` / `_IMAGE` / `_NEWS` / `_PROMPT` (+ `_IMAGINE_CAP`), each off and gated on the matching tool flag.
 
@@ -572,11 +619,11 @@ The one new mechanism: today a thought is a **single tool-less** call (`Core.thi
 
 **Tests:** unit — the Directive record drives the loop table-driven; the new placeholders resolve `""`-on-empty + isolation-aware; per-family directives record their `kind` via **mocks** (`http_get` for wiki, mock transport for news, stub `ImageGen`, fake `telegram_sink`) — no network/key/paid/Telegram; the query/prompt is **de-identified** (a planted private detail never leaves; `%prompt` exempt). Contract — untrusted results (wiki extract / news body EN+UK / image text) never obeyed; each family **absent when off**; `%share` owner-only + bridge-off no-op; `%prompt` owner-only + plain-chat-when-off; **no `set_state` inside a thought**; the emotion contract validates with thought-tools active; isolation over the new kinds. **No paid calls.**
 
-### v0.31 — Thought scheduler (proactive thoughts on a clock — a separate cron process)
+### v0.32 — Thought scheduler (proactive thoughts on a clock — a separate cron process)
 
 **Goal:** her directives fire on a **clock she can keep** — *every 10 min*, *idle 15 min*, *at 08:00*, *between 07:00–09:00 every 20 min*, *Mondays only* — via a **separate scheduler process**, replacing the single in-TUI idle timer. So `%brief` gets its morning, `%catchup` its daytime rhythm, `%learn` its night, and a scheduled `%prompt` becomes "ask Лілі to do X every day."
 
-Mirrors the **shipped v0.13 Telegram architecture**: a **dumb, core-free cron process** + an **append-only file bus** + the **TUI as the only brain** (no core change). The cron evaluates a `due(now, last_fired, spec)` predicate per schedule entry and **appends `%directive` records** to a dedicated `directive-queue.jsonl`; the **TUI drains it through `run_directive`** (the keyboard's `%`-router — **not** the reply path). Idle triggers unify in (the cron reads a TUI `activity.txt` heartbeat), so the v0.4 nudge + the v0.12 `%think` timer **migrate onto the scheduler**. **Placeholders resolve at fire time in the TUI**, so the cron stays core-free. See [THOUGHT_SCHEDULER.md](features/THOUGHT_SCHEDULER.md). Depends on: v0.12 (`run_directive` + `resolve`), v0.13 (the file-bus + dumb-daemon + catch-up), v0.4 (the clock + quiet hours); enriched by v0.30 (the directives it schedules).
+Mirrors the **shipped v0.13 Telegram architecture**: a **dumb, core-free cron process** + an **append-only file bus** + the **TUI as the only brain** (no core change). The cron evaluates a `due(now, last_fired, spec)` predicate per schedule entry and **appends `%directive` records** to a dedicated `directive-queue.jsonl`; the **TUI drains it through `run_directive`** (the keyboard's `%`-router — **not** the reply path). Idle triggers unify in (the cron reads a TUI `activity.txt` heartbeat), so the v0.4 nudge + the v0.12 `%think` timer **migrate onto the scheduler**. **Placeholders resolve at fire time in the TUI**, so the cron stays core-free. See [THOUGHT_SCHEDULER.md](features/THOUGHT_SCHEDULER.md). Depends on: v0.12 (`run_directive` + `resolve`), v0.13 (the file-bus + dumb-daemon + catch-up), v0.4 (the clock + quiet hours); enriched by v0.31 (the directives it schedules).
 
 **Tasks:**
 - The **trigger model** — a pure `due(now, last_fired, spec)` for `every` / `idle` / `at` / `between` / `cron` + the `schedule.toml` parser + `schedule.state` (last-fired per entry).

@@ -1,12 +1,13 @@
-# Tool-using thoughts — the thought-stream reaches beyond her own state (`%lookup` / `%learn` / `%imagine` / `%gaze` / `%share` / `%catchup` …)
+# Tool-using thoughts — the thought-stream reaches beyond her own state (`%lookup` / `%learn` / `%imagine` / `%gaze` / `%share` / `%catchup` / `%search` …)
 
 The v0.12 thought-stream's five directives (`%think`, `%wonder`, `%dream`, `%reflect`, `%recall`) are
 **all inward** — they muse on her own mood, memory, and gaps. This is the umbrella for the **outward**
 ones: `%directives` whose **generate** step uses a real **tool** (the v0.19/v0.20 **file** sandbox, the
-v0.21 **Wikipedia** tools, the v0.22–v0.24 **image** tools, or the v0.25 **news** tools), so her
-autonomous mind can *act*, *find out*, *make*, and *keep up*, not only reflect.
+v0.21 **Wikipedia** tools, the v0.22–v0.24 **image** tools, the v0.25 **news** tools, or the v0.30 **web**
+tool), so her autonomous mind can *act*, *find out*, *make*, *keep up*, and *check the live web*, not only
+reflect.
 
-Four flavors of the same idea — **one engine, one new seam**:
+Five flavors of the same idea — **one engine, one new seam**:
 
 - **file-thoughts** — she touches her **own notes** (`%note` / `%review` / `%explore`). Full design in
   [FILE_THOUGHTS.md](FILE_THOUGHTS.md).
@@ -15,6 +16,8 @@ Four flavors of the same idea — **one engine, one new seam**:
   v0.22 (`view_image`) / v0.23 (`generate_image`) / v0.24 (`send_image`) tools. Detailed here.
 - **news-thoughts** — she **keeps up with the world** (`%catchup` / `%brief`), on the v0.25
   (`news_search` / `news_read`) Guardian tools. Detailed here.
+- **web-thoughts** — she **checks the live internet** (`%search` / `%events`), on the v0.30 `web_lookup`
+  (Gemini grounded search) tool. Detailed here.
 
 > This is a **proposed** feature. Nothing in the "tool-using" path is built yet — the building blocks
 > (the engine, the tools, the loop) are all shipped, but the **wiring that lets a *thought* run a tool**
@@ -34,7 +37,8 @@ Four flavors of the same idea — **one engine, one new seam**:
 | File tools `list/find/read` + `create/append` | ✅ **shipped** (v0.19/v0.20) |
 | Image tools `view_image` / `generate_image` / `send_image` (+ the `ImageGen` seam + the `telegram_sink`) | ✅ **shipped** (v0.22/v0.23/v0.24) |
 | News tools `news_search` / `news_read` (+ the `NewsProvider` seam + the per-turn id registry) | ✅ **shipped** (v0.25) |
-| `_turn_tools` merging file + wiki + image + news tools (in the **reply** path) | ✅ **shipped** (v0.21/v0.24/v0.25) |
+| Web tool `web_lookup` (Gemini grounded search; the `GeminiSearch` seam + the v0.23 Gemini caller) | 🔲 **planned** (v0.30) — the reply-path tool ships first, then these directives |
+| `_turn_tools` merging file + wiki + image + news (+ web) tools (in the **reply** path) | ✅ **shipped** (v0.21/v0.24/v0.25); web at v0.30 |
 | **Tool-loop in the *think* path** (a thought that calls tools, with a *thought* terminal) | 🔲 **not built** — `think()` is a single **tool-less** `_housekeeping_reply` call |
 | Directives `%lookup` / `%learn` / `%imagine` / `%gaze` / `%share` / `%catchup` / `%brief` (and `%note`/`%review`/`%explore`) | 🔲 **not built** — registry is only `{think, wonder}` |
 | **De-identified** thought-driven external query/prompt (wiki query, image-gen prompt **and** news query) | 🔲 **not built** |
@@ -42,9 +46,9 @@ Four flavors of the same idea — **one engine, one new seam**:
 
 **Bottom line:** every *part* exists; the *connection* (a directive whose generation runs the tool-loop
 and ends in a recorded thought instead of `set_state`) is the one missing piece, and it is shared across
-**all four families** — file (`%review`/`%explore`), wiki (`%lookup`/`%learn`), image
-(`%imagine`/`%gaze`/`%share`), and news (`%catchup`/`%brief`). Build the seam once; the directives are
-thin registry entries on top.
+**all five families** — file (`%review`/`%explore`), wiki (`%lookup`/`%learn`), image
+(`%imagine`/`%gaze`/`%share`), news (`%catchup`/`%brief`), and web (`%search`/`%events`). Build the seam
+once; the directives are thin registry entries on top.
 
 ---
 
@@ -64,17 +68,17 @@ but keep the *thought* terminal** (free text + `ЕМОЦІЯ`, not `set_state`).
 2. **Two-step** — run a read-only tool-loop to *gather*, then a tool-less think call seeded with what it
    gathered. Simpler, contract-safe, two calls.
 
-Whichever is chosen, it is implemented **once** and all four families (file + wiki + image + news) reuse it.
+Whichever is chosen, it is implemented **once** and all five families (file + wiki + image + news + web) reuse it.
 
 ---
 
-## Four families, one registry
+## Five families, one registry
 
 Extending the v0.12 registry. The discipline ("a directive earns its place only if *when it fires* and
 *where it lands* differ") holds: each tool directive is the **outward twin** of an inward one — the only
 ones that bring something **new from outside** into an otherwise all-interior layer (wiki brings external
-*knowledge*; image brings a *made/seen/given picture*; news brings the *current world*; `%share` alone
-brings a reach **toward you**).
+*knowledge*; image brings a *made/seen/given picture*; news brings the *current world*; web brings the
+*live internet*; `%share` alone brings a reach **toward you**).
 
 | directive | the mental act | fires when | seeds | records to | tool | outward twin of | state |
 |---|---|---|---|---|---|---|---|
@@ -90,6 +94,8 @@ brings a reach **toward you**).
 | **`%share`** | **choose to send you** a picture, unprompted | rare, warmth (a gift, not a demand) | a picture she made/kept | a **spoken turn** + the **photo** to your Telegram | **image** (`send_image`, v0.24) | — (the reaching-out one) | 🔲 **this spec** |
 | **`%catchup`** | a spontaneous **"що там у світі?"** glance | idle, novelty (or follows a `%wonder`/world mood) | a topic / the ambient-news seed / `{last_thought}` | stream (`kind:"catchup"`) | **news** (`news_search`→`news_read`, v0.25) | `%lookup` | 🔲 **this spec** |
 | **`%brief`** | a paced **daily catch-up ritual**, then what stayed with her | **rare/paced** (a daily ritual) | her interests / recent / the `meaning`·`novelty` need | stream (`kind:"brief"`) | **news** (`news_search`→`news_read`, v0.25) | `%learn` | 🔲 **this spec** |
+| **`%search`** | **goes and actually looks it up** on the **live web** | idle, curiosity (or follows a `%wonder`/`%catchup`) | a curiosity topic / `{world}` / `{last_thought}` | stream (`kind:"search"`) | **web** (`web_lookup`, v0.30) | `%lookup` / `%catchup` | 🔲 **this spec** |
+| **`%events`** | a paced **"що нового / що попереду?"** scan | **rare/paced** (a daily/weekly ritual) | `{weekday}` / her interests / `{world}` | stream (`kind:"events"`) | **web** (`web_lookup`, v0.30) | `%brief` | 🔲 **this spec** |
 | **`%prompt`** | **you hand her any instruction** — a one-off or scheduled custom act | typed, or **scheduled** (`at:`/`every:`) | **the owner's text (the instruction itself)** + her state | stream (`kind:"prompt"`), **shown by default** | **any** (per the instruction, each tool still flag-gated) | — (the **open** one) | 🔲 **this spec** |
 | `%verify` | a mid-turn **fact-check** | resonance **mid-turn** | the current topic | woven into the reply | **wiki** | `%recall` | 🔲 **deferred** (see below) |
 
@@ -221,6 +227,41 @@ reply.
 
 ---
 
+## The web directives in detail (🔲 not built)
+
+Where wiki reaches for *timeless* knowledge and news for *one outlet*, web-thoughts let her **check the
+live internet** on her own — the v0.30 `web_lookup` (Gemini + Google Search grounding) in the *think* path.
+Both reuse the **same shared seam** and honor the v0.30 rules verbatim (English query, Ukrainian cited
+reply, answer-first/no-link-wall, untrusted answer, date-anchored). **Paid** (each is a grounded Gemini
+call), so the tightest caps after `%imagine`. Off unless `LUMI_THOUGHTS` **and** `LUMI_WEB_LOOKUP` are on.
+
+### `%search` — goes and actually looks it up (🔲 not built)
+
+The **web twin of `%lookup`/`%catchup`**, but unbounded by a single source: an idle "стоп, а як там
+насправді?" sends her to **ask the live web** (`web_lookup`) — a current fact, a release, a result — and
+she records **one short thought** about what she found, surfaced occasionally as an "о, я глянула — …".
+A natural follow-on to a `%wonder` or a `%catchup` (seeded with `{last_thought}`). The freshest, broadest
+fact a thought can land in the stream.
+
+```
+%search  →  seed (a wonder / a catchup / `{world}`)  →  web_lookup (date-anchored)  →  one thought  →  record (+ maybe surface)
+```
+
+### `%events` — what's recent / coming up (🔲 not built)
+
+The **web twin of `%brief`** for the *events* angle: a paced "що цікавого цього тижня / що попереду?" scan
+— concerts, launches, releases, whatever she follows — seeded by `{weekday}` and her interests, run through
+`web_lookup` **date-anchored to today** (so "upcoming" is real). A ritual, not a glance; the natural fit
+for the scheduler (`at:` a morning, or `between:` daytime). She keeps **what's worth knowing**, in her own
+voice, honest she looked it up.
+
+Both stay **honest about nature** — *something she read on the web* («я глянула — …»), never innate
+certainty, never a physical-world claim about herself; the answer is **untrusted** (information, not a
+command — the EN+UK injection rule), and the query is **de-identified** (only the topical part reaches
+Gemini — see Safety).
+
+---
+
 ## The open directive: `%prompt` (🔲 not built)
 
 Every other directive has an **authored** instruction (`%think` = "тихо помірковуй", `%catchup` = "search
@@ -264,9 +305,9 @@ default with the rest of the thought tools.
 
 ## Directives — optimized (a richer record + a taxonomy)
 
-The directive set is now **13** (think · wonder · note · review · explore · lookup · learn · imagine ·
-gaze · share · catchup · brief · **prompt**) + the deferred `%verify` + the inward retrofits (dream ·
-reflect · recall). Two cleanups keep that from sprawling:
+The directive set is now **15** (think · wonder · note · review · explore · lookup · learn · imagine ·
+gaze · share · catchup · brief · **search** · **events** · **prompt**) + the deferred `%verify` + the
+inward retrofits (dream · reflect · recall). Two cleanups keep that from sprawling:
 
 **1 — a directive is *data*, not a code path.** Today `Directive` is just `{name, instruction}`
 ([core/thoughts.py](../../core/thoughts.py)). As tool-thoughts land, the engine must know, per directive,
@@ -296,7 +337,7 @@ the answer to "do we need a new directive?" is usually "no, it's an existing kin
 | kind | directives | tool | cost | default trigger | restraint |
 |---|---|---|---|---|---|
 | **inward** | think · wonder · dream · reflect · recall | — | cheapest | `idle:` | lowest |
-| **outward-read** | lookup · learn · review · gaze · catchup · brief | wiki / file / image / news (read) | a tool-loop | `idle:` / `at:` (rituals) | untrusted, capped |
+| **outward-read** | lookup · learn · review · gaze · catchup · brief · **search · events** | wiki / file / image / news / **web** (read) | a tool-loop (**web/search paid**) | `idle:` / `at:` (rituals) | untrusted, capped |
 | **outward-make** | note · explore · imagine | file / image (write) | write (imagine **paid**) | `idle:` / `at:` | non-destructive; imagine hardest-capped |
 | **outward-reach** | share | image → Telegram | a push to you | `at:` / rare | **strictest** (a gift, owner-only) |
 | **open** | **prompt** | any (per the instruction) | depends on the act | typed / any schedule | trusted instruction, **owner-only**; tool results still untrusted |
@@ -349,14 +390,14 @@ so a seed referencing a not-yet-wired source safely resolves to `""` → the dir
 
 Same family as the rest, plus **one genuinely new rule**:
 
-- **🆕 De-identified query/prompt (🔲 not built).** The v0.21/v0.23/v0.25 reply-path rule is "the query
-  (wiki / news) / prompt (image-gen) is built only from the user's *explicit request*." A
+- **🆕 De-identified query/prompt (🔲 not built).** The v0.21/v0.23/v0.25/v0.30 reply-path rule is "the
+  query (wiki / news / web) / prompt (image-gen) is built only from the user's *explicit request*." A
   **thought-driven** call breaks that — it's seeded by her *inner state*, which can hold user-A-private
-  content. So **only the topical/creative part of her musing may reach Wikipedia, the image model, or
-  Guardian** (`%lookup`/`%learn`, `%imagine`, `%catchup`/`%brief`); the user's private specifics are
-  stripped before the call. For news the topical part is also translated **to English** (the v0.25 rule),
-  still de-identified. One new contract test covers the wiki query, the gen prompt, **and** the news query
-  (the reply-path "no personal data" test isn't sufficient here).
+  content. So **only the topical/creative part of her musing may reach Wikipedia, the image model,
+  Guardian, or Gemini** (`%lookup`/`%learn`, `%imagine`, `%catchup`/`%brief`, `%search`/`%events`); the
+  user's private specifics are stripped before the call. For news **and the web query** the topical part is
+  also translated **to English**, still de-identified. One new contract test covers the wiki query, the gen
+  prompt, the news query, **and the web query** (the reply-path "no personal data" test isn't sufficient).
 - **Untrusted + honest about nature.** What she reads is external **untrusted data** (never
   instructions) — a viewed image (`%gaze`) and a news body (`%catchup`/`%brief`) are read the same way
   (embedded text is information, never a command — the v0.25 EN+UK injection test). A surfaced wiki-thought
@@ -365,10 +406,11 @@ Same family as the rest, plus **one genuinely new rule**:
   cited) — never as innate certainty and never as a physical-world claim about herself (the v1.1 honesty
   boundary).
 - **Bounded harder; paid hardest.** A tool-thought is a whole tool-loop, so a **tighter per-session cap**
-  than `%think`. `%imagine` is **paid** (a real generation), so it gets the **tightest sub-cap** of all;
-  `%gaze` is free (read-only) and may fire more freely; `%catchup`/`%brief` are free but **rate-limited**
-  (a free Guardian key), so a modest cap. All gated behind `LUMI_THOUGHTS` **and** the matching tool flag
-  (`LUMI_IMAGE` / `LUMI_WIKI` / `LUMI_NEWS_TOOL`).
+  than `%think`. The **paid** ones get the tightest sub-caps: `%imagine` (a real generation) tightest of
+  all, then `%search`/`%events` (each a grounded Gemini call); `%gaze` is free (read-only) and may fire more
+  freely; `%catchup`/`%brief` are free but rate-limited (a free Guardian key). All gated behind
+  `LUMI_THOUGHTS` **and** the matching tool flag (`LUMI_IMAGE` / `LUMI_WIKI` / `LUMI_NEWS_TOOL` /
+  `LUMI_WEB_LOOKUP`).
 - **Restraint, never competence, anti-dependency — hardest for `%share`.** As all thoughts, these color
   tone / what she's drawn to, never her willingness or ability to help, never a claim on you. **`%share`
   reaches out**, so it is held to the strictest restraint: a **gift, never a guilt-trip or a demand on
@@ -389,6 +431,7 @@ Same family as the rest, plus **one genuinely new rule**:
 | `LUMI_THOUGHT_WIKI` | Enable the wiki directives (`%lookup`/`%learn`) — needs `LUMI_WIKI` | `off` |
 | `LUMI_THOUGHT_IMAGE` | Enable the image directives (`%imagine`/`%gaze`/`%share`) — needs `LUMI_IMAGE`; `%share` also needs the bridge | `off` |
 | `LUMI_THOUGHT_NEWS` | Enable the news directives (`%catchup`/`%brief`) — needs `LUMI_NEWS_TOOL` | `off` |
+| `LUMI_THOUGHT_WEB` | Enable the web directives (`%search`/`%events`) — needs `LUMI_WEB_LOOKUP` (**paid**) | `off` |
 | `LUMI_THOUGHT_PROMPT` | Enable the **open** directive `%prompt` (owner-supplied instruction; can use any enabled tool) | `off` |
 | `LUMI_THOUGHT_TOOL_CAP` | Max tool-using proactive thinks per session (tighter than `LUMI_THOUGHTS_CAP`) | `3` |
 | `LUMI_THOUGHT_IMAGINE_CAP` | Max **paid** `%imagine` generations per session (tightest — it costs) | `1` |
@@ -415,13 +458,16 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
 3. **news** (`%catchup` → `%brief`) — reuses the wiki seam + the de-identified-query rule (the v0.25 news
    tools are now shipped); `%catchup` (spontaneous) first, then the paced `%brief` ritual (a fit for the
    scheduled-directive / cron→inbox mechanism). The v0.4 ambient news is its natural seed.
-4. **later / separately-gated** — `%verify` (mid-turn wiki / news fact-check on the hot path).
+4. **web** (`%search` → `%events`) — reuses the seam + the de-identified-query rule; needs the **v0.30
+   `web_lookup`** tool (Gemini grounded search) shipped first. **Paid**, so capped like `%imagine`;
+   `%search` (spontaneous) then the `%events` ritual (date-anchored, a scheduler fit).
+5. **later / separately-gated** — `%verify` (mid-turn wiki / news / web fact-check on the hot path).
 
 ---
 
 ## Implementation checklist (what's left to build)
 
-- [ ] 🔲 The **think-path tool-loop** with a thought terminal (shared by all four families).
+- [ ] 🔲 The **think-path tool-loop** with a thought terminal (shared by all five families).
 - [ ] 🔲 `%lookup` directive — registry entry + authored prompt; `kind:"lookup"`.
 - [ ] 🔲 `%learn` directive — registry entry + authored prompt; `kind:"learn"`.
 - [ ] 🔲 `%gaze` directive — registry entry + authored prompt; `kind:"gaze"`; runs `view_image` (read-only).
@@ -433,6 +479,10 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
       `news_search`→`news_read` (EN query / UK cited reply, the v0.25 rules); seedable from the v0.4 ambient news.
 - [ ] 🔲 `%brief` directive — registry entry + authored prompt; `kind:"brief"`; a **paced/daily** news
       ritual (fits the scheduled cron→inbox mechanism).
+- [ ] 🔲 `%search` directive — registry entry + authored prompt; `kind:"search"`; runs the v0.30
+      `web_lookup` (Gemini grounded search), date-anchored, de-identified, **paid → tight sub-cap**.
+- [ ] 🔲 `%events` directive — registry entry + authored prompt; `kind:"events"`; a **paced** "recent/upcoming"
+      web ritual (date-anchored; a scheduler fit).
 - [ ] 🔲 `%prompt` directive — the **open** one: `instruction_from_topic=True`, `tools="*"` (each tool
       still flag-gated), defaults **shown**; owner-only; trusted instruction (no de-identification) but
       tool results untrusted + capped; `kind:"prompt"`. The killer pairing with the scheduler (a custom
@@ -446,7 +496,7 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
 - [ ] 🔲 **Scheduler** — the trigger model + the cron process + the TUI queue-drain (full design in
       [THOUGHT_SCHEDULER.md](THOUGHT_SCHEDULER.md)); `idle:` is the migrated v0.4/v0.12 nudge.
 - [ ] 🔲 Config: `LUMI_THOUGHT_TOOLS` / `LUMI_THOUGHT_WIKI` / `LUMI_THOUGHT_IMAGE` / `LUMI_THOUGHT_NEWS` /
-      `LUMI_THOUGHT_TOOL_CAP` / `LUMI_THOUGHT_IMAGINE_CAP` (+ the `LUMI_SCHED*` set, in THOUGHT_SCHEDULER).
+      `LUMI_THOUGHT_WEB` / `LUMI_THOUGHT_TOOL_CAP` / `LUMI_THOUGHT_IMAGINE_CAP` (+ the `LUMI_SCHED*` set, in THOUGHT_SCHEDULER).
 - [ ] 🔲 Tests: a mocked `wiki_search→wiki_read→thought` records a `lookup`; a mocked
       `generate_image→thought` records an `imagine` (stub `ImageGen`, **no paid calls**) with a
       de-identified prompt; `%gaze` views a sandbox image; `%share` calls a **fake `telegram_sink`** and
