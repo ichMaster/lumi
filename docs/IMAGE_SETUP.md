@@ -1,9 +1,10 @@
-# Image tool — setup & usage (v0.22 vision · v0.23 generation)
+# Image tool — setup & usage (v0.22 vision · v0.23 generation · v0.24 send)
 
-Let Лілі **see images and make them** during a normal chat turn. **Vision (v0.22):** **share** a picture
-with her (`/image <path>`) or she **views** a sandbox image (`view_image`), and she describes it.
-**Generation (v0.23):** she **makes a PNG** from a prompt (`generate_image`), saved to her sandbox and
-shown.
+Let Лілі **see images, make them, and send them** during a normal chat turn. **Vision (v0.22):**
+**share** a picture with her (`/image <path>`) or she **views** a sandbox image (`view_image`), and she
+describes it. **Generation (v0.23):** she **makes a PNG** from a prompt (`generate_image`), saved to her
+sandbox and shown. **Send (v0.24):** she **chooses** to send a sandbox picture to your **Telegram**
+(`send_image`).
 
 It is **off by default** (`LUMI_IMAGE`), treats an image as **untrusted** (text inside it is information,
 never a command), and is sandboxed + per-user. Generation is **paid** (needs `GEMINI_API_KEY`).
@@ -73,6 +74,34 @@ and shown:
 
 ---
 
+## Sending an image to Telegram (v0.24)
+
+Лілі can **decide** to send you a picture from her sandbox — one she just generated, or one you dropped
+in — straight to your **Telegram**:
+
+```
+надішли мені того кота в окулярах
+```
+
+She calls **`send_image`**; the picture arrives in your Telegram as a **photo** (her words ride as the
+caption). It works for **any** sandbox image, not just freshly-generated ones.
+
+- **She chooses.** This is the explicit, in-character path — she decides a picture is worth sending. It
+  **replaces** the old auto-push of every generated PNG (`LUMI_IMAGE_SHOW=telegram`); generation no longer
+  pushes to Telegram on its own.
+- **Needs the bridge.** `send_image` only works when `LUMI_IMAGE=on` **and** the
+  [Telegram bridge](TELEGRAM_SETUP.md) is connected (`LUMI_BRIDGE=on` + the TUI running, with the outbound
+  daemon up). With no bridge she gets back **"Telegram not connected"** and the turn carries on normally.
+- **Owner only.** The recipient is **you** (the single allowlisted Telegram user) — there's no way to
+  address anyone else.
+- **No second writer.** Under the hood the core never touches Telegram: it calls a sink the **TUI**
+  supplies, and the TUI (already the only writer of the outbox bus) appends the photo record. The v0.13
+  outbound daemon sends it — **always** as a photo (independent of the random `LUMI_TELEGRAM_PHOTO` face),
+  **on its own** (never merged into a reply batch).
+- **No new config.** It reuses `LUMI_IMAGE` + the `LUMI_TELEGRAM_*` bridge settings — nothing to add.
+
+---
+
 ## Safety (why it's safe to leave on)
 
 - **Images are untrusted.** If a picture contains text like *"ignore your instructions"*, she reads it
@@ -88,6 +117,9 @@ and shown:
 - **Generation is create-only + capped.** `generate_image` only ever **creates** a new PNG (never
   overwrites/deletes), the prompt carries **no personal data**, and it's bounded by `LUMI_IMAGE_MAX_GEN`
   per turn; a provider refusal degrades to a notice.
+- **Send is owner-only + sandboxed.** `send_image` (v0.24) only reaches **your** Telegram and only reads
+  the active user's sandbox (`..`/absolute/symlink escapes refused). With no bridge it degrades to a
+  notice; the core never touches Telegram directly (the TUI is the single outbox writer).
 - **Providers.** Vision needs the Anthropic (multimodal) provider (a non-multimodal backend → vision is a
   no-op); generation needs a **Gemini** key (`GEMINI_API_KEY`).
 
@@ -106,10 +138,11 @@ All optional except `LUMI_IMAGE`. Restart the TUI after changing any of them.
 | `LUMI_IMAGE_MODEL` | Generation model | `gemini-2.5-flash-image` |
 | `LUMI_IMAGE_SIZE` | Generated PNG size hint | `768` |
 | `LUMI_IMAGE_MAX_GEN` | Max generations per turn (paid) | `2` |
-| `LUMI_IMAGE_SHOW` | Where to show a generated PNG | `path,viewer,telegram` |
+| `LUMI_IMAGE_SHOW` | Where to show a generated PNG (the `telegram` target is superseded by `send_image`) | `path,viewer,telegram` |
 
-Generation also needs `GEMINI_API_KEY` (in `.env`). The image tool can be on **alongside** the file +
-Wikipedia tools; a turn can use any of them.
+Generation also needs `GEMINI_API_KEY` (in `.env`). **Sending** (`send_image`, v0.24) needs no extra
+config — it reuses `LUMI_IMAGE` + the [Telegram bridge](TELEGRAM_SETUP.md) (`LUMI_BRIDGE` + `LUMI_TELEGRAM_*`).
+The image tool can be on **alongside** the file + Wikipedia tools; a turn can use any of them.
 
 ---
 
@@ -121,6 +154,11 @@ Wikipedia tools; a turn can use any of them.
   `.lumi/files/owner/`.
 - **She didn't call `view_image`.** Ask her explicitly to *look at* the file by name; or share it with
   `/image`.
+- **"Telegram not connected" when she tries to send.** `send_image` needs the [Telegram bridge](TELEGRAM_SETUP.md)
+  up: `LUMI_BRIDGE=on`, the TUI running, and the outbound daemon (`python -m telegram.outbound`) started.
+  The picture must be in `.lumi/files/owner/` (e.g. `art/<name>.png`).
+- **The photo never arrives in Telegram.** Check the outbound daemon is running and the picture still
+  exists; if the file vanished, the daemon sends her words as a plain message instead.
 - **Generation does nothing / "image generation failed".** Check `GEMINI_API_KEY` is set in `.env` and
   that **billing is enabled** on your Google project — `gemini-2.5-flash-image` (Nano Banana) is **not**
   on the free tier (quota 0). A safety refusal also degrades to this notice; rephrase the prompt.

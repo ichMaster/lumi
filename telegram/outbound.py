@@ -45,10 +45,31 @@ def split_catchup(records: list[dict], now: datetime, catchup_h: int) -> tuple[l
     return stale, fresh
 
 
+def is_photo_record(record: dict) -> bool:
+    """True if a record is a v0.24 **chosen `send_image`** — it carries a non-empty ``photo`` path."""
+    return bool(record.get("photo"))
+
+
 def batches(records: list[dict], n: int) -> list[list[dict]]:
-    """Group consecutive records into chunks of at most ``n`` (bounds a backlog → ⌈M/n⌉ messages)."""
+    """Group consecutive records into chunks of at most ``n`` (bounds a backlog → ⌈M/n⌉ messages).
+
+    A v0.24 **photo** record (a chosen `send_image`) is always its **own** group — a picture she chose to
+    send goes out on its own, never N-batched with replies. Text records around it batch as before.
+    """
     n = max(1, n)
-    return [records[i : i + n] for i in range(0, len(records), n)]
+    groups: list[list[dict]] = []
+    run: list[dict] = []
+    for r in records:
+        if is_photo_record(r):
+            if run:
+                groups += [run[i : i + n] for i in range(0, len(run), n)]
+                run = []
+            groups.append([r])  # the chosen photo, on its own
+        else:
+            run.append(r)
+    if run:
+        groups += [run[i : i + n] for i in range(0, len(run), n)]
+    return groups
 
 
 def _glyph(record: dict, emoji_map: dict) -> str:
@@ -150,6 +171,33 @@ async def voice_to_telegram(outbox_path, sent_path, *, tts, to_ogg, send_voice, 
     return count
 
 
+async def send_photo_record(bot, chats, record, *, emoji_map=None, fs_input=None, log=None) -> None:
+    """Send ONE v0.24 **chosen `send_image`** record as a Telegram **photo** — always a photo (not
+    ``LUMI_TELEGRAM_PHOTO``-gated, that stays the random *face*), on its own (not N-batched).
+
+    Caption = the record's text + emoji, caption-capped; an over-long caption sends the photo first, then
+    the text in pieces. A **missing/unreadable** file degrades to sending just the words (never wedges
+    the loop). ``fs_input`` wraps a path for aiogram (``FSInputFile``); tests pass ``str`` + a fake bot.
+    On a send failure it raises (the caller leaves the pointer → retry), like the text path.
+    """
+    wrap = fs_input or (lambda p: p)
+    photo = Path(record.get("photo", "") or "")
+    caption = caption_for(record, emoji_map)
+    for chat in chats:
+        if photo.is_file():
+            if len(caption) <= CAPTION_LIMIT:
+                await bot.send_photo(chat, wrap(str(photo)), caption=caption)
+            else:  # caption too long for a photo → photo, then the text as message(s)
+                await bot.send_photo(chat, wrap(str(photo)))
+                for piece in chunk(caption, MESSAGE_LIMIT):
+                    await bot.send_message(chat, piece)
+        else:  # the file vanished between the turn and the send — send the words, don't crash
+            if log is not None:
+                log.warning("send_image file missing (id=%s): %s", record.get("id"), photo)
+            for piece in chunk(caption, MESSAGE_LIMIT):
+                await bot.send_message(chat, piece)
+
+
 def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     """Forward new ``outbox`` records to the allowlisted chat(s): catch-up skip, then FIFO N-batches."""
     import asyncio
@@ -222,8 +270,20 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
                 continue
             new = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))
             for group in batches(new, cfg.telegram_batch):
-                text = render(group, emoji_map)
                 last = group[-1]
+                if len(group) == 1 and is_photo_record(group[0]):  # v0.24: a chosen send_image — on its own
+                    try:
+                        await send_photo_record(
+                            bot, chats, group[0], emoji_map=emoji_map, fs_input=FSInputFile, log=log,
+                        )
+                    except Exception as exc:  # noqa: BLE001 — don't advance the pointer; retry next loop
+                        log.error("photo send failed (id %d, retrying): %s", last["id"], exc)
+                        await asyncio.sleep(3)
+                        break
+                    fifo.save_pointer(sent_path, last["id"])
+                    log.info("sent a chosen image (id %d) → %d chat(s)", last["id"], len(chats))
+                    continue
+                text = render(group, emoji_map)
                 # send the face photo with probability LUMI_TELEGRAM_PHOTO (0=never, 0.2≈1/5, 1=always)
                 photo = portrait_for(cfg.faces_dir, last.get("emotion", ""), last.get("intensity")) \
                     if random.random() < cfg.telegram_photo else None

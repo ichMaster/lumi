@@ -271,6 +271,15 @@ the reply is sent as a **photo with the text as the caption** — the face match
 - Telegram caps a **caption at 1024 chars**. A long reply (or a big N-batch) that wouldn't fit falls
   back to a **plain text message** (chunked to ≤4096) — so a long reply never wedges the daemon.
 
+### Pictures she chooses to send (`send_image`, v0.24)
+
+Separate from the random face above: when the **image tool** is on (`LUMI_IMAGE=on`), Лілі can **decide**
+to send you a real picture from her sandbox via the `send_image` tool (see [IMAGE_SETUP.md](IMAGE_SETUP.md)).
+Daemon 2 sends such a record as a **photo always** (independent of `LUMI_TELEGRAM_PHOTO`, which only governs
+the decorative face) and **on its own** — a chosen picture is never merged into an N-batch. Her words ride
+as the caption (caption-capped, with the same long-text fallback). If the file has vanished by send time,
+the daemon sends just her words rather than crash.
+
 ## Security & scope
 
 - The **token is a secret** — it lives only in `.env` (gitignored). Don't paste it into commits,

@@ -8,6 +8,7 @@ the outbox **producer** (appends **only Лілі's own replies** — never your 
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from core.emotion import EmotionState
@@ -41,3 +42,24 @@ def mirror_user(outbox_path: str | Path, text: str) -> int:
     Telegram; re-sending it would echo). This is the symmetric half of the `📱` inbox line in the TUI.
     """
     return fifo.append(outbox_path, text, kind="user")
+
+
+def mirror_photo(outbox_path: str | Path, abs_path: str, caption: str) -> int:
+    """Append a Telegram **photo** record (``kind="lili"`` + a ``photo`` field) — the v0.24 `send_image`
+    sink. The picture Лілі chose to send rides the same single-writer outbox; the v0.13 outbound daemon
+    sends the record's ``photo`` as a Telegram photo with ``caption`` as the caption.
+    """
+    return fifo.append(outbox_path, caption, kind="lili", photo=str(abs_path))
+
+
+def make_photo_sink(outbox_path: str | Path) -> Callable[[str, str], None]:
+    """Build the ``telegram_sink`` the core's `send_image` tool calls (v0.24).
+
+    A thin closure over :func:`mirror_photo` — keeping the TUI the **single outbox writer** (the core
+    never touches the outbox). Supplied to ``build_core`` only when the Telegram bridge **and** the image
+    tool are on; otherwise the core's sink stays ``None`` (the tool reports the bridge isn't connected).
+    """
+    def sink(abs_path: str, caption: str) -> None:
+        mirror_photo(outbox_path, abs_path, caption)
+
+    return sink
