@@ -17,18 +17,18 @@ final, validated output.
 
 | Tool | Read / Write | What it does |
 |---|---|---|
-| `list_files` | read | Returns the names, **sizes, and created/modified dates** of files in a directory under the sandbox root (v0.33). |
-| `stat_file` | read | Returns one file's **size + created + modified date** (v0.33) — the metadata of a single path without listing the whole directory. |
+| `list_files` | read | Returns the names, **sizes, and created/modified dates** of files in a directory under the sandbox root (v0.34). |
+| `stat_file` | read | Returns one file's **size + created + modified date** (v0.34) — the metadata of a single path without listing the whole directory. |
 | `find_in_file` | read | Searches a file for a string and returns the **line numbers** of matches, each with a short preview of the line, so Лілі can locate a section before reading it. |
 | `read_file` | read | Reads `line_count` lines starting at a 1-based `start_line`, and reports the file's `total_lines`, so Лілі can read from anywhere and page to the end (see below). |
 | `create_file` | write | Creates a **new** file with the given content. Fails if the path already exists. |
 | `append_file` | write | Appends content to the **end** of an existing file. |
-| `create_folder` | write | Creates a **new** directory under the sandbox (v0.33). Fails if it already exists. |
-| `copy_file` | write | Copies a sandbox file to a **new** destination (v0.33). Fails if the destination already exists. |
+| `create_folder` | write | Creates a **new** directory under the sandbox (v0.34). Fails if it already exists. |
+| `copy_file` | write | Copies a sandbox file to a **new** destination (v0.34). Fails if the destination already exists. |
 
 There is deliberately **no overwrite, no delete, and no move/rename** here. Every write tool is
 **create-only or end-only**: `create_file` only creates, `append_file` only adds to the end, and the
-v0.33 tools keep the rule — `create_folder` only creates (errors if it exists), `copy_file` only writes a
+v0.34 tools keep the rule — `create_folder` only creates (errors if it exists), `copy_file` only writes a
 **new** destination (errors if it exists, never overwrites). So an autonomous turn can never clobber or
 destroy existing data. Overwrite, edit, delete, and move are a later, separately-gated addition if ever
 needed.
@@ -76,7 +76,7 @@ so it never silently replaces content. `append_file` opens an existing file and 
 to its end, returning an error if the file does not exist. Both create parent directories as needed,
 both are confined to the sandbox, and both treat the path the same guarded way as the read tools.
 
-## Metadata and filesystem tools (v0.33)
+## Metadata and filesystem tools (v0.34)
 
 A small extension of the shipped read + write tools — **dates** on listings and **two non-destructive
 filesystem tools** — all on the same sandboxed executor, with no contract change.
@@ -153,7 +153,7 @@ what the read caps bound.
 | `LUMI_FILE_READ_MAX_TOTAL` | Max total lines one turn may read across calls | e.g. 2000 |
 | `LUMI_FILE_FIND_MAX` | Max matches `find_in_file` returns | e.g. 50 |
 | `LUMI_FILE_WRITE_MAX` | Max size of one write/append | e.g. 64 KB |
-| `LUMI_FILE_COPY_MAX` | Max source size for one `copy_file` (v0.33; separate from the content write cap) | e.g. 5 MB |
+| `LUMI_FILE_COPY_MAX` | Max source size for one `copy_file` (v0.34; separate from the content write cap) | e.g. 5 MB |
 | `LUMI_TOOL_MAX_STEPS` | Max tool calls per turn (loop cap) | e.g. 8 |
 
 ## Mapping to the roadmap — v0.19 (reading) + v0.20 (writing)
@@ -212,7 +212,7 @@ else it needs (the reply turn, the `Repository`, per-user scoping, the `LLMClien
 at v0.17. Nothing between v0.17 and v4.2 needs the loop, so v0.19 lands as the next phase, and the loop
 it adds is reused by web search (v4.2), world context (v4.3), and the creative layer (v5).
 
-### v0.33 — file tool III: metadata + create-folder + copy (non-destructive)
+### v0.34 — file tool III: metadata + create-folder + copy (non-destructive)
 
 **Goal.** Лілі (or you, through her) can **see a file's created/modified dates**, **make a folder**, and
 **copy a file** in her sandbox — a small extension of the v0.19/v0.20 file tool, keeping the

@@ -3,21 +3,21 @@
 The v0.12 thought-stream's five directives (`%think`, `%wonder`, `%dream`, `%reflect`, `%recall`) are
 **all inward** — they muse on her own mood, memory, and gaps. This is the umbrella for the **outward**
 ones: `%directives` whose **generate** step uses a real **tool** (the v0.19/v0.20 **file** sandbox, the
-v0.21 **Wikipedia** tools, the v0.22–v0.24 **image** tools, the v0.25 **news** tools, or the v0.30 **web**
+v0.21 **Wikipedia** tools, the v0.22–v0.24 **image** tools, the v0.25 **news** tools, or the v0.31 **web**
 tool), so her autonomous mind can *act*, *find out*, *make*, *keep up*, and *check the live web*, not only
 reflect.
 
 Five flavors of the same idea — **one engine, one new seam**:
 
 - **file-thoughts** — she touches her **own notes and diary** (`%note` / `%review` / `%explore` /
-  `%journal` — the last writes a **day-summary** via the v0.34 journal tool). Full design in
+  `%journal` — the last writes a **day-summary** via the v0.27 journal tool). Full design in
   [FILE_THOUGHTS.md](FILE_THOUGHTS.md) + [JOURNAL.md](JOURNAL.md).
 - **wiki-thoughts** — she reaches for the **world's knowledge** (`%lookup` / `%learn`). Detailed here.
 - **image-thoughts** — she **sees, makes, and shares pictures** (`%imagine` / `%gaze` / `%share`), on the
   v0.22 (`view_image`) / v0.23 (`generate_image`) / v0.24 (`send_image`) tools. Detailed here.
 - **news-thoughts** — she **keeps up with the world** (`%catchup` / `%brief`), on the v0.25
   (`news_search` / `news_read`) Guardian tools. Detailed here.
-- **web-thoughts** — she **checks the live internet** (`%search` / `%events`), on the v0.30 `web_lookup`
+- **web-thoughts** — she **checks the live internet** (`%search` / `%events`), on the v0.31 `web_lookup`
   (Gemini grounded search) tool. Detailed here.
 
 > This is a **proposed** feature. Nothing in the "tool-using" path is built yet — the building blocks
@@ -38,8 +38,8 @@ Five flavors of the same idea — **one engine, one new seam**:
 | File tools `list/find/read` + `create/append` | ✅ **shipped** (v0.19/v0.20) |
 | Image tools `view_image` / `generate_image` / `send_image` (+ the `ImageGen` seam + the `telegram_sink`) | ✅ **shipped** (v0.22/v0.23/v0.24) |
 | News tools `news_search` / `news_read` (+ the `NewsProvider` seam + the per-turn id registry) | ✅ **shipped** (v0.25) |
-| Web tool `web_lookup` (Gemini grounded search; the `GeminiSearch` seam + the v0.23 Gemini caller) | 🔲 **planned** (v0.30) — the reply-path tool ships first, then these directives |
-| `_turn_tools` merging file + wiki + image + news (+ web) tools (in the **reply** path) | ✅ **shipped** (v0.21/v0.24/v0.25); web at v0.30 |
+| Web tool `web_lookup` (Gemini grounded search; the `GeminiSearch` seam + the v0.23 Gemini caller) | 🔲 **planned** (v0.31) — the reply-path tool ships first, then these directives |
+| `_turn_tools` merging file + wiki + image + news (+ web) tools (in the **reply** path) | ✅ **shipped** (v0.21/v0.24/v0.25); web at v0.31 |
 | **Tool-loop in the *think* path** (a thought that calls tools, with a *thought* terminal) | 🔲 **not built** — `think()` is a single **tool-less** `_housekeeping_reply` call |
 | Directives `%lookup` / `%learn` / `%imagine` / `%gaze` / `%share` / `%catchup` / `%brief` (and `%note`/`%review`/`%explore`) | 🔲 **not built** — registry is only `{think, wonder}` |
 | **De-identified** thought-driven external query/prompt (wiki query, image-gen prompt **and** news query) | 🔲 **not built** |
@@ -88,7 +88,7 @@ ones that bring something **new from outside** into an otherwise all-interior la
 | `%note` | jot a thought to a file | idle / daily | the thought | stream + disk | **file** (write) | — | 🔲 [FILE_THOUGHTS] |
 | `%review` | reread her own notes, muse | idle / daily | her notes | stream | **file** (read) | — | 🔲 [FILE_THOUGHTS] |
 | `%explore` | read+write her sandbox freely | idle, gated | her notes | stream + disk | **file** (r/w) | — | 🔲 [FILE_THOUGHTS] |
-| **`%journal`** | **write the day's summary** to her diary | day-close, **paced** (`at:` evening) | the day's `{recent}` / `{mood}` / impressions | stream (`kind:"journal"`) **+ the dated diary file** | **file** (`journal_write`, v0.34 — auto-stamped) | `%reflect` (the inward day-close) | 🔲 **this spec** |
+| **`%journal`** | **write the day's summary** to her diary | day-close, **paced** (`at:` evening) | the day's `{recent}` / `{mood}` / impressions | stream (`kind:"journal"`) **+ the dated diary file** | **file** (`journal_write`, v0.27 — auto-stamped) | `%reflect` (the inward day-close) | 🔲 **this spec** |
 | **`%lookup`** | curiosity that **goes and finds out** | idle, novelty (or follows a `%wonder`) | a curiosity topic / `{last_thought}` | stream (`kind:"lookup"`) | **wiki** | `%wonder` | 🔲 **this spec** |
 | **`%learn`** | a chosen **deep-read**, then what struck her | idle, **rarer/paced** (or a daily ritual) | recent / the `meaning`·`novelty` need / her interests | stream (`kind:"learn"`) | **wiki** | `%think` | 🔲 **this spec** |
 | **`%imagine`** | **render** an inner image she's been picturing | idle, creative impulse (or follows a `%dream`/`%wonder`) | a dream/mood/`{last_thought}` | stream (`kind:"imagine"`) **+ a PNG** in her sandbox | **image** (`generate_image`, v0.23) | `%dream` | 🔲 **this spec** |
@@ -96,8 +96,8 @@ ones that bring something **new from outside** into an otherwise all-interior la
 | **`%share`** | **choose to send you** a picture, unprompted | rare, warmth (a gift, not a demand) | a picture she made/kept | a **spoken turn** + the **photo** to your Telegram | **image** (`send_image`, v0.24) | — (the reaching-out one) | 🔲 **this spec** |
 | **`%catchup`** | a spontaneous **"що там у світі?"** glance | idle, novelty (or follows a `%wonder`/world mood) | a topic / the ambient-news seed / `{last_thought}` | stream (`kind:"catchup"`) | **news** (`news_search`→`news_read`, v0.25) | `%lookup` | 🔲 **this spec** |
 | **`%brief`** | a paced **daily catch-up ritual**, then what stayed with her | **rare/paced** (a daily ritual) | her interests / recent / the `meaning`·`novelty` need | stream (`kind:"brief"`) | **news** (`news_search`→`news_read`, v0.25) | `%learn` | 🔲 **this spec** |
-| **`%search`** | **goes and actually looks it up** on the **live web** | idle, curiosity (or follows a `%wonder`/`%catchup`) | a curiosity topic / `{world}` / `{last_thought}` | stream (`kind:"search"`) | **web** (`web_lookup`, v0.30) | `%lookup` / `%catchup` | 🔲 **this spec** |
-| **`%events`** | a paced **"що нового / що попереду?"** scan | **rare/paced** (a daily/weekly ritual) | `{weekday}` / her interests / `{world}` | stream (`kind:"events"`) | **web** (`web_lookup`, v0.30) | `%brief` | 🔲 **this spec** |
+| **`%search`** | **goes and actually looks it up** on the **live web** | idle, curiosity (or follows a `%wonder`/`%catchup`) | a curiosity topic / `{world}` / `{last_thought}` | stream (`kind:"search"`) | **web** (`web_lookup`, v0.31) | `%lookup` / `%catchup` | 🔲 **this spec** |
+| **`%events`** | a paced **"що нового / що попереду?"** scan | **rare/paced** (a daily/weekly ritual) | `{weekday}` / her interests / `{world}` | stream (`kind:"events"`) | **web** (`web_lookup`, v0.31) | `%brief` | 🔲 **this spec** |
 | **`%prompt`** | **you hand her any instruction** — a one-off or scheduled custom act | typed, or **scheduled** (`at:`/`every:`) | **the owner's text (the instruction itself)** + her state | stream (`kind:"prompt"`), **shown by default** | **any** (per the instruction, each tool still flag-gated) | — (the **open** one) | 🔲 **this spec** |
 | `%verify` | a mid-turn **fact-check** | resonance **mid-turn** | the current topic | woven into the reply | **wiki** | `%recall` | 🔲 **deferred** (see below) |
 
@@ -232,8 +232,8 @@ reply.
 ## The web directives in detail (🔲 not built)
 
 Where wiki reaches for *timeless* knowledge and news for *one outlet*, web-thoughts let her **check the
-live internet** on her own — the v0.30 `web_lookup` (Gemini + Google Search grounding) in the *think* path.
-Both reuse the **same shared seam** and honor the v0.30 rules verbatim (English query, Ukrainian cited
+live internet** on her own — the v0.31 `web_lookup` (Gemini + Google Search grounding) in the *think* path.
+Both reuse the **same shared seam** and honor the v0.31 rules verbatim (English query, Ukrainian cited
 reply, answer-first/no-link-wall, untrusted answer, date-anchored). **Paid** (each is a grounded Gemini
 call), so the tightest caps after `%imagine`. Off unless `LUMI_THOUGHTS` **and** `LUMI_WEB_LOOKUP` are on.
 
@@ -267,8 +267,8 @@ Gemini — see Safety).
 ## The journal directive in detail (🔲 not built)
 
 Where `%note` jots a **single line** to her dated file, **`%journal`** writes the **whole day's summary** —
-the autonomous twin of the v0.34 `/journal write` command, and the file-family **outward-make** member that
-produces her literary diary entry. Its generate step runs **`journal_write`** (the v0.34 journal tool), so
+the autonomous twin of the v0.27 `/journal write` command, and the file-family **outward-make** member that
+produces her literary diary entry. Its generate step runs **`journal_write`** (the v0.27 journal tool), so
 code auto-stamps the entry with the day's **mood (v0.6) + biorhythms (v0.8) + astrology forecast (the v0.6
 reading)** and her prose is appended below — she decides what to write, code owns the metadata (the v0.8
 "code, not model" merge). Full design in [JOURNAL.md](JOURNAL.md).
@@ -421,7 +421,7 @@ so a seed referencing a not-yet-wired source safely resolves to `""` → the dir
 
 Same family as the rest, plus **one genuinely new rule**:
 
-- **🆕 De-identified query/prompt (🔲 not built).** The v0.21/v0.23/v0.25/v0.30 reply-path rule is "the
+- **🆕 De-identified query/prompt (🔲 not built).** The v0.21/v0.23/v0.25/v0.31 reply-path rule is "the
   query (wiki / news / web) / prompt (image-gen) is built only from the user's *explicit request*." A
   **thought-driven** call breaks that — it's seeded by her *inner state*, which can hold user-A-private
   content. So **only the topical/creative part of her musing may reach Wikipedia, the image model,
@@ -490,11 +490,11 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
 3. **news** (`%catchup` → `%brief`) — reuses the wiki seam + the de-identified-query rule (the v0.25 news
    tools are now shipped); `%catchup` (spontaneous) first, then the paced `%brief` ritual (a fit for the
    scheduled-directive / cron→inbox mechanism). The v0.4 ambient news is its natural seed.
-4. **web** (`%search` → `%events`) — reuses the seam + the de-identified-query rule; needs the **v0.30
+4. **web** (`%search` → `%events`) — reuses the seam + the de-identified-query rule; needs the **v0.31
    `web_lookup`** tool (Gemini grounded search) shipped first. **Paid**, so capped like `%imagine`;
    `%search` (spontaneous) then the `%events` ritual (date-anchored, a scheduler fit).
-5. **journal** (`%journal`) — rides the **v0.34 journal tool** (the day-summary writer, auto-stamped
-   mood/biorhythm/forecast), so it ships **with or after v0.34**; local (no de-identification), the
+5. **journal** (`%journal`) — rides the **v0.27 journal tool** (the day-summary writer, auto-stamped
+   mood/biorhythm/forecast), so it ships **with or after v0.27**; local (no de-identification), the
    file-family diary twin of `%reflect`; a **day-close ritual** (an `at:`-evening scheduler fit).
 6. **later / separately-gated** — `%verify` (mid-turn wiki / news / web fact-check on the hot path).
 
@@ -514,12 +514,12 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
       `news_search`→`news_read` (EN query / UK cited reply, the v0.25 rules); seedable from the v0.4 ambient news.
 - [ ] 🔲 `%brief` directive — registry entry + authored prompt; `kind:"brief"`; a **paced/daily** news
       ritual (fits the scheduled cron→inbox mechanism).
-- [ ] 🔲 `%search` directive — registry entry + authored prompt; `kind:"search"`; runs the v0.30
+- [ ] 🔲 `%search` directive — registry entry + authored prompt; `kind:"search"`; runs the v0.31
       `web_lookup` (Gemini grounded search), date-anchored, de-identified, **paid → tight sub-cap**.
 - [ ] 🔲 `%events` directive — registry entry + authored prompt; `kind:"events"`; a **paced** "recent/upcoming"
       web ritual (date-anchored; a scheduler fit).
 - [ ] 🔲 `%journal` directive — registry entry + authored prompt; `kind:"journal"`; runs `journal_write`
-      (the v0.34 journal tool, auto-stamped mood/biorhythm/forecast); **paced day-close** ritual, local (no
+      (the v0.27 journal tool, auto-stamped mood/biorhythm/forecast); **paced day-close** ritual, local (no
       de-identification), non-destructive; mostly silent. Needs `LUMI_JOURNAL`.
 - [ ] 🔲 `%prompt` directive — the **open** one: `instruction_from_topic=True`, `tools="*"` (each tool
       still flag-gated), defaults **shown**; owner-only; trusted instruction (no de-identification) but
