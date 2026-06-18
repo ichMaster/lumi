@@ -44,18 +44,22 @@ That's it. Within the turn she calls the file tools, reads or writes what she ne
 
 | Tool | What it does |
 |---|---|
-| **list_files** | Lists the file names (and sizes) in a folder under her sandbox. |
+| **list_files** | Lists the file names (with sizes **and created/modified dates**, v0.29) in a folder under her sandbox. |
 | **find_in_file** | Searches a file for a string and returns the **line numbers** of matches (with a short preview), so she can jump to the right place. |
 | **read_file** | Reads a block of lines from a given start line, and reports the file's **total lines**, so she can page to the end. |
+| **stat_file** (v0.29) | Reports one file's **size + created + modified date** without listing the whole folder. |
 
-**Write (v0.20) — non-destructive:**
+**Write (v0.20 + v0.29) — non-destructive:**
 
 | Tool | What it does |
 |---|---|
 | **create_file** | Creates a **new** file with the given content. **Refuses if the path already exists** — it never overwrites. |
 | **append_file** | Appends text to the **end** of an existing file. **Refuses if the file is missing** — it never creates by surprise, and never overwrites earlier content. |
+| **create_folder** (v0.29) | Creates a **new** directory. **Refuses if it already exists** — create-only. |
+| **copy_file** (v0.29) | Copies an existing file to a **new** destination. **Refuses if the destination exists** (no overwrite) or the source is over `LUMI_FILE_COPY_MAX`. |
 
-There is **no overwrite and no delete** tool. Overwrite / edit / delete, if ever wanted, are a later,
+The **created** date uses the OS birth-time where available (macOS / BSD), falling back to the
+metadata-change time elsewhere. There is **no overwrite, no delete, and no move** tool. Overwrite / edit / delete, if ever wanted, are a later,
 separately-gated addition.
 
 Three natural flows:
@@ -119,6 +123,7 @@ All optional except `LUMI_FILE_TOOL`. Restart the TUI after changing any of them
 | `LUMI_FILE_READ_MAX_TOTAL` | Max lines one **turn** may read across all reads | `2000` |
 | `LUMI_FILE_FIND_MAX` | Max matches `find_in_file` returns | `50` |
 | `LUMI_FILE_WRITE_MAX` | Max bytes of **one** `create_file`/`append_file` write | `65536` |
+| `LUMI_FILE_COPY_MAX` | Max **source** bytes for one `copy_file` (v0.29; copies existing bytes — separate from `WRITE_MAX`) | `5242880` |
 | `LUMI_TOOL_MAX_STEPS` | Max tool calls per turn (the loop cap) | `8` |
 
 Example `.env` block:
@@ -129,6 +134,7 @@ LUMI_FILE_TOOL=on
 # LUMI_FILE_READ_MAX_TOTAL=2000
 # LUMI_FILE_FIND_MAX=50
 # LUMI_FILE_WRITE_MAX=65536
+# LUMI_FILE_COPY_MAX=5242880
 # LUMI_TOOL_MAX_STEPS=8
 ```
 
