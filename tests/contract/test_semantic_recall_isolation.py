@@ -11,6 +11,7 @@ no paid APIs.
 
 from core.agent import Core
 from core.embedder import MockEmbedder
+from core.emotion import EmotionState
 from core.llm import MockLLMClient
 from core.repository import make_vector_record
 from state.local_store import JsonRepository
@@ -209,3 +210,85 @@ def test_rag_retrieval_error_never_breaks_the_turn(tmp_path):
     state = core.reply("привіт", s)                       # the turn still completes…
     assert state.reply
     assert RAG_HEADER not in core.last_prompt["system"]   # …with no block (graceful)
+
+
+# === v0.30 LUMI-119 — chunking: isolation + off-equivalence + graceful (over chunks) ==============
+def _chunk_rag_core(repo, user_id, *, on=True):
+    return Core(
+        llm=MockLLMClient("ок"), repository=repo, canon="Ти — Лілі.", model="m",
+        user_id=user_id, embedder=MockEmbedder(), recall_enabled=True, embed_model="m@x",
+        rag_enabled=True, rag_floor=0.0, rag_k=5, rag_max_chars=8000, rag_snippet_chars=4000,
+        rag_chunk=on, rag_chunk_chars=40, rag_chunk_overlap=8, rag_chunk_threshold=30, rag_chunk_w=1,
+        memory_window=2, compaction_batch=2,
+    )
+
+
+# a long message with distinct tokens per region (so a query lands on one chunk)
+_ALONG = " ".join(f"альфа{i} барвінок{i} деталь{i}" for i in range(10))
+
+
+def test_chunked_recall_never_crosses_users(tmp_path):
+    # A indexes a long (chunked) message; B's search never returns A's chunk — nor any of its
+    # chunk/message neighbours (search is scoped to the requesting user).
+    repo = JsonRepository(tmp_path / "s.json")
+    alice, bob = _chunk_rag_core(repo, "alice"), _chunk_rag_core(repo, "bob")
+    alice.reply(_ALONG, alice.start_session())
+    bob.reply("моя нотатка зовсім про інше", bob.start_session())
+    alice.ensure_backfill()
+    bob.ensure_backfill()
+    bob_hits = bob.recall("барвінок5")
+    assert all(rec.user_id == "bob" for _, rec in bob_hits)        # only B's vectors
+    assert all("барвінок5" not in rec.text for _, rec in bob_hits)  # never A's chunk
+    a_hits = alice.recall("барвінок5")
+    assert any("барвінок5" in rec.text for _, rec in a_hits)        # A recalls its own passage
+    assert all(rec.user_id == "alice" for _, rec in a_hits)
+
+
+def test_chunked_per_turn_rag_block_is_single_user(tmp_path):
+    # The injected recall block (passage + its neighbours) on B's turn carries only B's messages.
+    repo = JsonRepository(tmp_path / "s.json")
+    alice, bob = _chunk_rag_core(repo, "alice"), _chunk_rag_core(repo, "bob")
+    sa, sb = alice.start_session(), bob.start_session()
+    alice.reply(_ALONG, sa)
+    bob.reply("нейтральний рядок боба перший", sb)
+    for f in ("як справи", "що нового", "добраніч друже"):
+        alice.reply(f, sa)
+        bob.reply(f, sb)
+    bob.reply("нагадай барвінок5", sb)          # B's turn → B's recall block
+    block = _rag_block(bob)
+    assert "барвінок" not in block and "альфа" not in block   # never A's chunks/passage/neighbours
+
+
+def test_chunk_off_block_equals_v017_for_short_messages(tmp_path):
+    # A short message is one chunk, so chunking-on must produce the SAME recall block as chunking-off.
+    on = _chunk_rag_core(JsonRepository(tmp_path / "on.json"), "owner", on=True)
+    off = _chunk_rag_core(JsonRepository(tmp_path / "off.json"), "owner", on=False)
+    for c in (on, off):
+        s = c.start_session()
+        c.reply("кодове пуершмуер тут", s)       # ~20 chars < the 30-char threshold → one chunk
+        for f in ("привіт", "як ти", "добраніч"):
+            c.reply(f, s)
+        c.reply("нагадай пуершмуер", s)
+    assert _rag_block(on) == _rag_block(off)    # chunking is a no-op for short messages
+
+
+def test_chunked_turn_degrades_on_embedder_error(tmp_path):
+    # An embedder failure with chunking on still completes the turn with no block (never raises).
+    repo = JsonRepository(tmp_path / "s.json")
+    core = Core(
+        llm=MockLLMClient("ок"), repository=repo, canon="c", model="m", user_id="owner",
+        embedder=_BoomEmbedder(), recall_enabled=True, rag_enabled=True,
+        rag_chunk=True, rag_chunk_threshold=10,
+    )
+    s = core.start_session()
+    state = core.reply("довге повідомлення яке мало б розбитися на чанки напевно так", s)
+    assert state.reply and RAG_HEADER not in core.last_prompt["system"]
+
+
+def test_emotion_contract_holds_with_chunked_recall(tmp_path):
+    repo = JsonRepository(tmp_path / "s.json")
+    core = _chunk_rag_core(repo, "owner", on=True)
+    s = core.start_session()
+    core.reply(_ALONG, s)
+    state = core.reply("нагадай барвінок5", s)
+    assert isinstance(state, EmotionState) and 0 <= state.intensity <= 1
