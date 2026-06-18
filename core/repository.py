@@ -228,12 +228,16 @@ def make_thought(
 
 @dataclass(frozen=True)
 class VectorRecord:
-    """One embedded message in the per-user vector store (v0.16 semantic recall).
+    """One embedded **chunk** in the per-user vector store (v0.16 recall; v0.30 chunking).
 
-    ``vector`` is the message's embedding; ``msg_id`` is a **stable, content-addressed**
-    id (a hash of ``session_id|ts|role|text``) so indexing/backfill is **idempotent** —
-    re-embedding the same message never duplicates it. Per-user (private); retrieval runs
-    only over the requesting user's records (the isolation invariant). See SEMANTIC_RECALL.md.
+    ``vector`` is the chunk's embedding; ``msg_id`` is a **stable, content-addressed** id so
+    indexing/backfill is **idempotent** — re-embedding never duplicates. ``parent_msg_id`` is the
+    id of the **message** this chunk came from and ``chunk_index`` its 0-based ordinal within that
+    message (v0.30), so adjacent chunks reassemble into a passage. A **one-chunk** message is the
+    v0.16 case: ``chunk_index == 0`` and ``parent_msg_id == msg_id`` (the message id); old records
+    that lack ``parent_msg_id`` default it to ``msg_id`` in :meth:`__post_init__` (back-compatible).
+    Per-user (private); retrieval runs only over the requesting user's records (the isolation
+    invariant). See SEMANTIC_RECALL.md, SEMANTIC_RECALL_CHUNKING.md.
     """
 
     user_id: str
@@ -242,16 +246,27 @@ class VectorRecord:
     text: str
     ts: str
     role: str
+    parent_msg_id: str = ""   # v0.30: the message this chunk came from ("" → defaults to msg_id)
+    chunk_index: int = 0      # v0.30: 0-based ordinal within the message
 
     def __post_init__(self) -> None:
         # JSON round-trips tuples as lists; coerce back so equality/round-trip hold.
         if not isinstance(self.vector, tuple):
             object.__setattr__(self, "vector", tuple(float(x) for x in self.vector))
+        if not self.parent_msg_id:  # back-compat: a one-chunk message is its own parent
+            object.__setattr__(self, "parent_msg_id", self.msg_id)
 
 
 def vector_msg_id(session_id: str, ts: str, role: str, text: str) -> str:
-    """A stable content-addressed id for a message (idempotent indexing/backfill)."""
+    """A stable content-addressed id for a **message** (idempotent indexing/backfill)."""
     raw = f"{session_id}|{ts}|{role}|{text}"
+    return hashlib.blake2b(raw.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def chunk_msg_id(parent_msg_id: str, chunk_index: int, text: str) -> str:
+    """A stable content-addressed id for a **chunk** (v0.30): a hash of
+    ``parent_msg_id|chunk_index|text`` so re-chunking the same message is idempotent."""
+    raw = f"{parent_msg_id}|{chunk_index}|{text}"
     return hashlib.blake2b(raw.encode("utf-8"), digest_size=16).hexdigest()
 
 

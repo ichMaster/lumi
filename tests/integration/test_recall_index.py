@@ -209,3 +209,67 @@ def test_msg_id_matches_between_write_and_backfill(tmp_path, role, text):
     msgs = core._repo.load_messages(session.id)
     m = next(m for m in msgs if m.role == role)
     assert core._repo.has_vector("owner", vector_msg_id(m.session_id, m.ts, m.role, m.text))
+
+
+# --- v0.30 LUMI-117: chunk-granular indexing ------------------------------------------------------
+def _chunk_core(tmp_path, embedder, *, on=True, embed_model="m@x", user_id="owner", repo=None, llm=None):
+    return Core(
+        llm=llm or MockLLMClient("ок"),
+        repository=repo or JsonRepository(tmp_path / "store.json"),
+        canon="C", model="m", user_id=user_id, embedder=embedder, recall_enabled=True,
+        embed_model=embed_model,
+        rag_chunk=on, rag_chunk_chars=40, rag_chunk_overlap=10, rag_chunk_threshold=50,
+    )
+
+
+def _vrecs(repo, user_id="owner"):
+    return repo._vectors.get(user_id, [])
+
+
+_LONG = " ".join(f"речення {i}." for i in range(1, 30))  # > the 50-char threshold
+
+
+def test_long_message_indexed_as_chunks(tmp_path):
+    core = _chunk_core(tmp_path, MockEmbedder(), on=True)
+    core.reply(_LONG, core.start_session())
+    user_recs = [r for r in _vrecs(core._repo) if r.role == "user"]
+    assert len(user_recs) >= 2                                    # the long message → several chunks
+    assert len({r.parent_msg_id for r in user_recs}) == 1        # all share one parent message id
+    assert sorted(r.chunk_index for r in user_recs) == list(range(len(user_recs)))  # 0,1,2,…
+    lili = [r for r in _vrecs(core._repo) if r.role == "lili"]   # the short reply → one record
+    assert len(lili) == 1 and lili[0].chunk_index == 0 and lili[0].parent_msg_id == lili[0].msg_id
+
+
+def test_short_message_one_record_when_chunking_on(tmp_path):
+    core = _chunk_core(tmp_path, MockEmbedder(), on=True)
+    core.reply("привіт", core.start_session())
+    user_recs = [r for r in _vrecs(core._repo) if r.role == "user"]
+    assert len(user_recs) == 1
+    assert user_recs[0].chunk_index == 0 and user_recs[0].parent_msg_id == user_recs[0].msg_id  # v0.16
+
+
+def test_off_one_record_per_message(tmp_path):
+    core = _chunk_core(tmp_path, MockEmbedder(), on=False)
+    core.reply(_LONG, core.start_session())
+    assert len([r for r in _vrecs(core._repo) if r.role == "user"]) == 1  # off → v0.16
+
+
+def test_chunk_indexing_is_idempotent(tmp_path):
+    core = _chunk_core(tmp_path, MockEmbedder(), on=True)
+    core.reply(_LONG, core.start_session())
+    before = len(_vrecs(core._repo))
+    core.ensure_backfill()
+    assert core.backfill_vectors() == 0          # nothing left to index
+    assert len(_vrecs(core._repo)) == before      # no duplicate chunk records
+
+
+def test_staleness_tag_reembeds_on_chunk_change(tmp_path):
+    e = MockEmbedder()
+    repo = JsonRepository(tmp_path / "store.json")
+    off = _chunk_core(tmp_path, e, on=False, embed_model="m@x", repo=repo)
+    off.reply(_LONG, off.start_session())
+    off.ensure_backfill()
+    assert len([r for r in _vrecs(repo) if r.role == "user"]) == 1     # one vector per message
+    on = _chunk_core(tmp_path, e, on=True, embed_model="m@x@chunk40", repo=repo)
+    on.ensure_backfill()                                               # tag changed → reset + re-index
+    assert len([r for r in _vrecs(repo) if r.role == "user"]) >= 2     # re-embedded as chunks

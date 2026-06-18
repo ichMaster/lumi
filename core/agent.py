@@ -30,6 +30,7 @@ from core.biorhythm import (
 from core.biorhythm import (
     biorhythms as biorhythm_cycles,
 )
+from core.chunking import chunk_text
 from core.clock import Clock, format_date, format_stamp, strip_leading_stamp, system_clock
 from core.closeness import (
     ClosenessTuning,
@@ -98,6 +99,7 @@ from core.repository import (
     Thought,
     VectorRecord,
     WeekSummary,
+    chunk_msg_id,
     make_message,
     make_thought,
     now_iso,
@@ -267,6 +269,11 @@ class Core:
         rag_max_chars: int = 1200,
         rag_w: int = 2,
         rag_snippet_chars: int = _RAG_SNIPPET_CHARS,
+        rag_chunk: bool = False,
+        rag_chunk_chars: int = 800,
+        rag_chunk_overlap: int = 120,
+        rag_chunk_threshold: int = 1200,
+        rag_chunk_w: int = 1,
         clock: Clock = system_clock,
         natal: str = "",
         mood_enabled: bool = True,
@@ -490,6 +497,12 @@ class Core:
         self._rag_max_chars = rag_max_chars
         self._rag_w = rag_w
         self._rag_snippet_chars = rag_snippet_chars  # per-line cap for recalled moments
+        # v0.30 chunking: index a long message as several chunks (off → one vector per message).
+        self._rag_chunk = rag_chunk
+        self._rag_chunk_chars = rag_chunk_chars
+        self._rag_chunk_overlap = rag_chunk_overlap
+        self._rag_chunk_threshold = rag_chunk_threshold
+        self._rag_chunk_w = rag_chunk_w
         # v0.17 context expansion: msg_id → (session_id, index) for this user, built lazily once
         # (no re-index needed); lets a hit be widened to its session neighbours.
         self._position_index: dict[str, tuple[str, int]] | None = None
@@ -1794,7 +1807,8 @@ class Core:
         """Embed + store ``messages`` in the per-user vector store (best-effort).
 
         Guarded by ``recall_enabled``; an embedder error is logged and swallowed — the
-        messages are already persisted and get picked up by the next backfill.
+        messages are already persisted and get picked up by the next backfill. With chunking on
+        (v0.30) a long message yields several chunk records; off → one record per message (v0.16).
         """
         if not self._recall_enabled or self._embedder is None:
             return
@@ -1802,30 +1816,77 @@ class Core:
         if not to_index:
             return
         try:
-            vectors = self._embedder.embed([m.text[:self._embed_max_chars] for m in to_index])
-            self._repo.add_vectors(
-                [self._vector_record(m, vec) for m, vec in zip(to_index, vectors, strict=True)]
-            )
+            records = self._embed_and_build(to_index)
         except Exception as exc:  # noqa: BLE001 — best-effort; the messages are stored, retried by backfill
             _recall_log.warning("recall index-on-write failed (message stored; will backfill): %s", exc)
+            return
+        if records:
+            self._repo.add_vectors(records)
 
-    def _vector_record(self, m: Message, vector: list[float]) -> VectorRecord:
-        # msg_id from the FULL text (stable id / has_vector); stored text truncated (display + size).
-        return VectorRecord(
-            user_id=m.user_id,
-            msg_id=vector_msg_id(m.session_id, m.ts, m.role, m.text),
-            vector=tuple(float(x) for x in vector),
-            text=m.text[:self._embed_max_chars],
-            ts=m.ts,
-            role=m.role,
-        )
+    def _chunks_for(self, m: Message) -> list[str]:
+        """The passages a message is indexed as: several (v0.30 chunking on, long message) or one
+        (off, or a short message — the v0.16 case)."""
+        if self._rag_chunk:
+            cs = chunk_text(
+                m.text, chunk_chars=self._rag_chunk_chars,
+                overlap=self._rag_chunk_overlap, threshold=self._rag_chunk_threshold,
+            )
+            if cs:
+                return cs
+        return [m.text]
+
+    def _chunk_record_id(self, parent: str, index: int, ctext: str, *, single: bool) -> str:
+        """A one-chunk message keeps the **message id** (v0.16 back-compat); a multi-chunk message
+        uses a per-chunk content-addressed id."""
+        return parent if single else chunk_msg_id(parent, index, ctext)
+
+    def _embed_and_build(self, messages: list[Message]) -> list[VectorRecord]:
+        """Chunk → embed (one batch) → build one :class:`VectorRecord` per chunk. Raises on an
+        embedder error (the caller logs + degrades). A one-chunk message is the v0.16 record
+        (``msg_id == parent_msg_id``, ``chunk_index == 0``)."""
+        plans: list[tuple[Message, str, list[str]]] = []  # (message, parent_msg_id, chunk_texts)
+        flat: list[str] = []
+        for m in messages:
+            chunks = self._chunks_for(m)
+            if not chunks:
+                continue
+            parent = vector_msg_id(m.session_id, m.ts, m.role, m.text)
+            plans.append((m, parent, chunks))
+            flat.extend(c[:self._embed_max_chars] for c in chunks)
+        if not flat:
+            return []
+        vectors = self._embedder.embed(flat)
+        records: list[VectorRecord] = []
+        vi = 0
+        for m, parent, chunks in plans:
+            single = len(chunks) == 1
+            for ci, ctext in enumerate(chunks):
+                stored = ctext[:self._embed_max_chars]
+                records.append(VectorRecord(
+                    user_id=m.user_id,
+                    msg_id=self._chunk_record_id(parent, ci, ctext, single=single),
+                    vector=tuple(float(x) for x in vectors[vi]),
+                    text=stored, ts=m.ts, role=m.role,
+                    parent_msg_id=parent, chunk_index=ci,
+                ))
+                vi += 1
+        return records
+
+    def _message_indexed(self, m: Message) -> bool:
+        """Whether ``m`` is already in the vector store — keyed off its **first chunk's** id, so the
+        check is idempotent at message granularity whether chunking is on or off."""
+        parent = vector_msg_id(m.session_id, m.ts, m.role, m.text)
+        chunks = self._chunks_for(m)
+        first_id = self._chunk_record_id(parent, 0, chunks[0], single=len(chunks) == 1) if chunks else parent
+        return self._repo.has_vector(self._user_id, first_id)
 
     def backfill_vectors(self, limit: int | None = None) -> int:
         """Embed up to ``limit`` of **this user's** un-indexed messages — **one pass** (idempotent).
 
-        ``has_vector`` skips the already-indexed, so repeated calls drain the history in batches
-        of ``limit`` (default ``recall_backfill_max``). Returns how many were indexed this pass;
-        recall off / no embedder / a model error → 0. :meth:`ensure_backfill` loops it to completion.
+        ``_message_indexed`` skips the already-indexed (keyed off the first chunk's id), so repeated
+        calls drain the history in batches of ``limit`` (default ``recall_backfill_max``). Returns how
+        many **messages** were indexed this pass; recall off / no embedder / a model error → 0.
+        :meth:`ensure_backfill` loops it to completion.
         """
         if not self._recall_enabled or self._embedder is None:
             return 0
@@ -1835,7 +1896,7 @@ class Core:
             for m in self._repo.load_messages(session.id):
                 if m.user_id != self._user_id or not m.text.strip():
                     continue
-                if not self._repo.has_vector(self._user_id, vector_msg_id(m.session_id, m.ts, m.role, m.text)):
+                if not self._message_indexed(m):
                     pending.append(m)
                     if len(pending) >= cap:
                         break
@@ -1844,13 +1905,12 @@ class Core:
         if not pending:
             return 0
         try:
-            vectors = self._embedder.embed([m.text[:self._embed_max_chars] for m in pending])
+            records = self._embed_and_build(pending)
         except Exception as exc:  # noqa: BLE001 — best-effort; retried on the next pass
             _recall_log.warning("recall backfill embed failed (retried next pass): %s", exc)
             return 0
-        self._repo.add_vectors(
-            [self._vector_record(m, vec) for m, vec in zip(pending, vectors, strict=True)]
-        )
+        if records:
+            self._repo.add_vectors(records)
         return len(pending)
 
     def ensure_backfill(self) -> None:
@@ -2105,15 +2165,24 @@ def build_core(
         recall_enabled=cfg.recall,
         recall_k=cfg.recall_k,
         embed_max_chars=cfg.embed_max_chars,
-        # The vectors-staleness tag includes the char cap, so changing either the model OR the cap
-        # re-embeds the history at the new limit (ensure_backfill resets on a tag change).
-        embed_model=f"{cfg.embed_model}@{cfg.embed_max_chars}",
+        # The vectors-staleness tag includes the char cap AND (v0.30) the chunk size when chunking is
+        # on, so changing the model, the cap, or the chunk size — or toggling chunking — re-embeds the
+        # history (ensure_backfill resets on a tag change). Off → the tag is unchanged from v0.16/0.17.
+        embed_model=(
+            f"{cfg.embed_model}@{cfg.embed_max_chars}"
+            + (f"@chunk{cfg.rag_chunk_chars}" if cfg.rag_chunk else "")
+        ),
         rag_enabled=cfg.rag,
         rag_k=cfg.rag_k,
         rag_floor=cfg.rag_floor,
         rag_max_chars=cfg.rag_max_chars,
         rag_w=cfg.rag_w,
         rag_snippet_chars=cfg.rag_snippet_chars,
+        rag_chunk=cfg.rag_chunk,
+        rag_chunk_chars=cfg.rag_chunk_chars,
+        rag_chunk_overlap=cfg.rag_chunk_overlap,
+        rag_chunk_threshold=cfg.rag_chunk_threshold,
+        rag_chunk_w=cfg.rag_chunk_w,
         facts_digest_max=cfg.facts_digest_max,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,

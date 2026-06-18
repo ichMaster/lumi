@@ -70,9 +70,10 @@ def test_session_digest_shape():
 
 
 def test_vector_record_shape():
-    # v0.16 semantic recall — ARCHITECTURE §Semantic recall: {user_id, msg_id, vector, text, ts, role}.
+    # v0.16 recall + v0.30 chunking — ARCHITECTURE §Semantic recall:
+    # {user_id, msg_id, vector, text, ts, role, parent_msg_id, chunk_index}.
     assert set(VectorRecord.__dataclass_fields__) == {
-        "user_id", "msg_id", "vector", "text", "ts", "role",
+        "user_id", "msg_id", "vector", "text", "ts", "role", "parent_msg_id", "chunk_index",
     }
 
 
@@ -82,3 +83,12 @@ def test_vector_record_is_per_user_and_coerces_vector():
                      text="привіт", ts="2026-06-06T00:00:00+00:00", role="user")
     assert r.user_id == "owner"
     assert r.vector == (0.1, 0.2)  # list coerced to tuple in __post_init__
+    # v0.30 back-compat: a record without parent_msg_id is its own parent (the one-chunk / v0.16 case).
+    assert r.parent_msg_id == "abc" and r.chunk_index == 0
+
+
+def test_vector_record_chunk_fields():
+    # v0.30: a chunk carries its parent message id + 0-based ordinal within that message.
+    r = VectorRecord(user_id="owner", msg_id="chunk1", vector=[0.0], text="passage",
+                     ts="2026-06-06T00:00:00+00:00", role="user", parent_msg_id="msgA", chunk_index=2)
+    assert r.parent_msg_id == "msgA" and r.chunk_index == 2
