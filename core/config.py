@@ -65,6 +65,9 @@ DEFAULT_CLOSENESS_PATH = _REPO_ROOT / "core" / "closeness.md"
 # Face image packs + theme manifest (v0.7 + v0.11 themes); the viewer renders from here.
 DEFAULT_FACES_DIR = _REPO_ROOT / "viewer" / "faces"
 DEFAULT_FILES_DIR = _REPO_ROOT / ".lumi" / "files"  # v0.19 file-tool sandbox root (per-user subdirs)
+# v0.28 journal root — a DEDICATED per-user diary store, a sibling of (and OUTSIDE) the file sandbox, so
+# the raw file tools can never reach/modify it; only the journal tool writes there.
+DEFAULT_JOURNAL_DIR = _REPO_ROOT / ".lumi" / "journal"
 
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
 DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
@@ -229,7 +232,7 @@ class Config:
     # v0.28 journal tool — Лілі's day-summary diary (journal_write/read/list) on the v0.19 tool-loop.
     # Local; reuses the file sandbox; code auto-stamps mood (v0.6) + biorhythms (v0.8) + forecast. Off by default.
     journal: bool = False           # enable the journal tools (+ /journal command) (LUMI_JOURNAL)
-    journal_dir: str = "journal"    # subfolder under the per-user sandbox root for the dated entries
+    journal_dir: Path = DEFAULT_JOURNAL_DIR  # DEDICATED journal root (per-user subdirs); OUTSIDE the file sandbox
     journal_max_chars: int = 4000   # cap on a single journal_write body
     # v0.22 local image tool I: vision — view_image on the v0.19 tool-loop + shared-image input. Off by default.
     image: bool = False             # enable vision (view_image + shared-image input) (LUMI_IMAGE)
@@ -471,7 +474,7 @@ def load_config(*, load_env: bool = True) -> Config:
         web_lookup_max_calls=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CALLS") or 2),
         web_lookup_max_chars=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CHARS") or 2000),
         journal=(os.getenv("LUMI_JOURNAL") or "off").strip().lower() in _TRUTHY,  # v0.28, off by default
-        journal_dir=os.getenv("LUMI_JOURNAL_DIR") or "journal",
+        journal_dir=Path(jd) if (jd := os.getenv("LUMI_JOURNAL_DIR")) else DEFAULT_JOURNAL_DIR,
         journal_max_chars=int(os.getenv("LUMI_JOURNAL_MAX_CHARS") or 4000),
         image=(os.getenv("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
         vision_max=int(os.getenv("LUMI_VISION_MAX") or 4),

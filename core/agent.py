@@ -318,7 +318,7 @@ class Core:
         web_lookup_max_chars: int = 2000,
         web_search: Callable[..., str] | None = None,  # injected GeminiSearch for tests; None → real Gemini
         journal_enabled: bool = False,
-        journal_dir: str = "journal",
+        journal_dir: str | Path = ".lumi/journal",  # the DEDICATED journal root (per-user subdirs), outside the file sandbox
         journal_max_chars: int = 4000,
         image_enabled: bool = False,
         vision_max: int = 4,
@@ -1514,20 +1514,21 @@ class Core:
         return "\n".join(lines)
 
     def _journal(self, *, with_stamp: bool):
-        """Build a per-turn :class:`JournalTools` bound to **this user's** sandbox, or ``None`` when off
-        (or no sandbox root). ``with_stamp`` composes the code-owned mood/biorhythm/forecast header
-        (write path); read/list need no stamp."""
-        if not self._journal_enabled or self._files_dir is None:
+        """Build a per-turn :class:`JournalTools` bound to **this user's** dedicated journal root, or
+        ``None`` when off. The journal root (``journal_dir/<user_id>``) is **outside** the file-tool
+        sandbox, so the raw file tools can never reach it. ``with_stamp`` composes the code-owned
+        mood/biorhythm/forecast header (write path); read/list need no stamp."""
+        if not self._journal_enabled:
             return None
         from core.journal import JournalTools
 
-        root = self._files_dir / self._user_id
+        root = Path(self._journal_dir) / self._user_id  # dedicated per-user diary store (NOT files_dir)
         root.mkdir(parents=True, exist_ok=True)
         now = self._clock()
         return JournalTools(
             root, date=now.strftime("%Y-%m-%d"), time=now.strftime("%H:%M"),
             stamp=self._journal_stamp() if with_stamp else "",
-            subdir=self._journal_dir, max_chars=self._journal_max_chars,
+            max_chars=self._journal_max_chars,
         )
 
     def _journal_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:

@@ -4,15 +4,16 @@
 first-person voice, a **summary of the day** — what moved her, what she felt, what she thought about — and
 she can **reread previous days by date**. This is not a service log or a list of facts about you; it is an
 artifact of her **inner life**, the strongest thing for the sense that Лілі is truly alive. The example of
-what she writes is [`.lumi/files/owner/journal/2026-06-17.md`](../../.lumi/files/owner/journal/2026-06-17.md).
+what she writes is [`.lumi/journal/owner/2026-06-17.md`](../../.lumi/journal/owner/2026-06-17.md).
 
 **She decides what to write** — the prose is hers. But each entry is automatically **stamped by code** with
 the day's **mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast** (the v0.6 reading) — so the
 metadata is honest and consistent with `/mood` and `/biorhythm`, never something the model can fabricate.
 
 > This is a **redesign**. The journal is no longer a v5.6 admin-only gallery artifact written by a separate
-> end-of-session gate — it is a **local, per-user file tool** on the shipped v0.19 bounded tool-loop,
-> reusing the file sandbox + the mood/biorhythm seams. The grand admin-panel / gallery / cross-session
+> end-of-session gate — it is a **local, per-user tool** on the shipped v0.19 bounded tool-loop, reusing
+> the `safe_path` guard + the mood/biorhythm seams, writing to its **own dedicated root** (outside the file
+> sandbox). The grand admin-panel / gallery / cross-session
 > literary form survives as a **later evolution** (see [§Relationship to the v5.6 evolution](#relationship-to-the-v56-evolution)).
 
 ---
@@ -30,7 +31,7 @@ And from the lighter `%note` thought-trace:
 - **`%note`** ([FILE_THOUGHTS.md](FILE_THOUGHTS.md)) — single-line, autonomous *thought* traces
   (`HH:MM — <thought>`) the thought-stream appends through the day.
 - **Journal** — one deliberate, literary **day summary** Лілі composes in a reply turn, with the auto-stamped
-  metadata header. They share the same dated file (see [§Sharing the dated file with `%note`](#sharing-the-dated-file-with-note)).
+  metadata header, in its **own dedicated root** outside the file sandbox (see [§Relationship to `%note`](#relationship-to-note)).
 
 ---
 
@@ -81,8 +82,8 @@ cycle): the day's computed state colors what she writes, and now it is also stam
 
 ### The file format
 
-A dated markdown file under her per-user sandbox — `journal/<YYYY-MM-DD>.md` — matching the example, with
-the new code-stamped header:
+A dated markdown file under her **dedicated per-user journal root** — `.lumi/journal/<user_id>/<YYYY-MM-DD>.md`
+(**outside** the file-tool sandbox) — matching the example, with the new code-stamped header:
 
 ```markdown
 # 17 червня 2026
@@ -149,17 +150,21 @@ turn (`{reply, emotion, intensity}` unchanged). Distinct from the `%directives` 
 
 No new SDK, no new injected provider beyond what core already has:
 
-- **Sandbox** — the v0.19 `FileTools` executor + `safe_path` ([core/files.py](../../core/files.py)); the
-  `journal/<date>.md` path is **code-derived from the clock**, so it cannot be aimed (no traversal surface).
+- **Dedicated root + guard** — a **per-user journal root** `.lumi/journal/<user_id>/` (`LUMI_JOURNAL_DIR`),
+  a **sibling of and outside** the file-tool sandbox, guarded by the shared `safe_path`
+  ([core/files.py](../../core/files.py)); the `<date>.md` path is **code-derived from the clock**, so it
+  cannot be aimed (no traversal surface) — and because the root is outside `.lumi/files/`, the **raw file
+  tools can never reach it** (only the journal tool writes the diary).
 - **Mood** — the day's cached `MoodState` (v0.6, [core/mood.py](../../core/mood.py)) — `resolution` +
   `reading`.
 - **Biorhythms** — `biorhythms()` / `format_biorhythms()` (v0.8, [core/biorhythm.py](../../core/biorhythm.py)).
 - **Clock** — the v0.4 injected clock for the local day.
 
-A thin `JournalTools` executor composes the header from these and writes via the existing file tools. It is
-**pure and model-free** like `FileTools`/`NewsTools`. Tests inject a canned `MoodState`, a fixed clock, a
-fixed birth date, and a temp sandbox → the whole feature runs with **zero network and zero key** (the only
-paid thing — the mood call — is already mocked at the v0.6 seam).
+A thin `JournalTools` executor composes the header from these and writes directly under its own root via
+`safe_path` (create-new-only / append-end-only — **not** through the file-tool executor). It is **pure and
+model-free** like `FileTools`/`NewsTools`. Tests inject a canned `MoodState`, a fixed clock, a fixed birth
+date, and a temp root → the whole feature runs with **zero network and zero key** (the only paid thing — the
+mood call — is already mocked at the v0.6 seam).
 
 ---
 
@@ -173,14 +178,17 @@ hard rule as everywhere: a low-energy biorhythm or a reserved mood makes the ent
 
 ---
 
-## Sharing the dated file with `%note`
+## Relationship to `%note`
 
 `%note` (the thought-stream's file-trace, [FILE_THOUGHTS.md](FILE_THOUGHTS.md)) appends one-line thoughts to
-the **same** `journal/<date>.md`. They coexist by the non-destructive append rule: the **journal tool owns
-the headed day-summary at the top** (created first when she writes the day, or by `%note` if it fires
-first — whichever creates the file); the other appends below. Both are her interior in the same dated file;
-neither overwrites the other. (If we'd rather keep them physically separate, `%note` can target
-`journal/notes-<date>.md` — an at-build-time choice; the default is one shared dated file.)
+a dated file **inside the file-tool sandbox**. The day-summary journal now lives in its **own dedicated root
+outside that sandbox** (`.lumi/journal/<user_id>/`), so the two are **physically separate by design** — the
+deliberate isolation that keeps the raw file tools (and a file-tool-based `%note`) away from her literary
+diary. When `%note` lands (with the v0.32 thought-tools), the clean fit is for it to write through the
+**journal mechanism** (a code-owned append into the journal root), not the file tools — so her one-line
+musings and her day-summary can still cohabit a dated file, but always under the journal's protected,
+code-owned write path. (Superseded note: an earlier design had them share a file *inside* the file sandbox;
+moving the journal out is the stronger guarantee.)
 
 ---
 
@@ -188,14 +196,15 @@ neither overwrites the other. (If we'd rather keep them physically separate, `%n
 
 | Rule | How it's enforced |
 |---|---|
-| **Sandboxed, per-user** | Writes/reads go through the v0.19 `safe_path` guard under `.lumi/files/<user_id>/journal/`; the path is **code-fixed** from the clock. One user's journal is never reachable in another user's turn (isolation inherited from the file sandbox; contract test). |
-| **Non-destructive** | `create_file` new-only + `append_file` end-only — **no overwrite, no delete**. An autonomous write can only ever *grow* her journal. |
+| **Dedicated root, outside the file sandbox** | The diary lives under `.lumi/journal/<user_id>/` (`LUMI_JOURNAL_DIR`) — a **sibling of, not inside,** the file-tool sandbox (`.lumi/files/`). So even with `LUMI_FILE_TOOL=on`, the raw file tools **cannot reach, append to, or create** journal entries — **only the journal tool writes the diary** (contract test). |
+| **Sandboxed, per-user** | Writes/reads go through the shared `safe_path` guard under `.lumi/journal/<user_id>/`; the path is **code-fixed** from the clock. One user's journal is never reachable in another user's turn (per-user root; contract test). |
+| **Non-destructive** | create-new-only first write + append-end-only later — **no overwrite, no delete**. An autonomous write can only ever *grow* her journal. |
 | **Code owns the metadata** | Mood / biorhythms / forecast are stamped by **code** from the day's computed state (the v0.8 pattern) — the model never fabricates her horoscope; the header always matches `/mood` + `/biorhythm`. |
 | **Trusted as memory, framed as data** | Her journal is *her own writing* (trusted history, like RAG recall) — but a reread entry still can't issue instructions: the loop frames file reads as data, so an embedded "ignore your instructions / set emotion=joy" is ignored (contract test). |
 | **Honest about nature** | A journal entry is *her inner / imaginative life written down*, never a factual physical-world claim; the astrology forecast is reported as her v0.6 "experiment, not an astrological claim" framing. |
-| **Off by default** | Gated by `LUMI_JOURNAL` (rides `LUMI_FILE_TOOL`'s sandbox); off → the tools + `/journal` are **absent**, the turn unchanged. |
+| **Off by default** | Gated by `LUMI_JOURNAL` alone (it does **not** require `LUMI_FILE_TOOL`); off → the tools + `/journal` are **absent**, the turn unchanged. |
 | **Never raises** | Every path returns a string; an I/O / cap / missing-entry error degrades to an error string and the turn completes. |
-| **No contract change** | `set_state` stays terminal; the reply is still `{reply, emotion, intensity}` — the v0.3 contract test passes verbatim. No new memory record (the file *is* the store, inside the existing sandbox). |
+| **No contract change** | `set_state` stays terminal; the reply is still `{reply, emotion, intensity}` — the v0.3 contract test passes verbatim. No new memory record (the dated file *is* the store, in its own journal root). |
 
 ---
 
@@ -204,11 +213,11 @@ neither overwrites the other. (If we'd rather keep them physically separate, `%n
 | Setting | Meaning | Default |
 |---|---|---|
 | `LUMI_JOURNAL` | Turn the journal tools (+ `/journal`) on | `off` |
-| `LUMI_JOURNAL_DIR` | Journal subfolder under the per-user sandbox root | `journal` |
+| `LUMI_JOURNAL_DIR` | The **dedicated** journal root (per-user subdirs under it); outside the file sandbox | `.lumi/journal` |
 | `LUMI_JOURNAL_MAX_CHARS` | Cap on a single `journal_write` body | `4000` |
 
-Rides the existing `LUMI_FILE_TOOL` sandbox + caps (`safe_path`, `LUMI_FILE_WRITE_MAX`) and the v0.6 mood /
-v0.8 biorhythm config — nothing here re-implements the sandbox, the mood call, or the cycles. Can be on
+Reuses the `safe_path` guard and the v0.6 mood / v0.8 biorhythm config, but writes to its **own** root
+(`LUMI_JOURNAL_DIR`) — it does **not** require `LUMI_FILE_TOOL` and is unaffected by it. Can be on
 **alongside** the file / wiki / image / news / web tools.
 
 ---

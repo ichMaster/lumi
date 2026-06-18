@@ -31,7 +31,7 @@ def test_journal_tools_shape():
 def test_write_creates_with_code_owned_header(tmp_path):
     out = _tools(tmp_path).execute("journal_write", {"text": "Весь день був з-під води."})
     assert "створено запис 2026-06-17" in out
-    body = (tmp_path / "journal" / "2026-06-17.md").read_text(encoding="utf-8")
+    body = (tmp_path / "2026-06-17.md").read_text(encoding="utf-8")
     assert body.startswith("# 2026-06-17\n\n")
     assert "**Настрій:** тонка шкіра" in body and "**Біоритми:**" in body and "**Прогноз:** відплив" in body
     assert "Весь день був з-під води." in body
@@ -42,7 +42,7 @@ def test_second_write_same_day_appends(tmp_path):
     tools.execute("journal_write", {"text": "Перша частина."})
     out = tools.execute("journal_write", {"text": "Друга частина, пізніше."})
     assert "додано до запису 2026-06-17 (## 21:30)" in out
-    body = (tmp_path / "journal" / "2026-06-17.md").read_text(encoding="utf-8")
+    body = (tmp_path / "2026-06-17.md").read_text(encoding="utf-8")
     assert "Перша частина." in body and "Друга частина, пізніше." in body  # first survives (non-destructive)
     assert "## 21:30" in body
     assert body.count("# 2026-06-17") == 1 and body.count("**Настрій:**") == 1  # header stamped once
@@ -50,7 +50,7 @@ def test_second_write_same_day_appends(tmp_path):
 
 def test_body_is_capped(tmp_path):
     _tools(tmp_path, max_chars=50).execute("journal_write", {"text": "я" * 9000})
-    body = (tmp_path / "journal" / "2026-06-17.md").read_text(encoding="utf-8")
+    body = (tmp_path / "2026-06-17.md").read_text(encoding="utf-8")
     prose = body.split("\n\n", 2)[2]  # after "# date" + stamp
     assert prose.rstrip("\n").endswith("…") and len(prose) <= 60
 

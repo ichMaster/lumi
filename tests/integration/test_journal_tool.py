@@ -26,7 +26,7 @@ def _core(tmp_path, llm, *, journal=False, user="owner", with_mood=True) -> Core
         llm=llm, repository=JsonRepository(tmp_path / "store.json"),
         canon="Ти — Лілі.", model="m", clock=_CLK, user_id=user,
         mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
-        tool_max_steps=6, journal_enabled=journal, files_dir=tmp_path / "files",
+        tool_max_steps=6, journal_enabled=journal, journal_dir=tmp_path / "journal",
     )
     if with_mood:  # mood is OFF, so _ensure_mood is a no-op and these injected values persist
         core._mood = MoodState(
@@ -44,7 +44,7 @@ def test_turn_writes_journal_with_code_owned_header(tmp_path):
 
     assert isinstance(state, EmotionState) and state.emotion.value == "tender"
     assert [c[0] for c in mock.tool_calls] == ["journal_write"]
-    body = (tmp_path / "files" / "owner" / "journal" / "2026-06-18.md").read_text(encoding="utf-8")
+    body = (tmp_path / "journal" / "owner" / "2026-06-18.md").read_text(encoding="utf-8")
     assert body.startswith("# 2026-06-18\n\n")
     assert "**Настрій:** тонка шкіра сьогодні" in body          # code-owned mood (from the injected MoodState)
     assert "**Біоритми:**" in body and "емоційний" in body      # code-owned biorhythms
@@ -80,5 +80,5 @@ def test_stamp_degrades_when_mood_off(tmp_path):
     mock = MockLLMClient(states=_STATE, tool_script=[("journal_write", {"text": _PROSE})])
     core = _core(tmp_path, mock, journal=True, with_mood=False)
     core.reply("запиши", core.start_session())
-    body = (tmp_path / "files" / "owner" / "journal" / "2026-06-18.md").read_text(encoding="utf-8")
+    body = (tmp_path / "journal" / "owner" / "2026-06-18.md").read_text(encoding="utf-8")
     assert body.startswith("# 2026-06-18\n\n") and _PROSE in body and "**Настрій:**" not in body

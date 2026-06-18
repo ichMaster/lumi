@@ -15,8 +15,9 @@ Hard rules (JOURNAL.md §safety): **sandboxed + per-user** (``safe_path``; the p
 the clock — the model can't aim it); **non-destructive** (the day's **first** write ``create``s the file,
 a **later same-day** write **appends** a ``## HH:MM`` section — no overwrite, no delete); **never raises**
 (every path returns a string). Tool *names* are ``journal_write`` / ``journal_read`` / ``journal_list``
-(Anthropic tool names allow no ``.``). The on-disk file is ``journal/<YYYY-MM-DD>.md`` under the per-user
-sandbox — the same dated file ``%note`` appends to.
+(Anthropic tool names allow no ``.``). The on-disk file is ``<date>.md`` under a **dedicated per-user
+journal root** (``.lumi/journal/<user_id>/``) — **outside the file-tool sandbox**, so only the journal tool
+ever writes there (the raw file tools structurally cannot reach it).
 """
 from __future__ import annotations
 
@@ -86,12 +87,12 @@ class JournalTools:
     """
 
     def __init__(self, root: str | Path, *, date: str, time: str = "", stamp: str = "",
-                 subdir: str = "journal", max_chars: int = 4000) -> None:
-        self._root = Path(root)
+                 subdir: str = "", max_chars: int = 4000) -> None:
+        self._root = Path(root)            # the per-user journal root (entries live directly under it)
         self._date = date
         self._time = time
         self._stamp = stamp.strip()
-        self._subdir = subdir.strip("/") or "journal"
+        self._subdir = subdir.strip("/")   # "" → entries directly under root (the default)
         self._max_chars = max(1, max_chars)
 
     def execute(self, name: str, tool_input: dict | None) -> str:
@@ -109,11 +110,15 @@ class JournalTools:
 
     # --- helpers ---------------------------------------------------------------------------------
     def _rel(self, date: str) -> str:
-        return f"{self._subdir}/{date}.md"
+        return f"{self._subdir}/{date}.md" if self._subdir else f"{date}.md"
+
+    def _dir(self) -> Path:
+        """The directory the dated entries live in (the root, or a subdir under it)."""
+        return safe_path(self._root, self._subdir) if self._subdir else self._root
 
     def _entries(self) -> list[str]:
-        """The dated entry stems (``YYYY-MM-DD``) under the journal subdir, newest first."""
-        d = safe_path(self._root, self._subdir)
+        """The dated entry stems (``YYYY-MM-DD``) in the journal dir, newest first."""
+        d = self._dir()
         if not d.is_dir():
             return []
         return sorted((p.stem for p in d.glob("*.md")), reverse=True)

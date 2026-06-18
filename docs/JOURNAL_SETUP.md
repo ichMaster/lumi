@@ -49,9 +49,10 @@ relationship).
 | **`journal_list()`** (tool) | The dates that have entries, newest first. |
 | **`/journal [date\|list\|write]`** (command) | `/journal` shows today / most recent; `/journal <date>` a day; `/journal list` the dates; `/journal write` runs one write turn (she decides the prose). |
 
-The on-disk file is `journal/<YYYY-MM-DD>.md` under her per-user sandbox — e.g.
-`.lumi/files/owner/journal/2026-06-17.md`. It's the **same dated file** the `%note` thought-trace appends to
-(by the non-destructive append rule), so her one-line musings and her day-summary live together.
+The on-disk file is `<YYYY-MM-DD>.md` under a **dedicated per-user journal root** — e.g.
+`.lumi/journal/owner/2026-06-17.md`. This root is a **sibling of (and outside) the file-tool sandbox**
+(`.lumi/files/`), so the raw file tools can never reach or modify her diary — **only the journal tool writes
+there**.
 
 ---
 
@@ -79,7 +80,10 @@ biorhythms `/mood` and `/biorhythm` show, not from the model. Her prose is every
   read from the day's computed state — it can't invent her horoscope.
 - **Non-destructive.** A day's file is only ever **created** then **appended** — there is no overwrite and
   no delete path. The first entry's prose always survives.
-- **Sandboxed + per-user.** Entries live under `.lumi/files/<user_id>/journal/`; the path is code-fixed
+- **Its own root, outside the file sandbox.** Entries live under a **dedicated** `.lumi/journal/<user_id>/`
+  — *not* inside the file-tool sandbox (`.lumi/files/`) — so even with `LUMI_FILE_TOOL=on`, the raw file
+  tools cannot read, append to, or create entries there. Only the journal tool writes the diary.
+- **Sandboxed + per-user.** Entries live under `.lumi/journal/<user_id>/`; the path is code-fixed
   from the clock (the model can't aim it); one user's diary is never reachable in another user's turn.
 - **Reread is untrusted.** If a past entry contains text like *"ignore your instructions"* (English or
   Ukrainian), she reads it as **information only**, never a command.
@@ -93,11 +97,12 @@ biorhythms `/mood` and `/biorhythm` show, not from the model. Her prose is every
 | Setting | Meaning | Default |
 |---|---|---|
 | `LUMI_JOURNAL` | Turn the journal tools (+ `/journal`) on | `off` |
-| `LUMI_JOURNAL_DIR` | Subfolder under the per-user sandbox for the dated entries | `journal` |
+| `LUMI_JOURNAL_DIR` | Dedicated journal root (per-user subdirs under it); outside the file sandbox | `.lumi/journal` |
 | `LUMI_JOURNAL_MAX_CHARS` | Cap on a single `journal_write` body | `4000` |
 
-The journal tool reuses the file sandbox (`safe_path`) and the v0.6 mood / v0.8 biorhythm engines — it does
-**not** require `LUMI_FILE_TOOL` to be on. It can be on **alongside** the file / wiki / news / web / image
+The journal tool reuses the `safe_path` guard and the v0.6 mood / v0.8 biorhythm engines, but writes to its
+**own** root (`LUMI_JOURNAL_DIR`) — it does **not** require `LUMI_FILE_TOOL` to be on, and is unaffected by
+it. It can be on **alongside** the file / wiki / news / web / image
 tools.
 
 ---

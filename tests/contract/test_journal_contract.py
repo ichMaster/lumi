@@ -26,7 +26,7 @@ def _core(tmp_path, llm, *, user="owner", with_mood=True, journal=True):
     core = Core(
         llm=llm, repository=repo, canon="C", model="m", clock=_CLK, user_id=user,
         mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
-        journal_enabled=journal, files_dir=tmp_path / "files", tool_max_steps=6,
+        journal_enabled=journal, journal_dir=tmp_path / "journal", tool_max_steps=6,
     )
     if with_mood:  # mood OFF → _ensure_mood is a no-op; these injected values persist
         core._mood = MoodState(date="2026-06-18", resolution="тонка шкіра сьогодні",
@@ -42,7 +42,7 @@ def test_metadata_is_code_owned_not_model(tmp_path):
     mock = MockLLMClient(states=_CALM, tool_script=[("journal_write", {"text": fake})])
     core, _ = _core(tmp_path, mock)
     core.reply("запиши", core.start_session())
-    body = (tmp_path / "files" / "owner" / "journal" / "2026-06-18.md").read_text(encoding="utf-8")
+    body = (tmp_path / "journal" / "owner" / "2026-06-18.md").read_text(encoding="utf-8")
     assert body.startswith("# 2026-06-18\n\n> **Настрій:** тонка шкіра сьогодні")   # code header leads
     assert "Біоритми" in body and "Прогноз" in body                                # from MoodState/biorhythms
     assert body.index("тонка шкіра") < body.index("ПІДРОБКА")                       # code stamp precedes the fake
@@ -55,7 +55,7 @@ def test_second_write_appends_not_overwrites(tmp_path):
         ("journal_write", {"text": "перша проза"}), ("journal_write", {"text": "друга проза"})])
     core, _ = _core(tmp_path, mock)
     core.reply("запиши двічі", core.start_session())
-    body = (tmp_path / "files" / "owner" / "journal" / "2026-06-18.md").read_text(encoding="utf-8")
+    body = (tmp_path / "journal" / "owner" / "2026-06-18.md").read_text(encoding="utf-8")
     assert "перша проза" in body and "друга проза" in body and "## 21:30" in body  # appended
     assert body.count("# 2026-06-18") == 1 and body.count("**Настрій:**") == 1     # not re-created/re-stamped
 
@@ -74,7 +74,7 @@ def test_journal_is_per_user_isolated(tmp_path):
 
 # --- reread is untrusted (EN AND UK), through the real AnthropicClient loop ------------------------
 def _untrusted(tmp_path, evil_body):
-    d = tmp_path / "files" / "owner" / "journal"
+    d = tmp_path / "journal" / "owner"
     d.mkdir(parents=True, exist_ok=True)
     (d / "2026-06-18.md").write_text(f"# 2026-06-18\n\n{evil_body}\n", encoding="utf-8")  # pre-existing entry
     read_use = SimpleNamespace(
@@ -138,7 +138,7 @@ def test_stamp_degrades_when_mood_off(tmp_path):
     mock = MockLLMClient(states=_CALM, tool_script=[("journal_write", {"text": "проза без настрою"})])
     core, _ = _core(tmp_path, mock, with_mood=False)  # no mood/biorhythms injected
     core.reply("запиши", core.start_session())
-    body = (tmp_path / "files" / "owner" / "journal" / "2026-06-18.md").read_text(encoding="utf-8")
+    body = (tmp_path / "journal" / "owner" / "2026-06-18.md").read_text(encoding="utf-8")
     assert body.startswith("# 2026-06-18\n\n") and "проза без настрою" in body and "**Настрій:**" not in body
 
 
