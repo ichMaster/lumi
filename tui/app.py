@@ -252,7 +252,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /recall /web /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /recall /web /journal /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -277,6 +277,7 @@ class LumiApp(App[None]):
         self._image_enabled = cfg.image  # v0.22: /image shares a picture for her to see + describe
         self._vision_max = cfg.vision_max
         self._web_lookup_enabled = cfg.web_lookup  # v0.27: /web fires a live web lookup
+        self._journal_enabled = cfg.journal  # v0.28: /journal reads/writes her day-summary diary
         self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
         now = self._core.clock()
         self._last_activity = self._last_nudge_ts = self._last_think_ts = now
@@ -520,6 +521,10 @@ class LumiApp(App[None]):
             return
         if text in ("/web", "/search", "/w") or text.startswith(("/web ", "/search ", "/w ")):
             await self._web_command(text)
+            prompt.focus()
+            return
+        if text == "/journal" or text.startswith("/journal "):
+            await self._journal_command(text)
             prompt.focus()
             return
         if text == "/theme" or text.startswith("/theme "):
@@ -832,6 +837,28 @@ class LumiApp(App[None]):
             return
         self._last_activity = self._core.clock()  # a typed command resets the idle timer
         await self._run_turn(query, mirror_input=True)  # a normal turn — she looks it up + answers
+
+    async def _journal_command(self, text: str) -> None:
+        """``/journal [date|list|write]`` (v0.28) — read or write Лілі's day-summary diary. `/journal`
+        shows today / the most recent entry; `/journal <date>` a given day; `/journal list` the dates;
+        `/journal write` asks her to write today's summary now (she decides the prose). Gated by
+        ``LUMI_JOURNAL``."""
+        if not self._journal_enabled:
+            self.notify("Journal is off — set LUMI_JOURNAL=on.", severity="warning", timeout=3)
+            return
+        arg = text.split(None, 1)[1].strip() if " " in text else ""
+        if arg == "write":
+            self._last_activity = self._core.clock()
+            await self._run_turn("Запиши, будь ласка, підсумок сьогоднішнього дня у щоденник.",
+                                 mirror_input=True)
+            return
+        if arg == "list":
+            body = self._core.journal_list()
+        elif arg:  # a date (YYYY-MM-DD)
+            body = self._core.journal_read(arg)
+        else:
+            body = self._core.journal_read()
+        self._emit(body, Markdown(body))
 
     def _show_closeness(self) -> None:
         """Show the current relationship level by name — the `/closeness` command (v0.10).

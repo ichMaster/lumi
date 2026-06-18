@@ -317,6 +317,9 @@ class Core:
         web_lookup_max_calls: int = 2,
         web_lookup_max_chars: int = 2000,
         web_search: Callable[..., str] | None = None,  # injected GeminiSearch for tests; None → real Gemini
+        journal_enabled: bool = False,
+        journal_dir: str = "journal",
+        journal_max_chars: int = 4000,
         image_enabled: bool = False,
         vision_max: int = 4,
         image_max_bytes: int = 5_242_880,
@@ -411,6 +414,10 @@ class Core:
         self._web_lookup_max_calls = web_lookup_max_calls
         self._web_lookup_max_chars = web_lookup_max_chars
         self._web_search = web_search  # injected GeminiSearch (tests); None → the real Gemini caller
+        # v0.28 journal tool — her day-summary diary on the same bounded loop, in her per-user sandbox (off by default).
+        self._journal_enabled = journal_enabled
+        self._journal_dir = journal_dir
+        self._journal_max_chars = journal_max_chars
         # v0.22 vision: view_image (sandbox) + shared-image input; off by default.
         self._image_enabled = image_enabled
         self._vision_max = vision_max
@@ -1016,6 +1023,11 @@ class Core:
             from core.weblookup import WEB_LOOKUP_DIRECTIVE
 
             canon = f"{canon}\n\n{WEB_LOOKUP_DIRECTIVE}"
+        # v0.28: when the journal tool is on, add the authored "how she keeps her diary" line.
+        if self._journal_enabled:
+            from core.journal import JOURNAL_DIRECTIVE
+
+            canon = f"{canon}\n\n{JOURNAL_DIRECTIVE}"
         return build_system_prompt(
             canon,
             summaries=summaries,
@@ -1282,6 +1294,7 @@ class Core:
         tools: list[dict] = []
         for tool_list, executor in (self._file_tool_args(), self._wiki_tool_args(),
                                     self._news_tool_args(), self._web_tool_args(),
+                                    self._journal_tool_args(),
                                     self._image_tool_args(), self._imagegen_tool_args(),
                                     self._sendimage_tool_args()):
             if executor is None:
@@ -1479,6 +1492,71 @@ class Core:
             max_chars=self._web_lookup_max_chars, max_calls=self._web_lookup_max_calls,
         )
         return WEB_LOOKUP_TOOLS, web.execute
+
+    def _journal_stamp(self) -> str:
+        """Compose the **code-owned** diary header blockquote — mood (v0.6 ``resolution``) + biorhythms
+        (v0.8 ``format_biorhythms``) + astrology forecast (the v0.6 ``reading``). The v0.8 "code, not model"
+        merge: read from the day's cached state, never written by the model, so it matches ``/mood`` +
+        ``/biorhythm``. Missing inputs (mood/biorhythms off) are simply omitted — it still writes."""
+        from core.biorhythm import format_biorhythms
+        from core.mood import strip_theme
+
+        lines: list[str] = []
+        if self._mood is not None and self._mood.resolution.strip():
+            lines.append(f"> **Настрій:** {' '.join(self._mood.resolution.split())}")
+        if self._biorhythms is not None:
+            lines.append(f"> **Біоритми:** {format_biorhythms(self._biorhythms)}")
+        if self._mood is not None and self._mood.reading.strip():
+            forecast = " ".join(strip_theme(self._mood.reading).split())
+            if len(forecast) > 300:
+                forecast = forecast[:300].rstrip() + "…"
+            lines.append(f"> **Прогноз:** {forecast}")
+        return "\n".join(lines)
+
+    def _journal(self, *, with_stamp: bool):
+        """Build a per-turn :class:`JournalTools` bound to **this user's** sandbox, or ``None`` when off
+        (or no sandbox root). ``with_stamp`` composes the code-owned mood/biorhythm/forecast header
+        (write path); read/list need no stamp."""
+        if not self._journal_enabled or self._files_dir is None:
+            return None
+        from core.journal import JournalTools
+
+        root = self._files_dir / self._user_id
+        root.mkdir(parents=True, exist_ok=True)
+        now = self._clock()
+        return JournalTools(
+            root, date=now.strftime("%Y-%m-%d"), time=now.strftime("%H:%M"),
+            stamp=self._journal_stamp() if with_stamp else "",
+            subdir=self._journal_dir, max_chars=self._journal_max_chars,
+        )
+
+    def _journal_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, executor) for the v0.28 journal tools; ``(None, None)`` when off.
+
+        A fresh ``JournalTools`` per turn, bound to **this user's** sandbox (``files_dir/<user_id>``), with
+        the day's **code-composed stamp** (mood/biorhythm/forecast) + the date/time from the v0.4 clock.
+        The model only supplies the prose ``text`` — the metadata is code-owned (the v0.8 merge). Gated by
+        ``LUMI_JOURNAL`` alone (it reuses ``safe_path`` + ``files_dir``; **not** ``LUMI_FILE_TOOL``)."""
+        journal = self._journal(with_stamp=True)
+        if journal is None:
+            return None, None
+        from core.journal import JOURNAL_TOOLS
+
+        return JOURNAL_TOOLS, journal.execute
+
+    def journal_read(self, date: str | None = None) -> str:
+        """Read a journal entry for the ``/journal`` command (read-only; default today/most recent)."""
+        journal = self._journal(with_stamp=False)
+        if journal is None:
+            return "journal off"
+        return journal.execute("journal_read", {"date": date} if date else {})
+
+    def journal_list(self) -> str:
+        """List the journal entry dates for the ``/journal list`` command."""
+        journal = self._journal(with_stamp=False)
+        if journal is None:
+            return "journal off"
+        return journal.execute("journal_list", {})
 
     def _log_tool_call(self, name: str, tool_input: dict | None, result: str) -> None:
         """Append a file-tool call to .lumi/tool-log.jsonl as it runs (for `tail -f`). Never raises."""
@@ -2079,6 +2157,9 @@ def build_core(
         web_lookup_model=cfg.web_lookup_model,
         web_lookup_max_calls=cfg.web_lookup_max_calls,
         web_lookup_max_chars=cfg.web_lookup_max_chars,
+        journal_enabled=cfg.journal,
+        journal_dir=cfg.journal_dir,
+        journal_max_chars=cfg.journal_max_chars,
         image_enabled=cfg.image,
         vision_max=cfg.vision_max,
         image_max_bytes=cfg.image_max_bytes,
