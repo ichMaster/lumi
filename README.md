@@ -12,15 +12,21 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.28 — Journal tool (a day-summary diary she keeps herself).** At the close of a worthwhile day Лілі
-writes a **personal, literary summary of the day** in her own first-person voice (**`journal_write`**) and
-**rereads previous days by date** (**`journal_read`** / **`journal_list`**), with a **`/journal
-[date|list|write]`** command. She decides the prose; **code auto-stamps** each entry with the day's
-**mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast** — so the metadata is honest and matches
-`/mood` + `/biorhythm` — and every entry opens with its own **`## HH:MM`** section. One tool on the v0.19
-bounded loop, writing `journal/<date>.md` in her **dedicated per-user root** (outside the file sandbox);
-**non-destructive** (create-then-append, no overwrite/delete), per-user isolated, **off by default**
-(`LUMI_JOURNAL`). **No emotion-contract / core change.** See
+**0.29 — File tool III: metadata + folder + copy (non-destructive).** A small extension of her file tool:
+Лілі can now **see a file's created/modified dates** (on `list_files` + a new **`stat_file`**), **make a
+folder** (**`create_folder`**), and **copy a file** (**`copy_file`**) in her per-user sandbox — all on the
+shipped v0.19/v0.20 executor, still **create-only** (no overwrite, no delete, no move). `copy_file` is
+bounded by a separate **`LUMI_FILE_COPY_MAX`** source-size cap; the created date uses the OS birth-time
+where available, falling back to the metadata-change time. Reuses the existing **`LUMI_FILE_TOOL`** flag
+(no new toggle), per-user isolated, **off by default**. **No emotion-contract / core change.** See
+**[docs/FILE_TOOL_SETUP.md](docs/FILE_TOOL_SETUP.md)**.
+
+Builds on **0.28's journal tool**: at the close of a worthwhile day Лілі writes a **personal, literary
+summary of the day** in her own voice (**`journal_write`**) and **rereads previous days by date**
+(**`journal_read`** / **`journal_list`**, plus a **`/journal`** command). She decides the prose; **code
+auto-stamps** each entry with the day's **mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast**
+— honest and matching `/mood` + `/biorhythm` — and every entry opens with its own **`## HH:MM`** section.
+Non-destructive, in a **dedicated per-user root**, off by default (`LUMI_JOURNAL`). See
 **[specification/features/JOURNAL.md](specification/features/JOURNAL.md)**.
 
 Builds on **0.27's web lookup (Gemini grounded search) + the `/web` command**: ask what's *happening now*

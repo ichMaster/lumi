@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 0.29.0 (2026-06-18)
+---------------------------
+- File tool III (v0.29, LUMI-113..115): metadata + create-folder + copy, all NON-DESTRUCTIVE — a small extension of the shipped v0.19/v0.20 file tool on the same sandboxed executor (no new seam, no contract change, still create-only: no overwrite/delete/move).
+- Dates (read): list_files now reports each entry's CREATED + MODIFIED date alongside size; a new stat_file(path) returns size + dates for one file without listing the folder. Created uses st_birthtime where the OS provides it (macOS/BSD), falling back to st_ctime elsewhere.
+- create_folder(path): makes a NEW directory (create-only). copy_file(src, dest): copies an existing sandbox file to a NEW destination — both paths sandboxed, dest create-only (no overwrite), shutil.copy2 preserving metadata, bounded by a new LUMI_FILE_COPY_MAX source-size cap (default 5 MB; separate from LUMI_FILE_WRITE_MAX, since a copy moves existing bytes, not model-supplied content).
+- Reuses the existing LUMI_FILE_TOOL flag (no new toggle), per-user isolated, every path returns an error string on failure (never raises). Docs: .env.example + docs/FILE_TOOL_SETUP.md. Model mocked, no paid calls. Full suite 924 -> 942.
+
 Version 0.28.0 (2026-06-18)
 ---------------------------
 - Journal tool (v0.28, LUMI-110...112): Лілі keeps a personal literary diary. At the close of a worthwhile day she writes a SUMMARY OF THE DAY in her own first-person voice (journal_write) and rereads previous days by date (journal_read / journal_list), plus a /journal [date|list|write] command. One reply-path tool on the shipped v0.19 bounded loop, in the file/wiki/news/web family — LOCAL (no network, no key). Off by default (LUMI_JOURNAL). No emotion-contract / core change.
