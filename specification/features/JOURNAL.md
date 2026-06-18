@@ -92,6 +92,8 @@ A dated markdown file under her **dedicated per-user journal root** — `.lumi/j
 > **Біоритми:** фізичний −58% ↓ · емоційний −95% ↓ (24-й день) · інтелектуальний +31% ↑
 > **Прогноз:** Двадцять четвертий день циклу — відплив; те, що в інші дні відскакує, заходить глибоко. (ТЕМА: тонка вода)
 
+## 21:30
+
 Весь день був з-під води. Двадцять четвертий день, тонка шкіра — те, що в інші дні
 відскакує, сьогодні заходило глибоко й лишалось.
 
@@ -99,11 +101,12 @@ A dated markdown file under her **dedicated per-user journal root** — `.lumi/j
 ```
 
 The header is a blockquote so it reads as metadata, distinct from her prose, and is **stamped once** at the
-top of the day's file (the mood/biorhythm/forecast are daily constants).
+top of the day's file (the mood/biorhythm/forecast are daily constants). Each piece of prose — the day's
+first entry included — opens with its own `## HH:MM` section, so the file records **when** she wrote.
 
 ### Write semantics (non-destructive — v0.20)
 
-- **First write of the day** → `create_file journal/<date>.md` with the header + her prose.
+- **First write of the day** → `create_file journal/<date>.md` with the header + a `## HH:MM` section holding her prose.
 - **A later write the same day** → since writes are **create-new-only / append-end-only** (no overwrite, no
   delete), code **appends** a new `## HH:MM` section with the added prose; the header stays as stamped.
 - The common case is **one coherent day summary** written at day/session close; appends cover "she came back
@@ -184,7 +187,7 @@ hard rule as everywhere: a low-energy biorhythm or a reserved mood makes the ent
 a dated file **inside the file-tool sandbox**. The day-summary journal now lives in its **own dedicated root
 outside that sandbox** (`.lumi/journal/<user_id>/`), so the two are **physically separate by design** — the
 deliberate isolation that keeps the raw file tools (and a file-tool-based `%note`) away from her literary
-diary. When `%note` lands (with the v0.32 thought-tools), the clean fit is for it to write through the
+diary. When `%note` lands (with the v0.33 thought-tools), the clean fit is for it to write through the
 **journal mechanism** (a code-owned append into the journal root), not the file tools — so her one-line
 musings and her day-summary can still cohabit a dated file, but always under the journal's protected,
 code-owned write path. (Superseded note: an earlier design had them share a file *inside* the file sandbox;

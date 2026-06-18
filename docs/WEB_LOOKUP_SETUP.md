@@ -100,7 +100,7 @@ The web tool can be on **alongside** the file / Wikipedia / image / news tools; 
   (events, schedules, releases, scores) and **synthesized**, not a single source.
 
 The **autonomous** twin — `%search` / `%events` thought-directives (she looks things up on her own) — lands
-later with the thought-tools phase (v0.32).
+later with the thought-tools phase (v0.33).
 
 ---
 

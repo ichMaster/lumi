@@ -188,9 +188,9 @@ Reuses the existing `GEMINI_API_KEY` (the same key `generate_image` uses) — no
 ## Mapping to the roadmap
 
 **v0.27 — Web lookup (Gemini grounded search)**, placed early (right after dictation) — well ahead of the
-thought-tools phase (v0.32) that later uses its `%search`/`%events` directives. A reply-path tool on the v0.19 loop + a `GeminiSearch` seam + the
+thought-tools phase (v0.33) that later uses its `%search`/`%events` directives. A reply-path tool on the v0.19 loop + a `GeminiSearch` seam + the
 `/web` command; off by default, paid, mocked in tests. Depends on **v0.19** (the bounded loop), **v0.21**
 (`_turn_tools` + the wiki-tool template), **v0.23** (the Gemini caller pattern), **v0.4** (the clock, for
 date-anchoring) — all shipped. The **autonomous** twin — `%search` / `%events` thought-directives — lands
-with the **v0.32 thought-tools** phase (see [TOOL_THOUGHTS.md](TOOL_THOUGHTS.md)). Per-user, isolated; off by
+with the **v0.33 thought-tools** phase (see [TOOL_THOUGHTS.md](TOOL_THOUGHTS.md)). Per-user, isolated; off by
 default → behaves exactly like today.

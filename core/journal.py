@@ -12,8 +12,9 @@ forecast (the ``stamp``) — is composed by the *wiring* (LUMI-111) from the day
 the header is honest and matches ``/mood`` + ``/biorhythm``. ``journal_write``'s only tool arg is ``text``.
 
 Hard rules (JOURNAL.md §safety): **sandboxed + per-user** (``safe_path``; the path is **code-fixed** from
-the clock — the model can't aim it); **non-destructive** (the day's **first** write ``create``s the file,
-a **later same-day** write **appends** a ``## HH:MM`` section — no overwrite, no delete); **never raises**
+the clock — the model can't aim it); **non-destructive** (the day's **first** write ``create``s the file —
+header + a ``## HH:MM`` section, a **later same-day** write **appends** another ``## HH:MM`` section — no
+overwrite, no delete); **never raises**
 (every path returns a string). Tool *names* are ``journal_write`` / ``journal_read`` / ``journal_list``
 (Anthropic tool names allow no ``.``). The on-disk file is ``<date>.md`` under a **dedicated per-user
 journal root** (``.lumi/journal/<user_id>/``) — **outside the file-tool sandbox**, so only the journal tool
@@ -132,13 +133,15 @@ class JournalTools:
         if len(prose) > self._max_chars:
             prose = prose[: self._max_chars].rstrip() + "…"
         f = safe_path(self._root, self._rel(self._date))  # rejects traversal before any I/O
-        if not f.exists():  # first write of the day → create with the code-owned header
+        if not f.exists():  # first write of the day → create with the code-owned header + a timed section
             header = f"# {self._date}\n\n"
             if self._stamp:
                 header += self._stamp.rstrip() + "\n\n"
+            if self._time:  # timestamp the day's first entry too, so every section carries its `## HH:MM`
+                header += f"## {self._time}\n\n"
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text(header + prose + "\n", encoding="utf-8")
-            return f"journal: створено запис {self._date}"
+            return f"journal: створено запис {self._date}" + (f" (## {self._time})" if self._time else "")
         # later same-day write → append a timestamped section (the stamp is a daily constant, not repeated)
         section = f"\n## {self._time}\n\n{prose}\n" if self._time else f"\n{prose}\n"
         with f.open("a", encoding="utf-8") as fh:

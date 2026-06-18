@@ -34,6 +34,7 @@ def test_write_creates_with_code_owned_header(tmp_path):
     body = (tmp_path / "2026-06-17.md").read_text(encoding="utf-8")
     assert body.startswith("# 2026-06-17\n\n")
     assert "**Настрій:** тонка шкіра" in body and "**Біоритми:**" in body and "**Прогноз:** відплив" in body
+    assert "## 21:30" in body  # the day's first entry is timestamped too
     assert "Весь день був з-під води." in body
 
 
@@ -51,7 +52,7 @@ def test_second_write_same_day_appends(tmp_path):
 def test_body_is_capped(tmp_path):
     _tools(tmp_path, max_chars=50).execute("journal_write", {"text": "я" * 9000})
     body = (tmp_path / "2026-06-17.md").read_text(encoding="utf-8")
-    prose = body.split("\n\n", 2)[2]  # after "# date" + stamp
+    prose = body.rsplit("\n\n", 1)[1]  # the prose is the last block (after "# date" + stamp + "## HH:MM")
     assert prose.rstrip("\n").endswith("…") and len(prose) <= 60
 
 
