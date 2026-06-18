@@ -1975,7 +1975,9 @@ class Core:
         if not hits:
             return None
         window_ids = {vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in (live or [])}
-        hits = [(s, r) for s, r in hits if r.msg_id not in window_ids]  # anchor dedup (LUMI-071)
+        # anchor dedup (LUMI-071): a chunk's parent_msg_id is the message id, so this matches whether
+        # the hit is a whole-message vector (v0.16) or a chunk (v0.30).
+        hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]
         if not hits:
             return None
         try:
@@ -2018,6 +2020,39 @@ class Core:
             self._position_index = idx
         return self._position_index.get(msg_id)
 
+    def _passage_text(self, text: str, matched: set[int]) -> str:
+        """Render a long (multi-chunk) message as its **relevant passage** (v0.30): the matched
+        chunk(s) ± ``chunk_w`` adjacent chunks of the same message, de-overlapped, with ``…`` for
+        gaps and the trimmed ends. A short (one-chunk) message → the whole text (snippet-capped) =
+        v0.16. The whole long message is never injected; the per-line size is capped by ``rag_max_chars``."""
+        chunks = chunk_text(
+            text, chunk_chars=self._rag_chunk_chars, overlap=self._rag_chunk_overlap,
+            threshold=self._rag_chunk_threshold,
+        ) or [text]
+        if len(chunks) == 1:
+            return _snippet(text, self._rag_snippet_chars)
+        cw = self._rag_chunk_w
+        keep = sorted({
+            j for mi in matched
+            for j in range(max(0, mi - cw), min(len(chunks) - 1, mi + cw) + 1)
+        })
+        out: list[str] = []
+        if keep and keep[0] > 0:
+            out.append("…")
+        prev: int | None = None
+        for j in keep:
+            seg = chunks[j]
+            if prev is not None:
+                if j == prev + 1:
+                    seg = seg[self._rag_chunk_overlap:]  # de-overlap adjacent chunks
+                else:
+                    out.append("…")  # a gap between kept spans
+            out.append(seg)
+            prev = j
+        if keep and keep[-1] < len(chunks) - 1:
+            out.append("…")
+        return "".join(out)[:self._rag_max_chars]  # the passage, bounded by the block budget
+
     def _expand_hits(
         self,
         hits: list[tuple[float, VectorRecord]],
@@ -2029,7 +2064,10 @@ class Core:
         overlapping windows within a session; drop neighbour lines already in the window. Returns
         dated snippet strings, most-relevant first. A hit that doesn't resolve → a bare anchor line.
 
-        ``show_score`` annotates the anchor mark with the cosine score (for the ``/recall`` view).
+        With chunking on (v0.30) a matched **chunk** resolves to its parent message's position, and the
+        anchor message renders as its **passage** (the matched chunk ± ``chunk_w`` adjacent chunks)
+        rather than the whole message; neighbour messages render whole. Off → the v0.17 per-message
+        behaviour, byte-for-byte. ``show_score`` annotates the anchor mark with the cosine score.
         """
         def mark(score: float | None) -> str:
             if score is None:
@@ -2037,24 +2075,29 @@ class Core:
             return f"  ← (matched, {score:.2f})" if show_score else "  ← (matched)"
 
         w = self._rag_w
-        by_session: dict[str, list[tuple[int, float]]] = {}  # session_id → [(anchor_index, score)]
+        # session_id → [(parent_position, score, chunk_index)]; positions resolve via the MESSAGE id.
+        by_session: dict[str, list[tuple[int, float, int]]] = {}
         bare: list[tuple[float, str]] = []
         for score, rec in hits:
-            pos = self._position_of(rec.msg_id)
+            pos = self._position_of(rec.parent_msg_id)  # the message id (== msg_id for a one-chunk record)
             if pos is None:
                 bare.append((score, f"— {rec.ts[:10]} —\n  {self._who(rec.role)}: "
                                     f"{_snippet(rec.text, self._rag_snippet_chars)}{mark(score)}"))
                 continue
-            by_session.setdefault(pos[0], []).append((pos[1], score))
+            by_session.setdefault(pos[0], []).append((pos[1], score, rec.chunk_index))
 
         snippets: list[tuple[float, str]] = []
         for session_id, anchors in by_session.items():
             msgs = self._repo.load_messages(session_id)
-            anchors.sort()
-            anchor_score = {i: sc for i, sc in anchors}  # position → its cosine score
+            anchor_score: dict[int, float] = {}        # position → best cosine score
+            anchor_chunks: dict[int, set[int]] = {}    # position → matched chunk indices (for the passage)
+            for i, sc, ci in anchors:
+                anchor_score[i] = max(sc, anchor_score.get(i, sc))
+                anchor_chunks.setdefault(i, set()).add(ci)
             # Merge overlapping/adjacent ±w windows into ranges, carrying the best score.
             ranges: list[list[float]] = []  # [start, end, rank]
-            for i, score in anchors:
+            for i in sorted(anchor_score):
+                score = anchor_score[i]
                 start, end = max(0, i - w), min(len(msgs) - 1, i + w)
                 if ranges and start <= ranges[-1][1] + 1:
                     ranges[-1][1] = max(ranges[-1][1], end)
@@ -2068,8 +2111,11 @@ class Core:
                     mid = vector_msg_id(m.session_id, m.ts, m.role, m.text)
                     if mid in window_ids:  # dedup the whole snippet, not just the anchor
                         continue
-                    lines.append(f"  {self._who(m.role)}: {_snippet(m.text, self._rag_snippet_chars)}"
-                                 f"{mark(anchor_score.get(p))}")
+                    if self._rag_chunk and p in anchor_chunks:  # the long parent → its passage
+                        body = self._passage_text(m.text, anchor_chunks[p])
+                    else:                                        # a neighbour (or v0.16) → whole, capped
+                        body = _snippet(m.text, self._rag_snippet_chars)
+                    lines.append(f"  {self._who(m.role)}: {body}{mark(anchor_score.get(p))}")
                 if lines:
                     date = msgs[int(start)].ts[:10]
                     snippets.append((rank, f"— {date} —\n" + "\n".join(lines)))
