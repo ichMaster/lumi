@@ -205,6 +205,7 @@ class Config:
     file_read_max_total: int = 2000  # max total lines one turn may read across all read_file calls
     file_find_max: int = 50         # max matches find_in_file returns
     file_write_max: int = 65536     # max bytes of one create_file/append_file write (v0.20)
+    file_copy_max: int = 5 * 1024 * 1024  # max source bytes for one copy_file (v0.29; separate from write)
     tool_max_steps: int = 8         # max tool calls per turn (the bounded tool-loop cap)
     file_tool_trace: bool = False   # show the file tools used each turn (TUI trace + .lumi/tool-log.jsonl)
     # v0.21 Wikipedia tool — custom wiki_search/wiki_read on the v0.19 tool-loop. Off by default.
@@ -453,6 +454,7 @@ def load_config(*, load_env: bool = True) -> Config:
         file_read_max_total=int(os.getenv("LUMI_FILE_READ_MAX_TOTAL") or 2000),
         file_find_max=int(os.getenv("LUMI_FILE_FIND_MAX") or 50),
         file_write_max=int(os.getenv("LUMI_FILE_WRITE_MAX") or 65536),
+        file_copy_max=int(os.getenv("LUMI_FILE_COPY_MAX") or 5 * 1024 * 1024),
         tool_max_steps=int(os.getenv("LUMI_TOOL_MAX_STEPS") or 8),
         file_tool_trace=(os.getenv("LUMI_FILE_TOOL_TRACE") or "off").strip().lower() in _TRUTHY,  # off by default
         wiki=(os.getenv("LUMI_WIKI") or "off").strip().lower() in _TRUTHY,  # off by default

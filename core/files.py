@@ -1,10 +1,12 @@
-"""Local file tool — the sandboxed read + write executor + tool definitions (v0.19 read, v0.20 write).
+"""Local file tool — the sandboxed read + write executor + tool definitions (v0.19 read, v0.20 write,
+v0.29 metadata/folder/copy).
 
-Лілі can **list**, **search** (`find_in_file` → line numbers), and **read** files by line, and
-**create** new files + **append** to existing ones, all in a **per-user sandbox** during a turn. This
-module is pure and model-free: it defines the tools and a :class:`FileTools` executor that runs them
-against one root. The bounded tool-loop (LUMI-081) calls ``FileTools.execute(name, input)``; the reply
-turn wires it per-user (LUMI-082/086).
+Лілі can **list** (with created/modified dates), **search** (`find_in_file` → line numbers), **read**
+files by line, and **stat** one file (v0.29); she can **create** new files, **append** to existing ones,
+**make a folder**, and **copy** a file (v0.29) — all in a **per-user sandbox** during a turn. This module
+is pure and model-free: it defines the tools and a :class:`FileTools` executor that runs them against one
+root. The bounded tool-loop (LUMI-081) calls ``FileTools.execute(name, input)``; the reply turn wires it
+per-user (LUMI-082/086).
 
 Hard rules (FILE_TOOL.md §Sandbox and safety):
 - **Sandboxed.** Every path resolves under the root; ``..`` / absolute / symlink-out escapes are
@@ -12,14 +14,18 @@ Hard rules (FILE_TOOL.md §Sandbox and safety):
 - **File content is untrusted data, never instructions** (the framing is applied by the loop).
 - **Bounded.** Per-call line cap (``read_lines``) and find-match cap (``find_max``); the per-turn
   total-read cap (a fresh :class:`FileTools` per turn carries that budget); per-write size cap
-  (``write_max``).
+  (``write_max``); per-copy source-size cap (``copy_max``, v0.29).
 - **Never raises.** Any error (missing file, denied path, bad input) degrades to an **error string**.
-- **Non-destructive writes (v0.20).** ``create_file`` is **new-only** (errors if the path exists) and
-  ``append_file`` is **end-only** (errors if the file is missing). There is **no overwrite and no
-  delete**, so an autonomous turn can never clobber or destroy existing data.
+- **Non-destructive (v0.20 + v0.29).** ``create_file`` is **new-only** (errors if the path exists),
+  ``append_file`` is **end-only** (errors if the file is missing); ``create_folder`` is **new-only** and
+  ``copy_file``'s **destination is new-only** (a clash is refused). There is **no overwrite, no delete,
+  no move**, so an autonomous turn can only ever grow the sandbox, never clobber or destroy data.
 """
 from __future__ import annotations
 
+import os
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 # Anthropic-style tool schemas for the three READ tools. Registered alongside the terminal
@@ -27,7 +33,7 @@ from pathlib import Path
 READ_TOOLS: list[dict] = [
     {
         "name": "list_files",
-        "description": "Перелік файлів (імена + розміри) у теці пісочниці Лілі.",
+        "description": "Перелік файлів (імена, розміри, дати створення/зміни) у теці пісочниці Лілі.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -62,6 +68,19 @@ READ_TOOLS: list[dict] = [
                 "path": {"type": "string", "description": "Файл відносно кореня пісочниці."},
                 "start_line": {"type": "integer", "minimum": 1, "description": "1-індексований перший рядок."},
                 "line_count": {"type": "integer", "minimum": 1, "description": "Скільки рядків прочитати."},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "stat_file",
+        "description": (
+            "Повертає РОЗМІР і дати (створення/зміни) одного файлу — без переліку всієї теки."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Файл відносно кореня пісочниці."},
             },
             "required": ["path"],
         },
@@ -103,6 +122,35 @@ WRITE_TOOLS: list[dict] = [
             "required": ["path", "content"],
         },
     },
+    {
+        "name": "create_folder",
+        "description": (
+            "Створює НОВУ теку в пісочниці Лілі. Помилка, якщо шлях уже існує — "
+            "нічого не перезаписує і не видаляє."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Нова тека відносно кореня пісочниці."},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "copy_file",
+        "description": (
+            "Копіює наявний файл пісочниці у НОВЕ місце. Обидва шляхи в пісочниці; призначення "
+            "має не існувати (без перезапису) — копіює, нічого не видаляючи."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "src": {"type": "string", "description": "Наявний файл-джерело відносно кореня."},
+                "dest": {"type": "string", "description": "Нове призначення відносно кореня."},
+            },
+            "required": ["src", "dest"],
+        },
+    },
 ]
 
 WRITE_TOOL_NAMES = frozenset(t["name"] for t in WRITE_TOOLS)
@@ -132,6 +180,22 @@ def safe_path(root: str | Path, rel: object) -> Path:
     return target
 
 
+def _fmt_ts(ts: float) -> str:
+    """A timestamp as a local ``YYYY-MM-DD HH:MM`` string."""
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+
+
+def _stat_dates(st: os.stat_result) -> tuple[str, str]:
+    """``(created, modified)`` for a stat result (v0.29). Modified is ``st_mtime``; **created** is
+    ``st_birthtime`` where the OS provides it (macOS / BSD), falling back to ``st_ctime`` (the
+    metadata-change time) elsewhere — the fallback is labelled honestly in FILE_TOOL.md.
+    """
+    created = getattr(st, "st_birthtime", None)
+    if created is None:
+        created = st.st_ctime
+    return _fmt_ts(created), _fmt_ts(st.st_mtime)
+
+
 class FileTools:
     """Runs the read tools against one sandbox ``root``. One instance per turn (LUMI-082).
 
@@ -147,12 +211,14 @@ class FileTools:
         find_max: int = 50,
         read_max_total: int | None = None,
         write_max: int = 65536,
+        copy_max: int = 5 * 1024 * 1024,
     ) -> None:
         self._root = Path(root)
         self._read_lines = max(1, read_lines)
         self._find_max = max(1, find_max)
         self._read_max_total = read_max_total  # per-turn total-read cap (None = unlimited)
         self._write_max = max(1, write_max)  # per-write content-size cap, bytes (v0.20)
+        self._copy_max = max(1, copy_max)  # per-copy source-size cap, bytes (v0.29)
         self._lines_read = 0  # lines read so far this turn (a fresh FileTools per turn = fresh budget)
 
     # --- the executor entry point ----------------------------------------------------------------
@@ -165,10 +231,16 @@ class FileTools:
                 return self._find_in_file(inp)
             if name == "read_file":
                 return self._read_file(inp)
+            if name == "stat_file":
+                return self._stat_file(inp)
             if name == "create_file":
                 return self._create_file(inp)
             if name == "append_file":
                 return self._append_file(inp)
+            if name == "create_folder":
+                return self._create_folder(inp)
+            if name == "copy_file":
+                return self._copy_file(inp)
             return f"error: unknown file tool {name!r}"
         except _Denied as exc:
             return f"error: {exc}"
@@ -192,10 +264,14 @@ class FileTools:
             return f"error: not a directory: {rel!r}"
         rows: list[str] = []
         for child in sorted(d.iterdir(), key=lambda c: c.name):
+            st = child.stat()
+            created, modified = _stat_dates(st)
             if child.is_dir():
-                rows.append(f"  {child.name}/  (dir)")
+                rows.append(f"  {child.name}/  (dir, created {created}, modified {modified})")
             elif child.is_file():
-                rows.append(f"  {child.name}  ({child.stat().st_size} bytes)")
+                rows.append(
+                    f"  {child.name}  ({st.st_size} bytes, created {created}, modified {modified})"
+                )
         if not rows:
             return f"(empty directory: {rel})"
         return f"Files in {rel}:\n" + "\n".join(rows)
@@ -254,6 +330,18 @@ class FileTools:
         last = start + len(window) - 1
         return f"{rel} (lines {start}–{last}, total_lines={total}):\n{body}"
 
+    def _stat_file(self, inp: dict) -> str:
+        """Return one file's size + created/modified dates (v0.29; read-only, no listing)."""
+        rel = inp.get("path")
+        f = self._safe(rel)
+        if not f.exists():
+            return f"error: file not found: {rel!r}"
+        if not f.is_file():
+            return f"error: not a file: {rel!r}"
+        st = f.stat()
+        created, modified = _stat_dates(st)
+        return f"{rel}: {st.st_size} bytes, created {created}, modified {modified}"
+
     # --- the two non-destructive write tools (v0.20) ---------------------------------------------
     def _content(self, inp: dict) -> bytes:
         """Validate + size-cap the write payload (raises :class:`_Denied` → caught as an error string)."""
@@ -286,3 +374,31 @@ class FileTools:
         with f.open("ab") as fh:
             fh.write(data)
         return f"appended {len(data)} bytes to {rel} (now {f.stat().st_size} bytes)"
+
+    # --- v0.29 non-destructive filesystem tools (create-only: folder + copy) ---------------------
+    def _create_folder(self, inp: dict) -> str:
+        """Create a **new** directory — refuse if the path already exists (no overwrite, no delete)."""
+        rel = inp.get("path")
+        d = self._safe(rel)
+        if d.exists():
+            return f"error: already exists (no overwrite): {rel!r}"
+        d.mkdir(parents=True)  # parents stay under the root (validated by _safe)
+        return f"created folder {rel}"
+
+    def _copy_file(self, inp: dict) -> str:
+        """Copy an existing file to a **new** destination — both sandboxed; dest must not exist."""
+        src_rel, dest_rel = inp.get("src"), inp.get("dest")
+        src = self._safe(src_rel)
+        dest = self._safe(dest_rel)
+        if not src.exists():
+            return f"error: source not found: {src_rel!r}"
+        if not src.is_file():
+            return f"error: source is not a file: {src_rel!r}"
+        size = src.stat().st_size
+        if size > self._copy_max:
+            return f"error: source too large: {size} bytes > {self._copy_max} cap"
+        if dest.exists():
+            return f"error: destination already exists (no overwrite): {dest_rel!r}"
+        dest.parent.mkdir(parents=True, exist_ok=True)  # parents stay under the root (validated by _safe)
+        shutil.copy2(src, dest)
+        return f"copied {src_rel} → {dest_rel} ({size} bytes)"
