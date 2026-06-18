@@ -259,6 +259,12 @@ class Config:
     rag_max_chars: int = 1200       # the recall block's total char budget (spend recall tokens carefully)
     rag_w: int = 2                  # context-expansion window: ±W neighbour messages around each hit
     rag_snippet_chars: int = 240    # per-line cap for each recalled moment (longer → more context, more tokens)
+    # v0.30 chunking — index a long message as several chunks (off → one vector per message, v0.16/0.17).
+    rag_chunk: bool = False
+    rag_chunk_chars: int = 800      # target chunk (passage) size in chars
+    rag_chunk_overlap: int = 120    # overlap between adjacent chunks (a boundary sentence reachable from either side)
+    rag_chunk_threshold: int = 1200  # only chunk messages longer than this; shorter stay one chunk
+    rag_chunk_w: int = 1            # ± adjacent chunks of the same message injected around a hit (passage width)
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
@@ -498,6 +504,11 @@ def load_config(*, load_env: bool = True) -> Config:
         rag_max_chars=int(os.getenv("LUMI_RAG_MAX_CHARS") or 1200),
         rag_w=int(os.getenv("LUMI_RAG_W") or 2),
         rag_snippet_chars=int(os.getenv("LUMI_RAG_SNIPPET_CHARS") or 240),
+        rag_chunk=(os.getenv("LUMI_RAG_CHUNK") or "off").strip().lower() in _TRUTHY,  # v0.30, off by default
+        rag_chunk_chars=int(os.getenv("LUMI_RAG_CHUNK_CHARS") or 800),
+        rag_chunk_overlap=int(os.getenv("LUMI_RAG_CHUNK_OVERLAP") or 120),
+        rag_chunk_threshold=int(os.getenv("LUMI_RAG_CHUNK_THRESHOLD") or 1200),
+        rag_chunk_w=int(os.getenv("LUMI_RAG_CHUNK_W") or 1),
         facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
