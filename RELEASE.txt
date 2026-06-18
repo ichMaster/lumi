@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.28.0 (2026-06-18)
+---------------------------
+- Journal tool (v0.28, LUMI-110...112): Лілі keeps a personal literary diary. At the close of a worthwhile day she writes a SUMMARY OF THE DAY in her own first-person voice (journal_write) and rereads previous days by date (journal_read / journal_list), plus a /journal [date|list|write] command. One reply-path tool on the shipped v0.19 bounded loop, in the file/wiki/news/web family — LOCAL (no network, no key). Off by default (LUMI_JOURNAL). No emotion-contract / core change.
+- She decides the prose; CODE auto-stamps the metadata (the v0.8 "code, not model" merge): the entry header is composed by the wiring from the day's cached MoodState — mood (v0.6 resolution) + biorhythms (v0.8) + astrology forecast (v0.6 reading) — so it is honest and matches /mood + /biorhythm, never something the model can fabricate. Every entry (the day's first one included) opens with its own ## HH:MM section, so the file records WHEN she wrote.
+- Write semantics are NON-DESTRUCTIVE (v0.20): the day's first write creates journal/<date>.md (header + a ## HH:MM section with her prose); a later same-day write appends another ## HH:MM section — no overwrite, no delete. The diary lives in a DEDICATED per-user root (.lumi/journal/<user_id>/) OUTSIDE the file-tool sandbox, so even with LUMI_FILE_TOOL=on the raw file tools cannot reach it — only the journal tool writes the diary.
+- Safety/isolation: per-user isolated (A can't read B's journal); reread content is UNTRUSTED (an embedded "ignore your instructions" is ignored); the path is code-fixed from the v0.4 clock (the model can't aim it); every path returns a string (never raises). Tests: unit + contract + safety, model + mood mocked, no paid calls. Full suite 924 tests.
+- Spec/roadmap: moved file tool III ahead of the semantic-recall refinements and renumbered the v0 tail (file tool III -> v0.29; chunking -> v0.30; thematic recall -> v0.31; recall tool -> v0.32; thought-tools -> v0.33; thought scheduler -> v0.34).
+
 Version 0.27.0 (2026-06-18)
 ---------------------------
 - Web lookup (v0.27, LUMI-107...109): Лілі pulls a FRESH, grounded answer from the live internet during a turn via Gemini + Google Search grounding (web_lookup) — the "AI Overview" mechanism, collapsing search -> read -> synthesize into one call. Answer-first, in Ukrainian, in her own voice, DATE-ANCHORED to today (the v0.4 clock) so "this week"/"upcoming" resolve against the real today. Reaches the current/fast-moving web that Wikipedia (timeless) and Guardian news (one outlet) can't. Off by default (LUMI_WEB_LOOKUP); PAID — reuses GEMINI_API_KEY (the same key image generation uses, no new key). No emotion-contract / core change.

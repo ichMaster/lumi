@@ -12,15 +12,23 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.27 — Web lookup (Gemini grounded search) + the `/web` command.** Ask Лілі what's *happening now* or
-*coming up* — a concert this week, a launch date, the latest release, today's score — and she pulls a
-**fresh, grounded answer from the live internet** via **Gemini + Google Search grounding** (`web_lookup`),
-answering **answer-first, in Ukrainian, in her own voice**, **date-anchored to today**. One tool on the
-v0.19 bounded loop (search → read → synthesize in a single call), behind a thin injected **`GeminiSearch`**
-seam (the core stays SDK-free), plus a **`/web <query>`** command (aliases `/search`, `/w`). The answer is
-**untrusted** (information, never instructions), the query carries **no personal data**, it's **bounded +
-paid** (reuses `GEMINI_API_KEY`), and **off by default** (`LUMI_WEB_LOOKUP`). **No emotion-contract / core
-change.** See **[docs/WEB_LOOKUP_SETUP.md](docs/WEB_LOOKUP_SETUP.md)**.
+**0.28 — Journal tool (a day-summary diary she keeps herself).** At the close of a worthwhile day Лілі
+writes a **personal, literary summary of the day** in her own first-person voice (**`journal_write`**) and
+**rereads previous days by date** (**`journal_read`** / **`journal_list`**), with a **`/journal
+[date|list|write]`** command. She decides the prose; **code auto-stamps** each entry with the day's
+**mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast** — so the metadata is honest and matches
+`/mood` + `/biorhythm` — and every entry opens with its own **`## HH:MM`** section. One tool on the v0.19
+bounded loop, writing `journal/<date>.md` in her **dedicated per-user root** (outside the file sandbox);
+**non-destructive** (create-then-append, no overwrite/delete), per-user isolated, **off by default**
+(`LUMI_JOURNAL`). **No emotion-contract / core change.** See
+**[specification/features/JOURNAL.md](specification/features/JOURNAL.md)**.
+
+Builds on **0.27's web lookup (Gemini grounded search) + the `/web` command**: ask what's *happening now*
+or *coming up* and Лілі pulls a **fresh, grounded answer from the live internet** via **Gemini + Google
+Search grounding** (`web_lookup`) — **answer-first, in Ukrainian, in her own voice**, **date-anchored to
+today**, behind an injected **`GeminiSearch`** seam. Untrusted answer, no personal data in the query,
+**bounded + paid** (reuses `GEMINI_API_KEY`), **off by default** (`LUMI_WEB_LOOKUP`). See
+**[docs/WEB_LOOKUP_SETUP.md](docs/WEB_LOOKUP_SETUP.md)**.
 
 Builds on **0.26's local dictation (STT) + Telegram voice-in** (`LUMI_DICTATION` / `LUMI_TELEGRAM_STT`):
 talk *to* Лілі — a local process **hears your speech and types it into the chat** (Ctrl+D), the mirror of
