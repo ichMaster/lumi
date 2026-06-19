@@ -228,6 +228,28 @@ class UsageTotals:
         )
 
 
+RECALL_TOOLS: list[dict] = [
+    {
+        "name": "recall",
+        "description": (
+            "Шукає у ТВОЇЙ власній памʼяті (минулі розмови) за змістовим запитом і повертає кілька "
+            "релевантних моментів (уривок + коли це було). Це ТВІЙ спогад, не зовнішнє джерело. "
+            "Корисно, коли треба саме те, чого людина зараз НЕ написала прямо, або щоб уточнити пошук "
+            "кількома кроками. Запит може відрізнятися від поточного повідомлення."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Змістовий запит для пошуку в памʼяті."},
+                "k": {"type": "integer", "description": "Скільки моментів повернути (необовʼязково)."},
+            },
+            "required": ["query"],
+        },
+    },
+]
+RECALL_TOOL_NAMES = frozenset(t["name"] for t in RECALL_TOOLS)
+
+
 class Core:
     """Лілі's interface-independent, user-scoped turn engine."""
 
@@ -260,6 +282,9 @@ class Core:
         embedder: Embedder | None = None,
         recall_enabled: bool = False,
         recall_k: int = 5,
+        recall_tool_enabled: bool = False,
+        recall_tool_k: int = 5,
+        recall_tool_max_calls: int = 3,
         recall_backfill_max: int = 500,
         embed_max_chars: int = _MAX_EMBED_CHARS,
         embed_model: str = "",
@@ -485,6 +510,9 @@ class Core:
         self._embedder = embedder
         self._recall_enabled = recall_enabled and embedder is not None
         self._recall_k = recall_k
+        self._recall_tool_enabled = recall_tool_enabled and self._recall_enabled  # needs recall + embedder
+        self._recall_tool_k = recall_tool_k
+        self._recall_tool_max_calls = recall_tool_max_calls
         self._recall_backfill_max = recall_backfill_max
         self._embed_max_chars = embed_max_chars  # truncate a message to this before embedding
         self._embed_model = embed_model  # the active model — re-index if it changed (dim change)
@@ -1311,7 +1339,7 @@ class Core:
                                     self._news_tool_args(), self._web_tool_args(),
                                     self._journal_tool_args(),
                                     self._image_tool_args(), self._imagegen_tool_args(),
-                                    self._sendimage_tool_args()):
+                                    self._sendimage_tool_args(), self._recall_tool_args()):
             if executor is None:
                 continue
             tools += tool_list
@@ -1459,6 +1487,43 @@ class Core:
             return wiki.execute(name, tool_input)
 
         return WIKI_TOOLS, capped
+
+    def _recall_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+        """The (tools, executor) for the v0.31 model-callable ``recall`` tool; ``(None, None)`` off.
+
+        Exposes the shipped :meth:`recall_moments` as a tool on the v0.19 loop — the **"pull"** that
+        complements the v0.17 auto-RAG **"push"**: she can issue a **targeted** query (≠ the current
+        message) and search→refine mid-turn. The search is **user-scoped** (``recall_moments`` already
+        runs only over this user's vectors). A per-turn closure counter enforces
+        ``LUMI_RECALL_TOOL_MAX_CALLS``. Gated on recall + the embedder (folded into
+        ``_recall_tool_enabled``)."""
+        if not self._recall_tool_enabled:
+            return None, None
+        calls = {"n": 0}
+
+        def execute(name: str, tool_input: dict) -> str:
+            if name != "recall":
+                return f"error: unknown tool {name!r}"
+            calls["n"] += 1
+            if calls["n"] > self._recall_tool_max_calls:
+                return (
+                    f"(recall call limit reached: {self._recall_tool_max_calls} per turn — "
+                    "answer from what you already recalled)"
+                )
+            query = ((tool_input or {}).get("query") or "").strip()
+            if not query:
+                return "(recall: порожній запит)"
+            k = (tool_input or {}).get("k")
+            try:
+                k = int(k) if k is not None else self._recall_tool_k
+            except (TypeError, ValueError):
+                k = self._recall_tool_k
+            moments = self.recall_moments(query, k)
+            if not moments:
+                return f"(нічого не згадалося про «{query}»)"
+            return "\n\n".join(moments)
+
+        return RECALL_TOOLS, execute
 
     def _news_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
         """The (tools, executor) for the v0.25 Guardian news tool; ``(None, None)`` when off.
@@ -2237,6 +2302,9 @@ def build_core(
         embedder=embedder,
         recall_enabled=cfg.recall,
         recall_k=cfg.recall_k,
+        recall_tool_enabled=cfg.recall_tool,
+        recall_tool_k=cfg.recall_tool_k,
+        recall_tool_max_calls=cfg.recall_tool_max_calls,
         embed_max_chars=cfg.embed_max_chars,
         # The vectors-staleness tag includes the char cap AND (v0.30) the chunk size when chunking is
         # on, so changing the model, the cap, or the chunk size — or toggling chunking — re-embeds the

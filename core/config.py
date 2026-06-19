@@ -265,6 +265,10 @@ class Config:
     rag_chunk_overlap: int = 120    # overlap between adjacent chunks (a boundary sentence reachable from either side)
     rag_chunk_threshold: int = 1200  # only chunk messages longer than this; shorter stay one chunk
     rag_chunk_w: int = 1            # ± adjacent chunks of the same message injected around a hit (passage width)
+    # v0.31 recall tool — model-callable memory search on the v0.19 loop (off → auto-RAG only, v0.17).
+    recall_tool: bool = False       # LUMI_RECALL_TOOL (needs LUMI_RECALL + the embedder)
+    recall_tool_k: int = 5          # how many past moments the recall tool returns
+    recall_tool_max_calls: int = 3  # per-turn recall-tool call cap
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
@@ -509,6 +513,9 @@ def load_config(*, load_env: bool = True) -> Config:
         rag_chunk_overlap=int(os.getenv("LUMI_RAG_CHUNK_OVERLAP") or 120),
         rag_chunk_threshold=int(os.getenv("LUMI_RAG_CHUNK_THRESHOLD") or 1200),
         rag_chunk_w=int(os.getenv("LUMI_RAG_CHUNK_W") or 1),
+        recall_tool=(os.getenv("LUMI_RECALL_TOOL") or "off").strip().lower() in _TRUTHY,  # v0.31, off
+        recall_tool_k=int(os.getenv("LUMI_RECALL_TOOL_K") or 5),
+        recall_tool_max_calls=int(os.getenv("LUMI_RECALL_TOOL_MAX_CALLS") or 3),
         facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
