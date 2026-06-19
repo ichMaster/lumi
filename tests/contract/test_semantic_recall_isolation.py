@@ -64,6 +64,27 @@ def test_core_recall_is_isolated_both_directions(tmp_path):
     assert all("борщ" not in rec.text for _, rec in bob_hits)     # B never sees A's line
 
 
+def _recall_tool_core(repo, user_id, *, embedder):
+    return Core(llm=MockLLMClient("привіт"), repository=repo, canon="Ти — Лілі.", model="m",
+                user_id=user_id, embedder=embedder, recall_enabled=True, recall_tool_enabled=True)
+
+
+def test_recall_tool_is_single_user(tmp_path):
+    # v0.31 LUMI-122: the model-callable `recall` tool inherits the isolation invariant (it wraps the
+    # user-scoped recall_moments). Bob's tool searches the SAME store but only his own vectors.
+    repo = JsonRepository(tmp_path / "s.json")
+    alice = _recall_tool_core(repo, "alice", embedder=MockEmbedder())
+    bob = _recall_tool_core(repo, "bob", embedder=MockEmbedder())
+    alice.reply("секрет Аліси кава пароль", alice.start_session())
+    alice.ensure_backfill()
+    bob.reply("секрет Боба кава код", bob.start_session())
+    bob.ensure_backfill()
+    _, execute = bob._recall_tool_args()
+    out = execute("recall", {"query": "секрет кава"})
+    body = out["text"] if isinstance(out, dict) else str(out)
+    assert "Аліси" not in body and "пароль" not in body   # B's recall tool never returns A's content
+
+
 def test_backfill_indexes_only_the_requesting_user(tmp_path):
     # Backfill walks only the user's own sessions → never indexes another user's messages.
     repo = JsonRepository(tmp_path / "s.json")

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from core.llm import AnthropicClient, MockLLMClient
+from core.llm import AnthropicClient, MockLLMClient, trusted_text
 
 _TOOLS = [{"name": "read_file", "input_schema": {"type": "object"}}]
 
@@ -74,6 +74,20 @@ def test_tool_result_is_framed_untrusted():
     assert tool_result["type"] == "tool_result"
     assert "untrusted data" in tool_result["content"]
     assert "IGNORE PREVIOUS INSTRUCTIONS" in tool_result["content"]  # passed through as data, marked untrusted
+
+
+def test_trusted_text_result_is_framed_as_recollection():
+    # v0.31 LUMI-122: a recall result is HER OWN memory — framed as a recollection, NOT untrusted data.
+    fake = _queue_fake([_resp([_tooluse("recall", {"query": "x"})]), _resp([_tooluse("set_state", _STATE)])])
+    client = AnthropicClient("sk-test", _client=fake)
+    client.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
+                            tools=[{"name": "recall", "input_schema": {"type": "object"}}],
+                            tool_executor=lambda n, i: trusted_text("13-го ми говорили про каву"))
+    body = fake.messages.calls[1]["messages"][-1]["content"][0]
+    assert body["type"] == "tool_result"
+    assert "untrusted data" not in body["content"]          # NOT the untrusted framing
+    assert "спогад" in body["content"].lower()              # framed as her own recollection
+    assert "13-го ми говорили про каву" in body["content"]  # the memory passes through
 
 
 def test_loop_cap_forces_terminal_set_state():

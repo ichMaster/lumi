@@ -102,3 +102,47 @@ def test_recall_tool_needs_recall_and_embedder(tmp_path):
     # requested but no embedder → absent (recall_enabled folds in `embedder is not None`)
     no_emb = _core(tmp_path, embedder=None, store="b.json")
     assert no_emb._recall_tool_args() == (None, None)
+
+
+# --- LUMI-122: behaviour in a turn + graceful degradation (model-driven via tool_script) ------------
+class _BoomEmbedder:
+    """An embedder that always raises — to prove the recall tool degrades, never crashes a turn."""
+    def embed(self, texts, *, is_query=False):
+        raise RuntimeError("boom")
+
+
+def _turn_core(repo, mock, *, embedder):
+    # a realistic rag_floor (0.3) so the auto-RAG doesn't pre-surface unrelated messages — that lets the
+    # recall tool's *targeted* query find something the auto-RAG "push" didn't already inject.
+    return Core(
+        llm=mock, repository=repo, canon="C", model="m", user_id="owner",
+        embedder=embedder, recall_enabled=True, recall_tool_enabled=True, embed_model="m@x",
+        rag_enabled=True, rag_k=5, rag_floor=0.3, rag_max_chars=8000, rag_snippet_chars=4000,
+    )
+
+
+def test_turn_issues_targeted_recall_and_uses_it(tmp_path):
+    repo = JsonRepository(tmp_path / "turn.json")
+    # seed a PRIOR session with a fact (plain core, no tool script)
+    seed = Core(llm=MockLLMClient("ок"), repository=repo, canon="C", model="m", user_id="owner",
+                embedder=MockEmbedder(), recall_enabled=True, embed_model="m@x")
+    seed.reply("брат живе у Львові", seed.start_session())
+    seed.ensure_backfill()
+    # a turn whose model is scripted to call recall("брат") — a query ≠ the current message
+    mock = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5},
+                         tool_script=[("recall", {"query": "брат"})])
+    core = _turn_core(repo, mock, embedder=MockEmbedder())
+    state = core.reply("привіт", core.start_session())              # the message is "привіт", not "брат"
+    assert ("recall", {"query": "брат"}) in [(c[0], c[1]) for c in mock.tool_calls]   # the targeted query
+    result = mock.tool_calls[0][2]                                  # the tool result fed back into the turn
+    assert is_trusted_text(result) and "Львові" in result["text"]   # her own memory, used mid-turn
+    assert state.emotion == "calm"                                 # {reply, emotion, intensity} contract holds
+
+
+def test_recall_tool_degrades_on_embedder_error(tmp_path):
+    mock = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5},
+                         tool_script=[("recall", {"query": "будь-що"})])
+    core = _turn_core(JsonRepository(tmp_path / "boom.json"), mock, embedder=_BoomEmbedder())
+    state = core.reply("привіт", core.start_session())             # the recall call hits the embedder error
+    assert not is_trusted_text(mock.tool_calls[0][2])              # degraded to a plain notice, not a crash
+    assert state.emotion == "calm"                                # the turn completes; emotion contract holds
