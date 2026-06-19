@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 0.30.0 (2026-06-20)
+---------------------------
+- Semantic recall III — chunking long messages (v0.30, LUMI-116..119): a refinement of the v0.16 index + v0.17 context-expansion, not a new capability. A message over LUMI_RAG_CHUNK_THRESHOLD is split into ~chunk_chars passages (paragraph/sentence boundaries, small overlap), each embedded as its OWN vector; a short message stays one chunk (= v0.16). "Search fine, show coarse" — now at two levels.
+- The chunker (core/chunking.py): pure, deterministic chunk_text(text, *, chunk_chars, overlap, threshold) — order-preserving, full coverage, never raises; degenerate input (empty / one huge token) handled. New LUMI_RAG_CHUNK* config, off by default.
+- VectorRecord gains parent_msg_id + chunk_index (additive, back-compatible: a one-chunk message keeps the message id and chunk_index 0). The chunk's msg_id is content-addressed over parent|index|text (idempotent re-chunking). The vectors-staleness tag appends @chunk<chars> so a chunk-param change re-embeds the history. Index-on-write + backfill emit one record per chunk when on, one per message when off. (Contract: ARCHITECTURE §Semantic recall + the memory-records contract test updated with the field change.)
+- Two-level expansion: search ranks per chunk; each hit renders as its PASSAGE (matched chunk ± chunk_w adjacent chunks of the same message, anchor marked) inside the ±rag_w message thread — the whole long message is never re-injected. /recall reuses the same assembly; off → byte-identical to v0.17.
+- /recall current-session filter: /recall now skips the active conversation by default (the current chat is already on-screen) so a session's own echoes don't bury older sources; `/recall !all` (alias !here) includes it. core.recall/recall_moments gain exclude_session.
+- Isolation extended over chunks: search, the chunk window, and the message window all run only over the requesting user's data (A<->B contract). Embedder mocked — no paid calls. Full suite 942 -> 972.
+
 Version 0.29.0 (2026-06-18)
 ---------------------------
 - File tool III (v0.29, LUMI-113..115): metadata + create-folder + copy, all NON-DESTRUCTIVE — a small extension of the shipped v0.19/v0.20 file tool on the same sandboxed executor (no new seam, no contract change, still create-only: no overwrite/delete/move).

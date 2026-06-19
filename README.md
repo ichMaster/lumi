@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.29 — File tool III: metadata + folder + copy (non-destructive).** A small extension of her file tool:
+**0.30 — Semantic recall III: chunking long messages.** A long message is no longer one *averaged*
+vector — messages over `LUMI_RAG_CHUNK_THRESHOLD` are split into ~`chunk_chars` passages (paragraph/
+sentence boundaries, small overlap), each embedded as its **own** vector. Search now ranks per **chunk**
+and `/recall` shows the matched **passage** (the chunk ± neighbours) inside its message thread — *"search
+fine, show coarse."* `VectorRecord` gains **`parent_msg_id`** + **`chunk_index`** (content-addressed chunk
+id, back-compatible); the staleness tag re-embeds on a chunk-param change. `/recall` also gains a
+**current-session filter** — it skips the active conversation by default (`!all` to include it) so a
+session's own echoes don't bury older sources. Per-user isolation holds across chunks; **off by default**
+(`LUMI_RAG_CHUNK`), byte-identical to v0.16/0.17 when off. See
+**[specification/features/SEMANTIC_RECALL_CHUNKING.md](specification/features/SEMANTIC_RECALL_CHUNKING.md)**.
+
+Builds on **0.29's file tool III**: A small extension of her file tool:
 Лілі can now **see a file's created/modified dates** (on `list_files` + a new **`stat_file`**), **make a
 folder** (**`create_folder`**), and **copy a file** (**`copy_file`**) in her per-user sandbox — all on the
 shipped v0.19/v0.20 executor, still **create-only** (no overwrite, no delete, no move). `copy_file` is
