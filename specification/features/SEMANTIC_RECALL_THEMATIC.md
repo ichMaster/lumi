@@ -50,6 +50,25 @@ A topic's **centroid** is the embedding of its seeds (optionally blended later w
 messages assigned to it — a refinement, not required for v1). Centroids are global, authored data — they
 carry **no user content**, so they never cross a user boundary.
 
+## Authoring the taxonomy (the `/discover-topics` → `/refresh-taxonomy` skills)
+
+The taxonomy is **authored, not learned** — but it shouldn't be *guessed*. Two Claude Code skills (the
+`generate-faces` → `place-faces` propose-then-apply pattern) author and maintain `core/topics.md`:
+
+- **`/discover-topics`** — clusters the **existing per-user vectors** (offline, over the store) and
+  proposes a draft `core/topics.md`: candidate topic names + seed terms + a few representative exemplars
+  per cluster. It only **proposes** — the closed set stays **human-curated**, so "authored, not learned"
+  holds. It never mutates the live taxonomy or vectors, and it runs on the existing index, so it can
+  author the **initial** set before topic routing ships.
+- **`/refresh-taxonomy`** — applies a reviewed `core/topics.md`: bumps `topics_vN`, rebuilds the
+  centroids, and **re-tags the stored vectors via the local classifier — no re-embedding** (labels
+  recompute from existing vectors, no embedder calls). It follows the **store-free discipline** (stop the
+  app + back up first) and reports per-topic coverage + the untagged share.
+
+The split mirrors the data flow: discovery is an **authoring aid** over the corpus; refresh is the cheap
+**local re-tag** that the staleness tag (`…@topics_vN`) already triggers in the running app — the skill
+just runs it on demand. Both are **dev-time tooling**, outside the runtime contract.
+
 ## Data model (extends the v0.16/v0.23 `VectorRecord`)
 
 The record gains one field (additive — a contract change, pinned by the memory-records contract test):
