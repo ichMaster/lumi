@@ -807,20 +807,33 @@ class LumiApp(App[None]):
         neighbours, anchor + score marked), so search results read as moments, not orphan lines.
         Empty query / no results → a friendly note; off (LUMI_RECALL) → says so.
         """
-        query = text[len("/recall"):].strip()
+        raw = text[len("/recall"):].strip()
         if not self._core.recall_enabled:
             body = "Семантичний пошук вимкнено (увімкни `LUMI_RECALL=on`)."
             self._emit(body, Markdown(body))
             return
+        # By default `/recall` searches PAST conversations, skipping the **current session's** own
+        # echoes (they're already in the live window). `!all` (or `!here`) searches everything,
+        # including this conversation. The flag is stripped from the query.
+        include_current = False
+        kept: list[str] = []
+        for tok in raw.split():
+            if tok.lower() in ("!all", "!here"):
+                include_current = True
+            else:
+                kept.append(tok)
+        query = " ".join(kept)
         if not query:
-            body = "Що згадати? `/recall <запит>`"
+            body = "Що згадати? `/recall <запит>` (додай `!all` щоб шукати й у цій розмові)"
             self._emit(body, Markdown(body))
             return
-        moments = self._core.recall_moments(query)  # v0.17: dated snippets (hit + neighbours)
+        exclude = None if include_current or self._session is None else self._session.id
+        moments = self._core.recall_moments(query, exclude_session=exclude)  # skip the current session
+        flt = "" if exclude else " (з цією розмовою)"
         if not moments:
-            body = f"Нічого не згадалося про «{query}»."
+            body = f"Нічого не згадалося про «{query}»{flt}."
         else:
-            body = f"**Згадую про «{query}»:**\n\n" + "\n\n".join(moments)
+            body = f"**Згадую про «{query}»{flt}:**\n\n" + "\n\n".join(moments)
         self._emit(body, Markdown(body))
 
     async def _web_command(self, text: str) -> None:

@@ -1929,28 +1929,55 @@ class Core:
             pass
         self._backfilled = True
 
-    def recall(self, query: str, k: int | None = None) -> list[tuple[float, VectorRecord]]:
+    def _session_vector_ids(self, session_id: str) -> set[str]:
+        """The vector (message) ids of one session's messages — to drop a session's own hits from
+        recall. Computed fresh from the store (no stale position cache), so messages added this turn
+        are covered."""
+        return {
+            vector_msg_id(m.session_id, m.ts, m.role, m.text)
+            for m in self._repo.load_messages(session_id)
+            if m.user_id == self._user_id and m.text.strip()
+        }
+
+    def recall(
+        self, query: str, k: int | None = None, *, exclude_session: str | None = None,
+    ) -> list[tuple[float, VectorRecord]]:
         """Explicit semantic search (the ``/recall`` command, v0.16).
 
         Embed ``query`` → top-``k`` over **this user's** vectors → dated matches (descending).
         Backfills a cold store first so it still answers. Off / no embedder / empty query /
         an embed error → ``[]`` — **never raises**. Scoped to the active user (isolation).
+
+        ``exclude_session`` drops hits whose message belongs to that session — used to skip the
+        **current conversation's own echoes** (already in the live window) so an older source
+        surfaces past the top-``k`` cutoff. When set, the search over-fetches, then trims to ``k``
+        post-filter. A chunk is matched by its ``parent_msg_id`` (the message it came from).
         """
         if not self._recall_enabled or self._embedder is None or not query.strip():
             return []
         self.ensure_backfill()
+        k = k or self._recall_k
+        pool = max(k * 5, 60) if exclude_session else k  # over-fetch so the filter still yields ~k
         try:
             [vec] = self._embedder.embed([query[:self._embed_max_chars]], is_query=True)  # QUERY side
-            return self._repo.search_vectors(self._user_id, list(vec), k or self._recall_k)
+            hits = self._repo.search_vectors(self._user_id, list(vec), pool)
         except Exception as exc:  # noqa: BLE001 — recall must never break the UI
             _recall_log.warning("recall search failed: %s", exc)
             return []
+        if exclude_session:
+            own = self._session_vector_ids(exclude_session)
+            hits = [(s, r) for (s, r) in hits if r.parent_msg_id not in own]
+        return hits[:k]
 
-    def recall_moments(self, query: str, k: int | None = None) -> list[str]:
+    def recall_moments(
+        self, query: str, k: int | None = None, *, exclude_session: str | None = None,
+    ) -> list[str]:
         """Explicit `/recall` as **dated dialogue snippets** (the v0.16 hits widened with their
         neighbours, anchor + score marked) — the same context expansion the per-turn RAG uses, so
-        search results read as moments, not orphan lines. Empty / off → ``[]``; never raises."""
-        hits = self.recall(query, k)
+        search results read as moments, not orphan lines. ``exclude_session`` skips the current
+        conversation's own messages as matched anchors (their neighbours may still render as
+        context). Empty / off → ``[]``; never raises."""
+        hits = self.recall(query, k, exclude_session=exclude_session)
         if not hits:
             return []
         return self._expand_hits(hits, set(), show_score=True)  # no window dedup for explicit search

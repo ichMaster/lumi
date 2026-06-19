@@ -133,15 +133,31 @@ async def _submit(pilot, app, text):
 
 async def test_recall_command_renders_expanded_snippets(tmp_path):
     core = _core(tmp_path, embedder=MockEmbedder())
-    app = LumiApp(core)
+    past = core.start_session()
+    core.reply("я люблю каву вранці", past)   # indexed in a PRIOR session
+    core.ensure_backfill()
+    app = LumiApp(core)                        # opens its own (current) session
     async with app.run_test() as pilot:
-        await _submit(pilot, app, "я люблю каву вранці")   # a turn to index
-        app.transcript.clear()
+        # `/recall` excludes the current conversation by default — the prior-session match still renders.
         await _submit(pilot, app, "/recall кава")
         joined = "\n".join(app.transcript)
         assert "Згадую про «кава»" in joined
         assert "ти:" in joined and "кава" in joined        # who + the text
         assert "← (matched" in joined                      # the anchor is marked (expanded snippet)
+
+
+async def test_recall_excludes_current_session_by_default(tmp_path):
+    core = _core(tmp_path, embedder=MockEmbedder())
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "я люблю каву вранці")   # in the CURRENT session
+        app.transcript.clear()
+        await _submit(pilot, app, "/recall кава")          # default → skips the current conversation
+        assert any("Нічого не згадалося" in line for line in app.transcript)
+        app.transcript.clear()
+        await _submit(pilot, app, "/recall !all кава")     # !all → includes this conversation → found
+        joined = "\n".join(app.transcript)
+        assert "Згадую про «кава»" in joined and "← (matched" in joined
 
 
 async def test_recall_command_empty_query_prompts(tmp_path):
