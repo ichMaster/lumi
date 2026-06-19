@@ -49,7 +49,7 @@ from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_an
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
 from core.images import is_image_block
-from core.llm import LLMClient, Message, ResponseStats, build_llm
+from core.llm import LLMClient, Message, ResponseStats, build_llm, is_trusted_text, trusted_text
 from core.memory import (
     DAY_DAYS,
     MAX_DAY_ROWS,
@@ -167,6 +167,8 @@ def _tool_trace_repr(result: object) -> str:
     if is_image_block(result):
         n_bytes = len(result.get("data", "")) * 3 // 4  # base64 → ~bytes
         return f"🖼 image {result.get('media_type', '?')} (~{n_bytes} bytes)"
+    if is_trusted_text(result):  # v0.31 recall: a trusted recollection — a marker, not its full text
+        return f"🧠 recall ({len(result.get('text', ''))} chars)"
     return str(result)
 
 
@@ -513,6 +515,8 @@ class Core:
         self._recall_tool_enabled = recall_tool_enabled and self._recall_enabled  # needs recall + embedder
         self._recall_tool_k = recall_tool_k
         self._recall_tool_max_calls = recall_tool_max_calls
+        self._turn_dedup_ids: set[str] = set()       # v0.31: window+RAG ids the recall tool dedups against
+        self._turn_rag_anchor_ids: set[str] = set()  # the auto-RAG block's surfaced anchors this turn
         self._recall_backfill_max = recall_backfill_max
         self._embed_max_chars = embed_max_chars  # truncate a message to this before embedding
         self._embed_model = embed_model  # the active model — re-index if it changed (dim change)
@@ -1488,7 +1492,7 @@ class Core:
 
         return WIKI_TOOLS, capped
 
-    def _recall_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+    def _recall_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
         """The (tools, executor) for the v0.31 model-callable ``recall`` tool; ``(None, None)`` off.
 
         Exposes the shipped :meth:`recall_moments` as a tool on the v0.19 loop — the **"pull"** that
@@ -1501,7 +1505,7 @@ class Core:
             return None, None
         calls = {"n": 0}
 
-        def execute(name: str, tool_input: dict) -> str:
+        def execute(name: str, tool_input: dict) -> str | dict:
             if name != "recall":
                 return f"error: unknown tool {name!r}"
             calls["n"] += 1
@@ -1518,10 +1522,11 @@ class Core:
                 k = int(k) if k is not None else self._recall_tool_k
             except (TypeError, ValueError):
                 k = self._recall_tool_k
-            moments = self.recall_moments(query, k)
+            # dedup against what's already in the prompt (the live window + auto-RAG block)
+            moments = self.recall_moments(query, k, window_ids=self._turn_dedup_ids)
             if not moments:
                 return f"(нічого не згадалося про «{query}»)"
-            return "\n\n".join(moments)
+            return trusted_text("\n\n".join(moments))  # her own memory → trusted framing in the loop
 
         return RECALL_TOOLS, execute
 
@@ -1696,6 +1701,11 @@ class Core:
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted for the cache monitor
+        # v0.31: the recall tool dedups its moments against what's already in the prompt — the live
+        # window + the moments the v0.17 auto-RAG block just surfaced (set in _recall_block above).
+        self._turn_dedup_ids = {
+            vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in live
+        } | self._turn_rag_anchor_ids
         # v0.19/v0.21: when the file tool and/or the wiki tool is on, run the turn as a bounded
         # tool-loop (file sandbox + Wikipedia), with a name-routing executor.
         tools, tool_executor = self._turn_tools()
@@ -2036,16 +2046,21 @@ class Core:
 
     def recall_moments(
         self, query: str, k: int | None = None, *, exclude_session: str | None = None,
+        window_ids: set[str] | None = None,
     ) -> list[str]:
         """Explicit `/recall` as **dated dialogue snippets** (the v0.16 hits widened with their
         neighbours, anchor + score marked) — the same context expansion the per-turn RAG uses, so
         search results read as moments, not orphan lines. ``exclude_session`` skips the current
         conversation's own messages as matched anchors (their neighbours may still render as
-        context). Empty / off → ``[]``; never raises."""
+        context). ``window_ids`` (v0.31) dedups the result against what's already in the prompt — the
+        live window + the auto-RAG block (the recall-tool path); ``None`` → no dedup (the /recall
+        command). Empty / off → ``[]``; never raises."""
         hits = self.recall(query, k, exclude_session=exclude_session)
+        if window_ids:
+            hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]
         if not hits:
             return []
-        return self._expand_hits(hits, set(), show_score=True)  # no window dedup for explicit search
+        return self._expand_hits(hits, window_ids or set(), show_score=True)
 
     @property
     def rag_enabled(self) -> bool:
@@ -2061,6 +2076,7 @@ class Core:
         (no double-context), expands each survivor to a ±``rag_w`` snippet (anchor marked, overlaps
         merged, neighbour lines in the window dropped), and caps by ``rag_max_chars``.
         """
+        self._turn_rag_anchor_ids = set()  # v0.31: reset; populated below with what this block surfaces
         if not self._rag_enabled:
             return None
         hits = [(s, r) for s, r in self.recall(query, self._rag_k) if s >= self._rag_floor]
@@ -2072,6 +2088,7 @@ class Core:
         hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]
         if not hits:
             return None
+        self._turn_rag_anchor_ids = {r.parent_msg_id for _s, r in hits}  # v0.31: dedup the recall tool
         try:
             snippets = self._expand_hits(hits, window_ids)
         except Exception:  # noqa: BLE001 — expansion is best-effort; fall back to bare anchor lines

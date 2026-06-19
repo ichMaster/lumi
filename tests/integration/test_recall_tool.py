@@ -1,10 +1,12 @@
-"""v0.31 LUMI-120 — the model-callable `recall` tool on the v0.19 loop: returns top-`k` past moments,
-a per-turn call cap, and absent when off / without recall+embedder. MockEmbedder — no paid calls."""
+"""v0.31 LUMI-120/121 — the model-callable `recall` tool on the v0.19 loop: returns top-`k` past
+moments (framed as her own **trusted** recollection), a per-turn call cap, dedup against the live
+window, and absent when off / without recall+embedder. MockEmbedder — no paid calls."""
 from __future__ import annotations
 
 from core.agent import Core
 from core.embedder import MockEmbedder
-from core.llm import MockLLMClient
+from core.llm import MockLLMClient, is_trusted_text
+from core.repository import vector_msg_id
 from state.local_store import JsonRepository
 
 
@@ -25,20 +27,34 @@ def _index(core, text="я люблю каву вранці"):
     core.ensure_backfill()
 
 
-def test_recall_tool_returns_moments(tmp_path):
+def test_recall_tool_returns_trusted_moments(tmp_path):
     core = _core(tmp_path)
     _index(core)
     tools, execute = core._recall_tool_args()
     assert tools and tools[0]["name"] == "recall"
     out = execute("recall", {"query": "кава"})
-    assert "каву" in out                      # the matched moment is returned
+    assert is_trusted_text(out)               # LUMI-121: her own recollection (trusted), not a bare string
+    assert "каву" in out["text"]              # the matched moment is returned
 
 
 def test_recall_tool_forwards_k(tmp_path):
     core = _core(tmp_path)
     _index(core)
     _, execute = core._recall_tool_args()
-    assert "каву" in execute("recall", {"query": "кава", "k": 1})   # k is forwarded, still answers
+    assert "каву" in execute("recall", {"query": "кава", "k": 1})["text"]   # k forwarded, still answers
+
+
+def test_recall_tool_dedups_against_window(tmp_path):
+    core = _core(tmp_path)
+    s = core.start_session()
+    core.reply("я люблю каву вранці", s)
+    core.ensure_backfill()
+    # everything matching is already in the live window → deduped out → a no-hit notice (plain string)
+    msgs = core._repo.load_messages(s.id)
+    core._turn_dedup_ids = {vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in msgs}
+    _, execute = core._recall_tool_args()
+    out = execute("recall", {"query": "кава"})
+    assert not is_trusted_text(out) and "згадалося" in out   # nothing new to recall past the window
 
 
 def test_recall_tool_per_turn_cap(tmp_path):
@@ -70,7 +86,7 @@ def test_recall_tool_registered_in_turn_tools_when_on(tmp_path):
     _index(core)
     tools, dispatch = core._turn_tools()
     assert tools is not None and "recall" in {t["name"] for t in tools}
-    assert "каву" in dispatch("recall", {"query": "кава"})   # routed through the dispatch
+    assert "каву" in dispatch("recall", {"query": "кава"})["text"]   # routed through the dispatch
 
 
 def test_recall_tool_absent_when_off(tmp_path):
