@@ -42,7 +42,7 @@ process** + an **append-only file bus** + the **TUI as the single brain**. No co
   [lumi-scheduler]   (new cron process — dumb, core-free)        [TUI = the only brain]
     reads  schedule.toml         (the authored schedule)           writes activity.txt on every real input
     reads  activity.txt          (for idle-type triggers)          (a heartbeat: last-real-input stamp)
-    every LUMI_SCHED_TICK_S:                                        polls directive-queue.jsonl (FIFO)
+    every LUMI_SCHED_TICK_MS:                                       polls directive-queue.jsonl (FIFO)
       for each entry → is it DUE now?  ───────────────────────►    drains each line through run_directive(…)
         append {directive, topic, args} to directive-queue.jsonl     ├─ silent  → records a Thought
       stamp schedule.state (last-fired per entry)                     └─ graduated / outward → outbox → surfaced
@@ -194,12 +194,21 @@ delete the in-app timer once the queue path is proven. One clock at the end, not
 | `LUMI_SCHEDULE_PATH` | The authored schedule file | `core/schedule.toml` |
 | `LUMI_DIRECTIVE_QUEUE` | The FIFO queue the cron writes / the TUI drains | `.lumi/directive-queue.jsonl` |
 | `LUMI_ACTIVITY_PATH` | The TUI heartbeat (last-real-input stamp) the cron reads for `idle:` | `.lumi/activity.txt` |
-| `LUMI_SCHED_TICK_S` | How often the cron evaluates the schedule | `30` |
+| `LUMI_SCHED_TICK_MS` | How often the cron evaluates the schedule, in **milliseconds** | `30000` |
 | `LUMI_SCHED_CATCHUP_H` | Skip queued directives older than this on TUI restart | `6` |
 | `LUMI_SCHED_DAY_CAP` | Global max scheduled thoughts per day (restraint) | `24` |
 
 Per-directive day caps + the quiet-window ride the existing `LUMI_THOUGHTS_*` settings — nothing here
 re-implements the engine or a directive.
+
+**On the tick granularity.** The tick is configured in **milliseconds** for fine control (a tight tick in
+tests, future sub-minute triggers, or just tuning), but the practical **scheduling floor is the minute** —
+the finest a trigger resolves (`at: "08:00"`, a 5-field `cron`, `every/idle` durations). So keep it
+**≤ 60 000 ms** or an `at:`/cron-minute target can be skipped; **~30 000 ms (two ticks per minute)** is the
+recommended default — it leaves a 2× margin against drift/missed ticks without re-reading the schedule for
+no gain (a tick is cheap: small file reads + the pure `due()` predicate, no core, no network). Going below
+~15 000 ms buys no precision since nothing schedules sub-minute. The `last_fired` state keeps repeated ticks
+**within the same minute idempotent**, so a sub-minute tick can never double-fire an `at:` entry.
 
 ---
 
@@ -229,7 +238,7 @@ It's the natural **companion to the tool-thoughts phase**: ship the scheduler an
 - [ ] 🔲 The **`lumi-scheduler`** process — read schedule + `activity.txt`, evaluate due, append to the queue, stamp state, quiet-hours + caps.
 - [ ] 🔲 The **TUI queue-drain** — poll the queue, route via `run_directive` (NOT `_run_turn`), catch-up cap, write `activity.txt`.
 - [ ] 🔲 Migrate the v0.4 nudge + the v0.12 `%think` idle trigger to `idle:` entries; retire `_maybe_think`/`_maybe_nudge`.
-- [ ] 🔲 Config: `LUMI_SCHEDULER` / `_SCHEDULE_PATH` / `_DIRECTIVE_QUEUE` / `_ACTIVITY_PATH` / `_SCHED_TICK_S` / `_SCHED_CATCHUP_H` / `_SCHED_DAY_CAP`; an operator guide.
+- [ ] 🔲 Config: `LUMI_SCHEDULER` / `_SCHEDULE_PATH` / `_DIRECTIVE_QUEUE` / `_ACTIVITY_PATH` / `_SCHED_TICK_MS` (ms; ≤ 60 000, ~30 000 default) / `_SCHED_CATCHUP_H` / `_SCHED_DAY_CAP`; an operator guide.
 - [ ] 🔲 Tests: `due(…)` per trigger type (fixed clock); the queue round-trips (cron appends → TUI drains via `run_directive`); quiet-hours + per-day caps hold; the catch-up cap skips stale; a queued `%directive` records a `Thought`; isolation holds. **No real sleeps, no paid calls.**
 
 **Already in place (reused, not rebuilt):** the mental-act engine + `run_directive` + `tick_think`, the

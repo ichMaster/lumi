@@ -646,7 +646,7 @@ Mirrors the **shipped v0.13 Telegram architecture**: a **dumb, core-free cron pr
 - The **`lumi-scheduler`** process — read schedule + `activity.txt`, evaluate due, append to the queue, stamp state; quiet-hours veto + per-directive day caps + a global day cap.
 - The **TUI queue-drain** — poll `directive-queue.jsonl`, route each through `run_directive` (silent records; graduated/outward → outbox), apply a **catch-up cap** on restart; write the `activity.txt` heartbeat on every real input.
 - **Migrate** the v0.4 nudge + the v0.12 `%think` idle trigger to `idle:` entries; retire the in-app `_maybe_think`/`_maybe_nudge` (phased — alongside first, then replace).
-- Config: `LUMI_SCHEDULER` / `_SCHEDULE_PATH` / `_DIRECTIVE_QUEUE` / `_ACTIVITY_PATH` / `_SCHED_TICK_S` / `_SCHED_CATCHUP_H` / `_SCHED_DAY_CAP`; an operator guide.
+- Config: `LUMI_SCHEDULER` / `_SCHEDULE_PATH` / `_DIRECTIVE_QUEUE` / `_ACTIVITY_PATH` / `_SCHED_TICK_MS` (ms; ≤ 60 000, ~30 000 default) / `_SCHED_CATCHUP_H` / `_SCHED_DAY_CAP`; an operator guide.
 
 **DoD:** with the scheduler on, an authored `schedule.toml` fires its directives on the clock (`every`/`idle`/`at`/`between`/`cron`); the cron only writes the queue (never calls `core`); the TUI drains via `run_directive` so a queued `%brief` fires as a directive (not literal chat); quiet-hours + per-day caps + the catch-up cap hold; placeholders resolve at fire time; **off → no queue is drained** and the in-app timer (until retired) is unchanged; the `{reply, emotion, intensity}` contract and per-user isolation are untouched.
 
