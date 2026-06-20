@@ -24,6 +24,7 @@ Hard rules (FILE_TOOL.md §Sandbox and safety):
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -83,6 +84,23 @@ READ_TOOLS: list[dict] = [
                 "path": {"type": "string", "description": "Файл відносно кореня пісочниці."},
             },
             "required": ["path"],
+        },
+    },
+    {
+        "name": "search_files",
+        "description": (
+            "Шукає підрядок у ВМІСТІ всіх файлів пісочниці (рекурсивно) і повертає шляхи з "
+            "НОМЕРАМИ РЯДКІВ збігів (path:рядок: текст) — крос-файловий аналог find_in_file, "
+            "щоб знайти потрібний файл і місце; номер рядка передається далі в read_around."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Рядок для пошуку (літерально; regex=true → шаблон)."},
+                "path": {"type": "string", "description": "Підтека для звуження пошуку (типово вся пісочниця)."},
+                "regex": {"type": "boolean", "description": "Трактувати query як регулярний вираз."},
+            },
+            "required": ["query"],
         },
     },
 ]
@@ -212,6 +230,9 @@ class FileTools:
         read_max_total: int | None = None,
         write_max: int = 65536,
         copy_max: int = 5 * 1024 * 1024,
+        search_max_files: int = 200,
+        search_max_lines: int = 100,
+        search_max_chars: int = 4000,
     ) -> None:
         self._root = Path(root)
         self._read_lines = max(1, read_lines)
@@ -219,6 +240,9 @@ class FileTools:
         self._read_max_total = read_max_total  # per-turn total-read cap (None = unlimited)
         self._write_max = max(1, write_max)  # per-write content-size cap, bytes (v0.20)
         self._copy_max = max(1, copy_max)  # per-copy source-size cap, bytes (v0.29)
+        self._search_max_files = max(1, search_max_files)  # v0.32 search caps: files / lines / chars
+        self._search_max_lines = max(1, search_max_lines)
+        self._search_max_chars = max(1, search_max_chars)
         self._lines_read = 0  # lines read so far this turn (a fresh FileTools per turn = fresh budget)
 
     # --- the executor entry point ----------------------------------------------------------------
@@ -233,6 +257,8 @@ class FileTools:
                 return self._read_file(inp)
             if name == "stat_file":
                 return self._stat_file(inp)
+            if name == "search_files":
+                return self._search_files(inp)
             if name == "create_file":
                 return self._create_file(inp)
             if name == "append_file":
@@ -341,6 +367,66 @@ class FileTools:
         st = f.stat()
         created, modified = _stat_dates(st)
         return f"{rel}: {st.st_size} bytes, created {created}, modified {modified}"
+
+    def _search_files(self, inp: dict) -> str:
+        """Full-text search **across** the sandbox (v0.32): walk text files under ``path`` (default the
+        whole sandbox), scan their **contents** for ``query``, and return matches as ``path:line: text``
+        — **every match carries its file path + its 1-based line number**, the cross-file twin of
+        ``find_in_file`` and the handle into ``read_around``. Binary / oversize files are skipped;
+        bounded by ``search_max_files`` / ``_lines`` / ``_chars``. ``regex=true`` treats ``query`` as a
+        pattern."""
+        query = inp.get("query")
+        if not isinstance(query, str) or query == "":
+            return "error: missing 'query'"
+        rel = inp.get("path") or "."
+        base = self._safe(rel)
+        if not base.exists():
+            return f"error: not found: {rel!r}"
+        pattern = None
+        if inp.get("regex"):
+            try:
+                pattern = re.compile(query)
+            except re.error as exc:
+                return f"error: bad regex: {exc}"
+        root = self._root.resolve()
+        files = [base] if base.is_file() else sorted(
+            (p for p in base.rglob("*") if p.is_file()), key=lambda p: str(p)
+        )
+        out: list[str] = []
+        scanned = 0
+        chars = 0
+        capped = False
+        for f in files:
+            if scanned >= self._search_max_files:
+                capped = True
+                break
+            try:  # defence in depth: skip a symlink or any file resolving outside the root
+                if f.is_symlink():
+                    continue
+                f.resolve().relative_to(root)
+                if f.stat().st_size > self._copy_max:  # oversize → skip (the module's "big file" ceiling)
+                    continue
+                text = f.read_text(encoding="utf-8")  # strict UTF-8: binary raises → skipped
+            except (ValueError, OSError, UnicodeDecodeError):
+                continue
+            scanned += 1
+            rel_path = f.resolve().relative_to(root).as_posix()
+            for i, line in enumerate(text.splitlines(), start=1):
+                hit = pattern.search(line) is not None if pattern else query in line
+                if not hit:
+                    continue
+                entry = f"  {rel_path}:{i}: {line.strip()[:120]}"
+                if len(out) >= self._search_max_lines or chars + len(entry) > self._search_max_chars:
+                    capped = True
+                    break
+                out.append(entry)
+                chars += len(entry) + 1
+            if capped:
+                break
+        if not out:
+            return f"No matches for {query!r}."
+        tail = "\n  … (capped — refine the search)" if capped else ""
+        return f"Matches for {query!r}:\n" + "\n".join(out) + tail
 
     # --- the two non-destructive write tools (v0.20) ---------------------------------------------
     def _content(self, inp: dict) -> bytes:

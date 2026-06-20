@@ -397,6 +397,9 @@ class Core:
         file_find_max: int = 50,
         file_write_max: int = 65536,
         file_copy_max: int = 5 * 1024 * 1024,
+        file_search_max_files: int = 200,
+        file_search_max_lines: int = 100,
+        file_search_max_chars: int = 4000,
         tool_max_steps: int = 8,
         file_tool_trace: bool = False,
         wiki_enabled: bool = False,
@@ -491,6 +494,9 @@ class Core:
         self._file_find_max = file_find_max
         self._file_write_max = file_write_max
         self._file_copy_max = file_copy_max  # v0.29 copy_file source-size cap
+        self._file_search_max_files = file_search_max_files  # v0.32 search_files caps
+        self._file_search_max_lines = file_search_max_lines
+        self._file_search_max_chars = file_search_max_chars
         self._tool_max_steps = tool_max_steps
         # v0.19 tool trace: record the file tools used this turn (for the TUI trace + .lumi/tool-log.jsonl).
         self._file_tool_trace = file_tool_trace
@@ -1534,6 +1540,9 @@ class Core:
             root, read_lines=self._file_read_lines, find_max=self._file_find_max,
             read_max_total=self._file_read_max_total, write_max=self._file_write_max,
             copy_max=self._file_copy_max,
+            search_max_files=self._file_search_max_files,
+            search_max_lines=self._file_search_max_lines,
+            search_max_chars=self._file_search_max_chars,
         )
         return READ_TOOLS + WRITE_TOOLS, tools.execute  # read + non-destructive write/filesystem (v0.29)
 
@@ -2575,6 +2584,9 @@ def build_core(
         file_find_max=cfg.file_find_max,
         file_write_max=cfg.file_write_max,
         file_copy_max=cfg.file_copy_max,
+        file_search_max_files=cfg.file_search_max_files,
+        file_search_max_lines=cfg.file_search_max_lines,
+        file_search_max_chars=cfg.file_search_max_chars,
         tool_max_steps=cfg.tool_max_steps,
         file_tool_trace=cfg.file_tool_trace,
         wiki_enabled=cfg.wiki,

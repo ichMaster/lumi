@@ -208,7 +208,20 @@ def test_v029_tools_absent_when_off_present_when_on(tmp_path):
     assert core_off._turn_tools() == (None, None)  # no file tools at all when off
     core_on, _ = _core(tmp_path, MockLLMClient(states=_STATE))
     names = {t["name"] for t in core_on._turn_tools()[0]}
-    assert {"stat_file", "create_folder", "copy_file"} <= names  # offered when on
+    assert {"stat_file", "create_folder", "copy_file", "search_files"} <= names  # offered when on
+
+
+# --- v0.32 LUMI-123: search_files is bound to the active user's sandbox (isolation) ----------------
+def test_user_cannot_search_another_users_sandbox(tmp_path):
+    _sandbox(tmp_path, "alice", "secret.md", "ALICE SECRET token\n")
+    _sandbox(tmp_path, "bob", "mine.md", "BOB token here\n")
+    mock = MockLLMClient(states=_STATE, tool_script=[("search_files", {"query": "token"})])
+    core_bob, _ = _core(tmp_path, mock, user="bob")
+    state = core_bob.reply("search for token", core_bob.start_session())
+    assert isinstance(state, EmotionState)
+    result = mock.tool_calls[0][2]
+    assert "BOB token here" in result and "mine.md:1:" in result   # only bob's sandbox, with line numbers
+    assert "ALICE SECRET" not in result and "secret.md" not in result
 
 
 # --- per-user isolation over stat_file + copy_file ------------------------------------------------

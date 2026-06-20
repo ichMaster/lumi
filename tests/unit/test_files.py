@@ -30,7 +30,7 @@ def _root(tmp_path):
 
 # --- tool defs -------------------------------------------------------------------------------------
 def test_read_tools_shape():
-    assert READ_TOOL_NAMES == {"list_files", "find_in_file", "read_file", "stat_file"}
+    assert READ_TOOL_NAMES == {"list_files", "find_in_file", "read_file", "stat_file", "search_files"}
     for t in READ_TOOLS:
         assert {"name", "description", "input_schema"} <= t.keys()
 
@@ -61,6 +61,69 @@ def test_find_in_file_no_match_and_missing_query(tmp_path):
     ft = _root(tmp_path)
     assert "No matches" in ft.execute("find_in_file", {"path": "notes.md", "query": "zzz"})
     assert "missing 'query'" in ft.execute("find_in_file", {"path": "notes.md"})
+
+
+# --- search_files (v0.32) -------------------------------------------------------------------------
+def _search_root(tmp_path):
+    (tmp_path / "a.md").write_text("vino\nкава тут\nбільше тексту\n", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.md").write_text("intro\nкава і там\n", encoding="utf-8")
+    return FileTools(tmp_path, search_max_files=50, search_max_lines=20, search_max_chars=4000)
+
+
+def test_search_files_finds_across_files_with_line_numbers(tmp_path):
+    ft = _search_root(tmp_path)
+    out = ft.execute("search_files", {"query": "кава"})
+    assert "a.md:2:" in out and "sub/b.md:2:" in out          # path:line across two files
+    assert "кава тут" in out and "кава і там" in out
+
+
+def test_search_files_no_match_and_missing_query(tmp_path):
+    ft = _search_root(tmp_path)
+    assert "No matches" in ft.execute("search_files", {"query": "zzz"})
+    assert "missing 'query'" in ft.execute("search_files", {})
+
+
+def test_search_files_path_narrows_to_subfolder(tmp_path):
+    ft = _search_root(tmp_path)
+    out = ft.execute("search_files", {"query": "кава", "path": "sub"})
+    assert "sub/b.md:2:" in out and "a.md:" not in out        # only the subfolder scanned
+
+
+def test_search_files_regex(tmp_path):
+    ft = _search_root(tmp_path)
+    out = ft.execute("search_files", {"query": "тут$", "regex": True})
+    assert "a.md:2:" in out and "sub/b.md" not in out         # 'тут$' matches only the line ending in 'тут'
+    assert "bad regex" in ft.execute("search_files", {"query": "[", "regex": True})
+
+
+def test_search_files_caps_lines(tmp_path):
+    (tmp_path / "many.md").write_text("\n".join("hit here" for _ in range(20)) + "\n", encoding="utf-8")
+    ft = FileTools(tmp_path, search_max_lines=3)
+    out = ft.execute("search_files", {"query": "hit"})
+    hits = [ln for ln in out.splitlines() if "many.md:" in ln]
+    assert len(hits) == 3 and "capped" in out
+
+
+def test_search_files_skips_binary(tmp_path):
+    (tmp_path / "text.md").write_text("findme here\n", encoding="utf-8")
+    (tmp_path / "blob.bin").write_bytes(b"\x00\x01findme\xff\xfe")  # invalid UTF-8 → skipped
+    ft = FileTools(tmp_path)
+    out = ft.execute("search_files", {"query": "findme"})
+    assert "text.md:1:" in out and "blob.bin" not in out      # binary skipped, no crash
+
+
+def test_search_files_skips_oversize(tmp_path):
+    (tmp_path / "small.md").write_text("needle\n", encoding="utf-8")
+    (tmp_path / "huge.md").write_text("needle\n" + "x" * 100, encoding="utf-8")
+    ft = FileTools(tmp_path, copy_max=20)  # the per-file scan ceiling reuses copy_max
+    out = ft.execute("search_files", {"query": "needle"})
+    assert "small.md:1:" in out and "huge.md" not in out      # oversize skipped
+
+
+def test_search_files_sandboxed(tmp_path):
+    ft = _search_root(tmp_path)
+    assert "traversal" in ft.execute("search_files", {"query": "x", "path": ".."})
 
 
 # --- read_file -------------------------------------------------------------------------------------
