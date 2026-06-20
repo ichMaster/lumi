@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 0.31.0 (2026-06-20)
+---------------------------
+- Recall tool (v0.31, LUMI-120..122): a model-callable recall() so Лілі searches her OWN memory by meaning mid-turn — the "pull" that complements the automatic per-turn auto-RAG "push" (v0.17). She composes a query (often != your literal message), gets back a few dated moments, and answers from them in her own voice. Off by default (LUMI_RECALL_TOOL); needs LUMI_RECALL + a configured embedder. No emotion-contract / core change.
+- Trusted-recollection framing: a recall result is HER OWN PAST — trusted history, not untrusted external data (distinct from the wiki/news/file framing) — and is deduped against the live window + the auto-RAG block so nothing is shown twice. Per-user isolated (A's recall never returns B's moments — contract test); bounded (LUMI_RECALL_TOOL_K returned per call, LUMI_RECALL_TOOL_MAX_CALLS per turn); a no-hit or embedder hiccup degrades to a short notice, never hangs the turn.
+- Date-range filter: recall(query, after, before) for her, and /recall <query> after:YYYY-MM-DD before:YYYY-MM-DD for you — a meaning search confined to a half-open [after, before) day range.
+- By-date message tool (LUMI_DATE_TOOL): messages_on(date) / messages_between(start, end) return her RAW, VERBATIM transcript for a day or range straight from the store (no embedding, no meaning search) — the complement to recall. Trusted (her own transcript), per-user, bounded (call cap + char budget + range-span cap).
+- message_context(msg_id|ts, k): fetch a SPECIFIC message (by short #id or HH:MM ts) plus its K surrounding messages (the anchor marked). Recall/RAG moments now show each message's time (HH:MM) + a short #id on the matched line, so recall -> message_context chains: find WHAT, then open the moment around it.
+- Docs: docs/RECALL_TOOL_SETUP.md operator guide + a "Лілі's tools at a glance" overview table; .env.example flags. Embedder + model mocked — no paid calls. Full suite 972 -> 1006.
+
 Version 0.30.0 (2026-06-20)
 ---------------------------
 - Semantic recall III — chunking long messages (v0.30, LUMI-116..119): a refinement of the v0.16 index + v0.17 context-expansion, not a new capability. A message over LUMI_RAG_CHUNK_THRESHOLD is split into ~chunk_chars passages (paragraph/sentence boundaries, small overlap), each embedded as its OWN vector; a short message stays one chunk (= v0.16). "Search fine, show coarse" — now at two levels.

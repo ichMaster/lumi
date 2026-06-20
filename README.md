@@ -12,15 +12,20 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.30 — Semantic recall III: chunking long messages.** A long message is no longer one *averaged*
-vector — messages over `LUMI_RAG_CHUNK_THRESHOLD` are split into ~`chunk_chars` passages (paragraph/
-sentence boundaries, small overlap), each embedded as its **own** vector. Search now ranks per **chunk**
-and `/recall` shows the matched **passage** (the chunk ± neighbours) inside its message thread — *"search
-fine, show coarse."* `VectorRecord` gains **`parent_msg_id`** + **`chunk_index`** (content-addressed chunk
-id, back-compatible); the staleness tag re-embeds on a chunk-param change. `/recall` also gains a
-**current-session filter** — it skips the active conversation by default (`!all` to include it) so a
-session's own echoes don't bury older sources. Per-user isolation holds across chunks; **off by default**
-(`LUMI_RAG_CHUNK`), byte-identical to v0.16/0.17 when off. See
+**0.31 — Recall tool: she searches her own memory on demand.** When the relevant thing isn't the literal
+words you just typed — *"а що вони казали про брата?"* — Лілі can issue a **targeted** memory query
+**mid-turn** (a model-callable **`recall()`**) and weave the result in, in her own voice — the **"pull"**
+that complements the automatic per-turn auto-RAG **"push."** A recall result is **her own past — trusted
+history** (not untrusted external data), deduped against the live window + the auto-RAG block. It can be
+**scoped to a date range** (`after`/`before`); a pair of **by-date tools** (`messages_on` /
+`messages_between`) return her **raw, verbatim** transcript for a day; and **`message_context`** opens a
+**specific message** (by `#id` or `ts`) plus its **K surrounding messages** — so recall finds *what*, then
+`message_context` opens *the moment around it*. **Per-user isolated**, **bounded**, **off by default**
+(`LUMI_RECALL_TOOL` / `LUMI_DATE_TOOL`). See **[docs/RECALL_TOOL_SETUP.md](docs/RECALL_TOOL_SETUP.md)**.
+
+Builds on **0.30's chunking**: a long message is split into ~`chunk_chars` passages, each embedded as its
+**own** vector, so search ranks per **chunk** and `/recall` shows the matched **passage** — *"search fine,
+show coarse."* See
 **[specification/features/SEMANTIC_RECALL_CHUNKING.md](specification/features/SEMANTIC_RECALL_CHUNKING.md)**.
 
 Builds on **0.29's file tool III**: A small extension of her file tool:
