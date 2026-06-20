@@ -256,6 +256,47 @@ RECALL_TOOLS: list[dict] = [
 RECALL_TOOL_NAMES = frozenset(t["name"] for t in RECALL_TOOLS)
 
 
+DATE_TOOLS: list[dict] = [
+    {
+        "name": "messages_on",
+        "description": (
+            "Повертає ТВОЇ дослівні повідомлення (твої й людини) за конкретну ДАТУ (РРРР-ММ-ДД) — "
+            "сирий журнал того дня, БЕЗ змістового пошуку. Це ТВОЯ памʼять; для пошуку за змістом — recall."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"date": {"type": "string", "description": "Дата (РРРР-ММ-ДД)."}},
+            "required": ["date"],
+        },
+    },
+    {
+        "name": "messages_between",
+        "description": (
+            "Повертає ТВОЇ дослівні повідомлення за діапазон дат [start, end] включно (РРРР-ММ-ДД) — "
+            "сирий журнал за кілька днів. Діапазон обмежений кількома днями."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start": {"type": "string", "description": "Початкова дата (РРРР-ММ-ДД)."},
+                "end": {"type": "string", "description": "Кінцева дата (РРРР-ММ-ДД, включно)."},
+            },
+            "required": ["start", "end"],
+        },
+    },
+]
+DATE_TOOL_NAMES = frozenset(t["name"] for t in DATE_TOOLS)
+
+
+def _is_ymd(s: str) -> bool:
+    """True if ``s`` is a valid ``YYYY-MM-DD`` date."""
+    try:
+        date.fromisoformat((s or "").strip())
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 class Core:
     """Лілі's interface-independent, user-scoped turn engine."""
 
@@ -291,6 +332,10 @@ class Core:
         recall_tool_enabled: bool = False,
         recall_tool_k: int = 5,
         recall_tool_max_calls: int = 3,
+        date_tool_enabled: bool = False,
+        date_tool_max_chars: int = 4000,
+        date_tool_max_days: int = 14,
+        date_tool_max_calls: int = 3,
         recall_backfill_max: int = 500,
         embed_max_chars: int = _MAX_EMBED_CHARS,
         embed_model: str = "",
@@ -519,6 +564,10 @@ class Core:
         self._recall_tool_enabled = recall_tool_enabled and self._recall_enabled  # needs recall + embedder
         self._recall_tool_k = recall_tool_k
         self._recall_tool_max_calls = recall_tool_max_calls
+        self._date_tool_enabled = date_tool_enabled  # v0.31 by-date message tool (reads the store directly)
+        self._date_tool_max_chars = date_tool_max_chars
+        self._date_tool_max_days = date_tool_max_days
+        self._date_tool_max_calls = date_tool_max_calls
         self._turn_dedup_ids: set[str] = set()       # v0.31: window+RAG ids the recall tool dedups against
         self._turn_rag_anchor_ids: set[str] = set()  # the auto-RAG block's surfaced anchors this turn
         self._recall_backfill_max = recall_backfill_max
@@ -1347,7 +1396,8 @@ class Core:
                                     self._news_tool_args(), self._web_tool_args(),
                                     self._journal_tool_args(),
                                     self._image_tool_args(), self._imagegen_tool_args(),
-                                    self._sendimage_tool_args(), self._recall_tool_args()):
+                                    self._sendimage_tool_args(), self._recall_tool_args(),
+                                    self._date_tool_args()):
             if executor is None:
                 continue
             tools += tool_list
@@ -1537,6 +1587,76 @@ class Core:
             return trusted_text("\n\n".join(moments))  # her own memory → trusted framing in the loop
 
         return RECALL_TOOLS, execute
+
+    def _messages_in_range(self, start: str, end: str) -> list[Message]:
+        """This user's messages whose **date** falls in ``[start, end]`` (YYYY-MM-DD), in time order.
+        Loads only the requesting user's sessions (isolation); skips empty messages."""
+        out: list[Message] = []
+        for session in self._repo.list_sessions(self._user_id):
+            for m in self._repo.load_messages(session.id):
+                if m.user_id == self._user_id and m.text.strip() and start <= m.ts[:10] <= end:
+                    out.append(m)
+        out.sort(key=lambda m: m.ts)
+        return out
+
+    def _format_dated_messages(self, msgs: list[Message]) -> str:
+        """Render verbatim messages as a dated transcript (``— date —`` headers + ``HH:MM who: text``),
+        capped at ``date_tool_max_chars`` (a truncation note if it overflows)."""
+        lines: list[str] = []
+        cur_date: str | None = None
+        total = 0
+        for m in msgs:
+            d = m.ts[:10]
+            if d != cur_date:
+                hdr = f"— {d} —"
+                lines.append(hdr)
+                total += len(hdr) + 1
+                cur_date = d
+            line = f"  {m.ts[11:16]} {self._who(m.role)}: {strip_leading_stamp(m.text)}"
+            if total + len(line) > self._date_tool_max_chars:
+                lines.append("… (обрізано — забагато тексту за цей період)")
+                break
+            lines.append(line)
+            total += len(line) + 1
+        return "\n".join(lines)
+
+    def _date_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
+        """The (tools, executor) for the v0.31 by-date message tools (``messages_on`` /
+        ``messages_between``); ``(None, None)`` off. Reads **this user's** raw messages by ``ts`` — no
+        embedding, no meaning search. The result is her own transcript → **trusted** framing. Bounded by
+        a per-turn call cap, a char budget, and a range-span cap."""
+        if not self._date_tool_enabled:
+            return None, None
+        calls = {"n": 0}
+
+        def execute(name: str, tool_input: dict) -> str | dict:
+            calls["n"] += 1
+            if calls["n"] > self._date_tool_max_calls:
+                return f"(date tool limit reached: {self._date_tool_max_calls} per turn)"
+            ti = tool_input or {}
+            if name == "messages_on":
+                day = (ti.get("date") or "").strip()
+                if not _is_ymd(day):
+                    return "(messages_on: вкажи дату у форматі РРРР-ММ-ДД)"
+                start = end = day
+            elif name == "messages_between":
+                start = (ti.get("start") or "").strip()
+                end = (ti.get("end") or "").strip()
+                if not (_is_ymd(start) and _is_ymd(end)):
+                    return "(messages_between: вкажи дати у форматі РРРР-ММ-ДД)"
+                if start > end:
+                    start, end = end, start
+                span = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+                if span > self._date_tool_max_days:
+                    return f"(діапазон завеликий: максимум {self._date_tool_max_days} днів)"
+            else:
+                return f"error: unknown tool {name!r}"
+            msgs = self._messages_in_range(start, end)
+            if not msgs:
+                return f"(немає повідомлень за {start if start == end else f'{start}…{end}'})"
+            return trusted_text(self._format_dated_messages(msgs))
+
+        return DATE_TOOLS, execute
 
     def _news_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
         """The (tools, executor) for the v0.25 Guardian news tool; ``(None, None)`` when off.
@@ -2339,6 +2459,10 @@ def build_core(
         recall_tool_enabled=cfg.recall_tool,
         recall_tool_k=cfg.recall_tool_k,
         recall_tool_max_calls=cfg.recall_tool_max_calls,
+        date_tool_enabled=cfg.date_tool,
+        date_tool_max_chars=cfg.date_tool_max_chars,
+        date_tool_max_days=cfg.date_tool_max_days,
+        date_tool_max_calls=cfg.date_tool_max_calls,
         embed_max_chars=cfg.embed_max_chars,
         # The vectors-staleness tag includes the char cap AND (v0.30) the chunk size when chunking is
         # on, so changing the model, the cap, or the chunk size — or toggling chunking — re-embeds the

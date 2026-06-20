@@ -269,6 +269,11 @@ class Config:
     recall_tool: bool = False       # LUMI_RECALL_TOOL (needs LUMI_RECALL + the embedder)
     recall_tool_k: int = 5          # how many past moments the recall tool returns
     recall_tool_max_calls: int = 3  # per-turn recall-tool call cap
+    # v0.31 date tool — fetch raw verbatim messages by date (no meaning search), off by default.
+    date_tool: bool = False          # LUMI_DATE_TOOL
+    date_tool_max_chars: int = 4000  # total char budget for the messages returned
+    date_tool_max_days: int = 14     # max days a messages_between range may span
+    date_tool_max_calls: int = 3     # per-turn date-tool call cap
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
@@ -516,6 +521,10 @@ def load_config(*, load_env: bool = True) -> Config:
         recall_tool=(os.getenv("LUMI_RECALL_TOOL") or "off").strip().lower() in _TRUTHY,  # v0.31, off
         recall_tool_k=int(os.getenv("LUMI_RECALL_TOOL_K") or 5),
         recall_tool_max_calls=int(os.getenv("LUMI_RECALL_TOOL_MAX_CALLS") or 3),
+        date_tool=(os.getenv("LUMI_DATE_TOOL") or "off").strip().lower() in _TRUTHY,  # v0.31, off
+        date_tool_max_chars=int(os.getenv("LUMI_DATE_TOOL_MAX_CHARS") or 4000),
+        date_tool_max_days=int(os.getenv("LUMI_DATE_TOOL_MAX_DAYS") or 14),
+        date_tool_max_calls=int(os.getenv("LUMI_DATE_TOOL_MAX_CALLS") or 3),
         facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),

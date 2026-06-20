@@ -133,10 +133,18 @@ all **off by default**, all **per-user** (sandboxed / scoped to you), all **boun
 | **Image** | `view_image` · `generate_image` · `send_image` | See & describe a picture, generate a PNG (**paid**), send one to your Telegram | `LUMI_IMAGE` | [IMAGE_SETUP.md](IMAGE_SETUP.md) |
 | **Web** | `web_lookup` | Pull a fresh, grounded answer from the live internet (**paid**); also `/web` | `LUMI_WEB_LOOKUP` | [WEB_LOOKUP_SETUP.md](WEB_LOOKUP_SETUP.md) |
 | **Journal** | `journal_write` · `journal_read` · `journal_list` | Write & reread her day-summary diary; also `/journal` | `LUMI_JOURNAL` | [JOURNAL_SETUP.md](JOURNAL_SETUP.md) |
-| **Recall** *(this doc)* | `recall` | Search her own memory on demand; also `/recall` | `LUMI_RECALL_TOOL` | [RECALL_TOOL_SETUP.md](RECALL_TOOL_SETUP.md) |
+| **Recall** *(this doc)* | `recall` | Search her own memory **by meaning** on demand (date-scopable); also `/recall` | `LUMI_RECALL_TOOL` | [RECALL_TOOL_SETUP.md](RECALL_TOOL_SETUP.md) |
+| **Messages by date** | `messages_on` · `messages_between` | Fetch her **raw, verbatim** messages for a day / date range — no meaning search | `LUMI_DATE_TOOL` | *(this doc)* |
+
+**Recall vs the date tool.** `recall` searches *by meaning* and returns the most relevant *moments*
+(optionally scoped to a date range); the **date tool** returns the *raw, verbatim* messages of a **specific
+day or range**, straight from the store — no embedding. Use recall for "what did we say about X", the date
+tool for "what did we talk about **on the 13th**". The date tool is gated by **`LUMI_DATE_TOOL`** (+
+`LUMI_DATE_TOOL_MAX_CHARS` / `_MAX_DAYS` / `_MAX_CALLS`); it needs **no embedder** — only the message store.
 
 **Trust.** Every tool result is treated as **untrusted data** — information she may read, **never**
-instructions she obeys — *except* **`recall`**, whose result is **her own memory** (trusted), and the
-**journal**, which is her own writing. The wiki / news / web / file / image results are all untrusted.
+instructions she obeys — *except* the memory tools (**`recall`**, **`messages_on`** / **`messages_between`**),
+whose results are **her own memory** (trusted), and the **journal**, which is her own writing. The wiki /
+news / web / file / image results are all untrusted.
 
 With `LUMI_FILE_TOOL_TRACE=on`, every tool call she makes shows in the TUI trace + `.lumi/tool-log.jsonl`.
