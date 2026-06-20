@@ -2231,7 +2231,8 @@ class Core:
         except Exception:  # noqa: BLE001 — expansion is best-effort; fall back to bare anchor lines
             _recall_log.warning("recall context expansion failed; using bare anchors")
             snippets = [
-                f"— {r.ts[:10]} —\n  {self._who(r.role)}: {_snippet(r.text, self._rag_snippet_chars)}  ← (matched)"
+                f"— {r.ts[:10]} —\n  {r.ts[11:16]} {self._who(r.role)}: "
+                f"{_snippet(r.text, self._rag_snippet_chars)}  ← (matched)"
                 for _s, r in hits
             ]
         # Char budget across the whole block: keep whole snippets while they fit (most-relevant
@@ -2327,7 +2328,7 @@ class Core:
         for score, rec in hits:
             pos = self._position_of(rec.parent_msg_id)  # the message id (== msg_id for a one-chunk record)
             if pos is None:
-                bare.append((score, f"— {rec.ts[:10]} —\n  {self._who(rec.role)}: "
+                bare.append((score, f"— {rec.ts[:10]} —\n  {rec.ts[11:16]} {self._who(rec.role)}: "
                                     f"{_snippet(rec.text, self._rag_snippet_chars)}{mark(score)}"))
                 continue
             by_session.setdefault(pos[0], []).append((pos[1], score, rec.chunk_index))
@@ -2361,7 +2362,7 @@ class Core:
                         body = self._passage_text(m.text, anchor_chunks[p])
                     else:                                        # a neighbour (or v0.16) → whole, capped
                         body = _snippet(m.text, self._rag_snippet_chars)
-                    lines.append(f"  {self._who(m.role)}: {body}{mark(anchor_score.get(p))}")
+                    lines.append(f"  {m.ts[11:16]} {self._who(m.role)}: {body}{mark(anchor_score.get(p))}")
                 if lines:
                     date = msgs[int(start)].ts[:10]
                     snippets.append((rank, f"— {date} —\n" + "\n".join(lines)))

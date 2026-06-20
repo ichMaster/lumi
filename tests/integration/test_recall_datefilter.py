@@ -126,3 +126,13 @@ def test_recall_moments_threads_the_date_filter(tmp_path):
     _index_two_dates(core, clock)
     joined = "\n".join(core.recall_moments("маяк у тумані", before="2026-06-19"))
     assert "2026-06-11" in joined and "2026-06-19" not in joined
+
+
+def test_recall_moment_shows_message_time(tmp_path):
+    # the message ts (HH:MM) is rendered into the recall/RAG moment, not just the date
+    clock = _Clock(datetime(2026, 6, 11, 14, 30, tzinfo=UTC))
+    core = _date_core(tmp_path, clock)
+    core.reply("маяк у тумані", core.start_session())
+    core.ensure_backfill()
+    joined = "\n".join(core.recall_moments("маяк у тумані"))
+    assert "2026-06-11" in joined and "14:30" in joined   # date header + the message time
