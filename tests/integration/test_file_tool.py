@@ -43,6 +43,21 @@ def test_turn_reads_sandbox_file_when_on(tmp_path):
     assert "Розділ 4: оплата і тарифи" in mock.tool_calls[1][2]  # read returned that line
 
 
+def test_find_in_file_to_read_around_chain(tmp_path):
+    # v0.32: a line number from find_in_file fed into read_around opens exactly that spot.
+    _sandbox(tmp_path, "owner", "doc.md", "вступ\nпроміжок\nНАЙТИ ось тут\nдалі\nкінець\n")
+    mock = MockLLMClient(states=_STATE, tool_script=[
+        ("find_in_file", {"path": "doc.md", "query": "НАЙТИ"}),
+        ("read_around", {"path": "doc.md", "line": 3, "k": 1}),
+    ])
+    core = _core(tmp_path, mock, file_tool=True)
+    core.reply("знайди і відкрий контекст", core.start_session())
+    assert "line 3:" in mock.tool_calls[0][2]                                     # find → line 3
+    around = mock.tool_calls[1][2]
+    assert "2: проміжок" in around and "3: НАЙТИ ось тут" in around and "4: далі" in around  # ±1
+    assert "← (це)" in around                                                     # anchor marked
+
+
 def test_turn_offers_no_tools_when_off(tmp_path):
     mock = MockLLMClient(states={"reply": "ок", "emotion": "joy", "intensity": 0.8},
                          tool_script=[("read_file", {"path": "anything"})])

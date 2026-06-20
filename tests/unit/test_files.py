@@ -30,7 +30,9 @@ def _root(tmp_path):
 
 # --- tool defs -------------------------------------------------------------------------------------
 def test_read_tools_shape():
-    assert READ_TOOL_NAMES == {"list_files", "find_in_file", "read_file", "stat_file", "search_files"}
+    assert READ_TOOL_NAMES == {
+        "list_files", "find_in_file", "read_file", "stat_file", "search_files", "read_around",
+    }
     for t in READ_TOOLS:
         assert {"name", "description", "input_schema"} <= t.keys()
 
@@ -124,6 +126,47 @@ def test_search_files_skips_oversize(tmp_path):
 def test_search_files_sandboxed(tmp_path):
     ft = _search_root(tmp_path)
     assert "traversal" in ft.execute("search_files", {"query": "x", "path": ".."})
+
+
+# --- read_around (v0.32) --------------------------------------------------------------------------
+def _around_root(tmp_path, n=10):
+    (tmp_path / "f.md").write_text("\n".join(f"L{i}" for i in range(1, n + 1)) + "\n", encoding="utf-8")
+    return FileTools(tmp_path)
+
+
+def test_read_around_window_and_anchor(tmp_path):
+    ft = _around_root(tmp_path)
+    out = ft.execute("read_around", {"path": "f.md", "line": 5, "k": 2})
+    assert "3: L3" in out and "5: L5" in out and "7: L7" in out      # window [3..7]
+    assert "2: L2" not in out and "8: L8" not in out
+    anchor = [ln for ln in out.splitlines() if "← (це)" in ln]
+    assert len(anchor) == 1 and "L5" in anchor[0]                    # anchor marks exactly line 5
+
+
+def test_read_around_clamps_at_start(tmp_path):
+    ft = _around_root(tmp_path)
+    out = ft.execute("read_around", {"path": "f.md", "line": 1, "k": 3})
+    assert "1: L1" in out and "4: L4" in out and "0:" not in out     # floored at line 1
+
+
+def test_read_around_clamps_at_eof(tmp_path):
+    ft = _around_root(tmp_path, n=5)
+    out = ft.execute("read_around", {"path": "f.md", "line": 5, "k": 3})
+    assert "5: L5" in out and "total_lines=5" in out and "6: " not in out  # capped at EOF
+
+
+def test_read_around_k_cap(tmp_path):
+    (tmp_path / "f.md").write_text("\n".join(f"L{i}" for i in range(1, 101)) + "\n", encoding="utf-8")
+    ft = FileTools(tmp_path, around_max_k=2)
+    out = ft.execute("read_around", {"path": "f.md", "line": 50, "k": 999})
+    assert "48: L48" in out and "52: L52" in out and "47: L47" not in out  # k clamped to 2
+
+
+def test_read_around_past_end_missing_and_bad_int(tmp_path):
+    ft = _around_root(tmp_path, n=2)
+    assert "past the end" in ft.execute("read_around", {"path": "f.md", "line": 99})
+    assert "file not found" in ft.execute("read_around", {"path": "ghost.md", "line": 1})
+    assert "must be integers" in ft.execute("read_around", {"path": "f.md", "line": "x"})
 
 
 # --- read_file -------------------------------------------------------------------------------------

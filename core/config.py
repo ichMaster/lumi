@@ -209,6 +209,7 @@ class Config:
     file_search_max_files: int = 200  # v0.32 search_files: max files scanned/returned
     file_search_max_lines: int = 100  # v0.32 search_files: max matching lines returned
     file_search_max_chars: int = 4000  # v0.32 search_files: total output char budget
+    file_around_max_k: int = 50     # v0.32 read_around: max K lines each side of the anchor
     tool_max_steps: int = 8         # max tool calls per turn (the bounded tool-loop cap)
     file_tool_trace: bool = False   # show the file tools used each turn (TUI trace + .lumi/tool-log.jsonl)
     # v0.21 Wikipedia tool — custom wiki_search/wiki_read on the v0.19 tool-loop. Off by default.
@@ -476,6 +477,7 @@ def load_config(*, load_env: bool = True) -> Config:
         file_search_max_files=int(os.getenv("LUMI_FILE_SEARCH_MAX_FILES") or 200),
         file_search_max_lines=int(os.getenv("LUMI_FILE_SEARCH_MAX_LINES") or 100),
         file_search_max_chars=int(os.getenv("LUMI_FILE_SEARCH_MAX_CHARS") or 4000),
+        file_around_max_k=int(os.getenv("LUMI_FILE_AROUND_MAX_K") or 50),
         tool_max_steps=int(os.getenv("LUMI_TOOL_MAX_STEPS") or 8),
         file_tool_trace=(os.getenv("LUMI_FILE_TOOL_TRACE") or "off").strip().lower() in _TRUTHY,  # off by default
         wiki=(os.getenv("LUMI_WIKI") or "off").strip().lower() in _TRUTHY,  # off by default

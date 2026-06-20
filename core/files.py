@@ -103,6 +103,22 @@ READ_TOOLS: list[dict] = [
             "required": ["query"],
         },
     },
+    {
+        "name": "read_around",
+        "description": (
+            "Читає рядки НАВКОЛО вказаного — від line−k до line+k, з позначкою на самому рядку. "
+            "Аналог message_context для файлів: номер рядка з find_in_file/search_files → контекст довкола."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Файл відносно кореня пісочниці."},
+                "line": {"type": "integer", "minimum": 1, "description": "1-індексований рядок-якір."},
+                "k": {"type": "integer", "minimum": 0, "description": "Скільки рядків до і після (типово 3)."},
+            },
+            "required": ["path", "line"],
+        },
+    },
 ]
 
 READ_TOOL_NAMES = frozenset(t["name"] for t in READ_TOOLS)
@@ -233,6 +249,7 @@ class FileTools:
         search_max_files: int = 200,
         search_max_lines: int = 100,
         search_max_chars: int = 4000,
+        around_max_k: int = 50,
     ) -> None:
         self._root = Path(root)
         self._read_lines = max(1, read_lines)
@@ -243,6 +260,7 @@ class FileTools:
         self._search_max_files = max(1, search_max_files)  # v0.32 search caps: files / lines / chars
         self._search_max_lines = max(1, search_max_lines)
         self._search_max_chars = max(1, search_max_chars)
+        self._around_max_k = max(0, around_max_k)  # v0.32 read_around: max K lines each side
         self._lines_read = 0  # lines read so far this turn (a fresh FileTools per turn = fresh budget)
 
     # --- the executor entry point ----------------------------------------------------------------
@@ -259,6 +277,8 @@ class FileTools:
                 return self._stat_file(inp)
             if name == "search_files":
                 return self._search_files(inp)
+            if name == "read_around":
+                return self._read_around(inp)
             if name == "create_file":
                 return self._create_file(inp)
             if name == "append_file":
@@ -427,6 +447,47 @@ class FileTools:
             return f"No matches for {query!r}."
         tail = "\n  … (capped — refine the search)" if capped else ""
         return f"Matches for {query!r}:\n" + "\n".join(out) + tail
+
+    def _read_around(self, inp: dict) -> str:
+        """Read a file's lines ``[line−k, line+k]`` with the **anchor line marked**, clamped at the file
+        edges (v0.32) — the file twin of ``message_context``. After ``find_in_file`` / ``search_files``
+        returns a line number, open the K lines around it. ``k`` is capped at ``around_max_k`` and the
+        window counts toward the per-turn read budget (shared with ``read_file``)."""
+        rel = inp.get("path")
+        f = self._safe(rel)
+        if not f.is_file():
+            return f"error: file not found: {rel!r}"
+        try:
+            line = int(inp.get("line"))
+            k = int(inp.get("k", 3))
+        except (TypeError, ValueError):
+            return "error: line and k must be integers"
+        if line < 1:
+            return "error: line must be ≥ 1"
+        k = max(0, min(k, self._around_max_k))
+        start = max(1, line - k)
+        end = line + k  # inclusive
+        if self._read_max_total is not None:  # per-turn read budget (shared with read_file)
+            remaining = self._read_max_total - self._lines_read
+            if remaining <= 0:
+                return (
+                    f"(read limit reached: {self._read_max_total} lines already read this turn; "
+                    "no further reads — work from what you have)"
+                )
+            end = min(end, start + remaining - 1)
+        window: list[tuple[int, str]] = []
+        total = 0
+        with f.open("r", encoding="utf-8", errors="replace") as fh:
+            for i, ln in enumerate(fh, start=1):
+                total = i
+                if start <= i <= end:
+                    window.append((i, ln.rstrip("\n")))
+        if line > total:
+            return f"({rel}: line {line} is past the end; total_lines={total})"
+        self._lines_read += len(window)  # count toward the per-turn read budget
+        body = "\n".join(f"{i}: {ln}{'   ← (це)' if i == line else ''}" for i, ln in window)
+        first, last = window[0][0], window[-1][0]
+        return f"{rel} (lines {first}–{last} around {line}, total_lines={total}):\n{body}"
 
     # --- the two non-destructive write tools (v0.20) ---------------------------------------------
     def _content(self, inp: dict) -> bytes:
