@@ -1,15 +1,16 @@
-# Thought scheduler — proactive thoughts on a clock (a separate cron process)
+# Thought scheduler — proactive thoughts on a clock (an in-TUI module)
 
 Лілі's autonomous mind (the v0.12 thought-stream — `%think`/`%wonder` and the proposed tool-thoughts
 `%lookup`/`%learn`/`%imagine`/`%gaze`/`%share`/`%catchup`/`%brief`, see
 [THOUGHT_STREAM.md](THOUGHT_STREAM.md) + [TOOL_THOUGHTS.md](TOOL_THOUGHTS.md)) should fire on a **clock she
 can keep** — *every 10 minutes*, *at 08:00*, *between 07:00–09:00 every 20 min*, *Mondays only* — not just
-"after you've been idle a while." This is the design for a **separate scheduler process** that decides
-**when** each directive fires, while the TUI stays the **only brain** that runs it.
+"after you've been idle a while." This is the design for an **in-TUI scheduler module** that decides
+**when** each directive fires and runs it **in-process** — the TUI is already the **only brain**, so the
+clock lives in it, not a separate daemon.
 
-> **Proposed** feature. The mental-act engine, the `%directive` router (`run_directive`), the placeholder
-> resolver, and the v0.13 file-bus + dumb-daemon pattern are all **shipped**; the scheduler process, the
-> trigger model, the directive queue, and the schedule config are **not built**. Markers below say which.
+> **Proposed** feature. The mental-act engine, the `%directive` router (`run_directive`), and the
+> placeholder resolver are all **shipped**; the **in-TUI scheduler module**, the trigger model, the **tick
+> service**, and the schedule config are **not built**. Markers below say which.
 
 ---
 
@@ -33,38 +34,51 @@ small a clock for that.
 
 ---
 
-## The redesign — separate scheduler, file bus, TUI stays the brain
+## The design — an in-TUI scheduler module, no separate process
 
-Mirror the **shipped v0.13 Telegram architecture** ([TELEGRAM.md](TELEGRAM.md)) exactly — a **separate
-process** + an **append-only file bus** + the **TUI as the single brain**. No core change.
+The TUI is already the **only brain** — it owns `core`, the `Thought` store, the tools, the outbox, and the
+`run_directive` router. The clock that decides *when* a directive fires belongs **in that same process**,
+not in a separate daemon. (v0.13's Telegram daemons earn their separateness — messages arrive when the TUI
+is down, so an always-on receiver is needed. **Scheduling has no such property**: the TUI is the only thing
+that can *run* a directive, and almost nothing must *fire* during downtime — so a separate scheduler would
+buy only IPC, an `activity.txt` heartbeat, a `directive-queue.jsonl`, and a flood/liveness problem, for a
+thing the brain can do in-process.) **No core change.**
 
 ```
-  [lumi-scheduler]   (new cron process — dumb, core-free)        [TUI = the only brain]
-    reads  schedule.toml         (the authored schedule)           writes activity.txt on every real input
-    reads  activity.txt          (for idle-type triggers)          (a heartbeat: last-real-input stamp)
-    every LUMI_SCHED_TICK_MS:                                       polls directive-queue.jsonl (FIFO)
-      for each entry → is it DUE now?  ───────────────────────►    drains each line through run_directive(…)
-        append {directive, topic, args} to directive-queue.jsonl     ├─ silent  → records a Thought
-      stamp schedule.state (last-fired per entry)                     └─ graduated / outward → outbox → surfaced
-                                                                     never calls core itself
+  [TUI = the only brain]   — owns core · Thought store · tools · outbox · run_directive
+    knows its OWN last-input (in memory)                         — no activity.txt
+    on a timer (LUMI_SCHED_TICK_MS):
+      for each schedule.toml entry → due(now, last_fired, spec)?
+        run_directive(directive, args)  ──►  ├─ silent             → records a Thought
+                                             └─ graduated/outward  → outbox → surfaced
+        stamp last_fired  (in memory + schedule.state)
+    on startup: catch-up pass — fire wall-clock entries missed while closed (≤ LUMI_SCHED_CATCHUP_H)
+    on a FAST timer (LUMI_SCHED_TICK_FAST_MS):
+      run EPHEMERAL directives (e.g. %update_state) — fire-and-forget, not persisted, no-op if missed
 ```
 
-Three properties carry over verbatim from v0.13:
+Three properties, simpler than v0.13's:
 
-1. **Single-brain invariant.** The scheduler **never calls `core`** — it only **appends `%directive`
-   records** to a queue. The **TUI** is the one process that runs mental acts (it already owns `core`,
-   the `Thought` store, the tools, the outbox). So **no core ↔ scheduler coupling, no second brain, no
-   core change** — the scheduler is as dumb as the two Telegram daemons.
-2. **A dedicated queue, not the Telegram `inbox`.** A scheduled `%directive` is a **mental act**, not a
-   **user message**. The v0.13 inbox drain runs each line as a *reply turn* (`_run_turn`), which would
-   send the literal text "`%brief`" to the model — wrong. So the scheduler writes a **separate**
-   `directive-queue.jsonl`, and the TUI drains it through **`run_directive`** — the same router the
-   keyboard already uses for `%`-input — so a queued `%brief` fires **as a directive**. (This is the one
-   new wiring point in the TUI; the core is untouched.)
-3. **Idle triggers unify in.** The old "idle ≥ N min" rule becomes one **trigger type** the scheduler
-   evaluates by reading the TUI's **`activity.txt`** heartbeat (the TUI writes its last-real-input stamp;
-   the scheduler reads it). So the v0.4 nudge + the v0.12 `%think` idle trigger **migrate onto the
-   scheduler** — one clock, one place to tune, idle *and* wall-clock together.
+1. **One process, one brain.** No daemon, no IPC. The scheduler is an **in-TUI module** that calls
+   `run_directive` **directly** — the same router the keyboard uses, so a scheduled `%brief` fires **as a
+   directive**, not as the literal text "`%brief`" through the reply path.
+2. **No bus files.** There is **no `directive-queue.jsonl`** (nothing to hand to another process) and **no
+   `activity.txt`** (the TUI reads its **own** last-input from memory — `idle:` triggers evaluate against
+   it directly). The only persisted file is a small **`schedule.state`** (last-fired per entry) — *not* a
+   bus, just the module's own state, read once on startup for the **catch-up pass**.
+3. **Two cadences.** A normal tick (`LUMI_SCHED_TICK_MS`) evaluates `due()` for the authored schedule
+   (durable acts — a miss is recovered by the startup catch-up). A **fast tick**
+   (`LUMI_SCHED_TICK_FAST_MS`) runs **ephemeral** directives like **`%update_state`** — fire-and-forget,
+   never persisted, **a no-op if missed** (the work is idempotent advance-to-`now`, and the lazy
+   session-start path closes any gap). So the v0.4 nudge + the v0.12 `%think` idle trigger **fold in** as
+   `idle:` entries — one clock, one place to tune, idle *and* wall-clock together.
+
+**Why not a separate always-on scheduler?** It would have to either (a) run while the TUI is down — but it
+can't *execute* anything then (the brain is the TUI), so it would only pile stale entries on disk — or (b)
+own state itself, which rebuilds the heavy thing (process lifecycle, cron↔core consistency, crash
+recovery). A genuinely always-on scheduler belongs at **v2 (the server)**, where the brain *is* always-on;
+there the same `due()` + `run_directive` + the v1 `update(state, now)` simply move into the server loop,
+unchanged.
 
 ---
 
@@ -77,7 +91,7 @@ in specificity, each reducible to a pure `due(now, last_fired, spec) -> bool` pr
 | trigger | meaning | example |
 |---|---|---|
 | **`every: <dur>`** | a **wall-clock** interval (regardless of idle) | `every: 10m` — a glance every ten minutes |
-| **`idle: <dur>`** | idle since the last real input (reads `activity.txt`) — the migrated v0.4/v0.12 nudge | `idle: 15m` |
+| **`idle: <dur>`** | idle since the last real input (the TUI's **in-memory** last-input) — the migrated v0.4/v0.12 nudge | `idle: 15m` |
 | **`at: <HH:MM> [days]`** | a **fixed** daily / weekly time (fires once at the minute) | `at: "08:00"` · `at: "08:00", days: [mon,wed,fri]` |
 | **`between: <HH:MM-HH:MM>, every: <dur>`** | a **windowed periodic** — interval, but only inside a daily window | `between: "07:00-09:00", every: 20m` |
 | **`cron: <expr>`** | a raw 5-field **cron** expression (the power form everything else compiles to) | `cron: "*/10 7-9 * * 1-5"` |
@@ -141,11 +155,11 @@ scheduler open-ended: instead of only the authored directives, you can schedule 
 topic *is* the instruction. A scheduled `%prompt` is "ask Лілі to do *X* every morning," with placeholders
 filling in the live seed. (Trusted because the owner authored it; tool results it pulls stay untrusted.)
 
-**Placeholders resolve at fire time, in the TUI — not in the cron.** The scheduler passes the **raw**
-`{placeholder}` topic through to the queue; the TUI's `run_directive` → `resolve` expands it against live
-state (the v0.12 placeholder resolver, **already shipped**). So the scheduler stays **core-free** (it never
-needs mood/needs/memory) and the seed is always **live at the moment she thinks**, not stale from when the
-entry was authored.
+**Placeholders resolve at fire time, in-process.** The schedule entry keeps the `{placeholder}` topic
+**raw**; only at fire time does `run_directive` → `resolve` expand it against live state (the v0.12
+placeholder resolver, **already shipped**). So the schedule stays a **static seed** (it never embeds
+mood/needs/memory) and the resolved seed is always **live at the moment she thinks**, not stale from when
+the entry was authored.
 
 ---
 
@@ -179,10 +193,11 @@ delete the in-app timer once the queue path is proven. One clock at the end, not
   risk because it reaches you **unprompted, on a clock**. So: **off by default** (each entry opted in),
   **quiet hours**, **per-day caps**, and the same "**a gift, never a demand on your attention**" framing.
   A schedule is something she *offers*, never an obligation she imposes.
-- **TUI must be running** (the brain). The queue + the catch-up cap handle downtime gracefully.
+- **TUI must be running** (the scheduler *is* the TUI). Downtime is handled by the **startup catch-up**
+  (durable acts) + the idempotent `update` (ephemeral ticks just don't fire while it's down — a no-op).
 - **Deterministic + mockable.** `due(now, last_fired, spec)` is pure (a fixed clock in tests, **no real
-  sleeps**); the queue + state + heartbeat are temp files in tests; the cron loop is the only un-unit-
-  tested glue (covered by an integration test with an injected clock + a fake queue). **No paid calls.**
+  sleeps**); `schedule.state` is a temp file in tests; the in-TUI timer loop is the only un-unit-tested
+  glue (covered by an integration test with an injected clock). **No paid calls.**
 
 ---
 
@@ -190,13 +205,15 @@ delete the in-app timer once the queue path is proven. One clock at the end, not
 
 | Setting | Meaning | Default |
 |---|---|---|
-| `LUMI_SCHEDULER` | The TUI **drains** the directive queue (consume scheduled directives) | `off` |
+| `LUMI_SCHEDULER` | The in-TUI scheduler runs scheduled directives | `off` |
 | `LUMI_SCHEDULE_PATH` | The authored schedule file | `core/schedule.toml` |
-| `LUMI_DIRECTIVE_QUEUE` | The FIFO queue the cron writes / the TUI drains | `.lumi/directive-queue.jsonl` |
-| `LUMI_ACTIVITY_PATH` | The TUI heartbeat (last-real-input stamp) the cron reads for `idle:` | `.lumi/activity.txt` |
-| `LUMI_SCHED_TICK_MS` | How often the cron evaluates the schedule, in **milliseconds** | `30000` |
-| `LUMI_SCHED_CATCHUP_H` | Skip queued directives older than this on TUI restart | `6` |
+| `LUMI_SCHED_TICK_MS` | How often the in-TUI scheduler evaluates the schedule, in **milliseconds** | `30000` |
+| `LUMI_SCHED_TICK_FAST_MS` | The **fast** tick for ephemeral directives (e.g. `%update_state`), in **milliseconds** | `60000` |
+| `LUMI_SCHED_CATCHUP_H` | On startup, fire wall-clock entries missed within this window (older → skipped) | `6` |
 | `LUMI_SCHED_DAY_CAP` | Global max scheduled thoughts per day (restraint) | `24` |
+
+(No `LUMI_DIRECTIVE_QUEUE` / `LUMI_ACTIVITY_PATH` — there is no bus and no heartbeat file. The scheduler's
+only state is a small `schedule.state` (last-fired per entry), read once on startup for the catch-up pass.)
 
 Per-directive day caps + the quiet-window ride the existing `LUMI_THOUGHTS_*` settings — nothing here
 re-implements the engine or a directive.
@@ -214,15 +231,16 @@ no gain (a tick is cheap: small file reads + the pure `due()` predicate, no core
 
 ## Sequencing & roadmap (proposed)
 
-Hard-deps all **shipped**: v0.12 (the engine + `run_directive` + `resolve`), v0.13 (the file-bus +
-dumb-daemon + catch-up pattern), v0.4 (the clock + quiet hours). The build is small and self-contained:
+Hard-deps all **shipped**: v0.12 (the engine + `run_directive` + `resolve`), v0.4 (the clock + quiet
+hours). The build is small and self-contained:
 
 1. **The trigger model** — `due(now, last_fired, spec)` for `every`/`idle`/`at`/`between`/`cron`
    (pure, unit-tested) + the `schedule.toml` parser + `schedule.state`.
-2. **The cron process** (`lumi-scheduler`) — the dumb loop: read schedule + activity, evaluate due,
-   append to the queue, stamp state. (Mirrors `telegram.outbound`'s shape; the only un-unit-tested glue.)
-3. **The TUI queue-drain** — poll `directive-queue.jsonl`, route each through `run_directive` (silent
-   records; graduated/outward → outbox), apply the catch-up cap; write the `activity.txt` heartbeat.
+2. **The in-TUI scheduler loop** — a timer evaluates `due()` each tick and calls `run_directive`
+   **directly** (silent → a `Thought`; graduated/outward → outbox); a **startup catch-up pass**; reads the
+   TUI's own in-memory last-input for `idle:`. The only un-unit-tested glue (one integration test).
+3. **The tick service** — a fast in-TUI timer for **ephemeral** directives (`%update_state`):
+   fire-and-forget, not persisted, a no-op if missed.
 4. **Migrate** the v0.4/v0.12 idle triggers into `idle:` schedule entries; retire the in-app timers.
 
 It's the natural **companion to the tool-thoughts phase**: ship the scheduler and every directive (inward
@@ -235,12 +253,12 @@ It's the natural **companion to the tool-thoughts phase**: ship the scheduler an
 
 - [ ] 🔲 `due(now, last_fired, spec)` for `every` / `idle` / `at` / `between` / `cron` (pure; fixed-clock tests).
 - [ ] 🔲 `schedule.toml` parser → schedule entries; `schedule.state` (last-fired per entry).
-- [ ] 🔲 The **`lumi-scheduler`** process — read schedule + `activity.txt`, evaluate due, append to the queue, stamp state, quiet-hours + caps.
-- [ ] 🔲 The **TUI queue-drain** — poll the queue, route via `run_directive` (NOT `_run_turn`), catch-up cap, write `activity.txt`.
+- [ ] 🔲 The **in-TUI scheduler loop** — a timer evaluates `due()` and calls `run_directive` directly (NOT `_run_turn`); a **startup catch-up pass**; quiet-hours + caps; reads the TUI's in-memory last-input for `idle:`.
+- [ ] 🔲 The **tick service** — a fast in-TUI timer for ephemeral directives (`%update_state`): fire-and-forget, not persisted, collapse a backlog.
 - [ ] 🔲 Migrate the v0.4 nudge + the v0.12 `%think` idle trigger to `idle:` entries; retire `_maybe_think`/`_maybe_nudge`.
-- [ ] 🔲 Config: `LUMI_SCHEDULER` / `_SCHEDULE_PATH` / `_DIRECTIVE_QUEUE` / `_ACTIVITY_PATH` / `_SCHED_TICK_MS` (ms; ≤ 60 000, ~30 000 default) / `_SCHED_CATCHUP_H` / `_SCHED_DAY_CAP`; an operator guide.
-- [ ] 🔲 Tests: `due(…)` per trigger type (fixed clock); the queue round-trips (cron appends → TUI drains via `run_directive`); quiet-hours + per-day caps hold; the catch-up cap skips stale; a queued `%directive` records a `Thought`; isolation holds. **No real sleeps, no paid calls.**
+- [ ] 🔲 Config: `LUMI_SCHEDULER` / `_SCHEDULE_PATH` / `_SCHED_TICK_MS` / `_SCHED_TICK_FAST_MS` / `_SCHED_CATCHUP_H` / `_SCHED_DAY_CAP`; an operator guide. (No `_DIRECTIVE_QUEUE` / `_ACTIVITY_PATH` — no bus.)
+- [ ] 🔲 Tests: `due(…)` per trigger type (fixed clock); a due entry runs through `run_directive` → records a `Thought`; quiet-hours + per-day caps hold; the **startup catch-up** skips stale + fires the most-recent due; the **tick service** is fire-and-forget (a missed ephemeral tick is a no-op; idempotent `update` advances once); isolation holds. **No real sleeps, no paid calls.**
 
 **Already in place (reused, not rebuilt):** the mental-act engine + `run_directive` + `tick_think`, the
-placeholder `resolve()`, `should_nudge` / quiet-hours / `proactive_due`, the v0.13 `state.fifo` bus +
-catch-up `split_catchup`, and the dumb-daemon shape — all ✅ shipped.
+placeholder `resolve()`, `should_nudge` / quiet-hours / `proactive_due`, and the `set_interval` timer
+pattern the in-TUI scheduler + tick service ride — all ✅ shipped. (No file bus / daemon is needed.)
