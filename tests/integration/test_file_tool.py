@@ -58,6 +58,20 @@ def test_find_in_file_to_read_around_chain(tmp_path):
     assert "← (це)" in around                                                     # anchor marked
 
 
+def test_search_files_to_read_around_chain(tmp_path):
+    # v0.32 LUMI-125: a search_files hit's line number opens exactly that spot via read_around.
+    _sandbox(tmp_path, "owner", "doc.md", "intro\nrandom\nЦІЛЬ знайдена\nafter\n")
+    mock = MockLLMClient(states=_STATE, tool_script=[
+        ("search_files", {"query": "ЦІЛЬ"}),
+        ("read_around", {"path": "doc.md", "line": 3, "k": 1}),
+    ])
+    core = _core(tmp_path, mock, file_tool=True)
+    core.reply("знайди ЦІЛЬ і відкрий контекст", core.start_session())
+    assert "doc.md:3:" in mock.tool_calls[0][2]                        # search → doc.md line 3
+    around = mock.tool_calls[1][2]
+    assert "3: ЦІЛЬ знайдена" in around and "← (це)" in around          # read_around opened that line
+
+
 def test_turn_offers_no_tools_when_off(tmp_path):
     mock = MockLLMClient(states={"reply": "ок", "emotion": "joy", "intensity": 0.8},
                          tool_script=[("read_file", {"path": "anything"})])

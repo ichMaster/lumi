@@ -1,4 +1,4 @@
-# Local file tool — setup & usage (v0.19 read · v0.20 write)
+# Local file tool — setup & usage (v0.19 read · v0.20 write · v0.29 metadata · v0.32 search)
 
 Let Лілі **see, search, read, and write files** in a private per-user folder during a normal chat turn.
 She can list a directory, search inside a file for a string (and get the line numbers), read a file by
@@ -44,10 +44,12 @@ That's it. Within the turn she calls the file tools, reads or writes what she ne
 
 | Tool | What it does |
 |---|---|
-| **list_files** | Lists the file names (with sizes **and created/modified dates**, v0.29) in a folder under her sandbox. |
-| **find_in_file** | Searches a file for a string and returns the **line numbers** of matches (with a short preview), so she can jump to the right place. |
+| **list_files** | Lists the file names (with sizes **and created/modified dates**, v0.29) in a folder under her sandbox. **v0.32:** filter by **modified date** with `after`/`before` (`YYYY-MM-DD`, half-open `[after, before)`). |
+| **find_in_file** | Searches **one** file for a string and returns the **line numbers** of matches (with a short preview), so she can jump to the right place. |
 | **read_file** | Reads a block of lines from a given start line, and reports the file's **total lines**, so she can page to the end. |
 | **stat_file** (v0.29) | Reports one file's **size + created + modified date** without listing the whole folder. |
+| **search_files** (v0.32) | Searches the **contents of all files** in her sandbox (recursive; optional subfolder) for a string — returns `path:line: text`, i.e. **which file + line number** of each match. The cross-file twin of `find_in_file`; the line number feeds `read_around`. |
+| **read_around** (v0.32) | Reads a file's lines **around a given line** (`line ± k`, the anchor marked, clamped at the edges). After `find_in_file` / `search_files` gives a line number, opens the passage around it — the file twin of the recall **`message_context`**. |
 
 **Write (v0.20 + v0.29) — non-destructive:**
 
@@ -62,8 +64,11 @@ The **created** date uses the OS birth-time where available (macOS / BSD), falli
 metadata-change time elsewhere. There is **no overwrite, no delete, and no move** tool. Overwrite / edit / delete, if ever wanted, are a later,
 separately-gated addition.
 
-Three natural flows:
+Natural flows:
 
+- **Search across files, then open the spot (v0.32).** You: *"де я писав про світанок?"* She runs
+  `search_files("світанок")`, gets back `journal/2026-06-13.md:42`, and `read_around` line 42 to read the
+  passage — the file twin of recall → `message_context`.
 - **Find and read in one turn.** You: *"прочитай розділ про оплату"*. She runs `find_in_file` for
   "Розділ 4", takes the line number, and `read_file` from there — all in one reply.
 - **She tells you the line, you decide.** You: *"на якому рядку розділ 4?"* → *"212"* → you: *"читай з
@@ -124,6 +129,11 @@ All optional except `LUMI_FILE_TOOL`. Restart the TUI after changing any of them
 | `LUMI_FILE_FIND_MAX` | Max matches `find_in_file` returns | `50` |
 | `LUMI_FILE_WRITE_MAX` | Max bytes of **one** `create_file`/`append_file` write | `65536` |
 | `LUMI_FILE_COPY_MAX` | Max **source** bytes for one `copy_file` (v0.29; copies existing bytes — separate from `WRITE_MAX`) | `5242880` |
+| `LUMI_FILE_SEARCH_MAX_FILES` | Max files `search_files` scans/returns (v0.32) | `200` |
+| `LUMI_FILE_SEARCH_MAX_LINES` | Max matching lines `search_files` returns (v0.32) | `100` |
+| `LUMI_FILE_SEARCH_MAX_CHARS` | Total output char budget for `search_files` (v0.32) | `4000` |
+| `LUMI_FILE_AROUND_MAX_K` | Max **K** lines each side for `read_around` (v0.32) | `50` |
+| `LUMI_FILE_DATE_MAX_DAYS` | Max `list_files` `after`/`before` span, in days (v0.32) | `366` |
 | `LUMI_TOOL_MAX_STEPS` | Max tool calls per turn (the loop cap) | `8` |
 
 Example `.env` block:
@@ -135,6 +145,11 @@ LUMI_FILE_TOOL=on
 # LUMI_FILE_FIND_MAX=50
 # LUMI_FILE_WRITE_MAX=65536
 # LUMI_FILE_COPY_MAX=5242880
+# LUMI_FILE_SEARCH_MAX_FILES=200
+# LUMI_FILE_SEARCH_MAX_LINES=100
+# LUMI_FILE_SEARCH_MAX_CHARS=4000
+# LUMI_FILE_AROUND_MAX_K=50
+# LUMI_FILE_DATE_MAX_DAYS=366
 # LUMI_TOOL_MAX_STEPS=8
 ```
 

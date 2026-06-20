@@ -127,7 +127,7 @@ all **off by default**, all **per-user** (sandboxed / scoped to you), all **boun
 
 | Family | Tool calls | What she can do | Enable flag | Setup guide |
 |---|---|---|---|---|
-| **File** | `list_files` · `find_in_file` · `read_file` · `create_file` · `append_file` · `stat_file` · `create_folder` · `copy_file` | List / search / read, and create / append / copy files in her per-user sandbox (non-destructive — no overwrite/delete) | `LUMI_FILE_TOOL` | [FILE_TOOL_SETUP.md](FILE_TOOL_SETUP.md) |
+| **File** | `list_files` (by date) · `find_in_file` · `search_files` · `read_file` · `read_around` · `create_file` · `append_file` · `stat_file` · `create_folder` · `copy_file` | List (filter by date) / search **across files** / read by line or **± K around a line** / create / append / copy in her per-user sandbox (read-only search; non-destructive writes) | `LUMI_FILE_TOOL` | [FILE_TOOL_SETUP.md](FILE_TOOL_SETUP.md) |
 | **Wikipedia** | `wiki_search` · `wiki_read` | Look something up on Wikipedia and answer with the source | `LUMI_WIKI` | [WIKI_SETUP.md](WIKI_SETUP.md) |
 | **News** | `news_search` · `news_read` | Read fresh Guardian news on a topic and answer, cited | `LUMI_NEWS_TOOL` | [NEWS_SETUP.md](NEWS_SETUP.md) |
 | **Image** | `view_image` · `generate_image` · `send_image` | See & describe a picture, generate a PNG (**paid**), send one to your Telegram | `LUMI_IMAGE` | [IMAGE_SETUP.md](IMAGE_SETUP.md) |

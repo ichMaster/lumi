@@ -236,6 +236,23 @@ def test_read_around_is_sandboxed_and_isolated(tmp_path):
     assert "traversal" in mock.tool_calls[0][2] and "ALICE SECRET" not in mock.tool_calls[0][2]
 
 
+# --- v0.32 LUMI-125: list_files date filter is bound to the active user's sandbox -----------------
+def test_list_files_date_filter_is_isolated(tmp_path):
+    alice = _sandbox(tmp_path, "alice", "asecret.md", "A\n")
+    bob = _sandbox(tmp_path, "bob", "bmine.md", "B\n")
+    ts = datetime(2026, 6, 15, 12, 0).timestamp()
+    os.utime(alice / "asecret.md", (ts, ts))
+    os.utime(bob / "bmine.md", (ts, ts))
+    mock = MockLLMClient(states=_STATE, tool_script=[
+        ("list_files", {"after": "2026-06-14", "before": "2026-06-16"}),
+    ])
+    core_bob, _ = _core(tmp_path, mock, user="bob")
+    state = core_bob.reply("list recent", core_bob.start_session())
+    assert isinstance(state, EmotionState)
+    result = mock.tool_calls[0][2]
+    assert "bmine.md" in result and "asecret.md" not in result   # only bob's dated files
+
+
 # --- per-user isolation over stat_file + copy_file ------------------------------------------------
 def test_user_cannot_stat_or_copy_another_users_file(tmp_path):
     _sandbox(tmp_path, "alice", "secret.md", "ALICE SECRET\n")

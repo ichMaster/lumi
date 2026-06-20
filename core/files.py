@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 # Anthropic-style tool schemas for the three READ tools. Registered alongside the terminal
@@ -34,11 +34,16 @@ from pathlib import Path
 READ_TOOLS: list[dict] = [
     {
         "name": "list_files",
-        "description": "Перелік файлів (імена, розміри, дати створення/зміни) у теці пісочниці Лілі.",
+        "description": (
+            "Перелік файлів (імена, розміри, дати створення/зміни) у теці пісочниці Лілі; "
+            "можна звузити за датою ЗМІНИ — after/before (РРРР-ММ-ДД, напівінтервал [after, before))."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Тека відносно кореня пісочниці (типово '.')."}
+                "path": {"type": "string", "description": "Тека відносно кореня пісочниці (типово '.')."},
+                "after": {"type": "string", "description": "Лише змінені від цієї дати (РРРР-ММ-ДД, включно)."},
+                "before": {"type": "string", "description": "Лише змінені до цієї дати (РРРР-ММ-ДД, виключно)."},
             },
         },
     },
@@ -219,6 +224,14 @@ def _fmt_ts(ts: float) -> str:
     return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
 
 
+def _is_ymd(s: str) -> bool:
+    """True iff ``s`` is a ``YYYY-MM-DD`` date (v0.32 list_files date filter)."""
+    try:
+        return len(s) == 10 and bool(date.fromisoformat(s))
+    except ValueError:
+        return False
+
+
 def _stat_dates(st: os.stat_result) -> tuple[str, str]:
     """``(created, modified)`` for a stat result (v0.29). Modified is ``st_mtime``; **created** is
     ``st_birthtime`` where the OS provides it (macOS / BSD), falling back to ``st_ctime`` (the
@@ -250,6 +263,7 @@ class FileTools:
         search_max_lines: int = 100,
         search_max_chars: int = 4000,
         around_max_k: int = 50,
+        date_max_days: int = 366,
     ) -> None:
         self._root = Path(root)
         self._read_lines = max(1, read_lines)
@@ -261,6 +275,7 @@ class FileTools:
         self._search_max_lines = max(1, search_max_lines)
         self._search_max_chars = max(1, search_max_chars)
         self._around_max_k = max(0, around_max_k)  # v0.32 read_around: max K lines each side
+        self._date_max_days = max(1, date_max_days)  # v0.32 list_files after/before range-span cap
         self._lines_read = 0  # lines read so far this turn (a fresh FileTools per turn = fresh budget)
 
     # --- the executor entry point ----------------------------------------------------------------
@@ -308,10 +323,24 @@ class FileTools:
             return f"error: directory not found: {rel!r}"
         if not d.is_dir():
             return f"error: not a directory: {rel!r}"
+        after = (inp.get("after") or "").strip() or None    # v0.32 filter by MODIFIED date, half-open
+        before = (inp.get("before") or "").strip() or None
+        if after and not _is_ymd(after):
+            return "error: 'after' must be YYYY-MM-DD"
+        if before and not _is_ymd(before):
+            return "error: 'before' must be YYYY-MM-DD"
+        if after and before:
+            span = (date.fromisoformat(before) - date.fromisoformat(after)).days
+            if span > self._date_max_days:
+                return f"error: date range too wide: {span} days > {self._date_max_days} cap"
         rows: list[str] = []
         for child in sorted(d.iterdir(), key=lambda c: c.name):
             st = child.stat()
             created, modified = _stat_dates(st)
+            if after or before:  # filter on the MODIFIED day; [after, before) half-open
+                day = modified[:10]
+                if (after and day < after) or (before and day >= before):
+                    continue
             if child.is_dir():
                 rows.append(f"  {child.name}/  (dir, created {created}, modified {modified})")
             elif child.is_file():
@@ -319,7 +348,8 @@ class FileTools:
                     f"  {child.name}  ({st.st_size} bytes, created {created}, modified {modified})"
                 )
         if not rows:
-            return f"(empty directory: {rel})"
+            scope = f" modified in [{after or '…'}, {before or '…'})" if (after or before) else ""
+            return f"(no entries{scope} in {rel})" if (after or before) else f"(empty directory: {rel})"
         return f"Files in {rel}:\n" + "\n".join(rows)
 
     def _find_in_file(self, inp: dict) -> str:

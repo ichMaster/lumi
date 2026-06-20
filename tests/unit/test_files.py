@@ -6,6 +6,7 @@ executor (the "--- write tools ---" section below).
 from __future__ import annotations
 
 import os
+from datetime import datetime
 
 from core.files import (
     READ_TOOL_NAMES,
@@ -167,6 +168,42 @@ def test_read_around_past_end_missing_and_bad_int(tmp_path):
     assert "past the end" in ft.execute("read_around", {"path": "f.md", "line": 99})
     assert "file not found" in ft.execute("read_around", {"path": "ghost.md", "line": 1})
     assert "must be integers" in ft.execute("read_around", {"path": "f.md", "line": "x"})
+
+
+# --- list_files date filter (v0.32) ---------------------------------------------------------------
+def _touch_on(path, ymd):
+    ts = datetime.fromisoformat(ymd + "T12:00:00").timestamp()
+    os.utime(path, (ts, ts))
+
+
+def test_list_files_date_filter_selects_range(tmp_path):
+    for name, day in [("jun11.md", "2026-06-11"), ("jun15.md", "2026-06-15"), ("jun20.md", "2026-06-20")]:
+        f = tmp_path / name
+        f.write_text("x\n", encoding="utf-8")
+        _touch_on(f, day)
+    ft = FileTools(tmp_path)
+    out = ft.execute("list_files", {"after": "2026-06-13", "before": "2026-06-20"})  # [13, 20)
+    assert "jun15.md" in out
+    assert "jun11.md" not in out and "jun20.md" not in out  # 11 is before; 20 excluded (half-open)
+
+
+def test_list_files_unfiltered_is_byte_identical(tmp_path):
+    (tmp_path / "a.md").write_text("x\n", encoding="utf-8")
+    ft = FileTools(tmp_path)
+    assert ft.execute("list_files", {}) == ft.execute("list_files", {"after": "", "before": ""})
+
+
+def test_list_files_date_span_cap(tmp_path):
+    (tmp_path / "a.md").write_text("x\n", encoding="utf-8")
+    ft = FileTools(tmp_path, date_max_days=5)
+    assert "too wide" in ft.execute("list_files", {"after": "2026-01-01", "before": "2026-12-31"})
+
+
+def test_list_files_date_invalid(tmp_path):
+    (tmp_path / "a.md").write_text("x\n", encoding="utf-8")
+    ft = FileTools(tmp_path)
+    assert "YYYY-MM-DD" in ft.execute("list_files", {"after": "not-a-date"})
+    assert "YYYY-MM-DD" in ft.execute("list_files", {"before": "2026/06/01"})
 
 
 # --- read_file -------------------------------------------------------------------------------------

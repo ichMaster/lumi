@@ -401,6 +401,7 @@ class Core:
         file_search_max_lines: int = 100,
         file_search_max_chars: int = 4000,
         file_around_max_k: int = 50,
+        file_date_max_days: int = 366,
         tool_max_steps: int = 8,
         file_tool_trace: bool = False,
         wiki_enabled: bool = False,
@@ -499,6 +500,7 @@ class Core:
         self._file_search_max_lines = file_search_max_lines
         self._file_search_max_chars = file_search_max_chars
         self._file_around_max_k = file_around_max_k  # v0.32 read_around K cap
+        self._file_date_max_days = file_date_max_days  # v0.32 list_files date-range cap
         self._tool_max_steps = tool_max_steps
         # v0.19 tool trace: record the file tools used this turn (for the TUI trace + .lumi/tool-log.jsonl).
         self._file_tool_trace = file_tool_trace
@@ -1546,6 +1548,7 @@ class Core:
             search_max_lines=self._file_search_max_lines,
             search_max_chars=self._file_search_max_chars,
             around_max_k=self._file_around_max_k,
+            date_max_days=self._file_date_max_days,
         )
         return READ_TOOLS + WRITE_TOOLS, tools.execute  # read + non-destructive write/filesystem (v0.29)
 
@@ -2591,6 +2594,7 @@ def build_core(
         file_search_max_lines=cfg.file_search_max_lines,
         file_search_max_chars=cfg.file_search_max_chars,
         file_around_max_k=cfg.file_around_max_k,
+        file_date_max_days=cfg.file_date_max_days,
         tool_max_steps=cfg.tool_max_steps,
         file_tool_trace=cfg.file_tool_trace,
         wiki_enabled=cfg.wiki,
