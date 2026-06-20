@@ -59,6 +59,13 @@ query of her own and across **multiple hops** (search → refine), instead of on
   **iterative** search during her reasoning. The two compose; the tool result is **deduped** against what
   the auto-RAG block already injected, so nothing is shown twice.
 
+### Scope by date
+
+A recall can be **restricted to a date range** — `recall(query, after, before)` for her, and
+`/recall <query> after:РРРР-ММ-ДД before:РРРР-ММ-ДД` for you. The range is half-open `[after, before)`.
+It's still a **meaning** search, just confined to those days — handy for *"що ми обговорювали того тижня?"*
+(For the *raw, verbatim* messages of a day — no meaning search — use the **date tool** in the overview below.)
+
 ---
 
 ## Why it's safe to leave on

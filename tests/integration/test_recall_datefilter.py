@@ -1,7 +1,9 @@
-"""`/recall` current-session filtering — `exclude_session` drops a session's own hits, so the
-active conversation's echoes don't bury an older source past the top-k cutoff. MockEmbedder, no
-paid calls. (core.recall / recall_moments)"""
+"""`/recall` filtering — `exclude_session` drops the active conversation's own hits, and
+`before`/`after` scope the meaning search to a date range. MockEmbedder, no paid calls.
+(core.recall / recall_moments)"""
 from __future__ import annotations
+
+from datetime import UTC, datetime
 
 from core.agent import Core
 from core.embedder import MockEmbedder
@@ -64,3 +66,63 @@ def test_recall_moments_threads_the_exclusion(tmp_path):
     old_id, cur_id = _index_two_sessions(core)
     moments = core.recall_moments("маяк у тумані", exclude_session=cur_id)
     assert moments  # renders from the older session, current-session anchor excluded
+
+
+# --- date-range filter (before / after) — meaning search scoped to a date window ---------------------
+class _Clock:
+    """A mutable injected clock so messages land on chosen dates."""
+    def __init__(self, dt: datetime) -> None:
+        self.dt = dt
+
+    def __call__(self) -> datetime:
+        return self.dt
+
+
+def _date_core(tmp_path, clock):
+    return Core(
+        llm=MockLLMClient("ок"),
+        repository=JsonRepository(tmp_path / "dates.json"),
+        canon="C", model="m", user_id="owner", clock=clock,
+        embedder=MockEmbedder(), recall_enabled=True, embed_model="m@x",
+        rag_enabled=True, rag_k=5, rag_floor=0.0, rag_max_chars=8000, rag_snippet_chars=4000,
+    )
+
+
+def _index_two_dates(core, clock):
+    clock.dt = datetime(2026, 6, 11, 10, 0, tzinfo=UTC)
+    core.reply("маяк у тумані", core.start_session())     # the older one
+    clock.dt = datetime(2026, 6, 19, 10, 0, tzinfo=UTC)
+    core.reply("маяк у тумані", core.start_session())     # the newer one (same text)
+    core.ensure_backfill()
+
+
+def test_recall_before_scopes_to_earlier_dates(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 10, 0, tzinfo=UTC))
+    core = _date_core(tmp_path, clock)
+    _index_two_dates(core, clock)
+    hits = core.recall("маяк у тумані", k=10, before="2026-06-19")
+    assert hits and all(r.ts[:10] < "2026-06-19" for _, r in hits)   # only earlier than the bound
+
+
+def test_recall_after_scopes_to_later_dates(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 10, 0, tzinfo=UTC))
+    core = _date_core(tmp_path, clock)
+    _index_two_dates(core, clock)
+    hits = core.recall("маяк у тумані", k=10, after="2026-06-19")
+    assert hits and all(r.ts[:10] >= "2026-06-19" for _, r in hits)  # only on/after the bound
+
+
+def test_recall_date_range_window(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 10, 0, tzinfo=UTC))
+    core = _date_core(tmp_path, clock)
+    _index_two_dates(core, clock)
+    hits = core.recall("маяк у тумані", k=10, after="2026-06-11", before="2026-06-12")
+    assert hits and all(r.ts[:10] == "2026-06-11" for _, r in hits)  # the half-open [after, before) window
+
+
+def test_recall_moments_threads_the_date_filter(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 10, 0, tzinfo=UTC))
+    core = _date_core(tmp_path, clock)
+    _index_two_dates(core, clock)
+    joined = "\n".join(core.recall_moments("маяк у тумані", before="2026-06-19"))
+    assert "2026-06-11" in joined and "2026-06-19" not in joined

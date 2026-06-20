@@ -244,6 +244,10 @@ RECALL_TOOLS: list[dict] = [
             "properties": {
                 "query": {"type": "string", "description": "Змістовий запит для пошуку в памʼяті."},
                 "k": {"type": "integer", "description": "Скільки моментів повернути (необовʼязково)."},
+                "after": {"type": "string",
+                          "description": "Лише з цієї дати й пізніше (РРРР-ММ-ДД, необовʼязково)."},
+                "before": {"type": "string",
+                           "description": "Лише до цієї дати, не включно (РРРР-ММ-ДД, необовʼязково)."},
             },
             "required": ["query"],
         },
@@ -1522,8 +1526,12 @@ class Core:
                 k = int(k) if k is not None else self._recall_tool_k
             except (TypeError, ValueError):
                 k = self._recall_tool_k
+            after = ((tool_input or {}).get("after") or "").strip() or None    # YYYY-MM-DD date scope
+            before = ((tool_input or {}).get("before") or "").strip() or None
             # dedup against what's already in the prompt (the live window + auto-RAG block)
-            moments = self.recall_moments(query, k, window_ids=self._turn_dedup_ids)
+            moments = self.recall_moments(
+                query, k, window_ids=self._turn_dedup_ids, before=before, after=after
+            )
             if not moments:
                 return f"(нічого не згадалося про «{query}»)"
             return trusted_text("\n\n".join(moments))  # her own memory → trusted framing in the loop
@@ -2016,6 +2024,7 @@ class Core:
 
     def recall(
         self, query: str, k: int | None = None, *, exclude_session: str | None = None,
+        before: str | None = None, after: str | None = None,
     ) -> list[tuple[float, VectorRecord]]:
         """Explicit semantic search (the ``/recall`` command, v0.16).
 
@@ -2025,14 +2034,17 @@ class Core:
 
         ``exclude_session`` drops hits whose message belongs to that session — used to skip the
         **current conversation's own echoes** (already in the live window) so an older source
-        surfaces past the top-``k`` cutoff. When set, the search over-fetches, then trims to ``k``
-        post-filter. A chunk is matched by its ``parent_msg_id`` (the message it came from).
+        surfaces past the top-``k`` cutoff. ``before`` / ``after`` (``YYYY-MM-DD`` date prefixes)
+        scope the meaning search to the half-open date range ``[after, before)``. When any filter is
+        set the search over-fetches, then trims to ``k`` post-filter. A chunk is matched by its
+        ``parent_msg_id`` (the message it came from).
         """
         if not self._recall_enabled or self._embedder is None or not query.strip():
             return []
         self.ensure_backfill()
         k = k or self._recall_k
-        pool = max(k * 5, 60) if exclude_session else k  # over-fetch so the filter still yields ~k
+        filtered = bool(exclude_session or before or after)
+        pool = max(k * 5, 60) if filtered else k  # over-fetch so the filter still yields ~k
         try:
             [vec] = self._embedder.embed([query[:self._embed_max_chars]], is_query=True)  # QUERY side
             hits = self._repo.search_vectors(self._user_id, list(vec), pool)
@@ -2042,11 +2054,15 @@ class Core:
         if exclude_session:
             own = self._session_vector_ids(exclude_session)
             hits = [(s, r) for (s, r) in hits if r.parent_msg_id not in own]
+        if before:
+            hits = [(s, r) for (s, r) in hits if r.ts[:10] < before]
+        if after:
+            hits = [(s, r) for (s, r) in hits if r.ts[:10] >= after]
         return hits[:k]
 
     def recall_moments(
         self, query: str, k: int | None = None, *, exclude_session: str | None = None,
-        window_ids: set[str] | None = None,
+        window_ids: set[str] | None = None, before: str | None = None, after: str | None = None,
     ) -> list[str]:
         """Explicit `/recall` as **dated dialogue snippets** (the v0.16 hits widened with their
         neighbours, anchor + score marked) — the same context expansion the per-turn RAG uses, so
@@ -2054,8 +2070,9 @@ class Core:
         conversation's own messages as matched anchors (their neighbours may still render as
         context). ``window_ids`` (v0.31) dedups the result against what's already in the prompt — the
         live window + the auto-RAG block (the recall-tool path); ``None`` → no dedup (the /recall
-        command). Empty / off → ``[]``; never raises."""
-        hits = self.recall(query, k, exclude_session=exclude_session)
+        command). ``before`` / ``after`` (YYYY-MM-DD) scope the meaning search to a date range.
+        Empty / off → ``[]``; never raises."""
+        hits = self.recall(query, k, exclude_session=exclude_session, before=before, after=after)
         if window_ids:
             hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]
         if not hits:

@@ -816,20 +816,30 @@ class LumiApp(App[None]):
         # echoes (they're already in the live window). `!all` (or `!here`) searches everything,
         # including this conversation. The flag is stripped from the query.
         include_current = False
+        before: str | None = None
+        after: str | None = None
         kept: list[str] = []
         for tok in raw.split():
-            if tok.lower() in ("!all", "!here"):
+            low = tok.lower()
+            if low in ("!all", "!here"):
                 include_current = True
+            elif low.startswith("before:"):
+                before = tok[len("before:"):]
+            elif low.startswith("after:"):
+                after = tok[len("after:"):]
             else:
                 kept.append(tok)
         query = " ".join(kept)
         if not query:
-            body = "Що згадати? `/recall <запит>` (додай `!all` щоб шукати й у цій розмові)"
+            body = ("Що згадати? `/recall <запит>` — фільтри: `!all` (і ця розмова), "
+                    "`after:РРРР-ММ-ДД`, `before:РРРР-ММ-ДД` (за датою)")
             self._emit(body, Markdown(body))
             return
         exclude = None if include_current or self._session is None else self._session.id
-        moments = self._core.recall_moments(query, exclude_session=exclude)  # skip the current session
-        flt = "" if exclude else " (з цією розмовою)"
+        moments = self._core.recall_moments(query, exclude_session=exclude, before=before, after=after)
+        parts = ([] if exclude else ["з цією розмовою"]) \
+            + ([f"від {after}"] if after else []) + ([f"до {before}"] if before else [])
+        flt = f" ({', '.join(parts)})" if parts else ""
         if not moments:
             body = f"Нічого не згадалося про «{query}»{flt}."
         else:
