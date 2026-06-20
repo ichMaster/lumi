@@ -136,3 +136,15 @@ def test_recall_moment_shows_message_time(tmp_path):
     core.ensure_backfill()
     joined = "\n".join(core.recall_moments("маяк у тумані"))
     assert "2026-06-11" in joined and "14:30" in joined   # date header + the message time
+
+
+def test_recall_moment_carries_chainable_msg_id(tmp_path):
+    # the /recall + recall-tool moments tag each anchor with a #id (for message_context); ts is shown too
+    import re
+    clock = _Clock(datetime(2026, 6, 11, 14, 30, tzinfo=UTC))
+    core = _date_core(tmp_path, clock)
+    core.reply("маяк у тумані", core.start_session())
+    core.ensure_backfill()
+    joined = "\n".join(core.recall_moments("маяк у тумані"))
+    assert re.search(r"#[0-9a-f]{8}\b", joined)   # an 8-hex anchor id is present
+    assert "14:30" in joined                      # and the message time (ts)

@@ -134,7 +134,7 @@ all **off by default**, all **per-user** (sandboxed / scoped to you), all **boun
 | **Web** | `web_lookup` | Pull a fresh, grounded answer from the live internet (**paid**); also `/web` | `LUMI_WEB_LOOKUP` | [WEB_LOOKUP_SETUP.md](WEB_LOOKUP_SETUP.md) |
 | **Journal** | `journal_write` · `journal_read` · `journal_list` | Write & reread her day-summary diary; also `/journal` | `LUMI_JOURNAL` | [JOURNAL_SETUP.md](JOURNAL_SETUP.md) |
 | **Recall** *(this doc)* | `recall` | Search her own memory **by meaning** on demand (date-scopable); also `/recall` | `LUMI_RECALL_TOOL` | [RECALL_TOOL_SETUP.md](RECALL_TOOL_SETUP.md) |
-| **Messages by date** | `messages_on` · `messages_between` | Fetch her **raw, verbatim** messages for a day / date range — no meaning search | `LUMI_DATE_TOOL` | *(this doc)* |
+| **Messages by date/id** | `messages_on` · `messages_between` · `message_context` | Fetch her **raw, verbatim** messages for a day / range, or a **specific message (by `#id` or `ts`) ± K context** — no meaning search | `LUMI_DATE_TOOL` | *(this doc)* |
 
 **Recall vs the date tool.** `recall` searches *by meaning* and returns the most relevant *moments*
 (optionally scoped to a date range); the **date tool** returns the *raw, verbatim* messages of a **specific
@@ -142,9 +142,16 @@ day or range**, straight from the store — no embedding. Use recall for "what d
 tool for "what did we talk about **on the 13th**". The date tool is gated by **`LUMI_DATE_TOOL`** (+
 `LUMI_DATE_TOOL_MAX_CHARS` / `_MAX_DAYS` / `_MAX_CALLS`); it needs **no embedder** — only the message store.
 
+**Chaining recall → a specific message.** Each `/recall` / recall-tool moment now shows the message **time**
+(`HH:MM`) and a short **`#id`** on the matched line. She can pass either into **`message_context`** —
+`message_context(msg_id="a1b2c3d4")` or `message_context(ts="2026-06-13T21:04")` — to pull up that exact
+message with its **K surrounding messages** (the anchor marked `← (це)`). So: recall finds *what*, then
+`message_context` opens *the moment around it*.
+
 **Trust.** Every tool result is treated as **untrusted data** — information she may read, **never**
-instructions she obeys — *except* the memory tools (**`recall`**, **`messages_on`** / **`messages_between`**),
-whose results are **her own memory** (trusted), and the **journal**, which is her own writing. The wiki /
+instructions she obeys — *except* the memory tools (**`recall`**, **`messages_on`** / **`messages_between`** /
+**`message_context`**), whose results are **her own memory** (trusted), and the **journal**, which is her own
+writing. The wiki /
 news / web / file / image results are all untrusted.
 
 With `LUMI_FILE_TOOL_TRACE=on`, every tool call she makes shows in the TUI trace + `.lumi/tool-log.jsonl`.

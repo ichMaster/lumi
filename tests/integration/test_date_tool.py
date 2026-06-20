@@ -41,7 +41,7 @@ def test_messages_on_returns_that_days_transcript(tmp_path):
     _seed(core, clock, "2026-06-11")
     _seed(core, clock, "2026-06-13")
     tools, execute = core._date_tool_args()
-    assert {t["name"] for t in tools} == {"messages_on", "messages_between"}
+    assert {t["name"] for t in tools} == {"messages_on", "messages_between", "message_context"}
     out = execute("messages_on", {"date": "2026-06-13"})
     assert is_trusted_text(out)                          # her own transcript → trusted
     body = out["text"]
@@ -122,3 +122,75 @@ def test_date_tool_is_single_user(tmp_path):
     out = bob._date_tool_args()[1]("messages_on", {"date": "2026-06-11"})
     body = out["text"] if is_trusted_text(out) else str(out)
     assert "Боба" in body and "Аліси" not in body        # B's date tool never returns A's messages
+
+
+# --- message_context: a specific message (by msg_id OR ts) + K before/after -------------------------
+from core.repository import vector_msg_id  # noqa: E402
+
+
+def _seed_thread(core, clock, day, user="owner"):
+    """5 turns in one session on `day` at 09:00, 09:05, … ; returns the filtered session messages."""
+    s = core.start_session()
+    for i, mn in enumerate(("09:00", "09:05", "09:10", "09:15", "09:20")):
+        clock.dt = datetime.fromisoformat(f"{day}T{mn}:00+00:00")
+        core.reply(f"повідомлення {i}", s)
+    return [m for m in core._repo.load_messages(s.id) if m.user_id == user and m.text.strip()]
+
+
+def test_message_context_by_msg_id(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 9, 0, tzinfo=UTC))
+    core = _core(tmp_path, clock)
+    msgs = _seed_thread(core, clock, "2026-06-11")
+    target = next(m for m in msgs if m.role == "user" and "повідомлення 2" in m.text)
+    mid = vector_msg_id(target.session_id, target.ts, target.role, target.text)
+    out = core._date_tool_args()[1]("message_context", {"msg_id": mid, "k": 2})
+    assert is_trusted_text(out)
+    body = out["text"]
+    assert "повідомлення 2" in body and "← (це)" in body           # the anchor, marked
+    assert "повідомлення 1" in body and "повідомлення 3" in body   # ±2 neighbours present
+
+
+def test_message_context_by_msg_id_prefix(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 9, 0, tzinfo=UTC))
+    core = _core(tmp_path, clock)
+    msgs = _seed_thread(core, clock, "2026-06-11")
+    target = next(m for m in msgs if m.role == "user" and "повідомлення 2" in m.text)
+    mid = vector_msg_id(target.session_id, target.ts, target.role, target.text)
+    out = core._date_tool_args()[1]("message_context", {"msg_id": "#" + mid[:8], "k": 0})  # 8-char + '#'
+    assert is_trusted_text(out) and "повідомлення 2" in out["text"]
+
+
+def test_message_context_by_ts(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 9, 0, tzinfo=UTC))
+    core = _core(tmp_path, clock)
+    _seed_thread(core, clock, "2026-06-11")
+    out = core._date_tool_args()[1]("message_context", {"ts": "2026-06-11T09:10", "k": 1})
+    assert is_trusted_text(out)
+    assert "повідомлення 2" in out["text"] and "← (це)" in out["text"]   # 09:10 = that turn
+
+
+def test_message_context_not_found(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 9, 0, tzinfo=UTC))
+    core = _core(tmp_path, clock)
+    _seed_thread(core, clock, "2026-06-11")
+    out = core._date_tool_args()[1]("message_context", {"msg_id": "ffffffffffff"})
+    assert not is_trusted_text(out) and "не знайдено" in out
+
+
+def test_message_context_needs_an_identifier(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 9, 0, tzinfo=UTC))
+    core = _core(tmp_path, clock)
+    out = core._date_tool_args()[1]("message_context", {})
+    assert not is_trusted_text(out) and "msg_id або ts" in out
+
+
+def test_message_context_is_single_user(tmp_path):
+    clock = _Clock(datetime(2026, 6, 11, 9, 10, tzinfo=UTC))
+    repo = JsonRepository(tmp_path / "shared.json")
+    alice = _core(tmp_path, clock, user="alice", repo=repo)
+    bob = _core(tmp_path, clock, user="bob", repo=repo)
+    alice.reply("секрет Аліси", alice.start_session())
+    a = [m for m in alice._messages_in_range("2026-06-11", "2026-06-11") if m.role == "user"][0]
+    a_mid = vector_msg_id(a.session_id, a.ts, a.role, a.text)
+    out = bob._date_tool_args()[1]("message_context", {"msg_id": a_mid})   # B asks for A's message id
+    assert not is_trusted_text(out) and "не знайдено" in out               # never crosses users

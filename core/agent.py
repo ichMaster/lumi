@@ -284,6 +284,24 @@ DATE_TOOLS: list[dict] = [
             "required": ["start", "end"],
         },
     },
+    {
+        "name": "message_context",
+        "description": (
+            "Повертає КОНКРЕТНЕ повідомлення — за його id АБО за позначкою часу ts — РАЗОМ із K "
+            "повідомленнями до і після нього в тій самій розмові, щоб побачити той момент у контексті. "
+            "І id (#xxxxxxxx), і час є у результаті recall біля знайденого рядка. Це ТВОЯ памʼять."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "msg_id": {"type": "string",
+                           "description": "Id повідомлення (повний або префікс, напр. #xxxxxxxx з recall)."},
+                "ts": {"type": "string",
+                       "description": "Або позначка часу — префікс РРРР-ММ-ДД чи РРРР-ММ-ДДTГГ:ХХ."},
+                "k": {"type": "integer", "description": "Скільки повідомлень до і після (за замовч. 3)."},
+            },
+        },
+    },
 ]
 DATE_TOOL_NAMES = frozenset(t["name"] for t in DATE_TOOLS)
 
@@ -1599,9 +1617,10 @@ class Core:
         out.sort(key=lambda m: m.ts)
         return out
 
-    def _format_dated_messages(self, msgs: list[Message]) -> str:
+    def _format_dated_messages(self, msgs: list[Message], *, anchor: Message | None = None) -> str:
         """Render verbatim messages as a dated transcript (``— date —`` headers + ``HH:MM who: text``),
-        capped at ``date_tool_max_chars`` (a truncation note if it overflows)."""
+        capped at ``date_tool_max_chars`` (a truncation note if it overflows). ``anchor`` (if given,
+        the same object from ``msgs``) is marked ``← (це)``."""
         lines: list[str] = []
         cur_date: str | None = None
         total = 0
@@ -1612,7 +1631,8 @@ class Core:
                 lines.append(hdr)
                 total += len(hdr) + 1
                 cur_date = d
-            line = f"  {m.ts[11:16]} {self._who(m.role)}: {strip_leading_stamp(m.text)}"
+            tag = "  ← (це)" if (anchor is not None and m is anchor) else ""
+            line = f"  {m.ts[11:16]} {self._who(m.role)}: {strip_leading_stamp(m.text)}{tag}"
             if total + len(line) > self._date_tool_max_chars:
                 lines.append("… (обрізано — забагато тексту за цей період)")
                 break
@@ -1620,11 +1640,35 @@ class Core:
             total += len(line) + 1
         return "\n".join(lines)
 
+    def _message_context_window(
+        self, k: int, *, msg_id: str | None = None, ts: str | None = None,
+    ) -> tuple[list[Message], Message | None]:
+        """Find the message matching ``msg_id`` (its ``vector_msg_id`` equals or starts-with) **or**
+        ``ts`` (a timestamp prefix — date or date+time) and return its session window (the anchor ±
+        ``k`` messages) + the anchor. ``([], None)`` if neither is given or nothing matches. Searches
+        only **this user's** sessions (isolation); ``msg_id`` wins if both are given."""
+        mid_q = (msg_id or "").strip().lstrip("#")
+        ts_q = (ts or "").strip()
+        if not mid_q and not ts_q:
+            return [], None
+        for session in self._repo.list_sessions(self._user_id):
+            msgs = [m for m in self._repo.load_messages(session.id)
+                    if m.user_id == self._user_id and m.text.strip()]
+            for i, m in enumerate(msgs):
+                if mid_q:
+                    mid = vector_msg_id(m.session_id, m.ts, m.role, m.text)
+                    hit = mid == mid_q or mid.startswith(mid_q)
+                else:
+                    hit = m.ts.startswith(ts_q)
+                if hit:
+                    return msgs[max(0, i - k): i + k + 1], m
+        return [], None
+
     def _date_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
-        """The (tools, executor) for the v0.31 by-date message tools (``messages_on`` /
-        ``messages_between``); ``(None, None)`` off. Reads **this user's** raw messages by ``ts`` — no
-        embedding, no meaning search. The result is her own transcript → **trusted** framing. Bounded by
-        a per-turn call cap, a char budget, and a range-span cap."""
+        """The (tools, executor) for the v0.31 by-time message tools (``messages_on`` /
+        ``messages_between`` / ``message_context``); ``(None, None)`` off. Reads **this user's** raw
+        messages directly — no embedding, no meaning search. The result is her own transcript →
+        **trusted** framing. Bounded by a per-turn call cap, a char budget, and a range-span cap."""
         if not self._date_tool_enabled:
             return None, None
         calls = {"n": 0}
@@ -1634,6 +1678,21 @@ class Core:
             if calls["n"] > self._date_tool_max_calls:
                 return f"(date tool limit reached: {self._date_tool_max_calls} per turn)"
             ti = tool_input or {}
+            if name == "message_context":
+                mid_in, ts_in = ti.get("msg_id"), ti.get("ts")
+                if not ((mid_in or "").strip() or (ts_in or "").strip()):
+                    return "(message_context: вкажи msg_id або ts повідомлення)"
+                k = ti.get("k")
+                try:
+                    k = int(k) if k is not None else 3
+                except (TypeError, ValueError):
+                    k = 3
+                window, anchor = self._message_context_window(
+                    max(0, min(k, 50)), msg_id=mid_in, ts=ts_in,
+                )
+                if not window:
+                    return f"(повідомлення не знайдено: {(mid_in or ts_in or '—').strip()})"
+                return trusted_text(self._format_dated_messages(window, anchor=anchor))
             if name == "messages_on":
                 day = (ti.get("date") or "").strip()
                 if not _is_ymd(day):
@@ -2328,8 +2387,9 @@ class Core:
         for score, rec in hits:
             pos = self._position_of(rec.parent_msg_id)  # the message id (== msg_id for a one-chunk record)
             if pos is None:
+                bid = f"  #{rec.parent_msg_id[:8]}" if show_score else ""  # an id to chain into message_context
                 bare.append((score, f"— {rec.ts[:10]} —\n  {rec.ts[11:16]} {self._who(rec.role)}: "
-                                    f"{_snippet(rec.text, self._rag_snippet_chars)}{mark(score)}"))
+                                    f"{_snippet(rec.text, self._rag_snippet_chars)}{mark(score)}{bid}"))
                 continue
             by_session.setdefault(pos[0], []).append((pos[1], score, rec.chunk_index))
 
@@ -2362,7 +2422,10 @@ class Core:
                         body = self._passage_text(m.text, anchor_chunks[p])
                     else:                                        # a neighbour (or v0.16) → whole, capped
                         body = _snippet(m.text, self._rag_snippet_chars)
-                    lines.append(f"  {m.ts[11:16]} {self._who(m.role)}: {body}{mark(anchor_score.get(p))}")
+                    idtag = f"  #{mid[:8]}" if (show_score and p in anchor_score) else ""  # chainable id
+                    lines.append(
+                        f"  {m.ts[11:16]} {self._who(m.role)}: {body}{mark(anchor_score.get(p))}{idtag}"
+                    )
                 if lines:
                     date = msgs[int(start)].ts[:10]
                     snippets.append((rank, f"— {date} —\n" + "\n".join(lines)))
