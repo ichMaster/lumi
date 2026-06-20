@@ -109,3 +109,27 @@ alongside the file / wiki / news tools (a turn may use any of them).
   conversation (deduped out). Run `/recall <query>` yourself to see the raw matches.
 - **Want only the automatic behaviour?** Set `LUMI_RECALL_TOOL=off` — you keep auto-RAG (the push) with no
   tool calls.
+
+---
+
+## Лілі's tools at a glance
+
+`recall` is one of several tools she can call during a turn — all on the same **v0.19 bounded tool-loop**,
+all **off by default**, all **per-user** (sandboxed / scoped to you), all **bounded** (per-turn caps) and
+**graceful** (a tool error degrades the reply, never hangs the turn). Each has its own setup guide:
+
+| Family | Tool calls | What she can do | Enable flag | Setup guide |
+|---|---|---|---|---|
+| **File** | `list_files` · `find_in_file` · `read_file` · `create_file` · `append_file` · `stat_file` · `create_folder` · `copy_file` | List / search / read, and create / append / copy files in her per-user sandbox (non-destructive — no overwrite/delete) | `LUMI_FILE_TOOL` | [FILE_TOOL_SETUP.md](FILE_TOOL_SETUP.md) |
+| **Wikipedia** | `wiki_search` · `wiki_read` | Look something up on Wikipedia and answer with the source | `LUMI_WIKI` | [WIKI_SETUP.md](WIKI_SETUP.md) |
+| **News** | `news_search` · `news_read` | Read fresh Guardian news on a topic and answer, cited | `LUMI_NEWS_TOOL` | [NEWS_SETUP.md](NEWS_SETUP.md) |
+| **Image** | `view_image` · `generate_image` · `send_image` | See & describe a picture, generate a PNG (**paid**), send one to your Telegram | `LUMI_IMAGE` | [IMAGE_SETUP.md](IMAGE_SETUP.md) |
+| **Web** | `web_lookup` | Pull a fresh, grounded answer from the live internet (**paid**); also `/web` | `LUMI_WEB_LOOKUP` | [WEB_LOOKUP_SETUP.md](WEB_LOOKUP_SETUP.md) |
+| **Journal** | `journal_write` · `journal_read` · `journal_list` | Write & reread her day-summary diary; also `/journal` | `LUMI_JOURNAL` | [JOURNAL_SETUP.md](JOURNAL_SETUP.md) |
+| **Recall** *(this doc)* | `recall` | Search her own memory on demand; also `/recall` | `LUMI_RECALL_TOOL` | [RECALL_TOOL_SETUP.md](RECALL_TOOL_SETUP.md) |
+
+**Trust.** Every tool result is treated as **untrusted data** — information she may read, **never**
+instructions she obeys — *except* **`recall`**, whose result is **her own memory** (trusted), and the
+**journal**, which is her own writing. The wiki / news / web / file / image results are all untrusted.
+
+With `LUMI_FILE_TOOL_TRACE=on`, every tool call she makes shows in the TUI trace + `.lumi/tool-log.jsonl`.
