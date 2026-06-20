@@ -242,3 +242,41 @@ validates. Model mocked — no paid calls.
 **Why here.** A small, standalone extension of the shipped v0.19/v0.20 file tool (no new seam, no
 contract change). Placed at the end of v0 — independent of the recall/web/thought phases, so its position
 is immaterial; it could equally ship as a `0.20.x` enhancement.
+
+### v0.32 — file tool IV: search across files, by date, and by line context (read-only)
+
+**Goal.** Лілі can **find** things across her sandbox — full-text search over file *contents*, filter
+files **by date**, and open a file **around a line** (± K) — the file-side twin of the v0.31 memory tools
+(`recall` / `messages_between` / `message_context`). All **read-only** (no write path touched).
+
+**Tasks.**
+- **`search_files(query, *, path?, regex?)`** — full-text search **across** the sandbox (optionally under
+  a subfolder). **Every match carries its file path + its 1-based line number** (`path:line: text`) — the
+  same line-number contract as the single-file `find_in_file`, now across files. That line number is the
+  **handle into `read_around`** (the file-side `recall → message_context` chain). Bounded by
+  `LUMI_FILE_SEARCH_MAX_FILES` / `_MAX_LINES` / `_MAX_CHARS`; binary / oversize files skipped; a no-match → a notice.
+- **File-by-date:** `list_files` gains **`after` / `before`** (`YYYY-MM-DD`, half-open `[after, before)`)
+  over the v0.29 created/modified dates; a range-span cap (`LUMI_FILE_DATE_MAX_DAYS`). The file twin of the
+  recall date filter.
+- **`read_around(path, line, k)`** — read lines `[line−k, line+k]` with the **anchor line marked** (clamped
+  at file edges), bounded by `LUMI_FILE_READ_MAX` + a K cap. The file twin of `message_context`: after
+  `find_in_file` / `search_files` returns a line number, open the K lines around it.
+- Register on the existing executor behind **`LUMI_FILE_TOOL`** (no new flag); add `LUMI_FILE_SEARCH_*` +
+  `LUMI_FILE_DATE_MAX_DAYS`; update `.env.example` + `docs/FILE_TOOL_SETUP.md`.
+
+**Definition of done.** With the flag on, `search_files` finds a query across multiple files, **each hit
+carrying its path + its 1-based line number** (capped) — and that line number, passed to `read_around`,
+opens exactly that spot (the chain holds); `list_files` filters by an `after`/`before` day range;
+`read_around` opens an anchor ± K; **all read-only** (no overwrite/delete/move); content stays **untrusted**; per-user isolation holds (A
+never searches B's sandbox); a miss / oversize / bad path degrades to a notice; **off → the v0.29 tool is
+byte-identical**; the `{reply, emotion, intensity}` contract still validates.
+
+**Tests.** `search_files` matches across files **and returns the correct 1-based line number for each
+hit** (a line planted at a known position) that `read_around` then lands on; respects caps; the date filter selects the right files
+(dates via the injected clock / `st_mtime`); `read_around` returns the right ± K window with the anchor
+marked + clamps at edges; binary/oversize skipped; content untrusted (an embedded instruction ignored);
+isolation (A↔B); absent when off; the emotion contract validates. Model mocked — no paid calls.
+
+**Why here.** The read-only complement to v0.29 and the **file-side mirror of the v0.31 recall toolkit**;
+no new seam, no contract change. Placed at v0.32 (before the thought-tools) so the v0.33 `%review` /
+`%explore` file-thoughts inherit a richer file tool.
