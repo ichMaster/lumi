@@ -12,16 +12,31 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.31 — Recall tool: she searches her own memory on demand.** When the relevant thing isn't the literal
-words you just typed — *"а що вони казали про брата?"* — Лілі can issue a **targeted** memory query
-**mid-turn** (a model-callable **`recall()`**) and weave the result in, in her own voice — the **"pull"**
-that complements the automatic per-turn auto-RAG **"push."** A recall result is **her own past — trusted
-history** (not untrusted external data), deduped against the live window + the auto-RAG block. It can be
-**scoped to a date range** (`after`/`before`); a pair of **by-date tools** (`messages_on` /
-`messages_between`) return her **raw, verbatim** transcript for a day; and **`message_context`** opens a
-**specific message** (by `#id` or `ts`) plus its **K surrounding messages** — so recall finds *what*, then
-`message_context` opens *the moment around it*. **Per-user isolated**, **bounded**, **off by default**
-(`LUMI_RECALL_TOOL` / `LUMI_DATE_TOOL`). See **[docs/RECALL_TOOL_SETUP.md](docs/RECALL_TOOL_SETUP.md)**.
+**0.33 — Tool-using thoughts: her inner life can act, not just muse.** The v0.12 thought-stream gains a
+**think-path tool-loop**, so a `%directive` can *use a tool* and still end in a thought (its terminal stays
+a thought, never `set_state`). A small family lands on one table-driven engine: **file** (`%note` →
+`notes/<date>.md`, `%review`, `%explore`, **`%journal`** → a full day-review via `journal_write`), **wiki**
+(`%lookup`/`%learn`), **news** (`%catchup`/`%brief`), **web** (`%search`/`%events`), **image**
+(`%gaze`/`%imagine`/`%share`), **memory** (`%recall`), and the **open** **`%prompt`** — you hand her any
+task and she does it as her own act (**freeform**: the output follows your instruction, not a 1–2-sentence
+cap). Every directive records a thought and can **also** save it via an **output sink** — `%name!` (chat) ·
+`%name >notes` · `%name >path/file.md` · `%name >folder/` (code-owned, sandboxed). A thought-driven
+**external** query is **de-identified** (only the topical part leaves) — except a place or name **you
+explicitly type**, which survives; **`%prompt`** is fully exempt (you authored it). Tool results stay
+**untrusted**; everything is **per-user**, **owner-gated where it reaches out**, and **off by default**
+(`LUMI_THOUGHT_TOOLS` + per-family flags). See **[docs/THOUGHT_DIRECTIVES.md](docs/THOUGHT_DIRECTIVES.md)**.
+
+Builds on **0.32's file tool IV**: read-only search and read *across* the sandbox — **`search_files`**
+(full-text across files → matching files + lines + line numbers, the cross-file twin of `find_in_file`), an
+**`after`/`before` date filter** on `list_files`, and **`read_around(path, line, k)`** (a file's anchor line
+± K) — so she can search to *what*, then open *the lines around it*. Reuses **`LUMI_FILE_TOOL`**, per-user
+isolated, **off by default**.
+
+Builds on **0.31's recall tool**: a model-callable **`recall()`** so Лілі searches her own memory by meaning
+**mid-turn** — the **"pull"** that complements the automatic per-turn auto-RAG **"push."** A recall result is
+**her own past — trusted history**, deduped against the live window; **scopeable by date range**, with
+by-date tools + **`message_context`** to open a specific moment. See
+**[docs/RECALL_TOOL_SETUP.md](docs/RECALL_TOOL_SETUP.md)**.
 
 Builds on **0.30's chunking**: a long message is split into ~`chunk_chars` passages, each embedded as its
 **own** vector, so search ranks per **chunk** and `/recall` shows the matched **passage** — *"search fine,

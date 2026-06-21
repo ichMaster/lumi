@@ -1,6 +1,31 @@
 Lumi — Release notes
 ====================
 
+Version 0.33.0 (2026-06-21)
+---------------------------
+v0.33 — Tool-using thoughts (the thought-stream acts via tools):
+- Think-path tool-loop (LUMI-126): a %directive can run a bounded tool-loop and end in a THOUGHT terminal (never set_state); Directive is now table-driven (tools / cap / surface / family). %think/%wonder stay tool-less.
+- Extended placeholder resolver (LUMI-127) + de-identified thought-driven query/prompt with a contract test (LUMI-128): only the topical/creative part of an external query leaves; %prompt is exempt.
+- File-thoughts + per-family gating (LUMI-129): %note (a code-appended note), %review (read-only), %explore (read+write), %journal (the v0.28 journal tool).
+- Wiki-thoughts %lookup/%learn (LUMI-130); news-thoughts %catchup/%brief (LUMI-131); image-thoughts %gaze/%imagine/%share (LUMI-132); web-thoughts %search/%events (LUMI-133).
+- Memory %recall (her own past, trusted) + the open %prompt — your instruction as her own act (LUMI-134).
+- TUI operation surfacing (LUMI-135): a status-line act marker + a gated chat-log meta line (LUMI_THOUGHT_SURFACE).
+
+v0.32 — File tool IV (read-only search/read across the sandbox):
+- search_files (LUMI-123): full-text search across the whole sandbox -> matching files + lines + line numbers (the cross-file twin of find_in_file).
+- read_around(path, line, k) (LUMI-124): a file's anchor line +/- K lines (the line-context read that chains off a search hit).
+- list_files after/before date filter (LUMI-125) + the search -> read_around chain. Reuses LUMI_FILE_TOOL; per-user isolated; off by default.
+
+Post-phase refinements:
+- Per-invocation output sink %name[!] [>sink]: thoughts (default) / chat (!) / notes/<date>.md (>notes) / a file (>path/file.md) / a dated file in a folder (>folder/) — code-owned, sandboxed, non-destructive, with a "saved ->" confirmation.
+- %note writes to notes/<date>.md (distinct from %journal's dedicated diary root).
+- Tool-thoughts USE their tools: a think-path tool-use nudge so %journal actually calls journal_write (a full day-review with the code-owned mood/biorhythm/forecast stamp) and %explore/%lookup/etc. act instead of only musing.
+- De-id keep-whitelist: a place or name the user explicitly types in a topic survives the external-query de-id (fixes %events/%search stripping a home city like "Львів"); autonomous (no-topic) queries are still fully de-identified.
+- %prompt is freeform: its output follows the task (a multi-fact answer or a long analysis), not the 1-2 sentence musing cap.
+- TUI logs the real cause behind "Лілі is unavailable" to .lumi/lumi.log (+ an error-class hint inline), via a new lumi.* file handler.
+- Docs: a directives & placeholders reference (docs/THOUGHT_DIRECTIVES.md).
+No emotion-contract / core-seam change.
+
 Version 0.31.0 (2026-06-20)
 ---------------------------
 - Recall tool (v0.31, LUMI-120..122): a model-callable recall() so Лілі searches her OWN memory by meaning mid-turn — the "pull" that complements the automatic per-turn auto-RAG "push" (v0.17). She composes a query (often != your literal message), gets back a few dated moments, and answers from them in her own voice. Off by default (LUMI_RECALL_TOOL); needs LUMI_RECALL + a configured embedder. No emotion-contract / core change.
