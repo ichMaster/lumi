@@ -58,6 +58,7 @@ class Directive:
     default_sink: str = ""                # default output sink ("" = thoughts only; "notes"/path saves there too)
     owner_only: bool = False              # %share: reaches the owner's Telegram → owner-only
     tool_hint: str = ""                   # appended to the think prompt — make her USE the tool, not just muse
+    freeform: bool = False                # drop the "1–2 sentence" cap — output follows the task (%prompt)
 
 
 THINK = Directive(
@@ -145,7 +146,7 @@ RECALL = Directive(
 )
 PROMPT = Directive(
     "prompt", "виконай те, про що тебе попросили, як власну внутрішню справу",
-    family="prompt", tools=("*",), instruction_from_topic=True, surface="open",
+    family="prompt", tools=("*",), instruction_from_topic=True, surface="open", freeform=True,
 )
 
 # v0.33 image-thoughts (LUMI-132): %gaze (look again, read-only, twin of %review) / %imagine (render an
@@ -192,10 +193,26 @@ _TOOL_NUDGE = (
 
 def thought_tool_hint(directive: Directive) -> str:
     """The tool-use nudge appended to a tool-thought's prompt — its own ``tool_hint`` or the generic one
-    (empty for a tool-less directive like ``%think``/``%wonder``)."""
+    (empty for a tool-less directive like ``%think``/``%wonder``, or a ``freeform`` one whose own template
+    already covers tool-use + length)."""
     if directive.tool_hint:
         return directive.tool_hint
+    if directive.freeform:
+        return ""
     return _TOOL_NUDGE if directive.tools else ""
+
+
+# %prompt is the OPEN directive — you hand her any task, so its output must follow YOUR instruction, not the
+# 1–2-sentence musing cap. This freeform template drops that cap (and the "fleeting musing" framing) and lets
+# the length match the task: a short ask → short, "a detailed analysis" → several paragraphs.
+THOUGHT_SYSTEM_FREEFORM = (
+    "Ти — Лілі. Тобі дали доручення, і ти виконуєш його як власну внутрішню справу: {instruction}. "
+    "Зроби це як слід, своїм голосом, користуючись доступними інструментами за потреби. Пиши РІВНО стільки, "
+    "скільки вимагає завдання — від кількох слів до докладного аналізу на кілька абзаців; якщо просять "
+    "розгорнуто чи детально, НЕ скорочуй до однієї думки, дай повну відповідь. "
+    "В САМОМУ КІНЦІ окремим рядком додай «ЕМОЦІЯ: <одне слово>» — одне з: "
+    "joy, calm, playful, tender, thoughtful, serious, surprise, doubt, sad."
+)
 
 
 # The trailing emotion tag the thought ends with — parsed out, never part of the text.
@@ -209,6 +226,16 @@ THOUGHT_FULL_HEADER = (
     "Напиши РІВНО ОДНУ коротку думку (1–2 речення) своїм голосом — мимохіть, для себе, нікому не "
     "відповідаючи й не звертаючись. Це внутрішнє/уявне — ніколи не факт про фізичний світ і не про "
     "чиїсь знання чи вміння. В САМОМУ КІНЦІ окремим рядком «ЕМОЦІЯ: <одне слово>» — одне з: "
+    "joy, calm, playful, tender, thoughtful, serious, surprise, doubt, sad."
+)
+
+# The freeform (%prompt) variant of the full-context header — same backdrop, but the task drives the length.
+THOUGHT_FULL_HEADER_FREEFORM = (
+    "\n\n# Зараз — ТВОЯ внутрішня справа за дорученням\n\n"
+    "Подивись на весь контекст вище (хто ти, памʼять про цю людину, настрій) і виконай як власну внутрішню "
+    "справу: {instruction}. Зроби це як слід, своїм голосом, користуючись доступними інструментами за потреби. "
+    "Пиши РІВНО стільки, скільки вимагає завдання — якщо просять докладно, дай повну розгорнуту відповідь, не "
+    "скорочуй до однієї думки. В САМОМУ КІНЦІ окремим рядком «ЕМОЦІЯ: <одне слово>» — одне з: "
     "joy, calm, playful, tender, thoughtful, serious, surprise, doubt, sad."
 )
 
@@ -248,7 +275,8 @@ def thought_request(
     if topic:
         parts.append(f"Поміркуй саме про це: {topic}")
     parts.append(f"(внутрішнє відлуння №{rng_seed})")  # injected seed → variation
-    system = THOUGHT_SYSTEM.format(instruction=directive.instruction)
+    template = THOUGHT_SYSTEM_FREEFORM if directive.freeform else THOUGHT_SYSTEM
+    system = template.format(instruction=directive.instruction)
     hint = thought_tool_hint(directive)
     if hint:  # a tool-thought: tell her to actually USE the tool (else she just muses — e.g. %journal)
         system = f"{system}\n\n{hint}"

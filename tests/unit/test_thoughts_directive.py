@@ -48,6 +48,15 @@ def test_tool_hint_nudges_tool_thoughts_only():
     assert "journal_write" in system and "ЩОДЕННИК" in system
 
 
+def test_prompt_is_freeform_no_one_thought_cap():
+    from core.thoughts import PROMPT, THINK, thought_request, thought_tool_hint
+    sysp, _ = thought_request(PROMPT)                         # the OPEN directive — output follows the task
+    assert "1–2 речення" not in sysp and "скільки вимагає завдання" in sysp
+    assert thought_tool_hint(PROMPT) == ""                   # freeform → no generic "short final thought" nudge
+    systhink, _ = thought_request(THINK)                     # a normal musing directive still carries the cap
+    assert "1–2 речення" in systhink
+
+
 def test_unknown_or_nondirective_is_none():
     assert parse_directive("%bogus topic") is None  # unknown directive → chat
     assert parse_directive("50% done") is None       # not a directive

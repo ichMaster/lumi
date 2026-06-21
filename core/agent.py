@@ -110,6 +110,7 @@ from core.styles import load_meta_descriptions, load_meta_styles, load_styles
 from core.thoughts import (
     REGISTRY,
     THOUGHT_FULL_HEADER,
+    THOUGHT_FULL_HEADER_FREEFORM,
     THOUGHTS_CAP,
     THOUGHTS_INTERVAL_S,
     THOUGHTS_MAX_LINES,
@@ -1009,7 +1010,8 @@ class Core:
         ]
         messages.append({"role": "user", "content": thought_full_seed(topic=topic, rng_seed=rng_seed)})
         full_system, cache_prefix = self._system_prompt(session)
-        system = full_system + THOUGHT_FULL_HEADER.format(instruction=directive.instruction)
+        header = THOUGHT_FULL_HEADER_FREEFORM if directive.freeform else THOUGHT_FULL_HEADER
+        system = full_system + header.format(instruction=directive.instruction)
         hint = thought_tool_hint(directive)
         if hint:  # a tool-thought: make her USE the tool, not just muse (e.g. %journal → journal_write)
             system = f"{system}\n\n{hint}"

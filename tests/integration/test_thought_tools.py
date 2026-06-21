@@ -85,6 +85,25 @@ def test_user_typed_topic_survives_external_deid(tmp_path, monkeypatch):
     assert "Львові" not in seen[1]                                  # her inner-state query is de-identified
 
 
+def test_prompt_is_freeform_records_full_length_output(tmp_path):
+    # %prompt is the OPEN directive: a multi-fact / long-analysis ask must NOT be squeezed to a 1–2 sentence
+    # musing. The freeform template lets the output match the instruction; the sink saves it in full.
+    long = ("Факт 1: хвіст комети завжди спрямований геть від Сонця. Факт 2: ядро комети — це лід і пил. "
+            "Факт 3: комета Галлея повертається приблизно кожні 76 років.")
+    core = Core(
+        llm=MockLLMClient(f"{long}\nЕМОЦІЯ: thoughtful"), repository=JsonRepository(tmp_path / "s.json"),
+        canon="Ти — Лілі.", model="m", clock=_CLK, user_id="owner",
+        mood_enabled=False, closeness_enabled=False, thoughts_enabled=True,
+        thought_tools_enabled=True, thought_prompt=True, file_tool_enabled=True, files_dir=tmp_path / "files",
+    )
+    out = core.run_directive("%prompt знайди три факти про комети", core.start_session())
+    assert out.is_directive and out.thought is not None
+    assert out.thought.text == long                          # the full 3-fact answer recorded, not capped
+    out2 = core.run_directive("%prompt >notes знайди три факти про комети", core.start_session())
+    assert out2.saved_to == "notes/2026-06-21.md"            # >notes saves the full-length text too
+    assert long in (tmp_path / "files" / "owner" / "notes" / "2026-06-21.md").read_text(encoding="utf-8")
+
+
 def test_unknown_named_tool_falls_back_to_tool_less(tmp_path, monkeypatch):
     monkeypatch.setitem(thoughts_mod.REGISTRY, "tooly",
                         Directive("tooly", "...", tools=("no_such_tool",)))
