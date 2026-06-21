@@ -54,6 +54,8 @@ class Directive:
     surface: str = "silent"               # surfacing default
     trigger: str | None = None            # scheduler trigger default (v0.34)
     instruction_from_topic: bool = False  # %prompt: the topic IS the instruction
+    family: str = ""                      # the gating family (file/wiki/news/image/web/memory/prompt); "" = always-on
+    append_journal: bool = False          # %note: code appends the recorded thought to journal/<date>.md
 
 
 THINK = Directive(
@@ -65,8 +67,32 @@ WONDER = Directive(
     "дай волю цікавості й уяві — «а що, якби…», дрібне відкриття, питання без відповіді",
 )
 
-# The directive registry (v0.12 ships think + wonder; dream/reflect/recall retrofit later).
-REGISTRY: dict[str, Directive] = {d.name: d for d in (THINK, WONDER)}
+# v0.33 file-thought tool groups (filtered against the turn's enabled tools).
+_FILE_READ = ("list_files", "find_in_file", "read_file", "search_files", "read_around", "stat_file")
+_FILE_RW = (*_FILE_READ, "create_file", "append_file", "create_folder", "copy_file")
+_JOURNAL = ("journal_write", "journal_read", "journal_list")
+
+# v0.33 file-thoughts (LUMI-129): %note (tool-less, code-appended) / %review (read-only) /
+# %explore (read+write) / %journal (the v0.28 journal tool).
+NOTE = Directive(
+    "note", "сформулюй коротку думку, яку варто занотувати собі на згадку",
+    family="file", append_journal=True,
+)
+REVIEW = Directive(
+    "review", "перечитай свої давні нотатки й тихо поміркуй над ними",
+    family="file", tools=_FILE_READ,
+)
+EXPLORE = Directive(
+    "explore", "поблукай своїми файлами — почитай, за бажання занотуй щось нове",
+    family="file", tools=_FILE_RW,
+)
+JOURNAL = Directive(
+    "journal", "підсумуй сьогоднішній день у своєму щоденнику",
+    family="journal", tools=_JOURNAL,
+)
+
+# The directive registry (v0.12 ships think + wonder; v0.33 adds the tool-thought families).
+REGISTRY: dict[str, Directive] = {d.name: d for d in (THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL)}
 
 THOUGHT_SYSTEM = (
     "Ти — Лілі. Це ТВОЯ внутрішня думка — не відповідь комусь, тебе зараз ніхто не чує. "

@@ -392,6 +392,7 @@ class Core:
         thoughts_show: str = "hidden",
         thoughts_context: str = "lean",
         thought_tools_enabled: bool = False,
+        thought_journal: bool = False,
         quiet_hours: tuple[int, int] | None = None,
         thoughts_quiet_hours: tuple[int, int] | None = None,
         usage_ledger_path: Path | None = None,
@@ -488,6 +489,7 @@ class Core:
         self._thoughts_show = thoughts_show  # hidden (default) / admin / off — the /thoughts policy
         self._thoughts_context = thoughts_context  # lean (seeds) / full (the whole reply backdrop)
         self._thought_tools_enabled = thought_tools_enabled  # v0.33 master gate for tool-using thoughts
+        self._thought_journal = thought_journal  # v0.33 %journal per-family flag
         self._quiet_hours = quiet_hours
         # The proactive-think's quiet window is independent of the nudge's (falls back to it in config).
         self._thoughts_quiet_hours = thoughts_quiet_hours
@@ -927,6 +929,8 @@ class Core:
             user_id=self._user_id, spoken=spoken,
         )
         self._repo.add_thought(thought)
+        if directive.append_journal:  # v0.33 %note — code appends the thought to the dated journal
+            self._append_note_journal(thought)
         _thoughts_log.info("%s [%s] %s", thought.when, thought.kind, thought.text)  # logged tier
         return thought
 
@@ -1019,6 +1023,41 @@ class Core:
         """Redact this user's personal terms from an outgoing thought-driven external query (LUMI-128)."""
         return deidentify(query, self._personal_terms())
 
+    def _family_flag(self, family: str) -> bool:
+        """The per-family thought flag (``LUMI_THOUGHT_<FAMILY>``); default ``True`` → gated by the tool."""
+        return bool(getattr(self, f"_thought_{family}", True))
+
+    def _directive_enabled(self, directive, *, is_owner: bool = True) -> bool:
+        """Whether a ``%directive`` may fire now (v0.33). ``%think``/``%wonder`` (no family/tools) are
+        always on. A family directive needs the master gate, its per-family flag, owner-rights for
+        ``%prompt``, and its underlying capability (tool/sandbox) enabled — else it is **absent** and the
+        client treats the input as plain chat."""
+        if not directive.family and not directive.tools:
+            return True  # %think / %wonder — the v0.12 always-on directives
+        if not self._thought_tools_enabled:
+            return False
+        if directive.instruction_from_topic and not is_owner:
+            return False  # %prompt is owner-only
+        if not self._family_flag(directive.family):
+            return False
+        if directive.tools:  # a tool-loop directive — the tool must be enabled this turn
+            return self._thought_tools(directive)[0] is not None
+        return self._file_tool_enabled and self._files_dir is not None  # %note (tool-less) → file sandbox
+
+    def _append_note_journal(self, thought) -> None:
+        """``%note``: append the recorded thought to a dated ``journal/<date>.md`` in the file sandbox —
+        **code-owned** (an unattended firing can't wander), non-destructive (create-or-append). Best-effort."""
+        if not (self._file_tool_enabled and self._files_dir is not None):
+            return
+        try:
+            root = self._files_dir / self._user_id / "journal"
+            root.mkdir(parents=True, exist_ok=True)
+            path = root / f"{self._clock().strftime('%Y-%m-%d')}.md"
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(f"## {thought.when[11:16]} — {thought.kind}\n{thought.text}\n\n")
+        except OSError:
+            pass  # never break the thought
+
     def _recent_tail(self, session: Session, n: int = 6) -> str | None:
         """The last ``n`` messages of the session, compact — a seed for a thought."""
         msgs = self._repo.load_messages(session.id)[-n:]
@@ -1074,6 +1113,8 @@ class Core:
         parsed = parse_directive(raw)
         if parsed is None:
             return DirectiveOutcome(is_directive=False)
+        if not self._directive_enabled(REGISTRY[parsed.name], is_owner=is_owner):
+            return DirectiveOutcome(is_directive=False)  # family off / owner-gated → plain chat (absent)
         mode = directive_mode(parsed, is_owner=is_owner)
         thought = self.think(parsed.name, topic=parsed.topic, session=session, rng_seed=rng_seed)
         return DirectiveOutcome(is_directive=True, mode=mode, thought=thought)
@@ -2671,6 +2712,7 @@ def build_core(
         thoughts_show=cfg.thoughts_show,
         thoughts_context=cfg.thoughts_context,
         thought_tools_enabled=cfg.thought_tools,
+        thought_journal=cfg.thought_journal,
         quiet_hours=cfg.quiet_hours,
         thoughts_quiet_hours=cfg.thoughts_quiet_hours,
         usage_ledger_path=(cfg.store_path.parent / "usage-ledger.jsonl") if cfg.usage_report else None,

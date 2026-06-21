@@ -44,8 +44,9 @@ def _core(tmp_path, llm, *, enabled=True):
 
 # --- registry + pure helpers ----------------------------------------------
 def test_registry_has_think_and_wonder():
-    assert set(REGISTRY) == {"think", "wonder"}
+    assert {"think", "wonder"} <= set(REGISTRY)  # v0.12 base; v0.33 adds the tool-thought families
     assert REGISTRY["think"] is THINK and REGISTRY["wonder"] is WONDER
+    assert THINK.tools == () and WONDER.tools == ()  # the base directives stay tool-less
 
 
 def test_thought_request_seeds_state_and_seed():
