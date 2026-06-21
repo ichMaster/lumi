@@ -393,6 +393,7 @@ class Core:
         thoughts_context: str = "lean",
         thought_tools_enabled: bool = False,
         thought_journal: bool = False,
+        thought_wiki: bool = False,
         quiet_hours: tuple[int, int] | None = None,
         thoughts_quiet_hours: tuple[int, int] | None = None,
         usage_ledger_path: Path | None = None,
@@ -490,6 +491,7 @@ class Core:
         self._thoughts_context = thoughts_context  # lean (seeds) / full (the whole reply backdrop)
         self._thought_tools_enabled = thought_tools_enabled  # v0.33 master gate for tool-using thoughts
         self._thought_journal = thought_journal  # v0.33 %journal per-family flag
+        self._thought_wiki = thought_wiki  # v0.33 %lookup/%learn per-family flag
         self._quiet_hours = quiet_hours
         # The proactive-think's quiet window is independent of the nudge's (falls back to it in config).
         self._thoughts_quiet_hours = thoughts_quiet_hours
@@ -2713,6 +2715,7 @@ def build_core(
         thoughts_context=cfg.thoughts_context,
         thought_tools_enabled=cfg.thought_tools,
         thought_journal=cfg.thought_journal,
+        thought_wiki=cfg.thought_wiki,
         quiet_hours=cfg.quiet_hours,
         thoughts_quiet_hours=cfg.thoughts_quiet_hours,
         usage_ledger_path=(cfg.store_path.parent / "usage-ledger.jsonl") if cfg.usage_report else None,

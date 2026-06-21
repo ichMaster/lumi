@@ -289,6 +289,7 @@ class Config:
     thoughts_context: str = "lean"  # v0.12 thought prompt: lean (seeds) / full (whole backdrop)
     thought_tools: bool = False  # v0.33 master gate: tool-using thoughts (the think-path tool-loop)
     thought_journal: bool = False  # v0.33 %journal directive (a day-summary via the v0.28 journal tool)
+    thought_wiki: bool = False  # v0.33 %lookup/%learn directives (the v0.21 wiki tool)
     # v0.13 bridge: the TUI reads inbox / writes outbox (the file bus to the Telegram daemons). Off by default.
     bridge: bool = False
     inbox_path: Path = DEFAULT_INBOX_PATH
@@ -548,6 +549,7 @@ def load_config(*, load_env: bool = True) -> Config:
         thoughts_context=(os.getenv("LUMI_THOUGHTS_CONTEXT") or "lean").strip().lower(),
         thought_tools=(os.getenv("LUMI_THOUGHT_TOOLS") or "off").strip().lower() in _TRUTHY,  # v0.33, off
         thought_journal=(os.getenv("LUMI_THOUGHT_JOURNAL") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_wiki=(os.getenv("LUMI_THOUGHT_WIKI") or "off").strip().lower() in _TRUTHY,  # v0.33
         bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
         inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else DEFAULT_INBOX_PATH,
         outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else DEFAULT_OUTBOX_PATH,

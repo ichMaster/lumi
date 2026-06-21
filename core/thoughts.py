@@ -91,8 +91,22 @@ JOURNAL = Directive(
     family="journal", tools=_JOURNAL,
 )
 
+# v0.33 wiki-thoughts (LUMI-130): %lookup (a quick check, twin of %wonder) / %learn (a deep read, twin
+# of %think) — the v0.21 Wikipedia tools in the think path; the query is de-identified, the result cited.
+_WIKI = ("wiki_search", "wiki_read")
+LOOKUP = Directive(
+    "lookup", "швиденько зазирни у вікіпедію — що там цікавого про це; завжди зазнач джерело",
+    family="wiki", tools=_WIKI,
+)
+LEARN = Directive(
+    "learn", "почитай уважніше про щось одне й тихо розкажи собі, що дізналася (з джерелом)",
+    family="wiki", tools=_WIKI,
+)
+
 # The directive registry (v0.12 ships think + wonder; v0.33 adds the tool-thought families).
-REGISTRY: dict[str, Directive] = {d.name: d for d in (THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL)}
+REGISTRY: dict[str, Directive] = {
+    d.name: d for d in (THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL, LOOKUP, LEARN)
+}
 
 THOUGHT_SYSTEM = (
     "Ти — Лілі. Це ТВОЯ внутрішня думка — не відповідь комусь, тебе зараз ніхто не чує. "
