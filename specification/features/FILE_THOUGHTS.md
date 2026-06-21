@@ -15,8 +15,9 @@ all untouched.
 > Builds on **v0.12** (the thought-stream + `%directive` registry), **v0.19** (the read tools +
 > bounded tool-loop), and **v0.20** (the non-destructive write tools). `%note` is the **one-line**
 > thought-trace; the **full day-summary** diary is the separate **`%journal`** directive on the v0.28
-> journal tool (see [JOURNAL.md](JOURNAL.md) + [TOOL_THOUGHTS.md](TOOL_THOUGHTS.md)) — both write into the
-> same dated `journal/<date>.md` by the non-destructive append rule.
+> journal tool (see [JOURNAL.md](JOURNAL.md) + [TOOL_THOUGHTS.md](TOOL_THOUGHTS.md)) — `%note` appends a
+> `notes/<date>.md` trace in her sandbox while the diary lives in its **own dedicated root** (distinct
+> files), both by the non-destructive append rule.
 
 ---
 
@@ -74,8 +75,8 @@ A `%note` fires like a `%think`: idle nudge (mostly silent, occasionally spoken)
 (`%note`, `%note!`, `%note: <topic>`). The model produces **one short thought**, exactly as today. Then
 **code** persists it:
 
-- It appends a line to a **dated journal file** in her sandbox — `journal/<YYYY-MM-DD>.md` under her
-  per-user root (`.lumi/files/<user_id>/journal/2026-06-16.md`), one entry per line:
+- It appends a line to a **dated notes file** in her sandbox — `notes/<YYYY-MM-DD>.md` under her
+  per-user root (`.lumi/files/<user_id>/notes/2026-06-16.md`), one entry per line:
   `HH:MM — <thought>`.
 - The first note of a day **creates** the file (`create_file`); later notes **append** (`append_file`)
   — the exact v0.20 non-destructive tools, so the journal is only ever grown, never rewritten.
@@ -178,7 +179,7 @@ clobber it.
 
 - **Sandboxed, per-user, non-destructive.** All writes go through the v0.19 `_safe` guard and the v0.20
   create-new-only / append-end-only tools — no traversal, no overwrite, no delete. `%note`'s path is
-  **code-fixed** (`journal/<date>.md`), so it cannot even be aimed.
+  **code-fixed** (`notes/<date>.md`), so it cannot even be aimed.
 - **Off by default, twice.** Requires both the thought-stream (`LUMI_THOUGHTS`) and the file tool
   (`LUMI_FILE_TOOL`) on; `%explore` additionally behind its own flag. If either is off, the directive
   degrades to a plain `%think` (or is simply unavailable) — never an error.
@@ -233,11 +234,11 @@ is tested before the next:
 
 ### v0.22 — `%note` (code-owned diary)
 **Goal.** Her thoughts become a durable, human-readable on-disk diary — `%note` thinks as usual and code
-appends `HH:MM — <thought>` to `journal/<date>.md` in her sandbox (create-first, append-after).
+appends `HH:MM — <thought>` to `notes/<date>.md` in her sandbox (create-first, append-after).
 **Tasks.** Register `%note` in the directive registry; after a normal think call, code-write via the
 v0.20 tools to the code-fixed dated path; record the `Thought(kind="note")` as today; best-effort
 degrade; `LUMI_THOUGHT_FILES` flag; `.env.example` + `FILE_TOOL_SETUP.md`/`THOUGHT_STREAM.md` notes.
-**DoD.** With both flags on, `%note` records a thought **and** appends it to today's journal file; the
+**DoD.** With both flags on, `%note` records a thought **and** appends it to today's notes file; the
 first note of the day creates the file; with the file tool off, the thought still records and nothing is
 written; the path is sandboxed and per-user; the emotion + `Thought` contracts are unchanged.
 **Tests.** `%note` writes the dated file (create then append, order preserved); file-tool-off degrades

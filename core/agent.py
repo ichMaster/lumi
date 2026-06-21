@@ -945,8 +945,8 @@ class Core:
             user_id=self._user_id, spoken=spoken,
         )
         self._repo.add_thought(thought)
-        if directive.append_journal:  # v0.33 %note — code appends the thought to the dated journal
-            self._append_note_journal(thought)
+        if directive.append_note:  # v0.33 %note — code appends the thought to the dated notes file
+            self._append_note(thought)
         _thoughts_log.info("%s [%s] %s", thought.when, thought.kind, thought.text)  # logged tier
         return thought
 
@@ -1060,13 +1060,14 @@ class Core:
             return self._thought_tools(directive)[0] is not None
         return self._file_tool_enabled and self._files_dir is not None  # %note (tool-less) → file sandbox
 
-    def _append_note_journal(self, thought) -> None:
-        """``%note``: append the recorded thought to a dated ``journal/<date>.md`` in the file sandbox —
-        **code-owned** (an unattended firing can't wander), non-destructive (create-or-append). Best-effort."""
+    def _append_note(self, thought) -> None:
+        """``%note``: append the recorded thought to a dated ``notes/<date>.md`` in the file sandbox —
+        **code-owned** (an unattended firing can't wander), non-destructive (create-or-append). Best-effort.
+        Distinct from the v0.28 ``%journal`` diary, which lives in its own dedicated root."""
         if not (self._file_tool_enabled and self._files_dir is not None):
             return
         try:
-            root = self._files_dir / self._user_id / "journal"
+            root = self._files_dir / self._user_id / "notes"
             root.mkdir(parents=True, exist_ok=True)
             path = root / f"{self._clock().strftime('%Y-%m-%d')}.md"
             with path.open("a", encoding="utf-8") as fh:

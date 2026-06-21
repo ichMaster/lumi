@@ -27,14 +27,14 @@ def _core(tmp_path, mock, *, thought_tools=True, file_tool=True, journal=False, 
     )
 
 
-def test_note_records_a_thought_and_code_appends_to_the_journal(tmp_path):
+def test_note_records_a_thought_and_code_appends_to_notes(tmp_path):
     mock = MockLLMClient("Сьогодні тихо й добре.\nЕМОЦІЯ: calm")
     core = _core(tmp_path, mock)
     out = core.run_directive("%note", core.start_session())
     assert out.is_directive and out.thought is not None and out.thought.kind == "note"
-    diary = tmp_path / "files" / "owner" / "journal" / "2026-06-21.md"
-    assert diary.exists()
-    body = diary.read_text(encoding="utf-8")
+    notes = tmp_path / "files" / "owner" / "notes" / "2026-06-21.md"  # notes/, not journal/ (distinct from %journal)
+    assert notes.exists()
+    body = notes.read_text(encoding="utf-8")
     assert "Сьогодні тихо й добре." in body and "09:30" in body  # code-appended, stamped
 
 
@@ -43,7 +43,7 @@ def test_note_append_is_non_destructive(tmp_path):
     core.run_directive("%note", core.start_session())
     core2 = _core(tmp_path, MockLLMClient("друга.\nЕМОЦІЯ: calm"))
     core2.run_directive("%note", core2.start_session())
-    body = (tmp_path / "files" / "owner" / "journal" / "2026-06-21.md").read_text(encoding="utf-8")
+    body = (tmp_path / "files" / "owner" / "notes" / "2026-06-21.md").read_text(encoding="utf-8")
     assert "перша." in body and "друга." in body  # appended, not overwritten
 
 
@@ -83,9 +83,9 @@ def test_journal_directive_gated_by_thought_journal_flag(tmp_path):
     assert [c[0] for c in on._llm.tool_calls] == ["journal_write"]
 
 
-def test_note_journal_is_per_user_isolated(tmp_path):
+def test_note_is_per_user_isolated(tmp_path):
     a = _core(tmp_path, MockLLMClient("секрет Аліси.\nЕМОЦІЯ: calm"), user="alice")
     a.run_directive("%note", a.start_session())
-    # alice's note lives only under her sandbox; bob's sandbox has no journal
-    assert (tmp_path / "files" / "alice" / "journal" / "2026-06-21.md").exists()
-    assert not (tmp_path / "files" / "bob" / "journal" / "2026-06-21.md").exists()
+    # alice's note lives only under her sandbox; bob's sandbox has none
+    assert (tmp_path / "files" / "alice" / "notes" / "2026-06-21.md").exists()
+    assert not (tmp_path / "files" / "bob" / "notes" / "2026-06-21.md").exists()

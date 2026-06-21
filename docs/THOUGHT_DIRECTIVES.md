@@ -30,7 +30,7 @@ The **From chat** column is what you type in the input box to fire it yourself (
 |---|---|---|---|---|---|
 | **`%think`** | `%think [topic]` | muses quietly to herself | — | `LUMI_THOUGHTS` | v0.12; always on, tool-less |
 | **`%wonder`** | `%wonder [topic]` | lets curiosity/imagination roam | — | `LUMI_THOUGHTS` | v0.12; always on, tool-less |
-| **`%note`** | `%note` | jots a thought into her diary | — (code-appends) | `+ LUMI_FILE_TOOL` | the thought is **code-appended** to `journal/<date>.md` (non-destructive) |
+| **`%note`** | `%note` | jots a thought into her notes | — (code-appends) | `+ LUMI_FILE_TOOL` | the thought is **code-appended** to `notes/<date>.md` (non-destructive) |
 | **`%review`** | `%review` | re-reads her own notes & muses | `list/find/read/search/read_around/stat` | `+ LUMI_FILE_TOOL` | read-only |
 | **`%explore`** | `%explore` | wanders her files (read **and** write) | the file read tools **+** `create/append/create_folder/copy` | `+ LUMI_FILE_TOOL` | non-destructive writes |
 | **`%journal`** | `%journal` | writes a day-summary diary entry | `journal_write/read/list` | `+ LUMI_THOUGHT_JOURNAL + LUMI_JOURNAL` | the v0.28 journal tool (its own dedicated root) |
@@ -89,12 +89,13 @@ thoughts. No tools, no external reach. This is also what the **idle nudge** fire
 ### File — `%note` / `%review` / `%explore` / `%journal` (need `LUMI_FILE_TOOL`)
 
 **`%note`** — *сформулюй коротку думку, яку варто занотувати собі на згадку.* A tool-**less** think whose
-thought the **code** then appends to a dated `journal/<date>.md` in her sandbox (create-first, append-after —
-never overwrites). Code-owned, so an unattended firing can't wander. Silent → check the file (or use `!`).
+thought the **code** then appends to a dated `notes/<date>.md` in her sandbox (create-first, append-after —
+never overwrites). Code-owned, so an unattended firing can't wander. Distinct from `%journal` (her literary
+day-diary, in a separate root). Silent → check the file (or use `!`).
 ```
 %note
 %note!                           # see the noted thought in chat too
-# → appends to .lumi/files/owner/journal/2026-06-21.md
+# → appends to .lumi/files/owner/notes/2026-06-21.md
 ```
 
 **`%review`** — *перечитай свої давні нотатки й тихо поміркуй над ними.* Read-only: she lists / searches /

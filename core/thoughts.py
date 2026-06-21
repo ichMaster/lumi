@@ -55,7 +55,7 @@ class Directive:
     trigger: str | None = None            # scheduler trigger default (v0.34)
     instruction_from_topic: bool = False  # %prompt: the topic IS the instruction
     family: str = ""                      # the gating family (file/wiki/news/image/web/memory/prompt); "" = always-on
-    append_journal: bool = False          # %note: code appends the recorded thought to journal/<date>.md
+    append_note: bool = False             # %note: code appends the recorded thought to notes/<date>.md
     owner_only: bool = False              # %share: reaches the owner's Telegram → owner-only
 
 
@@ -77,7 +77,7 @@ _JOURNAL = ("journal_write", "journal_read", "journal_list")
 # %explore (read+write) / %journal (the v0.28 journal tool).
 NOTE = Directive(
     "note", "сформулюй коротку думку, яку варто занотувати собі на згадку",
-    family="file", append_journal=True,
+    family="file", append_note=True,
 )
 REVIEW = Directive(
     "review", "перечитай свої давні нотатки й тихо поміркуй над ними",
