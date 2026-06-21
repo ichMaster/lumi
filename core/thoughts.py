@@ -56,6 +56,7 @@ class Directive:
     instruction_from_topic: bool = False  # %prompt: the topic IS the instruction
     family: str = ""                      # the gating family (file/wiki/news/image/web/memory/prompt); "" = always-on
     append_journal: bool = False          # %note: code appends the recorded thought to journal/<date>.md
+    owner_only: bool = False              # %share: reaches the owner's Telegram → owner-only
 
 
 THINK = Directive(
@@ -138,11 +139,26 @@ PROMPT = Directive(
     family="prompt", tools=("*",), instruction_from_topic=True, surface="open",
 )
 
+# v0.33 image-thoughts (LUMI-132): %gaze (look again, read-only, twin of %review) / %imagine (render an
+# inner image — PAID, create-only, own sub-cap) / %share (send a sandbox picture to your Telegram — owner-only).
+GAZE = Directive(
+    "gaze", "придивись іще раз до котроїсь зі своїх картинок і тихо поміркуй над нею",
+    family="image", tools=("view_image",),
+)
+IMAGINE = Directive(
+    "imagine", "уяви образ і намалюй його для себе — одну внутрішню картинку",
+    family="image", tools=("generate_image",), cap=1,
+)
+SHARE = Directive(
+    "share", "якщо хочеться — обери котрусь картинку й надішли йому, як подарунок",
+    family="image", tools=("send_image",), owner_only=True, surface="open",
+)
+
 # The directive registry (v0.12 ships think + wonder; v0.33 adds the tool-thought families).
 REGISTRY: dict[str, Directive] = {
     d.name: d for d in (
         THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL, LOOKUP, LEARN, CATCHUP, BRIEF, SEARCH, EVENTS,
-        RECALL, PROMPT,
+        RECALL, PROMPT, GAZE, IMAGINE, SHARE,
     )
 }
 

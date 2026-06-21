@@ -397,6 +397,8 @@ class Core:
         thought_news: bool = False,
         thought_web: bool = False,
         thought_prompt: bool = False,
+        thought_image: bool = False,
+        thought_imagine_cap: int = 1,
         quiet_hours: tuple[int, int] | None = None,
         thoughts_quiet_hours: tuple[int, int] | None = None,
         usage_ledger_path: Path | None = None,
@@ -498,6 +500,8 @@ class Core:
         self._thought_news = thought_news  # v0.33 %catchup/%brief per-family flag
         self._thought_web = thought_web  # v0.33 %search/%events per-family flag
         self._thought_prompt = thought_prompt  # v0.33 %prompt per-family flag (owner-only)
+        self._thought_image = thought_image  # v0.33 %gaze/%imagine/%share per-family flag
+        self._thought_imagine_cap = max(1, thought_imagine_cap)  # v0.33 %imagine paid sub-cap
         self._quiet_hours = quiet_hours
         # The proactive-think's quiet window is independent of the nudge's (falls back to it in config).
         self._thoughts_quiet_hours = thoughts_quiet_hours
@@ -922,9 +926,10 @@ class Core:
                     directive, session, topic, rng_seed
                 )
             t_tools, t_exec = self._thought_tools(directive)  # v0.33: tools when the directive opts in
+            cap = self._thought_imagine_cap if "generate_image" in directive.tools else directive.cap
             raw = self._housekeeping_reply(
                 system, msgs, cache_prefix=cache_prefix, kind="think",
-                tools=t_tools, tool_executor=t_exec, max_steps=directive.cap,
+                tools=t_tools, tool_executor=t_exec, max_steps=cap,
             ).strip()
         except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
             return None
@@ -1047,8 +1052,8 @@ class Core:
             return True  # %think / %wonder — the v0.12 always-on directives
         if not self._thought_tools_enabled:
             return False
-        if directive.instruction_from_topic and not is_owner:
-            return False  # %prompt is owner-only
+        if (directive.instruction_from_topic or directive.owner_only) and not is_owner:
+            return False  # %prompt / %share are owner-only
         if not self._family_flag(directive.family):
             return False
         if directive.tools:  # a tool-loop directive — the tool must be enabled this turn
@@ -2728,6 +2733,8 @@ def build_core(
         thought_news=cfg.thought_news,
         thought_web=cfg.thought_web,
         thought_prompt=cfg.thought_prompt,
+        thought_image=cfg.thought_image,
+        thought_imagine_cap=cfg.thought_imagine_cap,
         quiet_hours=cfg.quiet_hours,
         thoughts_quiet_hours=cfg.thoughts_quiet_hours,
         usage_ledger_path=(cfg.store_path.parent / "usage-ledger.jsonl") if cfg.usage_report else None,
