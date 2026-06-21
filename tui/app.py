@@ -10,6 +10,7 @@ v1.1 this is refactored into a server client calling the same contract.
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -42,6 +43,8 @@ from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
 LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is English
+_log = logging.getLogger("lumi.tui")
+
 ERROR_LINE = "Лілі is unavailable right now. Try again in a moment."
 MEMORY_EMPTY = "_Memory is empty so far._"
 MOOD_PENDING = "_Лілі ще не визначила настрій сьогодні — напиши їй, і він складеться._"
@@ -693,10 +696,14 @@ class LumiApp(App[None]):
                 mirror_reply(self._outbox_path, state)
             if not hidden and self._sound_on:
                 self._sound.receive()  # her reply arrived (suppressed for the idle nudge)
-        except Exception:  # noqa: BLE001 — never crash the loop on a model error
+        except Exception as exc:  # noqa: BLE001 — never crash the loop on a model error
+            # Log the REAL cause behind the generic line (→ .lumi/lumi.log) — usually an LLMError
+            # (rate-limit/overload after retries). Without this the failure is silent and undiagnosable.
+            _log.exception("reply failed (%s) — surfacing the unavailable line", type(exc).__name__)
             self._render_thinking(None)  # the failed turn has no thinking
             self._connected = False
-            self._emit(ERROR_LINE, Text(ERROR_LINE, style=f"bold {ERROR_COLOR}"))
+            line = f"{ERROR_LINE}  ({type(exc).__name__})"  # a short hint; full traceback is in the log
+            self._emit(line, Text(line, style=f"bold {ERROR_COLOR}"))
         finally:
             self._set_busy(False)  # unlock + refocus the input — your turn again
             self._render_status()
