@@ -115,9 +115,23 @@ BRIEF = Directive(
     family="news", tools=_NEWS,
 )
 
+# v0.33 web-thoughts (LUMI-133): %search ("let me actually look that up", twin of %lookup/%catchup) /
+# %events (a paced recent/upcoming scan, date-anchored) — the v0.27 web_lookup tool; paid, de-id query.
+_WEB = ("web_lookup",)
+SEARCH = Directive(
+    "search", "пошукай у живому інтернеті — що нового чи цікавого саме зараз про це; відповідай українською",
+    family="web", tools=_WEB,
+)
+EVENTS = Directive(
+    "events", "глянь, що недавнього чи майбутнього коїться — прив'яжи до сьогодні; відповідай українською",
+    family="web", tools=_WEB,
+)
+
 # The directive registry (v0.12 ships think + wonder; v0.33 adds the tool-thought families).
 REGISTRY: dict[str, Directive] = {
-    d.name: d for d in (THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL, LOOKUP, LEARN, CATCHUP, BRIEF)
+    d.name: d for d in (
+        THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL, LOOKUP, LEARN, CATCHUP, BRIEF, SEARCH, EVENTS,
+    )
 }
 
 THOUGHT_SYSTEM = (
