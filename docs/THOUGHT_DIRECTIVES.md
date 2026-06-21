@@ -62,6 +62,156 @@ The **From chat** column is what you type in the input box to fire it yourself (
 
 ---
 
+## Each directive in detail
+
+Most are **silent** for the owner — add **`!`** to see the result in chat (`%note!`). The examples show the
+chat invocation; an optional `[topic]` steers the act (without it she works from her own mood / memory /
+recent talk). The *italic* line is her authored instruction.
+
+### Base — `%think` / `%wonder` (always on, tool-less)
+
+**`%think`** — *тихо помірковуй сама із собою — що тебе зараз справді займає.* Her everyday musing: one short
+thought in her own voice, seeded by her mood, her closeness to you, the recent conversation, and her last few
+thoughts. No tools, no external reach. This is also what the **idle nudge** fires on its own.
+```
+%think
+%think про нашу вчорашню розмову
+%think!                          # force it open — see the thought in chat
+```
+
+**`%wonder`** — *дай волю цікавості й уяві — «а що, якби…», дрібне відкриття, питання без відповіді.* Like
+`%think` but tilted toward curiosity and imagination. Still inward — never a factual claim about the world.
+```
+%wonder
+%wonder! що було б, якби кава росла в Карпатах
+```
+
+### File — `%note` / `%review` / `%explore` / `%journal` (need `LUMI_FILE_TOOL`)
+
+**`%note`** — *сформулюй коротку думку, яку варто занотувати собі на згадку.* A tool-**less** think whose
+thought the **code** then appends to a dated `journal/<date>.md` in her sandbox (create-first, append-after —
+never overwrites). Code-owned, so an unattended firing can't wander. Silent → check the file (or use `!`).
+```
+%note
+%note!                           # see the noted thought in chat too
+# → appends to .lumi/files/owner/journal/2026-06-21.md
+```
+
+**`%review`** — *перечитай свої давні нотатки й тихо поміркуй над ними.* Read-only: she lists / searches /
+reads her own sandbox files (incl. `search_files` + `read_around`), then muses on what she finds. Writes
+nothing.
+```
+%review
+%review! що я нотувала про море
+```
+
+**`%explore`** — *поблукай своїми файлами — почитай, за бажання занотуй щось нове.* Read **and** write: she
+may read and, if she wants, create or append (non-destructive — no overwrite/delete). The open end of the
+file family.
+```
+%explore
+%explore! упорядкуй мої нотатки про музику
+```
+
+**`%journal`** — *підсумуй сьогоднішній день у своєму щоденнику.* Writes a literary **day-summary** via the
+v0.28 journal tool (its own dedicated diary root, *not* the file sandbox); code auto-stamps the day's mood +
+biorhythms. Also `+ LUMI_THOUGHT_JOURNAL + LUMI_JOURNAL`.
+```
+%journal
+%journal!
+```
+
+### Wikipedia — `%lookup` / `%learn` (need `LUMI_WIKI` + `LUMI_THOUGHT_WIKI`)
+
+**`%lookup`** — *швиденько зазирни у вікіпедію — що там цікавого; завжди зазнач джерело.* The twin of
+`%wonder` that *goes and finds out*: a quick Wikipedia search + read, answered cited, in her own voice. The
+query is **de-identified** (only the topic leaves). Best with a `[topic]`.
+```
+%lookup! Григорій Сковорода
+%lookup! історія львівської кави
+```
+
+**`%learn`** — *почитай уважніше про щось одне й тихо розкажи собі, що дізналася (з джерелом).* The deeper
+twin of `%think`: a chosen read she dwells on and "tells herself" what she learned.
+```
+%learn! бароко в українській музиці
+```
+
+### News — `%catchup` / `%brief` (need `LUMI_NEWS_TOOL` + `LUMI_THOUGHT_NEWS`)
+
+**`%catchup`** — *зазирни, що там у світі — знайди одну новину, прочитай і перекажи українською, з джерелом.*
+One fresh Guardian item: she searches, reads one article, and retells it **in Ukrainian, cited**. The query
+goes out English & topical-only (de-identified). Seedable from the v0.4 ambient news.
+```
+%catchup!
+%catchup! технології
+```
+
+**`%brief`** — *спокійно проглянь кілька свіжих новин і коротко підсумуй українською, з джерелами.* A paced
+daily catch-up — a few items, briefly summarised. The morning-ritual twin of `%learn`.
+```
+%brief!
+```
+
+### Web — `%search` / `%events` (need `LUMI_WEB_LOOKUP` + `LUMI_THOUGHT_WEB`; **paid**)
+
+**`%search`** — *пошукай у живому інтернеті — що нового чи цікавого саме зараз; відповідай українською.* When
+Wikipedia/news won't do — a fresh, grounded answer from the live web (Gemini + Google grounding),
+answer-first. **Paid.** Query de-identified.
+```
+%search! що нового з ШІ цього тижня
+```
+
+**`%events`** — *глянь, що недавнього чи майбутнього коїться — прив'яжи до сьогодні.* A recent/upcoming scan,
+**date-anchored to today** (so "цього тижня"/"скоро" resolve against the real date). **Paid.**
+```
+%events! події у Львові цими вихідними
+```
+
+### Memory & open — `%recall` / `%prompt`
+
+**`%recall`** — *нехай спливе якийсь спогад із ваших розмов — тихо пригадай і поміркуй над ним.* Runs the
+recall tool over **your own** past conversations and lets a memory resurface, then muses on it. Her own
+memory → **trusted** (not framed as untrusted data), **no de-identification**. Needs `LUMI_RECALL_TOOL`.
+```
+%recall! про що ми мріяли влітку
+```
+
+**`%prompt`** — *виконай те, про що тебе попросили, як власну внутрішню справу.* **Owner-only**, and the
+**topic IS the instruction**: you hand her any task and she does it as a self-directed act over whatever
+tools are enabled (`tools="*"`). Trusted (you authored it) — but the tool **results** stay untrusted. Always
+shown. Needs `LUMI_THOUGHT_PROMPT`.
+```
+%prompt знайди у вікіпедії три факти про комети й занотуй їх
+%prompt подивись, що нового у світі, і коротко підсумуй
+```
+
+### Images — `%gaze` / `%imagine` / `%share` (need `LUMI_IMAGE` + `LUMI_THOUGHT_IMAGE`)
+
+**`%gaze`** — *придивись іще раз до котроїсь зі своїх картинок і тихо поміркуй над нею.* Read-only vision: she
+looks again at a picture in her sandbox and muses on it.
+```
+%gaze!
+%gaze! art/море.png
+```
+
+**`%imagine`** — *уяви образ і намалюй його для себе — одну внутрішню картинку.* Generates one inner image (a
+PNG) into her sandbox, create-only. **Paid** (own sub-cap `LUMI_THOUGHT_IMAGINE_CAP`); the gen prompt is
+**de-identified**.
+```
+%imagine! тихе море на світанку, акварель
+```
+
+**`%share`** — *якщо хочеться — обери котрусь картинку й надішли йому, як подарунок.* **Owner-only**: she
+chooses a sandbox picture and sends it to **your Telegram** (graduates to a spoken turn + a photo). A
+**no-op without the Telegram bridge** running.
+```
+%share!
+%share! art/cat.png
+```
+
+---
+
 ## The placeholders (18)
 
 Lazy, **`""`-on-empty** (the token disappears), **isolation-aware** where per-user. Unknown `{tokens}` stay
