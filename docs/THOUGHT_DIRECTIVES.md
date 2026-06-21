@@ -60,6 +60,19 @@ The **From chat** column is what you type in the input box to fire it yourself (
 **Surfacing in the TUI.** While a directive runs, the status line shows `✦ %name · tool…`; with
 **`LUMI_THOUGHT_SURFACE=on`** a subtle chat-log line marks the act (`✦ Лілі читає новини…`). Off → invisible.
 
+**Output — where each directive's result goes.** *Every* directive leaves a **thought** in her thought
+stream (the dated diary that also holds `%think`/`%wonder`), persisted in the **state store** and read back
+with the **`/thoughts`** command — silent for you unless you open it (`%review!`) or it graduates to a spoken
+turn. Some directives **also** write a file or send something:
+
+| Beyond the thought | Directives |
+|---|---|
+| *nothing — only the thought* | `%think` · `%wonder` · `%review` · `%gaze` · `%lookup` · `%learn` · `%catchup` · `%brief` · `%search` · `%events` · `%recall` |
+| a file in her **sandbox** | `%note` → `notes/<date>.md` · `%explore` (may create/append) · `%imagine` → a PNG |
+| a file in the **diary root** | `%journal` → `.lumi/journal/<user>/<date>.md` |
+| **sends** to your Telegram | `%share` |
+| whatever its tools do | `%prompt` |
+
 ---
 
 ## Each directive in detail
@@ -100,7 +113,7 @@ day-diary, in a separate root). Silent → check the file (or use `!`).
 
 **`%review`** — *перечитай свої давні нотатки й тихо поміркуй над ними.* Read-only: she lists / searches /
 reads her own sandbox files (incl. `search_files` + `read_around`), then muses on what she finds. Writes
-nothing.
+**no file** — the result is a **thought** (read it with `%review!` or `/thoughts`).
 ```
 %review
 %review! що я нотувала про море
