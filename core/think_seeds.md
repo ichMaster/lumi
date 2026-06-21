@@ -13,14 +13,22 @@
 # dated diary); a fraction graduate to a spoken message (LUMI_THOUGHTS_SPOKEN_RATIO).
 # Edit / add your own.
 
-%think {last_thought}
-%think {recent}
-%think {thoughts}
-%think {today}
-%think про новини
-%wonder ти хочеш щось нове створити
-%wonder ти хочеш намалювати щось
-%wonder ти хочеш написати маленьке оповідання
-%think! {thoughts}
-%wonder! у твому світі щось би змінилось
+# self-reflection mode
+# %think {last_thought}
+# %think {recent}
+# %think {thoughts}
+# %think {today}
+# %think про новини
+# %wonder ти хочеш щось нове створити
+# %wonder ти хочеш намалювати щось
+# %wonder ти хочеш написати маленьке оповідання
+# %think! {thoughts}
+# %wonder! у твому світі щось би змінилось
 
+# meditation mode
+%think подумай над змістом мантри Om Namah Shivaya і подумає який це має звязок з нашою розмовою
+%think подумай над змістом мантри Om Shainti Om і подумає який це має звязок з нашою розмовою
+%think подумай над змістом мантри Om Hari Om і подумає який це має звязок з нашою розмовою
+%think подумай над змістом мантри Om So Hum і подумає який це має звязок з нашою розмовою
+%think подумай над змістом мантри Ong Namo Guru Dev Namo і подумає який це має звязок з нашою розмовою
+%think! {thoughts}
