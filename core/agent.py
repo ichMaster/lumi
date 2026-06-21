@@ -385,6 +385,7 @@ class Core:
         thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO,
         thoughts_show: str = "hidden",
         thoughts_context: str = "lean",
+        thought_tools_enabled: bool = False,
         quiet_hours: tuple[int, int] | None = None,
         thoughts_quiet_hours: tuple[int, int] | None = None,
         usage_ledger_path: Path | None = None,
@@ -480,6 +481,7 @@ class Core:
         self._thoughts_spoken_ratio = thoughts_spoken_ratio
         self._thoughts_show = thoughts_show  # hidden (default) / admin / off — the /thoughts policy
         self._thoughts_context = thoughts_context  # lean (seeds) / full (the whole reply backdrop)
+        self._thought_tools_enabled = thought_tools_enabled  # v0.33 master gate for tool-using thoughts
         self._quiet_hours = quiet_hours
         # The proactive-think's quiet window is independent of the nudge's (falls back to it in config).
         self._thoughts_quiet_hours = thoughts_quiet_hours
@@ -900,7 +902,11 @@ class Core:
                 system, msgs, seeds, cache_prefix = self._thought_call_lean(
                     directive, session, topic, rng_seed
                 )
-            raw = self._housekeeping_reply(system, msgs, cache_prefix=cache_prefix, kind="think").strip()
+            t_tools, t_exec = self._thought_tools(directive)  # v0.33: tools when the directive opts in
+            raw = self._housekeeping_reply(
+                system, msgs, cache_prefix=cache_prefix, kind="think",
+                tools=t_tools, tool_executor=t_exec, max_steps=directive.cap,
+            ).strip()
         except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
             return None
         _, raw = split_reasoning(raw)  # strip any <think>…</think> (the full backdrop's directive)
@@ -965,6 +971,23 @@ class Core:
         system = full_system + THOUGHT_FULL_HEADER.format(instruction=directive.instruction)
         seeds = ["context", *(["topic"] if topic else [])]
         return system, messages, seeds, cache_prefix
+
+    def _thought_tools(self, directive) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
+        """The (tools, executor) a directive may use in the think path (v0.33), or ``(None, None)``.
+
+        ``(None, None)`` unless the master gate ``LUMI_THOUGHT_TOOLS`` is on **and** the directive opts in
+        (``directive.tools`` non-empty). ``("*",)`` → every enabled tool; otherwise the named subset of the
+        turn's tools. The per-family flags still gate each tool (via ``_turn_tools``)."""
+        if not self._thought_tools_enabled or not directive.tools:
+            return None, None
+        tools, executor = self._turn_tools()
+        if tools is None:
+            return None, None
+        if "*" in directive.tools:
+            return tools, executor
+        allowed = set(directive.tools)
+        sub = [t for t in tools if t["name"] in allowed]
+        return (sub, executor) if sub else (None, None)
 
     def _recent_tail(self, session: Session, n: int = 6) -> str | None:
         """The last ``n`` messages of the session, compact — a seed for a thought."""
@@ -1176,6 +1199,10 @@ class Core:
     def _housekeeping_reply(
         self, system: str, messages: list[Message], cache_prefix: str | None = None,
         kind: str = "housekeeping",
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
     ) -> str:
         """An internal model call with extended thinking forced off.
 
@@ -1190,10 +1217,13 @@ class Core:
             llm._thinking = False
         self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted by the monitor
         try:
-            text = llm.reply(
-                system=system, messages=messages, model=self._model,
-                cache_prefix=cache_prefix if self._prompt_cache else None,
-            )
+            kwargs: dict = {
+                "system": system, "messages": messages, "model": self._model,
+                "cache_prefix": cache_prefix if self._prompt_cache else None,
+            }
+            if tools is not None:  # v0.33 think-path tool-loop — omit when tool-less (call unchanged)
+                kwargs.update(tools=tools, tool_executor=tool_executor, max_steps=max_steps)
+            text = llm.reply(**kwargs)
             self._accumulate_stats(turn=False, kind=kind)  # count + log this background call
             return text
         finally:
@@ -2578,6 +2608,7 @@ def build_core(
         thoughts_spoken_ratio=cfg.thoughts_spoken_ratio,
         thoughts_show=cfg.thoughts_show,
         thoughts_context=cfg.thoughts_context,
+        thought_tools_enabled=cfg.thought_tools,
         quiet_hours=cfg.quiet_hours,
         thoughts_quiet_hours=cfg.thoughts_quiet_hours,
         usage_ledger_path=(cfg.store_path.parent / "usage-ledger.jsonl") if cfg.usage_report else None,

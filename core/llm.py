@@ -188,12 +188,27 @@ class LLMClient(Protocol):
     """The seam the core depends on. Backends implement ``reply`` + ``reply_structured``."""
 
     def reply(
-        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
     ) -> str:
-        """Return the model's plain **text** reply (used for memory housekeeping).
+        """Return the model's plain **text** reply (memory housekeeping; v0.33 thought-tools).
 
         ``cache_prefix`` (v0.15) — an optional stable prefix of ``system`` to mark as a prompt-cache
         breakpoint; backends without caching ignore it (the assembled text is unchanged).
+
+        v0.33 **think-path tool-loop:** when ``tools`` + ``tool_executor`` are given, the model may call
+        those (non-terminal) tools — the client runs ``tool_executor(name, input)``, feeds the result back
+        as an **untrusted** ``tool_result``, and loops until the model emits a final **text** answer (the
+        thought) or ``max_steps`` rounds (then a tool-less round forces text). **No ``set_state``** — the
+        text terminal, distinct from :meth:`reply_structured`. Backends without loop support ignore the
+        tool args (a single tool-less call).
         """
         ...
 
@@ -363,8 +378,19 @@ class AnthropicClient:
         )
 
     def reply(
-        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
     ) -> str:
+        if tools and tool_executor is not None:  # v0.33 think-path tool-loop (text terminal, no set_state)
+            return self._text_tool_loop(system, messages, model, cache_prefix, tools, tool_executor, max_steps)
+
         def _once() -> str:
             started = time.monotonic()
             resp = self._client.messages.create(
@@ -491,6 +517,60 @@ class AnthropicClient:
             return {"reply": ""}  # safety net — the forced final round returns above
         except self._anthropic.APIError as exc:
             raise LLMError(f"Claude tool-loop call failed: {exc}") from exc
+
+    def _text_tool_loop(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None,
+        tools: list[dict],
+        tool_executor: Callable[[str, dict], str | dict],
+        max_steps: int,
+    ) -> str:
+        """Loop the model with ``tools`` until it answers in **text** (the v0.33 thought) or ``max_steps``.
+
+        Like :meth:`_tool_loop` but with **no ``set_state``** — the terminal is a round with no tool call,
+        whose text is returned (the thought, ending in ``ЕМОЦІЯ:``). The final round drops the tools so the
+        model must answer. Tool results feed back **untrusted** (recollection / image as in the reply loop).
+        """
+        convo: list = list(messages)
+        acc = {"input": 0, "output": 0, "cr": 0, "cw": 0, "latency": 0, "think": []}
+        self.last_round_log = []
+        try:
+            for step in range(max_steps + 1):
+                kwargs = self._base_kwargs(system, convo, model, cache_prefix)
+                if step < max_steps:  # offer tools until the final round; then force a text answer
+                    kwargs["tools"] = list(tools)
+                    kwargs["tool_choice"] = {"type": "auto"}
+                started = time.monotonic()
+                resp = self._create_retried(kwargs)
+                latency = int((time.monotonic() - started) * 1000)
+                self._accumulate(resp, acc, latency)
+                rstats = self._round_stats(resp, model, latency)
+                tool_uses = [b for b in getattr(resp, "content", []) if getattr(b, "type", None) == "tool_use"]
+                if not tool_uses:  # terminal — the model answered in text (the thought)
+                    self.last_round_log.append(("reply", rstats))
+                    self._finalize_loop(acc, model)
+                    return self._text_of(resp)
+                self.last_round_log.append(("tool", rstats))
+                convo.append({"role": "assistant", "content": resp.content})
+                results = []
+                for tu in tool_uses:
+                    raw = tool_executor(getattr(tu, "name", ""), dict(getattr(tu, "input", {}) or {}))
+                    content: object
+                    if is_image_block(raw):
+                        content = [{"type": "text", "text": _UNTRUSTED_PREFIX.strip()}, raw]
+                    elif is_trusted_text(raw):  # v0.31 recall: her own recollection, not untrusted data
+                        content = _RECOLLECTION_PREFIX + str(raw.get("text", ""))
+                    else:
+                        content = _UNTRUSTED_PREFIX + str(raw)
+                    results.append({"type": "tool_result", "tool_use_id": getattr(tu, "id", None), "content": content})
+                convo.append({"role": "user", "content": results})
+            self._finalize_loop(acc, model)
+            return ""  # safety net — the forced final round returns above
+        except self._anthropic.APIError as exc:
+            raise LLMError(f"Claude think-loop call failed: {exc}") from exc
 
     def _create_retried(self, kwargs: dict) -> object:
         return _call_with_retries(
@@ -619,8 +699,17 @@ class OpenAICompatibleClient:
         self.last_thinking = None
 
     def reply(
-        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
     ) -> str:
+        # v0.33 think-path tools are Anthropic-first; here a thought is a single tool-less call.
         return self._content(self._create(system, messages, model, structured=False))
 
     def reply_structured(
@@ -732,8 +821,17 @@ class MiniMaxClient:
         self.last_thinking = None
 
     def reply(
-        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
     ) -> str:
+        # v0.33 think-path tools are Anthropic-first; here a thought is a single tool-less call.
         return self._content(self._create(system, messages, model, structured=False))
 
     def reply_structured(
@@ -835,9 +933,26 @@ class MockLLMClient:
         return self._default
 
     def reply(
-        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
     ) -> str:
         self._record(system, messages, model)  # cache_prefix ignored — the text is unchanged
+        self.last_round_log = []
+        if tool_executor is not None and self._tool_script is not None:  # v0.33 think-path tool-loop
+            for name, inp in self._tool_script[:max_steps]:
+                result = tool_executor(name, dict(inp))
+                self.tool_calls.append((name, dict(inp), result))
+                if is_image_block(result):
+                    self.images_seen.append(result)
+                self.last_round_log.append(("tool", ResponseStats(model=model, latency_ms=0)))
+            self.last_round_log.append(("reply", self.last_stats))
         return self._pick_text(system, messages, model)
 
     def reply_structured(

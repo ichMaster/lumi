@@ -39,10 +39,21 @@ def should_graduate(rng_seed: int, ratio: float) -> bool:
 
 @dataclass(frozen=True)
 class Directive:
-    """One mental-act flavor: its ``name`` (the ``%name``) + how she should think for it."""
+    """One mental-act flavor: its ``name`` (the ``%name``) + how she should think for it.
+
+    v0.33 makes it **table-driven** for the think-path tool-loop: ``tools`` names the tools it may call
+    (``()`` = tool-less, the v0.12 single call; ``("*",)`` = any enabled tool), ``cap`` is its tool-loop
+    step cap, ``surface`` its default surfacing, ``trigger`` its scheduler default (v0.34), and
+    ``instruction_from_topic`` lets ``%prompt`` use the topic *as* the instruction.
+    """
 
     name: str
     instruction: str
+    tools: tuple[str, ...] = ()           # tool names it may use in the think path; () = tool-less
+    cap: int = 4                          # per-directive tool-loop step cap (max_steps)
+    surface: str = "silent"               # surfacing default
+    trigger: str | None = None            # scheduler trigger default (v0.34)
+    instruction_from_topic: bool = False  # %prompt: the topic IS the instruction
 
 
 THINK = Directive(

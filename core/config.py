@@ -287,6 +287,7 @@ class Config:
     thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO  # v0.12 fraction that graduate to spoken
     thoughts_show: str = "hidden"  # v0.12 /thoughts policy: hidden / admin / off
     thoughts_context: str = "lean"  # v0.12 thought prompt: lean (seeds) / full (whole backdrop)
+    thought_tools: bool = False  # v0.33 master gate: tool-using thoughts (the think-path tool-loop)
     # v0.13 bridge: the TUI reads inbox / writes outbox (the file bus to the Telegram daemons). Off by default.
     bridge: bool = False
     inbox_path: Path = DEFAULT_INBOX_PATH
@@ -544,6 +545,7 @@ def load_config(*, load_env: bool = True) -> Config:
         thoughts_spoken_ratio=float(os.getenv("LUMI_THOUGHTS_SPOKEN_RATIO") or THOUGHTS_SPOKEN_RATIO),
         thoughts_show=(os.getenv("LUMI_THOUGHTS_SHOW") or "hidden").strip().lower(),
         thoughts_context=(os.getenv("LUMI_THOUGHTS_CONTEXT") or "lean").strip().lower(),
+        thought_tools=(os.getenv("LUMI_THOUGHT_TOOLS") or "off").strip().lower() in _TRUTHY,  # v0.33, off
         bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
         inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else DEFAULT_INBOX_PATH,
         outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else DEFAULT_OUTBOX_PATH,
