@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -46,7 +46,7 @@ from core.closeness import (
 )
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
-from core.deidentify import deidentify, personal_terms
+from core.deidentify import deidentify, personal_terms, topic_words
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
 from core.images import is_image_block
@@ -902,11 +902,14 @@ class Core:
         rng_seed: int = 0,
         spoken: bool = False,
         sink: str | None = None,
+        user_topic: bool = False,
     ) -> Thought | None:
         """Run one ``%directive`` — seed → generate → validate → record — into the dated diary.
 
         ``sink`` (v0.33) overrides the directive's ``default_sink``: the recorded thought is **also**
         code-saved to ``notes/<date>.md`` (``"notes"``) or a file/folder path. ``None`` → use the default.
+        ``user_topic`` (set by ``run_directive``) marks ``topic`` as the user's own literal words, so an
+        external-tool query keeps them (the de-id whitelist) instead of redacting a place/name they typed.
 
         Returns the recorded :class:`Thought`, or ``None`` (off / unknown directive / malformed
         output). **Best-effort**: a model failure or an empty thought records nothing, never raises.
@@ -919,6 +922,9 @@ class Core:
         if directive is None:
             return None
         self._last_saved_to = None  # v0.33: the sink path this think saved to (read by run_directive)
+        # the user's literal typed words — the de-id whitelist (computed BEFORE placeholder resolve, so a
+        # resolved {last_thought} inner seed is NOT whitelisted, only what they actually typed).
+        keep = topic_words(topic) if (user_topic and topic) else ()
         if topic:  # a topic may carry {placeholders} (e.g. %think about {last_thought})
             topic = self.resolve(topic, session=session)
         if directive.instruction_from_topic and topic:  # v0.33 %prompt: the topic IS the instruction
@@ -933,7 +939,7 @@ class Core:
                 system, msgs, seeds, cache_prefix = self._thought_call_lean(
                     directive, session, topic, rng_seed
                 )
-            t_tools, t_exec = self._thought_tools(directive)  # v0.33: tools when the directive opts in
+            t_tools, t_exec = self._thought_tools(directive, keep=keep)  # tools (+ topic de-id whitelist)
             cap = self._thought_imagine_cap if "generate_image" in directive.tools else directive.cap
             raw = self._housekeeping_reply(
                 system, msgs, cache_prefix=cache_prefix, kind="think",
@@ -1010,12 +1016,15 @@ class Core:
         seeds = ["context", *(["topic"] if topic else [])]
         return system, messages, seeds, cache_prefix
 
-    def _thought_tools(self, directive) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
+    def _thought_tools(
+        self, directive, *, keep: Iterable[str] = (),
+    ) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
         """The (tools, executor) a directive may use in the think path (v0.33), or ``(None, None)``.
 
         ``(None, None)`` unless the master gate ``LUMI_THOUGHT_TOOLS`` is on **and** the directive opts in
         (``directive.tools`` non-empty). ``("*",)`` → every enabled tool; otherwise the named subset of the
-        turn's tools. The per-family flags still gate each tool (via ``_turn_tools``)."""
+        turn's tools. The per-family flags still gate each tool (via ``_turn_tools``). ``keep`` whitelists
+        the user's own topic words from the external-query de-id (they explicitly asked about them)."""
         if not self._thought_tools_enabled or not directive.tools:
             return None, None
         tools, executor = self._turn_tools()
@@ -1031,15 +1040,19 @@ class Core:
         # v0.33 LUMI-128: de-identify the thought-driven external query/prompt — unless %prompt (exempt).
         if directive.instruction_from_topic:
             return sub, executor
-        return sub, self._deidentified(executor)
+        return sub, self._deidentified(executor, keep)
 
-    def _deidentified(self, executor: Callable[[str, dict], str | dict]) -> Callable[[str, dict], str | dict]:
+    def _deidentified(
+        self, executor: Callable[[str, dict], str | dict], keep: Iterable[str] = (),
+    ) -> Callable[[str, dict], str | dict]:
         """Wrap ``executor`` so a thought-driven **external** query/prompt is de-identified before it leaves
-        (v0.33 LUMI-128) — only the topical/creative part of her musing reaches the external service."""
+        (v0.33 LUMI-128) — only the topical/creative part of her musing reaches the external service.
+        ``keep`` preserves the user's explicitly-typed topic words (a place/name *they* asked about)."""
+        keep = tuple(keep)
         def wrapped(name: str, tool_input: dict) -> str | dict:
             arg = _EXTERNAL_QUERY_ARG.get(name)
             if arg and isinstance(tool_input, dict) and isinstance(tool_input.get(arg), str):
-                tool_input = {**tool_input, arg: self._deidentify_external(tool_input[arg])}
+                tool_input = {**tool_input, arg: self._deidentify_external(tool_input[arg], keep)}
             return executor(name, tool_input)
         return wrapped
 
@@ -1047,9 +1060,12 @@ class Core:
         """This user's proper-noun-like personal terms (from their own facts) — the de-id redaction set."""
         return personal_terms(f.fact for f in self._repo.facts(self._user_id))
 
-    def _deidentify_external(self, query: str) -> str:
-        """Redact this user's personal terms from an outgoing thought-driven external query (LUMI-128)."""
-        return deidentify(query, self._personal_terms())
+    def _deidentify_external(self, query: str, keep: Iterable[str] = ()) -> str:
+        """Redact this user's personal terms from an outgoing thought-driven external query (LUMI-128).
+
+        ``keep`` whitelists the user's own typed topic words so a place/name *they* asked about survives
+        (e.g. ``%events події у Львові`` must not go out as ``події у […]``)."""
+        return deidentify(query, self._personal_terms(), keep=keep)
 
     def _family_flag(self, family: str) -> bool:
         """The per-family thought flag (``LUMI_THOUGHT_<FAMILY>``); default ``True`` → gated by the tool."""
@@ -1157,7 +1173,8 @@ class Core:
             return DirectiveOutcome(is_directive=False)  # family off / owner-gated → plain chat (absent)
         mode = directive_mode(parsed, is_owner=is_owner)
         thought = self.think(
-            parsed.name, topic=parsed.topic, session=session, rng_seed=rng_seed, sink=parsed.sink
+            parsed.name, topic=parsed.topic, session=session, rng_seed=rng_seed, sink=parsed.sink,
+            user_topic=True,  # the user typed this topic → its words survive the external-query de-id
         )
         saved_to = self._last_saved_to if thought is not None else None  # the path think() actually wrote
         return DirectiveOutcome(is_directive=True, mode=mode, thought=thought, saved_to=saved_to)

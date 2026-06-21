@@ -30,14 +30,29 @@ def personal_terms(texts: Iterable[str]) -> set[str]:
     return terms
 
 
-def deidentify(text: str, terms: Iterable[str]) -> str:
+def topic_words(text: str) -> list[str]:
+    """The ≥ 3-letter words of a user-typed topic — the basis for the de-id ``keep`` whitelist (they
+    explicitly chose to search these, so a place/name *they* typed must not be redacted out)."""
+    return _WORD_RE.findall(text or "")
+
+
+def deidentify(text: str, terms: Iterable[str], *, keep: Iterable[str] = ()) -> str:
     """Redact any of ``terms`` (case-insensitive, as a **word stem**) from ``text`` → :data:`REDACTION`.
 
     A term matches at a word boundary plus any trailing letters, so Ukrainian declensions are caught
     (``Олег`` → ``Олега`` / ``Олегович``) — over-redaction is privacy-safe. Longer terms first; no terms →
     ``text`` unchanged.
+
+    ``keep`` is a whitelist of words the user explicitly typed (their topic): any term that would redact
+    one of them — i.e. that a keep-word *starts with* — is dropped from the redaction set, so a place or
+    name the user themselves asked about survives (the leakage rule targets her *inner* seeds, not the
+    user's own request). The autonomous (no-topic) path passes no ``keep`` → full redaction, unchanged.
     """
-    uniq = sorted({t for t in terms if t and len(t) >= 3}, key=len, reverse=True)
+    uniq = {t for t in terms if t and len(t) >= 3}
+    keep_lower = [w.lower() for w in keep if w]
+    if keep_lower:  # drop terms the user's own topic words would trip (e.g. "Львові" protects stem "Львів")
+        uniq = {t for t in uniq if not any(w.startswith(t.lower()) for w in keep_lower)}
+    uniq = sorted(uniq, key=len, reverse=True)
     if not uniq:
         return text
     stem = "|".join(re.escape(t) for t in uniq)

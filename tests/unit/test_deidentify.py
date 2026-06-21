@@ -1,7 +1,7 @@
 """v0.33 LUMI-128 — the de-identification of thought-driven external queries (pure)."""
 from __future__ import annotations
 
-from core.deidentify import REDACTION, deidentify, personal_terms
+from core.deidentify import REDACTION, deidentify, personal_terms, topic_words
 
 
 def test_personal_terms_picks_capitalised_proper_nouns():
@@ -25,3 +25,22 @@ def test_deidentify_catches_declensions_as_a_stem():
 def test_deidentify_no_terms_is_unchanged():
     assert deidentify("just a topic", []) == "just a topic"
     assert deidentify("nothing personal", ["ab"]) == "nothing personal"  # < 3 → ignored
+
+
+def test_topic_words_extracts_typed_words():
+    assert topic_words("події у Львові наступний тиждень") == ["події", "Львові", "наступний", "тиждень"]
+    assert topic_words("") == []
+
+
+def test_keep_whitelists_the_users_own_topic_word():
+    terms = personal_terms(["він із Львова", "живе у Львові", "бульвар Шевченка"])  # Львів-stems + Бульвар
+    q = "події у Львові наступний тиждень"
+    assert deidentify(q, terms) == "події у […] наступний тиждень"          # default: city redacted
+    # the user explicitly typed "Львові" → keep it (stem "Львів" dropped from the redaction set)
+    assert deidentify(q, terms, keep=topic_words(q)) == q                   # nothing redacted — survives
+
+
+def test_keep_still_redacts_other_personal_terms():
+    terms = personal_terms(["він із Львова", "його звати Олег"])
+    out = deidentify("події у Львові з Олегом", terms, keep=["Львові"])     # keep the city, not the name
+    assert "Львові" in out and "Олег" not in out and REDACTION in out

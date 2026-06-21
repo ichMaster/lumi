@@ -64,6 +64,27 @@ def test_think_and_wonder_stay_tool_less_with_gate_on(tmp_path):
     assert mock.tool_calls == []                                 # THINK has tools=() → tool-less, unchanged
 
 
+def test_user_typed_topic_survives_external_deid(tmp_path, monkeypatch):
+    # end-to-end: run a tool-thought whose external query echoes the user's typed place — user_topic=True
+    # threads the typed words into the de-id keep whitelist, so the city is NOT redacted out of the query.
+    from core.repository import LongTermFact
+    monkeypatch.setitem(thoughts_mod.REGISTRY, "evt",
+                        Directive("evt", "глянь, що в місті", tools=("web_lookup",), family="web"))
+    seen: list[str] = []
+    monkeypatch.setattr(
+        "core.agent.Core._turn_tools",
+        lambda self: ([{"name": "web_lookup"}], lambda n, i: (seen.append(i.get("query")), "ok")[1]),
+    )
+    mock = MockLLMClient("глянула — тихо й людно.\nЕМОЦІЯ: calm",
+                         tool_script=[("web_lookup", {"query": "події у Львові наступний тиждень"})])
+    core = _core(tmp_path, mock)
+    core._repo.add_fact(LongTermFact("owner", "живе у Львові", "", 1.0, "2026-06-20T10:00"))
+    core.think("evt", topic="події у Львові наступний тиждень", user_topic=True)
+    assert seen and seen[0] == "події у Львові наступний тиждень"   # the user's typed city survived
+    core.think("evt", topic="події у Львові наступний тиждень")     # autonomous → no keep
+    assert "Львові" not in seen[1]                                  # her inner-state query is de-identified
+
+
 def test_unknown_named_tool_falls_back_to_tool_less(tmp_path, monkeypatch):
     monkeypatch.setitem(thoughts_mod.REGISTRY, "tooly",
                         Directive("tooly", "...", tools=("no_such_tool",)))

@@ -73,6 +73,25 @@ def test_prompt_directive_is_exempt_from_deidentification(tmp_path, monkeypatch)
     assert seen[1] == "про Олега"
 
 
+def test_user_typed_topic_survives_but_inner_query_is_redacted(tmp_path):
+    # The de-id targets her INNER seeds leaking — not a place the USER explicitly typed. A topic word the
+    # user themselves provided (the keep whitelist) survives; the same word from an autonomous seed does not.
+    core = _core(tmp_path)
+    _plant_fact(core, "живе у Львові")  # the city is now this user's personal term
+    seen = []
+
+    def fake_exec(name, inp):
+        seen.append(inp.get("query"))
+        return "ok"
+
+    wrapped_keep = core._deidentified(fake_exec, keep=["Львові"])  # user typed "Львові"
+    wrapped_keep("web_lookup", {"query": "події у Львові наступний тиждень"})
+    wrapped_auto = core._deidentified(fake_exec)                   # autonomous (no keep)
+    wrapped_auto("web_lookup", {"query": "події у Львові наступний тиждень"})
+    assert seen[0] == "події у Львові наступний тиждень"           # the user's own city is preserved
+    assert "Львові" not in seen[1] and REDACTION in seen[1]        # an inner-state query → still redacted
+
+
 def test_deid_is_per_user_isolated(tmp_path):
     # B's de-id set is built from B's OWN facts — A's planted name is not B's personal term.
     core_a = _core(tmp_path, user="alice")
