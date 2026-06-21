@@ -46,6 +46,7 @@ from core.closeness import (
 )
 from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
+from core.deidentify import deidentify, personal_terms
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
 from core.images import is_image_block
@@ -160,6 +161,11 @@ def _snippet(text: str, limit: int = _RAG_SNIPPET_CHARS) -> str:
 
 # Map stored roles → the model's chat roles (Лілі speaks as the assistant).
 _ROLE_TO_LLM = {"user": "user", "lili": "assistant"}
+
+# v0.33: external thought-tools whose query/prompt arg must be de-identified before it leaves (LUMI-128).
+_EXTERNAL_QUERY_ARG = {
+    "wiki_search": "query", "news_search": "query", "web_lookup": "query", "generate_image": "prompt",
+}
 
 
 def _tool_trace_repr(result: object) -> str:
@@ -984,10 +990,34 @@ class Core:
         if tools is None:
             return None, None
         if "*" in directive.tools:
-            return tools, executor
-        allowed = set(directive.tools)
-        sub = [t for t in tools if t["name"] in allowed]
-        return (sub, executor) if sub else (None, None)
+            sub = tools
+        else:
+            allowed = set(directive.tools)
+            sub = [t for t in tools if t["name"] in allowed]
+            if not sub:
+                return None, None
+        # v0.33 LUMI-128: de-identify the thought-driven external query/prompt — unless %prompt (exempt).
+        if directive.instruction_from_topic:
+            return sub, executor
+        return sub, self._deidentified(executor)
+
+    def _deidentified(self, executor: Callable[[str, dict], str | dict]) -> Callable[[str, dict], str | dict]:
+        """Wrap ``executor`` so a thought-driven **external** query/prompt is de-identified before it leaves
+        (v0.33 LUMI-128) — only the topical/creative part of her musing reaches the external service."""
+        def wrapped(name: str, tool_input: dict) -> str | dict:
+            arg = _EXTERNAL_QUERY_ARG.get(name)
+            if arg and isinstance(tool_input, dict) and isinstance(tool_input.get(arg), str):
+                tool_input = {**tool_input, arg: self._deidentify_external(tool_input[arg])}
+            return executor(name, tool_input)
+        return wrapped
+
+    def _personal_terms(self) -> set[str]:
+        """This user's proper-noun-like personal terms (from their own facts) — the de-id redaction set."""
+        return personal_terms(f.fact for f in self._repo.facts(self._user_id))
+
+    def _deidentify_external(self, query: str) -> str:
+        """Redact this user's personal terms from an outgoing thought-driven external query (LUMI-128)."""
+        return deidentify(query, self._personal_terms())
 
     def _recent_tail(self, session: Session, n: int = 6) -> str | None:
         """The last ``n`` messages of the session, compact — a seed for a thought."""
