@@ -38,6 +38,16 @@ def test_parse_output_sink():
     assert open_and_sink.open is True and open_and_sink.sink == "notes"
 
 
+def test_tool_hint_nudges_tool_thoughts_only():
+    from core.thoughts import JOURNAL, REVIEW, THINK, thought_request, thought_tool_hint
+    assert thought_tool_hint(THINK) == ""                    # tool-less → no nudge (just a quiet musing)
+    assert "journal_write" in thought_tool_hint(JOURNAL)      # %journal: its own strong "use the tool" hint
+    generic = thought_tool_hint(REVIEW)                       # a tool-thought without its own hint → generic
+    assert generic and "journal_write" not in generic and "інструмент" in generic
+    system, _ = thought_request(JOURNAL)                      # the hint rides in the built system prompt
+    assert "journal_write" in system and "ЩОДЕННИК" in system
+
+
 def test_unknown_or_nondirective_is_none():
     assert parse_directive("%bogus topic") is None  # unknown directive → chat
     assert parse_directive("50% done") is None       # not a directive

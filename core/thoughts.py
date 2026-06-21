@@ -57,6 +57,7 @@ class Directive:
     family: str = ""                      # the gating family (file/wiki/news/image/web/memory/prompt); "" = always-on
     default_sink: str = ""                # default output sink ("" = thoughts only; "notes"/path saves there too)
     owner_only: bool = False              # %share: reaches the owner's Telegram → owner-only
+    tool_hint: str = ""                   # appended to the think prompt — make her USE the tool, not just muse
 
 
 THINK = Directive(
@@ -88,8 +89,16 @@ EXPLORE = Directive(
     family="file", tools=_FILE_RW,
 )
 JOURNAL = Directive(
-    "journal", "підсумуй сьогоднішній день у своєму щоденнику",
+    "journal",
+    "підсумуй сьогоднішній день — теплий, живий літературний огляд: що сталося, що ти відчувала, про що думала",
     family="journal", tools=_JOURNAL,
+    tool_hint=(
+        "Це запис у твій ЩОДЕННИК. ОБОВ'ЯЗКОВО виклич journal_write і передай йому ПОВНИЙ текст огляду дня "
+        "(кілька речень чи абзаців своєю прозою) — без цього виклику запис нікуди не збережеться. Дату, "
+        "настрій і біоритми додасть код — ти пишеш лише прозу. За бажання спершу journal_read / journal_list, "
+        "щоб не повторюватись. Огляд може бути довгим — правило «одна коротка думка» стосується ЛИШЕ "
+        "підсумкового рядка з ЕМОЦІЯ вже після збереження."
+    ),
 )
 
 # v0.33 wiki-thoughts (LUMI-130): %lookup (a quick check, twin of %wonder) / %learn (a deep read, twin
@@ -171,6 +180,24 @@ THOUGHT_SYSTEM = (
     "joy, calm, playful, tender, thoughtful, serious, surprise, doubt, sad."
 )
 
+# A tool-thought must USE its tools, not just muse about them. THOUGHT_SYSTEM alone biases her toward a
+# short musing — so for a directive with tools we append a nudge: do the tool work first (read / look up /
+# save), THEN the short ЕМОЦІЯ thought. A directive may override it with its own ``tool_hint`` (e.g. %journal).
+_TOOL_NUDGE = (
+    "У тебе Є інструменти для цього — скористайся ними (прочитай / знайди / подивись / запиши, що доречно), "
+    "а не просто подумай про це. Спершу зроби потрібне інструментами, і лише тоді — підсумкова коротка думка "
+    "з ЕМОЦІЯ. Якщо тебе просять щось зберегти — обовʼязково збережи відповідним інструментом, а не лише уяви."
+)
+
+
+def thought_tool_hint(directive: Directive) -> str:
+    """The tool-use nudge appended to a tool-thought's prompt — its own ``tool_hint`` or the generic one
+    (empty for a tool-less directive like ``%think``/``%wonder``)."""
+    if directive.tool_hint:
+        return directive.tool_hint
+    return _TOOL_NUDGE if directive.tools else ""
+
+
 # The trailing emotion tag the thought ends with — parsed out, never part of the text.
 _EMOTION_RE = re.compile(r"(?im)^[ \t]*емоц[іи][яї][ \t]*:[ \t]*([A-Za-z]+)[ \t]*$")
 
@@ -222,6 +249,9 @@ def thought_request(
         parts.append(f"Поміркуй саме про це: {topic}")
     parts.append(f"(внутрішнє відлуння №{rng_seed})")  # injected seed → variation
     system = THOUGHT_SYSTEM.format(instruction=directive.instruction)
+    hint = thought_tool_hint(directive)
+    if hint:  # a tool-thought: tell her to actually USE the tool (else she just muses — e.g. %journal)
+        system = f"{system}\n\n{hint}"
     return system, [{"role": "user", "content": "\n\n".join(parts)}]
 
 

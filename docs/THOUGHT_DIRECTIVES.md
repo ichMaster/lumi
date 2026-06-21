@@ -135,9 +135,12 @@ file family.
 %explore! упорядкуй мої нотатки про музику
 ```
 
-**`%journal`** — *підсумуй сьогоднішній день у своєму щоденнику.* Writes a literary **day-summary** via the
-v0.28 journal tool (its own dedicated diary root, *not* the file sandbox); code auto-stamps the day's mood +
-biorhythms. Also `+ LUMI_THOUGHT_JOURNAL + LUMI_JOURNAL`.
+**`%journal`** — *підсумуй сьогоднішній день — теплий літературний огляд.* She writes a full **day-review**
+and **saves it** by calling `journal_write` — a real tool call, not just a thought — into the v0.28 diary
+(its own dedicated root, *not* the file sandbox); code auto-stamps the day's mood + biorhythms + forecast, so
+the header matches `/mood` + `/biorhythm`. A short reflection still lands in the thought stream. Needs
+`+ LUMI_THOUGHT_JOURNAL + LUMI_JOURNAL`. (The directive's prompt explicitly tells her to *use* `journal_write`
+— without that nudge a tool-thought tends to muse instead of acting; the diary stops at the day she last wrote.)
 ```
 %journal
 %journal!

@@ -121,6 +121,7 @@ from core.thoughts import (
     should_graduate,
     thought_full_seed,
     thought_request,
+    thought_tool_hint,
     thoughts_diary_block,
 )
 from core.user import DEFAULT_USER_ID
@@ -1003,6 +1004,9 @@ class Core:
         messages.append({"role": "user", "content": thought_full_seed(topic=topic, rng_seed=rng_seed)})
         full_system, cache_prefix = self._system_prompt(session)
         system = full_system + THOUGHT_FULL_HEADER.format(instruction=directive.instruction)
+        hint = thought_tool_hint(directive)
+        if hint:  # a tool-thought: make her USE the tool, not just muse (e.g. %journal → journal_write)
+            system = f"{system}\n\n{hint}"
         seeds = ["context", *(["topic"] if topic else [])]
         return system, messages, seeds, cache_prefix
 
