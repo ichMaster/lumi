@@ -5,8 +5,9 @@ A single at-a-glance reference for the two authored vocabularies of her inner li
 - **`%directives`** — *mental acts* her mind runs (`trigger → seed → generate → record → maybe surface`).
   They are **internal**, not chat: she fires them proactively (the idle nudge), and **you can also type one**
   to nudge her. Distinct from **`/commands`** (which *read* state and show it to you) and plain **chat**
-  (which she *speaks*). Most are **silent** (curating her interior); `!` after the name forces it open
-  (`%wonder!`).
+  (which she *speaks*). By default a directive's result lands in her **thought stream** (silent); an
+  **output indicator** after the name redirects it — `!` → also chat, `>notes` / `>path` → also save (see
+  the **Output** note below).
 - **`{placeholders}`** — `{name}` tokens that authored prompts and directive topics may contain; the core
   expands them to **live state** at fire time. Unknown tokens stay literal.
 
@@ -23,8 +24,9 @@ Everything below the v0.12 base is **off by default**: a tool-thought needs the 
 **`LUMI_THOUGHT_TOOLS`** *and* its per-family flag *and* the underlying tool/sandbox. Off → the directive is
 **absent** (typing it is treated as plain chat).
 
-The **From chat** column is what you type in the input box to fire it yourself (append `!` to force it
-**open**, e.g. `%wonder!`). When the directive is gated off, typing it just falls through to plain chat.
+The **From chat** column is what you type in the input box to fire it yourself. An **output indicator** right
+after the name redirects the result: `!` → also chat (`%wonder!`), `>notes` / `>path/file.md` / `>folder/` →
+also save it there (combine freely, e.g. `%review! >notes`). Gated off → typing it falls through to chat.
 
 | `%directive` | From chat | She… | Tools (think-path) | Gated by | Notes |
 |---|---|---|---|---|---|
@@ -60,18 +62,22 @@ The **From chat** column is what you type in the input box to fire it yourself (
 **Surfacing in the TUI.** While a directive runs, the status line shows `✦ %name · tool…`; with
 **`LUMI_THOUGHT_SURFACE=on`** a subtle chat-log line marks the act (`✦ Лілі читає новини…`). Off → invisible.
 
-**Output — where each directive's result goes.** *Every* directive leaves a **thought** in her thought
-stream (the dated diary that also holds `%think`/`%wonder`), persisted in the **state store** and read back
-with the **`/thoughts`** command — silent for you unless you open it (`%review!`) or it graduates to a spoken
-turn. Some directives **also** write a file or send something:
+**Output — every directive records a thought; you pick extra destinations.** *Every* directive records a
+**thought** in her stream (the dated diary, read with **`/thoughts`**) — that's the **default**. Right after
+the name an **output indicator** sends the *same* thought somewhere else too (combine freely):
 
-| Beyond the thought | Directives |
+| You type | Result goes to |
 |---|---|
-| *nothing — only the thought* | `%think` · `%wonder` · `%review` · `%gaze` · `%lookup` · `%learn` · `%catchup` · `%brief` · `%search` · `%events` · `%recall` |
-| a file in her **sandbox** | `%note` → `notes/<date>.md` · `%explore` (may create/append) · `%imagine` → a PNG |
-| a file in the **diary root** | `%journal` → `.lumi/journal/<user>/<date>.md` |
-| **sends** to your Telegram | `%share` |
-| whatever its tools do | `%prompt` |
+| `%name` | **thoughts** only — the default (silent) |
+| `%name!` | thoughts **+ chat** (`💭 …` shown) |
+| `%name >notes` | thoughts **+ `notes/<date>.md`** |
+| `%name >path/file.md` | thoughts **+ that exact file** |
+| `%name >folder/` | thoughts **+ `folder/<date>.md`** (named by date) |
+
+e.g. `%review! >notes` → chat **and** notes; `%lookup >silt/wiki.md Сковорода` → save the finding to a file.
+The file saves are **code-owned** (the thought text is appended — **sandboxed** + non-destructive; a `..`
+escape is refused) and the TUI confirms `✦ збережено → …`. **`%note`** defaults to `>notes`; the tool-thoughts
+*also* act via their own tools (`%journal` → its diary root, `%imagine` → a PNG, `%share` → Telegram).
 
 ---
 
@@ -112,11 +118,13 @@ day-diary, in a separate root). Silent → check the file (or use `!`).
 ```
 
 **`%review`** — *перечитай свої давні нотатки й тихо поміркуй над ними.* Read-only: she lists / searches /
-reads her own sandbox files (incl. `search_files` + `read_around`), then muses on what she finds. Writes
-**no file** — the result is a **thought** (read it with `%review!` or `/thoughts`).
+reads her own sandbox files (incl. `search_files` + `read_around`), then muses on what she finds. By default
+the result is just a **thought** (`%review!` to see it, or `/thoughts`) — add a **sink** to keep it.
 ```
 %review
-%review! що я нотувала про море
+%review! що я нотувала про море          # show the reflection in chat
+%review >notes                           # also save it to notes/<date>.md
+%review >silt/reviews.md про море        # also save it to a specific file
 ```
 
 **`%explore`** — *поблукай своїми файлами — почитай, за бажання занотуй щось нове.* Read **and** write: she

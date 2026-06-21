@@ -575,6 +575,9 @@ class LumiApp(App[None]):
                 if outcome.mode == "open" and outcome.thought is not None:
                     body = f"💭 {outcome.thought.text}"
                     self._emit(body, Markdown(body))  # silent → nothing shown
+                if outcome.saved_to:  # v0.33: confirm a code-owned save to a sink (notes / a file)
+                    saved = f"✦ збережено → {outcome.saved_to}"
+                    self._emit(saved, Text(saved, style="grey50"))
                 self._last_activity = self._core.clock()
                 prompt.focus()
                 self._render_status()  # reset to the ready status

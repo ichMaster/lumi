@@ -55,7 +55,7 @@ class Directive:
     trigger: str | None = None            # scheduler trigger default (v0.34)
     instruction_from_topic: bool = False  # %prompt: the topic IS the instruction
     family: str = ""                      # the gating family (file/wiki/news/image/web/memory/prompt); "" = always-on
-    append_note: bool = False             # %note: code appends the recorded thought to notes/<date>.md
+    default_sink: str = ""                # default output sink ("" = thoughts only; "notes"/path saves there too)
     owner_only: bool = False              # %share: reaches the owner's Telegram → owner-only
 
 
@@ -77,7 +77,7 @@ _JOURNAL = ("journal_write", "journal_read", "journal_list")
 # %explore (read+write) / %journal (the v0.28 journal tool).
 NOTE = Directive(
     "note", "сформулюй коротку думку, яку варто занотувати собі на згадку",
-    family="file", append_note=True,
+    family="file", default_sink="notes",
 )
 REVIEW = Directive(
     "review", "перечитай свої давні нотатки й тихо поміркуй над ними",
@@ -246,11 +246,12 @@ def parse_thought(raw: str) -> tuple[str, str] | None:
 
 @dataclass(frozen=True)
 class ParsedDirective:
-    """A parsed ``%<name>[!] [connector] [topic]`` input."""
+    """A parsed ``%<name>[!] [>sink] [connector] [topic]`` input."""
 
     name: str           # the directive (think / wonder)
-    open: bool          # the `!` flag → print (open) rather than silent
+    open: bool          # the `!` flag → ALSO echo to chat (open) rather than silent
     topic: str | None   # the optional seed (connector stripped); may contain {placeholders}
+    sink: str | None = None  # the `>sink` output target: None = default, "notes", or a file/folder path
 
 
 # Optional connector words stripped from the topic (EN + UK); `:` is handled separately.
@@ -261,9 +262,10 @@ _DIRECTIVE_RE = re.compile(r"(\w+)(!?)\s*(.*)", re.DOTALL)
 def parse_directive(raw: str) -> ParsedDirective | None:
     """Parse a ``%directive`` input, or ``None`` if it isn't one (→ the caller treats it as chat).
 
-    Grammar: ``%<name>[!] [connector] [topic]`` — ``!`` (glued to the name) prints (open); the
-    connector (``about``/``про``/``на тему``/``щодо``/``:``) is optional and stripped; the topic
-    is free text (may carry ``{placeholders}``). An unknown ``%name`` → ``None`` (plain chat).
+    Grammar: ``%<name>[!] [>sink] [connector] [topic]`` — ``!`` (glued to the name) ALSO echoes to chat;
+    the optional **output sink** ``>notes`` / ``>path/to/file.md`` / ``>folder/`` (one token) saves the
+    thought there too; the connector (``about``/``про``/``на тему``/``щодо``/``:``) is optional and
+    stripped; the topic is free text (may carry ``{placeholders}``). Unknown ``%name`` → ``None`` (chat).
     """
     text = raw.strip()
     if not text.startswith("%"):
@@ -274,14 +276,20 @@ def parse_directive(raw: str) -> ParsedDirective | None:
     name = match.group(1).lower()
     if name not in REGISTRY:
         return None  # unknown directive → not handled, falls through to chat
-    topic = match.group(3).strip()
+    rest = match.group(3).strip()
+    sink = None
+    if rest.startswith(">"):  # the output sink — one token: >notes / >path/file.md / >folder/
+        head, _, tail = rest[1:].partition(" ")
+        sink = head.strip() or None
+        rest = tail.strip()
+    topic = rest
     low = topic.lower()
     for connector in _CONNECTORS:
         if low.startswith(connector + " "):
             topic = topic[len(connector):].strip()
             break
     topic = topic.lstrip(":").strip()  # also drop a leading ":"
-    return ParsedDirective(name=name, open=match.group(2) == "!", topic=topic or None)
+    return ParsedDirective(name=name, open=match.group(2) == "!", topic=topic or None, sink=sink)
 
 
 def directive_mode(parsed: ParsedDirective, *, is_owner: bool) -> str:

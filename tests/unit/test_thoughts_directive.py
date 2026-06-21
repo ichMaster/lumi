@@ -26,6 +26,18 @@ def test_parse_topic_with_optional_connectors():
     assert parse_directive("%wonder").name == "wonder"
 
 
+def test_parse_output_sink():
+    assert parse_directive("%think").sink is None                    # default → thoughts
+    assert parse_directive("%think про море").sink is None            # a topic is not a sink
+    assert parse_directive("%review >notes").sink == "notes"          # >notes
+    assert parse_directive("%review >notes").topic is None
+    p = parse_directive("%review >silt/ideas.md про море")           # >file then topic
+    assert p.sink == "silt/ideas.md" and p.topic == "море"
+    assert parse_directive("%review >memos/").sink == "memos/"        # >folder/
+    open_and_sink = parse_directive("%wonder! >notes")               # ! (chat) + >notes (save) combine
+    assert open_and_sink.open is True and open_and_sink.sink == "notes"
+
+
 def test_unknown_or_nondirective_is_none():
     assert parse_directive("%bogus topic") is None  # unknown directive → chat
     assert parse_directive("50% done") is None       # not a directive

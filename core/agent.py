@@ -205,6 +205,7 @@ class DirectiveOutcome:
     is_directive: bool
     mode: str | None = None
     thought: Thought | None = None
+    saved_to: str | None = None  # v0.33: the sandbox path the thought was ALSO saved to (notes/<date>.md, …)
 
 
 @dataclass
@@ -495,6 +496,7 @@ class Core:
         self._thoughts_show = thoughts_show  # hidden (default) / admin / off — the /thoughts policy
         self._thoughts_context = thoughts_context  # lean (seeds) / full (the whole reply backdrop)
         self._thought_tools_enabled = thought_tools_enabled  # v0.33 master gate for tool-using thoughts
+        self._last_saved_to: str | None = None  # v0.33: the sink path the last think() saved to
         self._thought_journal = thought_journal  # v0.33 %journal per-family flag
         self._thought_wiki = thought_wiki  # v0.33 %lookup/%learn per-family flag
         self._thought_news = thought_news  # v0.33 %catchup/%brief per-family flag
@@ -898,8 +900,12 @@ class Core:
         session: Session | None = None,
         rng_seed: int = 0,
         spoken: bool = False,
+        sink: str | None = None,
     ) -> Thought | None:
         """Run one ``%directive`` — seed → generate → validate → record — into the dated diary.
+
+        ``sink`` (v0.33) overrides the directive's ``default_sink``: the recorded thought is **also**
+        code-saved to ``notes/<date>.md`` (``"notes"``) or a file/folder path. ``None`` → use the default.
 
         Returns the recorded :class:`Thought`, or ``None`` (off / unknown directive / malformed
         output). **Best-effort**: a model failure or an empty thought records nothing, never raises.
@@ -911,6 +917,7 @@ class Core:
         directive = REGISTRY.get(kind)
         if directive is None:
             return None
+        self._last_saved_to = None  # v0.33: the sink path this think saved to (read by run_directive)
         if topic:  # a topic may carry {placeholders} (e.g. %think about {last_thought})
             topic = self.resolve(topic, session=session)
         if directive.instruction_from_topic and topic:  # v0.33 %prompt: the topic IS the instruction
@@ -945,8 +952,9 @@ class Core:
             user_id=self._user_id, spoken=spoken,
         )
         self._repo.add_thought(thought)
-        if directive.append_note:  # v0.33 %note — code appends the thought to the dated notes file
-            self._append_note(thought)
+        effective_sink = sink if sink is not None else directive.default_sink
+        if effective_sink:  # v0.33 — code-owned save of the thought to the chosen sink (notes / a file)
+            self._last_saved_to = self._save_thought(thought, effective_sink)
         _thoughts_log.info("%s [%s] %s", thought.when, thought.kind, thought.text)  # logged tier
         return thought
 
@@ -1060,20 +1068,31 @@ class Core:
             return self._thought_tools(directive)[0] is not None
         return self._file_tool_enabled and self._files_dir is not None  # %note (tool-less) → file sandbox
 
-    def _append_note(self, thought) -> None:
-        """``%note``: append the recorded thought to a dated ``notes/<date>.md`` in the file sandbox —
-        **code-owned** (an unattended firing can't wander), non-destructive (create-or-append). Best-effort.
-        Distinct from the v0.28 ``%journal`` diary, which lives in its own dedicated root."""
+    def _resolve_sink(self, sink: str) -> str:
+        """Resolve an output sink to a sandbox-relative path (v0.33): ``notes`` → ``notes/<date>.md``; a
+        trailing ``/`` → a dated file in that folder; otherwise the exact file path."""
+        date = self._clock().strftime("%Y-%m-%d")
+        if sink == "notes":
+            return f"notes/{date}.md"
+        return f"{sink}{date}.md" if sink.endswith("/") else sink
+
+    def _save_thought(self, thought, sink: str) -> str | None:
+        """Code-owned save of a directive's thought to ``sink`` (v0.33) — sandboxed, non-destructive
+        (create-or-append). Returns the sandbox-relative path written, or ``None`` if off / escaping /
+        failed. **Best-effort**: a bad sink never breaks the thought, so an unattended firing can't wander.
+        Distinct from the v0.28 ``%journal`` diary (its own dedicated root)."""
         if not (self._file_tool_enabled and self._files_dir is not None):
-            return
+            return None
+        from core.files import _Denied, safe_path
+        rel = self._resolve_sink(sink)
         try:
-            root = self._files_dir / self._user_id / "notes"
-            root.mkdir(parents=True, exist_ok=True)
-            path = root / f"{self._clock().strftime('%Y-%m-%d')}.md"
+            path = safe_path(self._files_dir / self._user_id, rel)  # sandbox guard (rejects ../escapes)
+            path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as fh:
                 fh.write(f"## {thought.when[11:16]} — {thought.kind}\n{thought.text}\n\n")
-        except OSError:
-            pass  # never break the thought
+            return rel
+        except (_Denied, OSError):
+            return None  # never break the thought
 
     def _recent_tail(self, session: Session, n: int = 6) -> str | None:
         """The last ``n`` messages of the session, compact — a seed for a thought."""
@@ -1133,8 +1152,11 @@ class Core:
         if not self._directive_enabled(REGISTRY[parsed.name], is_owner=is_owner):
             return DirectiveOutcome(is_directive=False)  # family off / owner-gated → plain chat (absent)
         mode = directive_mode(parsed, is_owner=is_owner)
-        thought = self.think(parsed.name, topic=parsed.topic, session=session, rng_seed=rng_seed)
-        return DirectiveOutcome(is_directive=True, mode=mode, thought=thought)
+        thought = self.think(
+            parsed.name, topic=parsed.topic, session=session, rng_seed=rng_seed, sink=parsed.sink
+        )
+        saved_to = self._last_saved_to if thought is not None else None  # the path think() actually wrote
+        return DirectiveOutcome(is_directive=True, mode=mode, thought=thought, saved_to=saved_to)
 
     def tick_think(
         self,
