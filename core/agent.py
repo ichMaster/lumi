@@ -18,7 +18,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -396,6 +396,7 @@ class Core:
         thought_wiki: bool = False,
         thought_news: bool = False,
         thought_web: bool = False,
+        thought_prompt: bool = False,
         quiet_hours: tuple[int, int] | None = None,
         thoughts_quiet_hours: tuple[int, int] | None = None,
         usage_ledger_path: Path | None = None,
@@ -496,6 +497,7 @@ class Core:
         self._thought_wiki = thought_wiki  # v0.33 %lookup/%learn per-family flag
         self._thought_news = thought_news  # v0.33 %catchup/%brief per-family flag
         self._thought_web = thought_web  # v0.33 %search/%events per-family flag
+        self._thought_prompt = thought_prompt  # v0.33 %prompt per-family flag (owner-only)
         self._quiet_hours = quiet_hours
         # The proactive-think's quiet window is independent of the nudge's (falls back to it in config).
         self._thoughts_quiet_hours = thoughts_quiet_hours
@@ -907,6 +909,9 @@ class Core:
             return None
         if topic:  # a topic may carry {placeholders} (e.g. %think about {last_thought})
             topic = self.resolve(topic, session=session)
+        if directive.instruction_from_topic and topic:  # v0.33 %prompt: the topic IS the instruction
+            directive = replace(directive, instruction=topic)
+            topic = None  # consumed as the instruction — don't also inject it as a seed
         try:
             if self._thoughts_context == "full" and session is not None:
                 system, msgs, seeds, cache_prefix = self._thought_call_full(
@@ -2722,6 +2727,7 @@ def build_core(
         thought_wiki=cfg.thought_wiki,
         thought_news=cfg.thought_news,
         thought_web=cfg.thought_web,
+        thought_prompt=cfg.thought_prompt,
         quiet_hours=cfg.quiet_hours,
         thoughts_quiet_hours=cfg.thoughts_quiet_hours,
         usage_ledger_path=(cfg.store_path.parent / "usage-ledger.jsonl") if cfg.usage_report else None,

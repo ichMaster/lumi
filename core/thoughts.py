@@ -127,10 +127,22 @@ EVENTS = Directive(
     family="web", tools=_WEB,
 )
 
+# v0.33 memory + open (LUMI-134): %recall (a memory resurfaces — inward, results TRUSTED, no de-id) +
+# %prompt (your instruction as a self-directed act — owner-only; the topic IS the instruction; de-id-exempt).
+RECALL = Directive(
+    "recall", "нехай спливе якийсь спогад із ваших розмов — тихо пригадай і поміркуй над ним",
+    family="memory", tools=("recall",),
+)
+PROMPT = Directive(
+    "prompt", "виконай те, про що тебе попросили, як власну внутрішню справу",
+    family="prompt", tools=("*",), instruction_from_topic=True, surface="open",
+)
+
 # The directive registry (v0.12 ships think + wonder; v0.33 adds the tool-thought families).
 REGISTRY: dict[str, Directive] = {
     d.name: d for d in (
         THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL, LOOKUP, LEARN, CATCHUP, BRIEF, SEARCH, EVENTS,
+        RECALL, PROMPT,
     )
 }
 

@@ -292,6 +292,7 @@ class Config:
     thought_wiki: bool = False  # v0.33 %lookup/%learn directives (the v0.21 wiki tool)
     thought_news: bool = False  # v0.33 %catchup/%brief directives (the v0.25 news tool)
     thought_web: bool = False  # v0.33 %search/%events directives (the v0.27 web_lookup tool)
+    thought_prompt: bool = False  # v0.33 %prompt directive (owner-only; the topic is the instruction)
     # v0.13 bridge: the TUI reads inbox / writes outbox (the file bus to the Telegram daemons). Off by default.
     bridge: bool = False
     inbox_path: Path = DEFAULT_INBOX_PATH
@@ -554,6 +555,7 @@ def load_config(*, load_env: bool = True) -> Config:
         thought_wiki=(os.getenv("LUMI_THOUGHT_WIKI") or "off").strip().lower() in _TRUTHY,  # v0.33
         thought_news=(os.getenv("LUMI_THOUGHT_NEWS") or "off").strip().lower() in _TRUTHY,  # v0.33
         thought_web=(os.getenv("LUMI_THOUGHT_WEB") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_prompt=(os.getenv("LUMI_THOUGHT_PROMPT") or "off").strip().lower() in _TRUTHY,  # v0.33
         bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
         inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else DEFAULT_INBOX_PATH,
         outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else DEFAULT_OUTBOX_PATH,
