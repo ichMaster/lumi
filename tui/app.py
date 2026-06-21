@@ -65,6 +65,27 @@ STATUS_READY = "online"
 STATUS_BUSY = "requesting…"
 STATUS_OFFLINE = "offline"
 
+# v0.33: surfacing an autonomous act (a %directive) in the TUI — a status-line state (always on) + an
+# optional chat-log meta line (gated by LUMI_THOUGHT_SURFACE). Distinct from a chat turn's `requesting…`.
+_THOUGHT_VERBS = {
+    "think": "думає", "wonder": "цікавиться", "note": "занотовує", "review": "перечитує нотатки",
+    "explore": "блукає файлами", "journal": "пише щоденник", "lookup": "шукає у вікіпедії",
+    "learn": "вчиться", "catchup": "читає новини", "brief": "переглядає новини",
+    "search": "шукає в інтернеті", "events": "дивиться, що попереду", "recall": "пригадує",
+    "prompt": "виконує прохання", "gaze": "розглядає картинку", "imagine": "малює",
+    "share": "ділиться картинкою",
+}
+
+
+def thought_status_label(name: str, last_tool: str | None = None) -> str:
+    """The v0.33 status-line busy state for a running directive (+ its active tool) — e.g. ``✦ %brief · news_read…``."""
+    return f"✦ %{name}{f' · {last_tool}' if last_tool else ''}…"
+
+
+def thought_meta_line(name: str) -> str:
+    """The v0.33 (gated) chat-log meta line marking an autonomous act — e.g. ``✦ Лілі читає новини…``."""
+    return f"✦ Лілі {_THOUGHT_VERBS.get(name, 'міркує')}…"
+
 
 class ConfirmScreen(ModalScreen[bool]):
     """A tiny yes/no modal — returns ``True`` on confirm, ``False`` otherwise."""
@@ -278,6 +299,7 @@ class LumiApp(App[None]):
         self._vision_max = cfg.vision_max
         self._web_lookup_enabled = cfg.web_lookup  # v0.27: /web fires a live web lookup
         self._journal_enabled = cfg.journal  # v0.28: /journal reads/writes her day-summary diary
+        self._thought_surface = cfg.thought_surface  # v0.33: surface a running directive in the log
         self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
         now = self._core.clock()
         self._last_activity = self._last_nudge_ts = self._last_think_ts = now
@@ -542,14 +564,22 @@ class LumiApp(App[None]):
 
         # %directive (v0.12) — her mind acts, not a chat message. Unknown %name → falls through.
         if text.startswith("%") and self._session is not None:
+            parsed = parse_directive(text)
+            if parsed is not None:  # v0.33: surface the running act on the status line (not `requesting…`)
+                self._render_status(busy=thought_status_label(parsed.name))
             outcome = self._core.run_directive(text, self._session)
             if outcome.is_directive:
+                if self._thought_surface:  # v0.33: a subtle chat-log meta line (off by default)
+                    line = thought_meta_line(parsed.name)
+                    self._emit(line, Text(line, style="grey50"))
                 if outcome.mode == "open" and outcome.thought is not None:
                     body = f"💭 {outcome.thought.text}"
                     self._emit(body, Markdown(body))  # silent → nothing shown
                 self._last_activity = self._core.clock()
                 prompt.focus()
+                self._render_status()  # reset to the ready status
                 return
+            self._render_status()  # not a fired directive → reset; falls through to chat
 
         self._last_activity = self._core.clock()  # real input resets the idle timer
         await self._run_turn(text, mirror_input=True)  # keyboard turn → also mirror your line to Telegram

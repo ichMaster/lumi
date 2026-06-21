@@ -295,6 +295,7 @@ class Config:
     thought_prompt: bool = False  # v0.33 %prompt directive (owner-only; the topic is the instruction)
     thought_image: bool = False  # v0.33 %gaze/%imagine/%share directives (the v0.22-24 image tools)
     thought_imagine_cap: int = 1  # v0.33 %imagine paid sub-cap (think-loop steps)
+    thought_surface: bool = False  # v0.33 surface a running directive as a chat-log meta line (TUI)
     # v0.13 bridge: the TUI reads inbox / writes outbox (the file bus to the Telegram daemons). Off by default.
     bridge: bool = False
     inbox_path: Path = DEFAULT_INBOX_PATH
@@ -560,6 +561,7 @@ def load_config(*, load_env: bool = True) -> Config:
         thought_prompt=(os.getenv("LUMI_THOUGHT_PROMPT") or "off").strip().lower() in _TRUTHY,  # v0.33
         thought_image=(os.getenv("LUMI_THOUGHT_IMAGE") or "off").strip().lower() in _TRUTHY,  # v0.33
         thought_imagine_cap=int(os.getenv("LUMI_THOUGHT_IMAGINE_CAP") or 1),  # v0.33 %imagine paid sub-cap
+        thought_surface=(os.getenv("LUMI_THOUGHT_SURFACE") or "off").strip().lower() in _TRUTHY,  # v0.33
         bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
         inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else DEFAULT_INBOX_PATH,
         outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else DEFAULT_OUTBOX_PATH,
