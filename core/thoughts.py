@@ -103,9 +103,21 @@ LEARN = Directive(
     family="wiki", tools=_WIKI,
 )
 
+# v0.33 news-thoughts (LUMI-131): %catchup (spontaneous "що там у світі?", twin of %lookup) / %brief
+# (a paced daily catch-up, twin of %learn) — the v0.25 Guardian news tools; cited Ukrainian, de-id query.
+_NEWS = ("news_search", "news_read")
+CATCHUP = Directive(
+    "catchup", "зазирни, що там у світі — знайди одну новину, прочитай і перекажи українською, з джерелом",
+    family="news", tools=_NEWS,
+)
+BRIEF = Directive(
+    "brief", "спокійно проглянь кілька свіжих новин і коротко підсумуй українською, з джерелами",
+    family="news", tools=_NEWS,
+)
+
 # The directive registry (v0.12 ships think + wonder; v0.33 adds the tool-thought families).
 REGISTRY: dict[str, Directive] = {
-    d.name: d for d in (THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL, LOOKUP, LEARN)
+    d.name: d for d in (THINK, WONDER, NOTE, REVIEW, EXPLORE, JOURNAL, LOOKUP, LEARN, CATCHUP, BRIEF)
 }
 
 THOUGHT_SYSTEM = (
