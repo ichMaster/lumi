@@ -1093,6 +1093,29 @@ class Core:
             mine = self._repo.thoughts_for(self._user_id, "")
             return mine[-1].text if mine else ""
 
+        def last_image() -> str:  # v0.33: the most recent image in THIS user's sandbox (isolation-aware)
+            if self._files_dir is None:
+                return ""
+            root = self._files_dir / self._user_id
+            if not root.is_dir():
+                return ""
+            imgs = [p for p in root.rglob("*")
+                    if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"}]
+            if not imgs:
+                return ""
+            return max(imgs, key=lambda p: p.stat().st_mtime).relative_to(root).as_posix()
+
+        def ambient_news() -> str:  # v0.33: the v0.4 startup news snapshot (topical only)
+            return " | ".join(self._world.news) if (self._world and self._world.news) else ""
+
+        def section() -> str:  # v0.33: the first configured news section (a topical seed)
+            secs = [s.strip() for s in (self._news_sections or "").split(",") if s.strip()]
+            return secs[0] if secs else ""
+
+        def weekday() -> str:  # v0.33: the local weekday (Ukrainian) from the injected clock
+            days = ("понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя")
+            return days[self._clock().weekday()]
+
         return {
             "last_thought": last_thought,
             "thoughts": lambda: self._recent_thoughts_text() or "",
@@ -1104,6 +1127,15 @@ class Core:
             "now": lambda: self._clock().strftime("%Y-%m-%d %H:%M"),
             "today": lambda: self._clock().strftime("%Y-%m-%d"),
             "user": lambda: self._user_id,
+            # v0.33 thought-tool seeds (lazy, ""-on-empty, isolation-aware)
+            "ambient_news": ambient_news,
+            "world": lambda: ambient_line(self._world, self._clock) or "",
+            "last_image": last_image,
+            "interest": lambda: "",        # v1.1 inner life
+            "hungriest_need": lambda: "",   # v1.1 needs
+            "section": section,
+            "weekday": weekday,
+            "gap": lambda: "",              # v1.1 away-gap
         }
 
     def _system_prompt(self, session: Session, recall: str | None = None) -> tuple[str, str]:

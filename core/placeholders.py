@@ -19,6 +19,8 @@ _log = logging.getLogger("lumi.placeholders")
 PLACEHOLDER_NAMES = frozenset({
     "last_thought", "thoughts", "mood", "closeness", "plan", "need",
     "recent", "now", "today", "user",
+    # v0.33 thought-tool seeds — lazy, ""-on-empty, isolation-aware
+    "ambient_news", "world", "last_image", "interest", "hungriest_need", "section", "weekday", "gap",
 })
 
 _TOKEN_RE = re.compile(r"\{([a-z_]+)\}")

@@ -61,3 +61,49 @@ def test_last_thought_is_isolation_aware(tmp_path):
     bob = Core(llm=MockLLMClient("x"), repository=JsonRepository(p), canon="C", model="m",
                clock=_DAY, mood_enabled=False, user_id="bob")
     assert bob.resolve("{last_thought}") == ""  # bob never sees alice's thought
+
+
+# --- v0.33 thought-tool seed placeholders ---------------------------------
+def test_v033_placeholders_in_registry():
+    assert {"ambient_news", "world", "last_image", "weekday", "section",
+            "interest", "hungriest_need", "gap"} <= PLACEHOLDER_NAMES
+
+
+def test_weekday_resolves_from_clock(tmp_path):
+    core = _core(tmp_path)
+    days = ("понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота", "неділя")
+    assert core.resolve("{weekday}") == days[datetime(2026, 6, 9).weekday()]
+
+
+def test_inner_life_seeds_are_empty_until_v11(tmp_path):
+    core = _core(tmp_path)  # no world set, no inner life → all "" (the token disappears)
+    assert core.resolve("[{interest}][{hungriest_need}][{gap}][{ambient_news}][{world}]") == "[][][][][]"
+
+
+def test_section_resolves_first_news_section(tmp_path):
+    core = Core(llm=MockLLMClient("x"), repository=JsonRepository(tmp_path / "s.json"),
+                canon="C", model="m", clock=_DAY, mood_enabled=False, user_id="owner",
+                news_sections="technology,science")
+    assert core.resolve("{section}") == "technology"
+
+
+def test_world_and_ambient_news_resolve_when_set(tmp_path):
+    from core.worldcontext import WorldContext
+    core = _core(tmp_path)
+    core.set_world_context(WorldContext(news=("AI news", "weather alert"), weather="15°C"))
+    assert core.resolve("{ambient_news}") == "AI news | weather alert"  # topical only
+    assert "новини: AI news" in core.resolve("{world}")  # the ambient line includes the news
+
+
+def test_last_image_resolves_from_sandbox_and_is_isolated(tmp_path):
+    core = Core(llm=MockLLMClient("x"), repository=JsonRepository(tmp_path / "s.json"),
+                canon="C", model="m", clock=_DAY, mood_enabled=False, user_id="owner",
+                files_dir=tmp_path / "files")
+    root = tmp_path / "files" / "owner" / "gallery"
+    root.mkdir(parents=True)
+    (root / "dream.png").write_bytes(b"PNG")
+    assert core.resolve("{last_image}") == "gallery/dream.png"
+    bob = Core(llm=MockLLMClient("x"), repository=JsonRepository(tmp_path / "s.json"),
+               canon="C", model="m", clock=_DAY, mood_enabled=False, user_id="bob",
+               files_dir=tmp_path / "files")
+    assert bob.resolve("{last_image}") == ""  # bob's sandbox is empty → isolated
