@@ -117,16 +117,27 @@ summaries, stored as `DaySummary`/`WeekSummary`, and injected by [core/prompt.py
 (the row cap) can't shorten a paragraph — so **P2 = edit the two generation prompts (code) → then regenerate
 the stored day/week digests once**. The cheap proper-noun-free win is step 1; step 4 makes it retroactive.
 
-### P3 — Facts: an identity-core + the new `recall_facts` tool · −~10%
+### P3 — Facts: a `core`-flagged identity-core + the new `recall_facts` tool · −~10%
 **Now:** the facts **digest + a verbatim tail** of newer facts = 8.6 KB, and the tail re-grows as facts
 accumulate (Phase-0's known regrowth).
-**Change:** inject only a small, **curated identity core** (name, key relationships, hard boundaries,
-agreements — the ~8–12 lines she must *never* be caught forgetting) and move the long tail behind a new
-**`recall_facts(query)`** tool (§4).
+**Change:** inject only the **`core=true`** facts (name, key relationships, hard boundaries, agreements — the
+~`LUMI_FACTS_CORE_MAX` lines she must *never* be caught forgetting) and move the long tail behind a new
+**`recall_facts(query)`** tool / `recall(scope=facts)` (§4).
+
+**The `core` flag lifecycle** (the selection mechanism — this is the hard part):
+- A **`core` boolean** on each `LongTermFact`, **persisted in the store** (additive field).
+- **Backfill once** (at implementation): one model call over *all* facts → flag ~`LUMI_FACTS_CORE_MAX` as core.
+- **At session close:** the fact extraction tags each *new* fact with an initial `core` guess.
+- **At session start:** re-flag — send **only the `core=true` pool** (old + the few new) to one model call,
+  re-rank to the top `LUMI_FACTS_CORE_MAX`, write the flag back. **This *replaces* the Phase-0
+  `_ensure_facts_digest` call** (cost-neutral, not extra) and is cheap (input is the small core pool, not all
+  facts). **Boundaries/agreements are pinned** — kept even past the cap.
+- **Each turn:** the prompt injects the `core=true` facts; the rest are `recall(scope=facts)`'d.
+
 **Enabling tools:** the **new** `recall_facts` (pull) + the auto-RAG block (already surfaces fact-like lines
 from messages). **Est. saving ≈ 6 KB / ~2 K-tok.**
 **Risk: MEDIUM–HIGH** — facts *are* identity; a missed one reads as "she forgot me." **Mitigation:** the
-identity core stays injected; the boundary/agreement facts are part of it and **never** tool-gated; only the
+`core` facts stay injected; the boundary/agreement facts are **pinned** and **never** tool-gated; only the
 episodic long tail is pulled.
 
 ### P4 — Cap the thoughts window + make it pullable · −~9%
