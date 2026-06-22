@@ -386,6 +386,8 @@ class Core:
         rag_max_chars: int = 1200,
         rag_w: int = 2,
         rag_snippet_chars: int = _RAG_SNIPPET_CHARS,
+        facts_rag: bool = False,
+        facts_rag_k: int = 4,
         rag_chunk: bool = False,
         rag_chunk_chars: int = 800,
         rag_chunk_overlap: int = 120,
@@ -657,6 +659,9 @@ class Core:
         self._rag_floor = rag_floor
         self._rag_max_chars = rag_max_chars
         self._rag_w = rag_w
+        # v0.36: the per-turn fact-RAG push (# Релевантні факти — top-K relevant non-core facts).
+        self._facts_rag = facts_rag
+        self._facts_rag_k = facts_rag_k
         self._rag_snippet_chars = rag_snippet_chars  # per-line cap for recalled moments
         # v0.30 chunking: index a long message as several chunks (off → one vector per message).
         self._rag_chunk = rag_chunk
@@ -1311,7 +1316,9 @@ class Core:
             "gap": lambda: "",              # v1.1 away-gap
         }
 
-    def _system_prompt(self, session: Session, recall: str | None = None) -> tuple[str, str]:
+    def _system_prompt(
+        self, session: Session, recall: str | None = None, fact_recall: str | None = None
+    ) -> tuple[str, str]:
         """Assemble the system prompt for this turn — returns ``(system, cache_prefix)``,
         the cacheable stable head (v0.15). Rehydrated for the user.
 
@@ -1412,6 +1419,7 @@ class Core:
             closeness=closeness,  # the active relationship level's block (v0.10)
             thoughts=self._thoughts_block(),  # the last-24h dated diary (v0.12)
             recall=recall,  # v0.17: the per-turn "relevant past moments" RAG block (tail; never cached)
+            fact_recall=fact_recall,  # v0.36: the per-turn fact-RAG push — top-K relevant non-core facts
         )
 
     def _housekeeping_reply(
@@ -2180,7 +2188,8 @@ class Core:
         # v0.17: automatic per-turn RAG — the incoming message is the query; inject the relevant past
         # (deduped against the live window so it never repeats a line already in context).
         system, cache_prefix = self._system_prompt(
-            session, recall=self._recall_block(user_text, live)
+            session, recall=self._recall_block(user_text, live),
+            fact_recall=self._fact_recall_block(user_text),  # v0.36: top-K relevant non-core facts
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted for the cache monitor
@@ -2657,6 +2666,35 @@ class Core:
             used += len(snip) + 2
         return "\n\n".join(out) if out else None
 
+    def _fact_recall_block(self, query: str) -> str | None:
+        """The per-turn **fact-RAG** block (v0.36): the top-``LUMI_FACTS_RAG_K`` facts most relevant
+        to the incoming ``query``, as a `# Релевантні факти` list — or ``None`` when off / no hit above
+        the floor. The *push* complement to the static core (LUMI-143) + the recall *pull* (LUMI-141).
+
+        Excludes the **`core=true`** facts (already injected — no double-push) + duplicates; her own
+        knowledge → trusted (no de-id). **Best-effort, never blocks a turn.**
+        """
+        if not self._facts_rag or self._embedder is None or not query.strip():
+            return None
+        core_texts = {f.fact for f in self._repo.facts(self._user_id) if f.core}  # already in the prompt
+        try:  # over-fetch so the core/dup filter still yields ~K
+            hits = [(s, r) for s, r in self.recall(query, max(self._facts_rag_k * 3, 12), scope="facts")
+                    if s >= self._rag_floor]
+        except Exception:  # noqa: BLE001 — best-effort; never break a turn
+            _recall_log.warning("fact-RAG search failed")
+            return None
+        lines: list[str] = []
+        seen: set[str] = set()
+        for _s, r in hits:
+            t = r.text.strip()
+            if not t or t in core_texts or t in seen:  # skip core (already injected) + duplicates
+                continue
+            seen.add(t)
+            lines.append(f"- {t}")
+            if len(lines) >= self._facts_rag_k:
+                break
+        return "\n".join(lines) if lines else None
+
     @staticmethod
     def _who(role: str) -> str:
         return "Лілі" if role == "lili" else "ти"
@@ -2890,6 +2928,8 @@ def build_core(
         rag_enabled=cfg.rag,
         rag_k=cfg.rag_k,
         rag_floor=cfg.rag_floor,
+        facts_rag=cfg.facts_rag,
+        facts_rag_k=cfg.facts_rag_k,
         rag_max_chars=cfg.rag_max_chars,
         rag_w=cfg.rag_w,
         rag_snippet_chars=cfg.rag_snippet_chars,

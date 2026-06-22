@@ -269,6 +269,8 @@ class Config:
     rag: bool = False
     rag_k: int = 4                  # top-K relevant past moments injected per turn
     rag_floor: float = 0.3          # cosine relevance floor — weaker matches aren't injected
+    facts_rag: bool = False         # v0.36: per-turn fact-RAG push (# Релевантні факти, non-core)
+    facts_rag_k: int = 4            # v0.36: top-K relevant non-core facts pushed per turn
     rag_max_chars: int = 1200       # the recall block's total char budget (spend recall tokens carefully)
     rag_w: int = 2                  # context-expansion window: ±W neighbour messages around each hit
     rag_snippet_chars: int = 240    # per-line cap for each recalled moment (longer → more context, more tokens)
@@ -545,6 +547,8 @@ def load_config(*, load_env: bool = True) -> Config:
         rag=(os.getenv("LUMI_RAG") or "off").strip().lower() in _TRUTHY,  # v0.17, off by default
         rag_k=int(os.getenv("LUMI_RAG_K") or 4),
         rag_floor=float(os.getenv("LUMI_RAG_FLOOR") or 0.3),
+        facts_rag=(os.getenv("LUMI_FACTS_RAG") or "off").strip().lower() in _TRUTHY,  # v0.36, off
+        facts_rag_k=int(os.getenv("LUMI_FACTS_RAG_K") or 4),
         rag_max_chars=int(os.getenv("LUMI_RAG_MAX_CHARS") or 1200),
         rag_w=int(os.getenv("LUMI_RAG_W") or 2),
         rag_snippet_chars=int(os.getenv("LUMI_RAG_SNIPPET_CHARS") or 240),
