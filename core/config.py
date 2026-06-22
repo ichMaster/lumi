@@ -44,6 +44,36 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 # A current Claude Haiku model id (the only model to start; more in v0.9).
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
+# v0.37 LUMI-148: friendly aliases for the `/model` runtime toggle — alias → (provider, model). Read
+# from config (not hard-coded in the TUI/core) and overridable via LUMI_MODEL_ALIASES
+# ("opus=anthropic:claude-opus-4-8,gpt-5.5=openai:gpt-5.5"). The model ids are still verified per provider.
+DEFAULT_MODEL_ALIASES: dict[str, tuple[str, str]] = {
+    "opus": ("anthropic", "claude-opus-4-8"),
+    "sonnet": ("anthropic", "claude-sonnet-4-6"),
+    "haiku": ("anthropic", "claude-haiku-4-5-20251001"),
+    "gpt-5.5": ("openai", "gpt-5.5"),
+    "gpt": ("openai", "gpt-5.5"),
+    "deepseek": ("deepseek", "deepseek-chat"),
+}
+
+
+def _parse_model_aliases(raw: str) -> dict[str, tuple[str, str]]:
+    """Parse ``LUMI_MODEL_ALIASES`` (``alias=provider:model,…``) merged onto the defaults. Malformed
+    entries are skipped (never raise); an empty value yields the defaults unchanged."""
+    out = dict(DEFAULT_MODEL_ALIASES)
+    for item in (raw or "").split(","):
+        item = item.strip()
+        if not item or "=" not in item:
+            continue
+        alias, target = item.split("=", 1)
+        alias = alias.strip().lower()
+        if ":" not in target:
+            continue
+        provider, model = target.split(":", 1)
+        if alias and provider.strip() and model.strip():
+            out[alias] = (provider.strip().lower(), model.strip())
+    return out
+
 # Default canon path (config-referenced — never hardcoded in the core).
 DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 
@@ -155,6 +185,8 @@ class Config:
 
     provider: str = "anthropic"
     model: str = DEFAULT_MODEL
+    # v0.37 LUMI-148: `/model` runtime-toggle aliases (alias → (provider, model)); from LUMI_MODEL_ALIASES.
+    model_aliases: dict[str, tuple[str, str]] = field(default_factory=lambda: dict(DEFAULT_MODEL_ALIASES))
     canon_path: Path = DEFAULT_CANON_PATH
     styles_path: Path = DEFAULT_STYLES_PATH
     store_path: Path = DEFAULT_STORE_PATH
@@ -450,6 +482,7 @@ def load_config(*, load_env: bool = True) -> Config:
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
+        model_aliases=_parse_model_aliases(os.getenv("LUMI_MODEL_ALIASES", "")),
         canon_path=canon_path,
         styles_path=styles_path,
         store_path=store_path,

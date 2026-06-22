@@ -27,6 +27,18 @@ LUMI_MODEL=<model id>        # which model on that backend
 
 The status bar shows the active model, so you can confirm the switch.
 
+**Switch at runtime — no restart (v0.37).** Keep **both** keys in `.env` and flip engines mid-session with
+the **`/model`** TUI command:
+
+- `/model` — print the active engine + the available aliases.
+- `/model opus` / `/model gpt-5.5` — swap to a configured alias (Opus 4.8 ↔ GPT-5.5), ideal for an A/B on the
+  same conversation. `/model openai:gpt-4o` — an explicit `provider:model` for an id without an alias.
+
+Aliases come from config (`LUMI_MODEL_ALIASES=opus=anthropic:claude-opus-4-8,gpt-5.5=openai:gpt-5.5`, with
+sensible defaults). The switch is **not** persisted — the next restart uses the `.env` default; the new
+engine starts on a cold prompt cache (a one-off first turn). An unknown alias or a missing key is rejected
+with a clear message and leaves the current engine in place.
+
 **Two things true for every non-Anthropic provider:**
 
 - **`thinking` / prompt-cache are Anthropic-only.** They are silently ignored elsewhere (no error) — so

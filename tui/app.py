@@ -33,6 +33,7 @@ from core.cycle import format_cycle
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import LogRenderer
 from core.images import image_block, media_type_for
+from core.llm import LLMError
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.prompt import mark_cache_breakpoint
 from core.repository import Session
@@ -276,7 +277,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /biorhythm /closeness /recall /web /journal /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /biorhythm /closeness /recall /web /journal /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -526,6 +527,10 @@ class LumiApp(App[None]):
             return
         if text == "/mood":
             self._show_mood()
+            prompt.focus()
+            return
+        if text == "/model" or text.startswith("/model "):
+            self._model_command(text)
             prompt.focus()
             return
         if text == "/biorhythm":
@@ -817,6 +822,32 @@ class LumiApp(App[None]):
         resolution = self._core.mood
         body = f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING
         self._emit(body, Markdown(body))
+
+    def _model_command(self, text: str) -> None:
+        """Show or swap the active engine on the fly — `/model`, `/model opus`, `/model gpt-5.5`, or
+        `/model provider:id` (v0.37 LUMI-148). No restart; the status bar reflects the new model."""
+        arg = text[len("/model"):].strip()
+        alias_list = ", ".join(sorted(self._core.model_aliases)) or "(none configured)"
+        if not arg:
+            current = f"{self._core.provider or '?'} / {self._core.model}"
+            body = (f"**Двигун:** {current}\n\nАліаси: {alias_list}\n"
+                    "`/model <аліас>` або `/model provider:id` — перемкнути без рестарту.")
+            self._emit(body, Markdown(body))
+            return
+        try:
+            provider, model = self._core.resolve_model_target(arg)
+        except ValueError as exc:  # unknown alias / malformed → a clear, non-fatal message
+            self._emit(str(exc), Text(str(exc), style="yellow"))
+            return
+        try:
+            self._core.switch_model(provider, model)
+        except LLMError as exc:  # missing key / unknown provider → the old engine stays in place
+            msg = f"Не вдалося перемкнути двигун: {exc}"
+            self._emit(msg, Text(msg, style="red"))
+            return
+        body = f"**Двигун:** {provider} / {model} ✓"
+        self._emit(body, Markdown(body))
+        self._render_status()  # the status bar shows self._core.model
 
     def _theme_command(self, text: str) -> None:
         """Manually set / clear the face theme — `/theme <name>` and `/theme auto` (v0.11)."""

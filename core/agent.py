@@ -50,7 +50,15 @@ from core.deidentify import deidentify, personal_terms, topic_words
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
 from core.images import is_image_block
-from core.llm import LLMClient, Message, ResponseStats, build_llm, is_trusted_text, trusted_text
+from core.llm import (
+    LLMClient,
+    LLMError,
+    Message,
+    ResponseStats,
+    build_llm,
+    is_trusted_text,
+    trusted_text,
+)
 from core.memory import (
     DAY_DAYS,
     MAX_DAY_ROWS,
@@ -342,6 +350,9 @@ class Core:
         repository: Repository,
         canon: str,
         model: str,
+        provider: str = "",
+        llm_factory: Callable[[str, str], LLMClient] | None = None,  # v0.37: (provider, model) → LLMClient
+        model_aliases: dict[str, tuple[str, str]] | None = None,     # v0.37: /model aliases (from config)
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
@@ -479,6 +490,11 @@ class Core:
         self._repo = repository
         self._canon = canon
         self._model = model
+        # v0.37 LUMI-148: runtime `/model` engine toggle — the active provider, a (provider, model) →
+        # LLMClient factory (rebuilds from the loaded config keys), and the configured aliases.
+        self._active_provider = provider
+        self._llm_factory = llm_factory
+        self._model_aliases = {k.lower(): v for k, v in (model_aliases or {}).items()}
         self._user_id = user_id
         self._clock = clock  # injectable: real time by default, fixed in tests
         # Ambient "now / here" snapshot (v0.4), set by the client at startup/refresh.
@@ -692,6 +708,49 @@ class Core:
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def provider(self) -> str:
+        """The active provider/engine family — set at build, updated by :meth:`switch_model` (v0.37)."""
+        return self._active_provider
+
+    @property
+    def model_aliases(self) -> dict[str, tuple[str, str]]:
+        """The configured ``/model`` aliases (alias → (provider, model)); a copy (v0.37)."""
+        return dict(self._model_aliases)
+
+    def resolve_model_target(self, arg: str) -> tuple[str, str]:
+        """Resolve a ``/model`` argument to ``(provider, model)``: a configured alias (case-insensitive)
+        or the explicit ``provider:model`` form. Raises :class:`ValueError` with a clear message on an
+        unknown alias (the v0.37 reject path) — never guesses a provider from a bare model id."""
+        token = (arg or "").strip()
+        if not token:
+            raise ValueError("No model given — try /model <alias>.")
+        alias = self._model_aliases.get(token.lower())
+        if alias is not None:
+            return alias
+        if ":" in token:  # explicit provider:model — a full id not in the alias list
+            provider, model = token.split(":", 1)
+            if provider.strip() and model.strip():
+                return provider.strip().lower(), model.strip()
+        known = ", ".join(sorted(self._model_aliases)) or "(none configured)"
+        raise ValueError(f"Unknown model '{token}'. Try an alias ({known}) or provider:model.")
+
+    def switch_model(self, provider: str, model: str) -> None:
+        """Swap the active engine at runtime — rebuild the :class:`LLMClient` from the (already-loaded)
+        config keys and re-point the default/reply model (v0.37 LUMI-148).
+
+        History is just messages, so the conversation continues; the new engine starts on a **cold
+        cache** (one-off). The ``{reply, emotion, intensity}`` contract and per-user isolation are
+        untouched (only the backend changes). Raises :class:`LLMError` if switching isn't configured or
+        the provider/key is unavailable — the **old client stays in place** (the new one is assigned only
+        after a successful build)."""
+        if self._llm_factory is None:
+            raise LLMError("Model switching isn't configured for this core.")
+        new_llm = self._llm_factory(provider, model)  # may raise LLMError (unknown provider / missing key)
+        self._llm = new_llm
+        self._model = model
+        self._active_provider = provider
 
     @property
     def user_id(self) -> str:
@@ -2873,6 +2932,11 @@ def build_core(
     if llm is None:
         llm = build_llm(cfg)  # v0.18: pick the backend from cfg.provider (anthropic by default)
 
+    # v0.37 LUMI-148: the `/model` runtime toggle rebuilds the client for a new (provider, model) from the
+    # already-loaded config keys. The closure captures cfg so Core stays config-agnostic (just a callback).
+    def _llm_factory(provider: str, model: str) -> LLMClient:
+        return build_llm(replace(cfg, provider=provider, model=model))
+
     # v0.16 semantic recall: build the embedder only when recall is on. A build failure
     # (e.g. a cloud provider with no key) degrades recall to off rather than crashing startup.
     embedder: Embedder | None = None
@@ -2895,6 +2959,9 @@ def build_core(
         repository=repository,
         canon=canon,
         model=cfg.model,
+        provider=cfg.provider,
+        llm_factory=_llm_factory,
+        model_aliases=cfg.model_aliases,
         user_id=user_id,
         memory_window=cfg.memory_window,
         compaction_batch=cfg.compaction_batch,
