@@ -29,8 +29,11 @@ The status bar shows the active model, so you can confirm the switch.
 
 **Two things true for every non-Anthropic provider:**
 
-- **`thinking` / `effort` / prompt-cache are Anthropic-only.** They are silently ignored elsewhere
-  (no error) — so the thinking box stays empty and there's no cache discount.
+- **`thinking` / prompt-cache are Anthropic-only.** They are silently ignored elsewhere (no error) — so
+  the thinking box stays empty and there's no cache discount. **`effort` is the exception:** as of **v0.37**
+  `LUMI_EFFORT` is honored on **OpenAI / DeepSeek** too (mapped to `reasoning_effort` low|medium|high; Lumi's
+  `xhigh`/`max` clamp to `high`) — it tunes a GPT-5 / DeepSeek-reasoner's depth, though the reasoning itself
+  stays hidden. Still ignored on MiniMax.
 - Лілі's persona is **Ukrainian.** Pick a model that handles Ukrainian well (the cloud providers below
   all do; small local models are weaker).
 
@@ -47,8 +50,9 @@ mechanically safe — nothing is corrupted — but each one trades something awa
   and journal tools** — and the `%`-thought-tools that ride them — **work** on GPT-5.5 / DeepSeek-V4-Pro and
   OpenAI-compatible local servers. **MiniMax** still has no tool-loop (its tools are silently ignored — a
   single plain call). If you depend on tools, stay on Anthropic or an OpenAI-compatible provider.
-- **No inner monologue / think box, no `effort`.** Extended thinking is Anthropic-only, so the hidden
-  think-step (and the v1.3 inner monologue) is empty and you can't tune reasoning depth.
+- **No inner monologue / think box.** Extended thinking is Anthropic-only, so the hidden think-step (and the
+  v1.3 inner monologue) is empty. You **can** still tune a GPT-5 / DeepSeek-reasoner's depth via `LUMI_EFFORT`
+  (v0.37 → `reasoning_effort`), but the reasoning itself isn't surfaced.
 - **No prompt caching → more cost + latency.** Лілі's large static prefix (canon + memory digests + mood) is
   cached on Anthropic and re-sent **uncached on every turn** elsewhere — each turn re-bills the whole prompt
   at full input price.

@@ -135,6 +135,12 @@ _JSON_STATE_INSTRUCTION = (
 )
 
 
+# v0.37 LUMI-147: map Lumi's effort levels to OpenAI's reasoning_effort (low|medium|high). Lumi's
+# Opus-tier xhigh/max clamp to high. DeepSeek reasoning models accept the same. An unknown level maps
+# to None → the key is omitted (dropped safely, never sent raw).
+_OPENAI_EFFORT = {"low": "low", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"}
+
+
 # v0.19 tool-loop: tool_result content is framed as UNTRUSTED data — the model reads it, never obeys
 # instructions inside it (the same rule as web v4.2 / creative v5).
 _UNTRUSTED_PREFIX = (
@@ -678,6 +684,7 @@ class OpenAICompatibleClient:
         *,
         base_url: str | None = None,
         max_tokens: int = 1024,
+        effort: str | None = None,
         retries: int = 2,
         backoff: float = 0.5,
         _client: object | None = None,
@@ -694,6 +701,7 @@ class OpenAICompatibleClient:
 
             self._client = openai.OpenAI(api_key=api_key, base_url=base_url or None)
         self._max_tokens = max_tokens
+        self._effort = effort  # v0.37: reasoning_effort for GPT-5 family / DeepSeek (mapped, omitted if unset)
         self._retries = retries
         self._backoff = backoff
         self.last_thinking: str | None = None  # no provider-side thinking on this path
@@ -702,12 +710,23 @@ class OpenAICompatibleClient:
         # call has one "reply" entry) — for the per-round cache monitor, like AnthropicClient.
         self.last_round_log: list[tuple[str, ResponseStats]] = []
 
+    def _apply_effort(self, kwargs: dict) -> None:
+        """Add ``reasoning_effort`` (mapped low|medium|high) when ``effort`` is set; omit it otherwise.
+
+        An unknown/invalid level maps to ``None`` and is dropped (never sent raw). Shared by the single
+        calls (:meth:`_create`) and the tool-loop rounds (:meth:`_request_kwargs`)."""
+        if self._effort:
+            mapped = _OPENAI_EFFORT.get(self._effort)
+            if mapped:
+                kwargs["reasoning_effort"] = mapped
+
     def _create(self, system: str, messages: list[Message], model: str, *, structured: bool) -> object:
         sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
         payload = [{"role": "system", "content": sys_text}, *messages]
         kwargs: dict = {"model": model, "messages": payload, "max_tokens": self._max_tokens}
         if structured:
             kwargs["response_format"] = {"type": "json_object"}  # JSON mode (OpenAI + DeepSeek + most local)
+        self._apply_effort(kwargs)  # v0.37: GPT-5 family / DeepSeek reasoning depth (omitted if unset)
         started = time.monotonic()
         resp = self._run(lambda: self._client.chat.completions.create(**kwargs))
         self._capture(resp, model, int((time.monotonic() - started) * 1000))
@@ -780,8 +799,10 @@ class OpenAICompatibleClient:
         ]
 
     def _request_kwargs(self, model: str, convo: list[dict]) -> dict:
-        """Base request kwargs for a tool-loop round (effort threaded in by LUMI-147)."""
-        return {"model": model, "messages": convo, "max_tokens": self._max_tokens}
+        """Base request kwargs for a tool-loop round, with ``reasoning_effort`` when set (v0.37)."""
+        kwargs = {"model": model, "messages": convo, "max_tokens": self._max_tokens}
+        self._apply_effort(kwargs)
+        return kwargs
 
     def _tool_loop(
         self,
@@ -1228,10 +1249,13 @@ def build_llm(cfg: Config) -> LLMClient:
     never learns which backend it got — it depends only on the :class:`LLMClient` seam.
     """
     provider = (cfg.provider or "anthropic").strip().lower()
-    if provider != "anthropic" and (cfg.thinking or cfg.effort):
-        # Extended thinking / effort (and prompt caching, task budgets) are Anthropic-only; on other
-        # providers they are ignored, not errors — the turn still completes (the v0.3 gate is uniform).
-        _log.debug("thinking/effort are Anthropic-only — ignored for provider %r", provider)
+    if provider != "anthropic" and cfg.thinking:
+        # Extended thinking (and prompt caching, task budgets) are Anthropic-only; on other providers it
+        # is ignored, not an error — the turn still completes (the v0.3 gate is uniform).
+        _log.debug("extended thinking is Anthropic-only — ignored for provider %r", provider)
+    if provider == "minimax" and cfg.effort:
+        # reasoning_effort is honored on Anthropic + the OpenAI-compatible adapter (v0.37), not MiniMax.
+        _log.debug("effort is Anthropic-only — ignored for provider %r", provider)
     if provider == "anthropic":
         return AnthropicClient(
             cfg.api_key,
@@ -1242,7 +1266,7 @@ def build_llm(cfg: Config) -> LLMClient:
         )
     if provider in ("openai", "deepseek", "local"):
         base_url, key = _openai_compatible_target(cfg, provider)
-        return OpenAICompatibleClient(key, base_url=base_url, max_tokens=cfg.max_tokens)
+        return OpenAICompatibleClient(key, base_url=base_url, max_tokens=cfg.max_tokens, effort=cfg.effort)
     if provider == "minimax":
         if not cfg.minimax_api_key:
             raise LLMError("LUMI_PROVIDER=minimax needs MINIMAX_API_KEY in .env.")

@@ -103,6 +103,55 @@ def test_api_error_wrapped_as_llmerror():
         c.reply("sys", [{"role": "user", "content": "hi"}], "m")
 
 
+# --- v0.37 LUMI-147: reasoning_effort passthrough --------------------------------------------------
+def _effort_client(effort: str | None) -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(
+        "k", effort=effort, _client=_fake_openai('{"reply":"a","emotion":"calm","intensity":0.5}'))
+
+
+def _last_kwargs(c: OpenAICompatibleClient) -> dict:
+    return c._client._completions.last_kwargs
+
+
+def test_effort_passed_to_request_when_set():
+    c = _effort_client("high")
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-5.5")
+    assert _last_kwargs(c)["reasoning_effort"] == "high"
+
+
+def test_effort_omitted_when_unset():
+    c = _effort_client(None)
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-4o")
+    assert "reasoning_effort" not in _last_kwargs(c)
+
+
+def test_effort_also_on_plain_reply():
+    c = _effort_client("medium")
+    c.reply("sys", [{"role": "user", "content": "hi"}], "gpt-5.5")
+    assert _last_kwargs(c)["reasoning_effort"] == "medium"
+
+
+def test_effort_clamps_xhigh_and_max_to_high():
+    for level in ("xhigh", "max"):
+        c = _effort_client(level)
+        c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m")
+        assert _last_kwargs(c)["reasoning_effort"] == "high"
+
+
+def test_effort_invalid_value_dropped_safely():
+    c = _effort_client("bogus")
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m")
+    assert "reasoning_effort" not in _last_kwargs(c)  # unknown level → omitted, never sent raw
+
+
+def test_build_llm_threads_effort_into_openai_client(monkeypatch):
+    import pytest
+    openai = pytest.importorskip("openai")
+    monkeypatch.setattr(openai, "OpenAI", lambda **kw: object())  # no network/SDK auth
+    client = build_llm(Config(provider="openai", openai_api_key="k", effort="high"))
+    assert isinstance(client, OpenAICompatibleClient) and client._effort == "high"
+
+
 # --- factory wiring ---------------------------------------------------------------------------------
 def test_factory_builds_openai_compatible_for_each_provider():
     # openai / deepseek with key → an OpenAICompatibleClient (constructed with an injected fake below

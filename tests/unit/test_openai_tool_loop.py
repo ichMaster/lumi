@@ -60,9 +60,9 @@ class _SmartCompletions:
         return self._final if kw.get("tool_choice") == "none" else self._tool
 
 
-def _client(completions) -> tuple[OpenAICompatibleClient, object]:
+def _client(completions, effort: str | None = None) -> tuple[OpenAICompatibleClient, object]:
     cl = SimpleNamespace(chat=SimpleNamespace(completions=completions))
-    return OpenAICompatibleClient("k", _client=cl), completions
+    return OpenAICompatibleClient("k", effort=effort, _client=cl), completions
 
 
 # --- schema converter ------------------------------------------------------------------------------
@@ -187,6 +187,15 @@ def test_no_tools_path_is_single_unchanged_call():
     assert validate(out).emotion.value == "joy" and len(comp.calls) == 1
     assert comp.calls[0]["response_format"] == {"type": "json_object"}
     assert "tools" not in comp.calls[0]
+
+
+# --- v0.37 LUMI-147: effort rides every loop round -------------------------------------------------
+def test_effort_appears_on_every_tool_loop_round():
+    c, comp = _client(_QueueCompletions([
+        _resp(tool_calls=[_tc("t1", "read_file", {})]), _resp(content=_STATE_JSON)]), effort="high")
+    c.reply_structured("s", [{"role": "user", "content": "hi"}], "gpt-5.5",
+                       tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert all(call.get("reasoning_effort") == "high" for call in comp.calls)  # tool + final round
 
 
 # --- the think-path (text terminal) twin -----------------------------------------------------------
