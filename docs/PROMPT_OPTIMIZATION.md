@@ -3,6 +3,11 @@
 How the system prompt got large, what it costs, and a phased plan to cut it ~10× (facts digest →
 config trims → prompt caching → RAG) **without losing character**.
 
+> **Continued in [PROMPT_OPTIMIZATION_II.md](PROMPT_OPTIMIZATION_II.md)** — *Tool-Pull Memory*: now that the
+> v0.31 retrieval toolkit (`recall`, by-date tools, `message_context`) + file search have shipped, the next
+> lever is moving the verbose memory tiers from *injected* to *pulled* (index in the prompt, body behind a
+> tool) + a new `recall_facts` tool. That's the successor to Phase 4 below.
+
 > **Status (2026-06-12):** Phase 0 (facts digest) shipped. Phase 2 (caching) scheduled as roadmap
 > **v0.15**; Phase 3 (RAG) is **v0.16–17**. Phases 1–3 proposed below.
 > Measurements use `tiktoken o200k_base` (a close proxy for Claude's tokenizer) on two real
