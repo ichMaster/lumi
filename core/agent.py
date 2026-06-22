@@ -743,21 +743,30 @@ class Core:
         """Compute today's mood now (idempotent / cached) — a client may call at startup."""
         self._ensure_mood()
 
-    def ensure_day_summaries(self) -> None:
+    def regenerate_summaries(self) -> int:
+        """Force-rebuild **every** day/week digest in the recall window from its session summaries — so a
+        format change (e.g. ``LUMI_MEMORY_INDEX``, v0.34) applies **retroactively** (the lazy ensure_* skips
+        unchanged days). **Lossless** (derives from the kept session summaries — the source is untouched),
+        **idempotent**, **per-user** (only this user's digests). Returns the number of digests rebuilt."""
+        return self.ensure_day_summaries(force=True) + self.ensure_week_summaries(force=True)
+
+    def ensure_day_summaries(self, *, force: bool = False) -> int:
         """Bring each day in the recall window (last ``day_days``) up to date — lazily, at prompt
         time. A day's ≤``max_day_rows``-row digest is (re)built from that day's **session
         summaries** **only when stale** (no digest yet, or the day gained sessions — its summary
-        count changed, incl. today). Best-effort; a model error on one day never blocks the turn.
+        count changed, incl. today); ``force`` rebuilds every day regardless (v0.34 regenerate).
+        Best-effort; a model error on one day never blocks the turn. Returns the count rebuilt.
         """
         since = (self._clock().date() - timedelta(days=self._day_days)).isoformat()
         by_day: dict[str, list[str]] = {}
         for s in self._repo.summaries_since(self._user_id, since):
             if s.summary.strip():
                 by_day.setdefault(s.ts[:10], []).append(s.summary)
+        rebuilt = 0
         for day, texts in by_day.items():
             existing = self._repo.get_day_summary(self._user_id, day)
-            if existing is not None and existing.count == len(texts):
-                continue  # count matches the day's sessions → up to date
+            if not force and existing is not None and existing.count == len(texts):
+                continue  # count matches the day's sessions → up to date (unless forced)
             try:
                 system, msgs = day_summary_request(texts, index=self._memory_index)
                 rows = 1 if self._memory_index else self._max_day_rows  # v0.34: index → a single gist line
@@ -766,22 +775,26 @@ class Core:
                     self._repo.set_day_summary(
                         DaySummary(self._user_id, day, summary, len(texts), self._clock().isoformat())
                     )
+                    rebuilt += 1
             except Exception:  # noqa: BLE001 — best-effort; never block the turn
                 continue
+        return rebuilt
 
-    def ensure_week_summaries(self) -> None:
+    def ensure_week_summaries(self, *, force: bool = False) -> int:
         """Bring each Mon–Sun week in the recall window (last ``week_days``) up to date — lazily.
         A week's ≤``max_week_rows``-row digest is (re)built from that week's **session summaries**
-        only when its summary count changed. Weeks are keyed by their Monday. Best-effort.
+        only when its summary count changed; ``force`` rebuilds every week (v0.34 regenerate). Weeks
+        are keyed by their Monday. Best-effort. Returns the count rebuilt.
         """
         since = (self._clock().date() - timedelta(days=self._week_days)).isoformat()
         by_week: dict[str, list[str]] = {}
         for s in self._repo.summaries_since(self._user_id, since):
             if s.summary.strip():
                 by_week.setdefault(_monday_of(s.ts[:10]), []).append(s.summary)
+        rebuilt = 0
         for week_start, texts in by_week.items():
             existing = self._repo.get_week_summary(self._user_id, week_start)
-            if existing is not None and existing.count == len(texts):
+            if not force and existing is not None and existing.count == len(texts):
                 continue
             try:
                 system, msgs = week_summary_request(texts, index=self._memory_index)
@@ -792,8 +805,10 @@ class Core:
                         WeekSummary(self._user_id, week_start, summary, len(texts),
                                     self._clock().isoformat())
                     )
+                    rebuilt += 1
             except Exception:  # noqa: BLE001 — best-effort; never block the turn
                 continue
+        return rebuilt
 
     @property
     def thinking(self) -> bool:

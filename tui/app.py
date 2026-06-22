@@ -540,6 +540,10 @@ class LumiApp(App[None]):
             self._show_thoughts()
             prompt.focus()
             return
+        if text == "/regen-summaries":
+            self._regen_summaries_command()
+            prompt.focus()
+            return
         if text == "/recall" or text.startswith("/recall "):
             self._recall_command(text)
             prompt.focus()
@@ -830,6 +834,13 @@ class LumiApp(App[None]):
         else:
             body = f"Невідома тема «{arg}». Доступні: {available}"
         self._emit(body, Markdown(body))
+
+    def _regen_summaries_command(self) -> None:
+        """Operator one-off (`/regen-summaries`, v0.34): force-rebuild the day/week digests so a format
+        change (e.g. `LUMI_MEMORY_INDEX`) applies to existing data (the lazy refresh skips unchanged days)."""
+        n = self._core.regenerate_summaries()
+        note = f"Regenerated {n} day/week digest(s) from the kept session summaries."
+        self._emit(note, Text(note, style=SYSTEM_COLOR))
 
     def _show_thoughts(self) -> None:
         """Show the recent dated thought-stream — the `/thoughts` command (v0.12)."""

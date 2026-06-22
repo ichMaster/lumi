@@ -121,3 +121,34 @@ def test_ensure_skips_days_without_summaries(tmp_path):
     core._repo.add_summary(_ss("a", "", "2026-06-06T09:00:00+00:00"))  # empty session summary
     core.ensure_day_summaries()
     assert core._llm.calls == [] and core._repo.get_day_summary("owner", "2026-06-06") is None
+
+
+# --- v0.34 LUMI-137: force-regenerate so a format change applies retroactively ---
+def test_regenerate_rebuilds_even_when_count_matches(tmp_path):
+    # an existing (old-format) day digest whose count already matches → the lazy path skips it,
+    # but regenerate_summaries (force) rebuilds it with the current (gist) prompt.
+    core = _core(tmp_path, MockLLMClient("новий стислий рядок"), memory_index=True)
+    core._repo.add_summary(_ss("a", "розмова", "2026-06-06T09:00:00+00:00"))
+    core._repo.set_day_summary(DaySummary("owner", "2026-06-06", "старий довгий абзац", 1, "t"))  # count matches
+    core.ensure_day_summaries()  # lazy → count matches → no rebuild
+    assert core._llm.calls == [] and core._repo.get_day_summary("owner", "2026-06-06").summary == "старий довгий абзац"
+    n = core.regenerate_summaries()  # force → rebuilds the day (and its week)
+    assert n >= 1 and core._repo.get_day_summary("owner", "2026-06-06").summary == "новий стислий рядок"
+
+
+def test_regenerate_is_lossless_idempotent_and_isolated(tmp_path):
+    core = _core(tmp_path, MockLLMClient("рядок"), memory_index=True)
+    core._repo.add_summary(_ss("a", "сесійний підсумок", "2026-06-06T09:00:00+00:00"))
+    core.regenerate_summaries()
+    # the session summary (the source of truth) is untouched
+    assert any(s.summary == "сесійний підсумок" for s in core._repo.summaries_since("owner", "2026-01-01"))
+    before = core._repo.get_day_summary("owner", "2026-06-06").summary
+    core.regenerate_summaries()  # idempotent
+    assert core._repo.get_day_summary("owner", "2026-06-06").summary == before
+    assert core._repo.get_day_summary("bob", "2026-06-06") is None  # per-user: another user untouched
+
+
+def test_regenerate_no_summaries_is_a_noop(tmp_path):
+    core = _core(tmp_path, MockLLMClient("рядок"))
+    assert core.regenerate_summaries() == 0  # empty window → nothing rebuilt, no crash, no model call
+    assert core._llm.calls == []
