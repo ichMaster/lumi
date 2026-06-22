@@ -364,6 +364,8 @@ class Core:
         facts_digest_max: int = 150,
         facts_digest_refresh: int = 20,
         facts_core_max: int = 0,
+        facts_core_only: bool = False,
+        recall_scope: str = "messages",
         prompt_cache: bool = False,
         embedder: Embedder | None = None,
         recall_enabled: bool = False,
@@ -626,6 +628,9 @@ class Core:
         self._facts_digest_refresh = facts_digest_refresh
         # v0.36: the identity-core cap — re-flagged at session start (0 → the core lifecycle is off).
         self._facts_core_max = facts_core_max
+        # v0.36: inject only the core facts (instead of the digest) — the tail moves to recall(scope=facts).
+        self._facts_core_only = facts_core_only
+        self._recall_scope = recall_scope if recall_scope in ("messages", "facts", "all") else "messages"
         self._prompt_cache = prompt_cache  # v0.15: pass the cache_prefix to the LLM on the reply turn
         # v0.16 semantic recall: embed every message into the per-user vector store (index on write
         # + lazy backfill). Best-effort — off, no embedder, or an embed error never blocks a turn.
@@ -1346,12 +1351,17 @@ class Core:
         # Long-term facts: inject the consolidated digest + any facts added since it was built
         # (verbatim tail), instead of all raw facts. Falls back to raw when no digest exists.
         raw_facts = self._repo.facts(self._user_id)
-        digest = self._repo.get_facts_digest(self._user_id) if self._facts_digest_enabled else None
-        if digest is not None:
-            tail = [f.fact for f in raw_facts[digest.count:]]  # facts newer than the digest
-            facts = [ln for ln in digest.summary.split("\n") if ln.strip()] + tail
+        core_facts = [f.fact for f in raw_facts if f.core]  # v0.36: the curated identity-core
+        if self._facts_core_only and core_facts:
+            # v0.36: inject ONLY the identity-core; the episodic tail is reachable via recall(scope=facts).
+            facts = core_facts
         else:
-            facts = [f.fact for f in raw_facts]
+            digest = self._repo.get_facts_digest(self._user_id) if self._facts_digest_enabled else None
+            if digest is not None:
+                tail = [f.fact for f in raw_facts[digest.count:]]  # facts newer than the digest
+                facts = [ln for ln in digest.summary.split("\n") if ln.strip()] + tail
+            else:
+                facts = [f.fact for f in raw_facts]
         digest = self._repo.get_digest(session.id)
         # v0.10: inject the active relationship level's authored block (warmth/openness, never
         # competence). The persisted level is the prior turn's (a fresh user sits at the default).
@@ -1878,9 +1888,9 @@ class Core:
                 k = self._recall_tool_k
             after = ((tool_input or {}).get("after") or "").strip() or None    # YYYY-MM-DD date scope
             before = ((tool_input or {}).get("before") or "").strip() or None
-            scope = ((tool_input or {}).get("scope") or "messages").strip().lower()  # v0.36
+            scope = ((tool_input or {}).get("scope") or self._recall_scope).strip().lower()  # v0.36
             if scope not in ("messages", "facts", "all"):
-                scope = "messages"
+                scope = self._recall_scope
             # dedup against what's already in the prompt (the live window + auto-RAG block)
             moments = self.recall_moments(
                 query, k, window_ids=self._turn_dedup_ids, before=before, after=after, scope=scope
@@ -2148,7 +2158,8 @@ class Core:
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
         self.ensure_day_summaries()  # refresh the day digests the prompt will inject (date-based recall)
         self.ensure_week_summaries()  # refresh the week digests (date-based recall)
-        self._ensure_facts_digest()  # consolidate facts into a compact digest (rebuild only when they grow)
+        if not self._facts_core_only:  # v0.36: core-only replaces the digest (the session-start re-flag)
+            self._ensure_facts_digest()  # consolidate facts into a compact digest (rebuild only when they grow)
         history = self._repo.load_messages(session.id)
         digest = self._maybe_compact(session, history)
         compacted = digest.compacted_count if digest else 0
@@ -2889,6 +2900,8 @@ def build_core(
         rag_chunk_w=cfg.rag_chunk_w,
         facts_digest_max=cfg.facts_digest_max,
         facts_core_max=cfg.facts_core_max,
+        facts_core_only=cfg.facts_core_only,
+        recall_scope=cfg.recall_scope,
         natal=load_natal(cfg.natal_path),
         mood_enabled=cfg.mood,
         mood_log_path=cfg.store_path.parent / "mood.log",
