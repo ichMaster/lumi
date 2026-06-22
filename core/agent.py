@@ -343,6 +343,7 @@ class Core:
         week_days: int = WEEK_DAYS,
         max_day_rows: int = MAX_DAY_ROWS,
         max_week_rows: int = MAX_WEEK_ROWS,
+        memory_index: bool = False,
         styles: dict[str, str] | None = None,
         meta_styles: dict[str, list[str]] | None = None,
         meta_descriptions: dict[str, str] | None = None,
@@ -592,6 +593,7 @@ class Core:
         self._week_days = week_days  # tier 3: per-week digests window
         self._max_day_rows = max_day_rows
         self._max_week_rows = max_week_rows
+        self._memory_index = memory_index  # v0.34: day/week digests as a one-line dated index
         # Answer styles + meta-styles (presets → several base styles). Лілі picks her
         # own style each turn from this palette (preferring meta-styles) and declares
         # it; `/style <name>` sets a soft per-session *recommendation*, not a switch.
@@ -757,8 +759,9 @@ class Core:
             if existing is not None and existing.count == len(texts):
                 continue  # count matches the day's sessions → up to date
             try:
-                system, msgs = day_summary_request(texts)
-                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="session-start"), self._max_day_rows)
+                system, msgs = day_summary_request(texts, index=self._memory_index)
+                rows = 1 if self._memory_index else self._max_day_rows  # v0.34: index → a single gist line
+                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="session-start"), rows)
                 if summary:
                     self._repo.set_day_summary(
                         DaySummary(self._user_id, day, summary, len(texts), self._clock().isoformat())
@@ -781,8 +784,9 @@ class Core:
             if existing is not None and existing.count == len(texts):
                 continue
             try:
-                system, msgs = week_summary_request(texts)
-                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="session-start"), self._max_week_rows)
+                system, msgs = week_summary_request(texts, index=self._memory_index)
+                rows = 1 if self._memory_index else self._max_week_rows  # v0.34: index → a single gist line
+                summary = clamp_rows(self._housekeeping_reply(system, msgs, kind="session-start"), rows)
                 if summary:
                     self._repo.set_week_summary(
                         WeekSummary(self._user_id, week_start, summary, len(texts),
@@ -2719,6 +2723,7 @@ def build_core(
         week_days=cfg.week_days,
         max_day_rows=cfg.max_day_rows,
         max_week_rows=cfg.max_week_rows,
+        memory_index=cfg.memory_index,
         styles=load_styles(cfg.styles_path),
         meta_styles=load_meta_styles(cfg.styles_path),
         meta_descriptions=load_meta_descriptions(cfg.styles_path),

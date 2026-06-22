@@ -165,6 +165,7 @@ class Config:
     week_days: int = WEEK_DAYS
     max_day_rows: int = MAX_DAY_ROWS
     max_week_rows: int = MAX_WEEK_ROWS
+    memory_index: bool = False      # v0.34: day/week digests as a one-line dated index (LUMI_MEMORY_INDEX)
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking: bool = DEFAULT_THINKING
     effort: str | None = DEFAULT_EFFORT
@@ -376,6 +377,7 @@ def load_config(*, load_env: bool = True) -> Config:
     week_days = int(wd) if (wd := os.getenv("LUMI_WEEK_DAYS")) else WEEK_DAYS
     max_day_rows = int(mdr) if (mdr := os.getenv("LUMI_MAX_DAY_ROWS")) else MAX_DAY_ROWS
     max_week_rows = int(mwr) if (mwr := os.getenv("LUMI_MAX_WEEK_ROWS")) else MAX_WEEK_ROWS
+    memory_index = (os.getenv("LUMI_MEMORY_INDEX") or "off").strip().lower() in _TRUTHY  # v0.34
 
     # v0.10 closeness engine knobs (defaults from ClosenessTuning; each overridable via .env).
     _ct = ClosenessTuning()
@@ -446,6 +448,7 @@ def load_config(*, load_env: bool = True) -> Config:
         week_days=week_days,
         max_day_rows=max_day_rows,
         max_week_rows=max_week_rows,
+        memory_index=memory_index,
         max_tokens=max_tokens,
         thinking=thinking,
         effort=effort,

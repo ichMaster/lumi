@@ -111,17 +111,40 @@ WEEK_SUMMARY_SYSTEM = (
     "6 коротких речень. Без вступів, без маркерів і нумерації — лише підсумок."
 )
 
+# v0.34 (LUMI-136) — the lean "index" variants: a SINGLE tight gist line per day/week so the prompt tier is a
+# dated index (she pulls the verbatim detail via messages_on(date)). Selected when LUMI_MEMORY_INDEX is on.
+DAY_GIST_SYSTEM = (
+    "Ти стискаєш усі підсумки розмов за ОДИН день в ОДИН РЯДОК-суть для памʼяті Лілі — від третьої особи, "
+    "до ~20 слів: лише головне, що сталося того дня й важливе про цю людину. РІВНО один рядок, без вступів, "
+    "без списків і нумерації, без дати — тільки суть."
+)
+WEEK_GIST_SYSTEM = (
+    "Ти стискаєш усі підсумки розмов за ОДИН тиждень (понеділок–неділя) в ОДИН РЯДОК-суть для памʼяті Лілі "
+    "— від третьої особи, до ~20 слів: головні теми й зміни тижня про цю людину. РІВНО один рядок, без "
+    "вступів, без списків і нумерації, без дати — тільки суть."
+)
 
-def day_summary_request(summaries: Sequence[str]) -> tuple[str, list[dict[str, str]]]:
-    """Build the (system, messages) to consolidate a day's session summaries into ≤4 rows."""
+
+def day_summary_request(
+    summaries: Sequence[str], *, index: bool = False,
+) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to consolidate a day's session summaries.
+
+    ``index`` (v0.34) selects the one-line gist prompt (a dated-index tier) instead of the ≤4-row paragraph.
+    """
     content = "Підсумки розмов за день:\n" + "\n".join(f"- {s}" for s in summaries)
-    return DAY_SUMMARY_SYSTEM, [{"role": "user", "content": content}]
+    return (DAY_GIST_SYSTEM if index else DAY_SUMMARY_SYSTEM), [{"role": "user", "content": content}]
 
 
-def week_summary_request(summaries: Sequence[str]) -> tuple[str, list[dict[str, str]]]:
-    """Build the (system, messages) to consolidate a week's session summaries into ≤6 rows."""
+def week_summary_request(
+    summaries: Sequence[str], *, index: bool = False,
+) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to consolidate a week's session summaries.
+
+    ``index`` (v0.34) selects the one-line gist prompt (a dated-index tier) instead of the ≤6-row paragraph.
+    """
     content = "Підсумки розмов за тиждень:\n" + "\n".join(f"- {s}" for s in summaries)
-    return WEEK_SUMMARY_SYSTEM, [{"role": "user", "content": content}]
+    return (WEEK_GIST_SYSTEM if index else WEEK_SUMMARY_SYSTEM), [{"role": "user", "content": content}]
 
 
 def clamp_rows(text: str, max_rows: int) -> str:

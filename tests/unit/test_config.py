@@ -48,6 +48,14 @@ def test_thoughts_max_lines_default_and_override(monkeypatch):
     assert load_config(load_env=False).thoughts_max_lines == 20  # override
 
 
+def test_memory_index_default_off_and_override(monkeypatch):
+    # v0.34 LUMI-136: day/week digests as a one-line dated index — off by default.
+    monkeypatch.delenv("LUMI_MEMORY_INDEX", raising=False)
+    assert load_config(load_env=False).memory_index is False
+    monkeypatch.setenv("LUMI_MEMORY_INDEX", "on")
+    assert load_config(load_env=False).memory_index is True
+
+
 def test_closeness_mood_shift_scale_default_and_override(monkeypatch):
     # the daily mood-shift strength (0..1; on/off accepted); unset → full (1.0).
     monkeypatch.delenv("LUMI_CLOSENESS_MOOD_SHIFT", raising=False)

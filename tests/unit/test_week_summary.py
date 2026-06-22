@@ -13,11 +13,19 @@ from state.local_store import JsonRepository
 _NOON_JUN10 = fixed_clock(datetime(2026, 6, 10, 12, 0, tzinfo=UTC))  # a Wednesday
 
 
-def _core(tmp_path, llm, clock=_NOON_JUN10):
+def _core(tmp_path, llm, clock=_NOON_JUN10, *, memory_index=False):
     return Core(
         llm=llm, repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
         clock=clock, mood_enabled=False, biorhythms_enabled=False, cycle_enabled=False,
+        memory_index=memory_index,
     )
+
+
+def test_week_summary_request_index_selects_the_gist_prompt():
+    from core.memory import WEEK_GIST_SYSTEM, WEEK_SUMMARY_SYSTEM
+    sys_para, _ = week_summary_request(["а"])                    # default → today's paragraph prompt (off)
+    sys_gist, _ = week_summary_request(["а"], index=True)        # index → a single one-line gist
+    assert sys_para == WEEK_SUMMARY_SYSTEM and sys_gist == WEEK_GIST_SYSTEM and "ОДИН РЯДОК" in sys_gist
 
 
 def _ss(sid, summary, ts):

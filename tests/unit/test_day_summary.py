@@ -12,10 +12,11 @@ from state.local_store import JsonRepository
 _NOON_JUN8 = fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC))
 
 
-def _core(tmp_path, llm, clock=_NOON_JUN8):
+def _core(tmp_path, llm, clock=_NOON_JUN8, *, memory_index=False):
     return Core(
         llm=llm, repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
         clock=clock, mood_enabled=False, biorhythms_enabled=False, cycle_enabled=False,
+        memory_index=memory_index,
     )
 
 
@@ -32,6 +33,23 @@ def test_day_summary_request_lists_the_session_summaries():
 
 def test_clamp_rows_keeps_at_most_n_and_strips_bullets():
     assert clamp_rows("- one\n- two\n• three\nfour\nfive\nsix", 4) == "one\ntwo\nthree\nfour"
+
+
+# --- v0.34 LUMI-136: the one-line gist index variant ----------------------
+def test_day_summary_request_index_selects_the_gist_prompt():
+    from core.memory import DAY_GIST_SYSTEM, DAY_SUMMARY_SYSTEM
+    sys_para, _ = day_summary_request(["а"])                     # default → today's paragraph prompt (off)
+    sys_gist, _ = day_summary_request(["а"], index=True)         # index → a single one-line gist
+    assert sys_para == DAY_SUMMARY_SYSTEM                        # off is byte-identical to today
+    assert sys_gist == DAY_GIST_SYSTEM and "ОДИН РЯДОК" in sys_gist
+
+
+def test_ensure_day_index_mode_clamps_to_one_line(tmp_path):
+    core = _core(tmp_path, MockLLMClient("суть дня\nзайвий рядок\nще один"), memory_index=True)
+    core._repo.add_summary(_ss("a", "розмова", "2026-06-06T09:00:00+00:00"))
+    core.ensure_day_summaries()
+    d = core._repo.get_day_summary("owner", "2026-06-06")
+    assert d.summary == "суть дня"                              # index → a single gist line, never a paragraph
 
 
 # --- store ----------------------------------------------------------------
