@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 0.36.0 (2026-06-22)
+---------------------------
+v0.36 — Lean memory III: facts core + fact recall. Facts now reach the prompt three ways (mirroring messages) — a static identity-core, a per-turn auto fact-RAG push, and a recall pull tool — plus a hygiene path:
+- LUMI-141 — Fact embedding + recall(scope=facts): VectorRecord gains a `kind` discriminator ("message"|"fact"); each LongTermFact is embedded as a kind="fact" vector on write + a one-off backfill (content-addressed, idempotent). search_vectors gains a kind filter; recall / recall_moments / the recall tool gain scope = messages | facts | all (default messages = byte-identical; facts never leak into the message paths). Per-user isolated.
+- LUMI-142 — The core (identity-core) flag + lifecycle: LongTermFact gains an additive `core` flag (persisted). Curated three ways — a one-off backfill (first run picks the core from all facts), an initial guess at extraction (the [C] marker), and a session-start re-flag that re-ranks the core=true pool to LUMI_FACTS_CORE_MAX with boundaries/agreements pinned. The re-flag's input is the small core pool (cost-neutral). Off when the cap is 0.
+- LUMI-143 — Shrink the facts block (core static): with LUMI_FACTS_CORE_ONLY on, the prompt injects only the core facts instead of the digest (safe fallback when none flagged); the session-start re-flag replaces the per-turn facts-digest call. LUMI_RECALL_SCOPE sets the recall tool's default scope. A dropped tail fact stays reachable via recall(scope=facts).
+- LUMI-144 — Auto fact-RAG (per-turn push): a `# Релевантні факти` block in the volatile tail injects the top-K relevant non-core facts each turn (LUMI_FACTS_RAG / _K), deduped against the core block; trusted, per-user, degrades to no block.
+- LUMI-145 — Facts hygiene: an additive `obsolete` flag, filtered out of every fact path (core block, auto fact-RAG, recall) but kept in the store (non-destructive, reversible). A /review-facts Claude Code skill drives propose -> human review -> apply (duplicate / outdated / irrelevant); never auto-obsoletes a core fact.
+Additive contract changes (VectorRecord.kind, LongTermFact.core/obsolete) — old records load with the defaults; ARCHITECTURE + contract tests updated. Off by default throughout; byte-identical when off. 1156 tests green.
+
 Version 0.35.0 (2026-06-22)
 ---------------------------
 v0.35 — Lean memory II: the conversation tier (gist the past sessions):

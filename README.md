@@ -12,15 +12,23 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.35 — Lean memory II: the conversation tier.** The biggest prompt block (`## Останні розмови`, the
-per-session summaries) gets **two orthogonal controls**: **`LUMI_SESSION_DETAIL_N`** — *how many* of the
-most-recent sessions to add (unset = all · `0` = none · `N` = last N) — and **`LUMI_SESSION_FORMAT`** — the
-*form* each takes: **`summary`** (full) or **`gist`** (one line). So a lean prompt is just
-`LUMI_SESSION_FORMAT=gist` (every session a one-liner), while the **default (unset)** stays all-sessions-full,
-byte-identical. It **reuses the v0.9 per-session `gist`** (already written at each session's close — **no
-regeneration**); a gisted session's detail stays one query away via **auto-RAG** (push) and **`recall`** /
-**`messages_on`** / **`messages_between`** (pull). No contract change. Memory/session logic is documented in
-**[docs/MEMORY_SESSION_LOGIC_UK.md](docs/MEMORY_SESSION_LOGIC_UK.md)** (UA).
+**0.36 — Lean memory III: the facts tier.** Facts now reach the prompt **three ways** (mirroring messages):
+an always-injected **identity-core** — the `core`-flagged facts (name, key relationships, **boundaries &
+agreements**), re-ranked to **`LUMI_FACTS_CORE_MAX`** at each session start (boundaries pinned) and injected
+**instead of** the digest behind **`LUMI_FACTS_CORE_ONLY`**; a per-turn **auto fact-RAG** push
+(**`LUMI_FACTS_RAG`** — a `# Релевантні факти` block of the top-K relevant *non-core* facts, deduped against
+the core); and the **`recall(scope=facts)`** pull tool (each `LongTermFact` embedded as a `kind="fact"`
+vector; **`LUMI_RECALL_SCOPE`**). A **facts-hygiene** path adds an additive **`obsolete`** flag — excluded
+from *every* fact path, kept in the store for audit — curated by a **`/review-facts`** Claude Code skill
+(propose → review → apply; never auto-obsoletes a core fact). Additive contract changes
+(`VectorRecord.kind`, `LongTermFact.core`/`obsolete`); off by default, byte-identical when off. See
+**[docs/PROMPT_OPTIMIZATION_II.md](docs/PROMPT_OPTIMIZATION_II.md)**.
+
+Builds on **0.35 — Lean memory II: the conversation tier.** The `## Останні розмови` block gets **two
+orthogonal controls**: **`LUMI_SESSION_DETAIL_N`** (*how many* recent sessions — unset = all · `0` = none ·
+`N` = last N) and **`LUMI_SESSION_FORMAT`** (**`summary`** full / **`gist`** one line); a gisted session's
+detail stays one query away via **auto-RAG** and **`recall`** / **`messages_on`** / **`messages_between`**.
+Documented in **[docs/MEMORY_SESSION_LOGIC_UK.md](docs/MEMORY_SESSION_LOGIC_UK.md)** (UA).
 
 Builds on **0.34's lean memory (tool-pull).** The first slice of moving the verbose
 memory tiers from *injected* to *pulled* (index in the prompt, body fetched by a tool). The **day/week
