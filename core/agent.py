@@ -1845,6 +1845,23 @@ class Core:
 
         return RECALL_TOOLS, execute
 
+    def _conversation_dedup_ids(self) -> set[str]:
+        """v0.35 (LUMI-140): the message ids of the **verbatim** (last-N) sessions shown in full in the
+        conversation tier — auto-RAG dedups against them so it never re-surfaces a line already injected
+        verbatim. **Empty when gisting is off** (``session_detail_n <= 0``) → the default auto-RAG behaviour
+        is byte-identical; a **gisted** older session is *not* in this set, so its lines still resurface."""
+        if self._session_detail_n <= 0:
+            return set()
+        session_since = (self._clock().date() - timedelta(days=self._session_days)).isoformat()
+        window = self._repo.summaries_since(self._user_id, session_since)
+        verbatim = window[max(0, len(window) - self._session_detail_n):]  # the last N (shown in full)
+        ids: set[str] = set()
+        for s in verbatim:
+            for m in self._repo.load_messages(s.session_id):
+                if m.text.strip():
+                    ids.add(vector_msg_id(m.session_id, m.ts, m.role, m.text))
+        return ids
+
     def _messages_in_range(self, start: str, end: str) -> list[Message]:
         """This user's messages whose **date** falls in ``[start, end]`` (YYYY-MM-DD), in time order.
         Loads only the requesting user's sessions (isolation); skips empty messages."""
@@ -2122,8 +2139,11 @@ class Core:
 
         # v0.17: automatic per-turn RAG — the incoming message is the query; inject the relevant past
         # (deduped against the live window so it never repeats a line already in context).
+        # v0.35: + the verbatim (last-N) sessions, so auto-RAG doesn't re-surface a line already in full
+        # (a gisted older session is NOT in this set → its lines still resurface).
+        conv_dedup = self._conversation_dedup_ids()
         system, cache_prefix = self._system_prompt(
-            session, recall=self._recall_block(user_text, live)
+            session, recall=self._recall_block(user_text, live, extra_dedup_ids=conv_dedup)
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted for the cache monitor
@@ -2131,7 +2151,7 @@ class Core:
         # window + the moments the v0.17 auto-RAG block just surfaced (set in _recall_block above).
         self._turn_dedup_ids = {
             vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in live
-        } | self._turn_rag_anchor_ids
+        } | self._turn_rag_anchor_ids | conv_dedup
         # v0.19/v0.21: when the file tool and/or the wiki tool is on, run the turn as a bounded
         # tool-loop (file sandbox + Wikipedia), with a name-routing executor.
         tools, tool_executor = self._turn_tools()
@@ -2502,7 +2522,9 @@ class Core:
         """Whether automatic per-turn RAG injection is active (v0.17)."""
         return self._rag_enabled
 
-    def _recall_block(self, query: str, live: list[Message] | None = None) -> str | None:
+    def _recall_block(
+        self, query: str, live: list[Message] | None = None, *, extra_dedup_ids: set[str] = frozenset(),
+    ) -> str | None:
         """The per-turn RAG block (v0.17): the query-relevant past as dated «relevant moments»,
         each **widened to a small window of its session neighbours** (the moment, not the line) —
         or ``None`` when off / no hit above the floor. **Best-effort, never blocks a turn.**
@@ -2518,6 +2540,7 @@ class Core:
         if not hits:
             return None
         window_ids = {vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in (live or [])}
+        window_ids |= set(extra_dedup_ids)  # v0.35: + the verbatim (last-N) sessions, so they aren't re-surfaced
         # anchor dedup (LUMI-071): a chunk's parent_msg_id is the message id, so this matches whether
         # the hit is a whole-message vector (v0.16) or a chunk (v0.30).
         hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]

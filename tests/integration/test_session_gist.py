@@ -72,3 +72,53 @@ def test_gisted_window_is_per_user_isolated(tmp_path):
     bob.reply("hi", bob.start_session())
     bob_system = bob.last_prompt["system"]
     assert "стисло: кава" in system and "стисло: кава" not in bob_system
+
+
+# --- v0.35 LUMI-140: a gisted session's detail stays reachable (push + pull) ---
+def test_auto_rag_reaches_an_older_session_with_gisting_on(tmp_path):
+    # the PUSH path: auto-RAG dedup keys off the live WINDOW (raw messages), not the summary tier — so an
+    # older session's line resurfaces even with the conversation tier gisted. (LUMI-140 needs no dedup change.)
+    from core.embedder import MockEmbedder
+    core = Core(
+        llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
+        canon="C", model="m", clock=_CLK, embedder=MockEmbedder(),
+        recall_enabled=True, rag_enabled=True, rag_floor=0.0,
+        memory_window=4, session_detail_n=1,  # gisting ON
+        mood_enabled=False, biorhythms_enabled=False, cycle_enabled=False, thoughts_enabled=False,
+    )
+    a = core.start_session()
+    core.reply("я люблю каву вранці на світанку", a)   # indexed in session A
+    b = core.start_session()                             # a new session → A is now an older session
+    core.reply("розкажи мені ще про каву", b)            # the query in session B shares «каву»
+    system = core.last_prompt["system"]
+    assert "# Релевантні моменти минулого" in system and "каву вранці" in system  # A's line resurfaced
+
+
+def test_gisted_session_messages_are_pullable_by_date(tmp_path):
+    # the PULL path: by-date retrieval reads raw messages from the store, independent of the gisted tier.
+    core = _core(tmp_path, session_detail_n=1)
+    core.reply("деталь про комети у нашій розмові", core.start_session())
+    msgs = core._messages_in_range("2026-06-08", "2026-06-08")  # messages_on / messages_between back this
+    assert any("комети" in m.text for m in msgs)
+
+
+def test_verbatim_session_lines_are_not_re_surfaced(tmp_path):
+    # no double-injection: a session shown VERBATIM in the conversation tier is in the auto-RAG dedup, so its
+    # raw line is not also surfaced — while a gisted older session's line still would be (the test above).
+    from core.embedder import MockEmbedder
+    core = Core(
+        llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
+        canon="C", model="m", clock=_CLK, embedder=MockEmbedder(),
+        recall_enabled=True, rag_enabled=True, rag_floor=0.0,
+        session_days=2, session_detail_n=1,  # gisting ON → the last-1 session is verbatim
+        mood_enabled=False, biorhythms_enabled=False, cycle_enabled=False, thoughts_enabled=False,
+    )
+    a = core.start_session()
+    core.reply("я люблю каву вранці на світанку", a)   # indexed in session A
+    # mark A as a finished session WITH a summary → it is the verbatim (last-1) tier this turn
+    core._repo.add_summary(ShortSummary("owner", a.id, "детальний підсумок про каву", "гіст А", "2026-06-08T11:00:00+00:00"))
+    b = core.start_session()
+    core.reply("розкажи мені ще про каву", b)
+    system = core.last_prompt["system"]
+    assert "детальний підсумок про каву" in system  # A's summary is shown verbatim in the tier
+    assert "каву вранці" not in system               # …so its raw line is deduped, not re-surfaced
