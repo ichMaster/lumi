@@ -57,7 +57,7 @@ from core.memory import (
     MAX_WEEK_ROWS,
     RECENT_SUMMARIES,
     SESSION_DAYS,
-    SESSION_DETAIL_N,
+    SESSION_FORMAT_DEFAULT,
     WEEK_DAYS,
     clamp_rows,
     compaction_plan,
@@ -341,7 +341,8 @@ class Core:
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
         recent_summaries: int = RECENT_SUMMARIES,
         session_days: int = SESSION_DAYS,
-        session_detail_n: int = SESSION_DETAIL_N,
+        session_detail_n: int | None = None,
+        session_format: str = SESSION_FORMAT_DEFAULT,
         day_days: int = DAY_DAYS,
         week_days: int = WEEK_DAYS,
         max_day_rows: int = MAX_DAY_ROWS,
@@ -592,7 +593,8 @@ class Core:
         # date-based recall date-based short-memory windows (config/env-tunable): session/day/week spans + caps.
         self._recent_summaries = recent_summaries  # /memory quick-view count
         self._session_days = session_days  # tier 1: detailed session summaries window
-        self._session_detail_n = session_detail_n  # v0.35: keep last N verbatim; gist the older window (0 = all)
+        self._session_detail_n = session_detail_n  # v0.35: how many recent sessions to add (None=all, 0=none, N=last N)
+        self._session_format = session_format      # v0.35: "summary" (full) or "gist" (one line) per added session
         self._day_days = day_days  # tier 2: per-day digests window
         self._week_days = week_days  # tier 3: per-week digests window
         self._max_day_rows = max_day_rows
@@ -1319,15 +1321,17 @@ class Core:
             if body:
                 day_summaries.append(f"[{ds.date}] {body}")
         session_since = (today - timedelta(days=self._session_days)).isoformat()
-        # v0.35 (LUMI-139): keep the last N sessions verbatim (the live thread); gist the older ones to a
-        # one-line dated index (she pulls their detail via messages_on / recall / auto-RAG). N <= 0 → all
-        # verbatim (byte-identical to pre-v0.35). The window is chronological (oldest-first).
+        # v0.35: two orthogonal knobs. `session_detail_n` caps HOW MANY of the most-recent sessions to add
+        # (None = all; 0 = none; N = last N); `session_format` picks the FORM each takes — full "summary" or
+        # one-line "gist" (she pulls a gisted session's detail via messages_on / recall / auto-RAG). The
+        # window is chronological (oldest-first). Default (None + "summary") = all sessions, full = unchanged.
         window = self._repo.summaries_since(self._user_id, session_since)
-        detail_cut = max(0, len(window) - self._session_detail_n) if self._session_detail_n > 0 else 0
+        if self._session_detail_n is not None:
+            window = window[max(0, len(window) - self._session_detail_n):]  # last N (0 → none, >len → all)
+        as_gist = self._session_format == "gist"
         summaries = [
-            f"[{format_date(s.ts)}] "
-            + (s.summary if i >= detail_cut else session_gist(s.gist, s.summary))
-            for i, s in enumerate(window)
+            f"[{format_date(s.ts)}] " + (session_gist(s.gist, s.summary) if as_gist else s.summary)
+            for s in window
         ]
         # Long-term facts: inject the consolidated digest + any facts added since it was built
         # (verbatim tail), instead of all raw facts. Falls back to raw when no digest exists.
@@ -1845,23 +1849,6 @@ class Core:
 
         return RECALL_TOOLS, execute
 
-    def _conversation_dedup_ids(self) -> set[str]:
-        """v0.35 (LUMI-140): the message ids of the **verbatim** (last-N) sessions shown in full in the
-        conversation tier — auto-RAG dedups against them so it never re-surfaces a line already injected
-        verbatim. **Empty when gisting is off** (``session_detail_n <= 0``) → the default auto-RAG behaviour
-        is byte-identical; a **gisted** older session is *not* in this set, so its lines still resurface."""
-        if self._session_detail_n <= 0:
-            return set()
-        session_since = (self._clock().date() - timedelta(days=self._session_days)).isoformat()
-        window = self._repo.summaries_since(self._user_id, session_since)
-        verbatim = window[max(0, len(window) - self._session_detail_n):]  # the last N (shown in full)
-        ids: set[str] = set()
-        for s in verbatim:
-            for m in self._repo.load_messages(s.session_id):
-                if m.text.strip():
-                    ids.add(vector_msg_id(m.session_id, m.ts, m.role, m.text))
-        return ids
-
     def _messages_in_range(self, start: str, end: str) -> list[Message]:
         """This user's messages whose **date** falls in ``[start, end]`` (YYYY-MM-DD), in time order.
         Loads only the requesting user's sessions (isolation); skips empty messages."""
@@ -2139,11 +2126,8 @@ class Core:
 
         # v0.17: automatic per-turn RAG — the incoming message is the query; inject the relevant past
         # (deduped against the live window so it never repeats a line already in context).
-        # v0.35: + the verbatim (last-N) sessions, so auto-RAG doesn't re-surface a line already in full
-        # (a gisted older session is NOT in this set → its lines still resurface).
-        conv_dedup = self._conversation_dedup_ids()
         system, cache_prefix = self._system_prompt(
-            session, recall=self._recall_block(user_text, live, extra_dedup_ids=conv_dedup)
+            session, recall=self._recall_block(user_text, live)
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted for the cache monitor
@@ -2151,7 +2135,7 @@ class Core:
         # window + the moments the v0.17 auto-RAG block just surfaced (set in _recall_block above).
         self._turn_dedup_ids = {
             vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in live
-        } | self._turn_rag_anchor_ids | conv_dedup
+        } | self._turn_rag_anchor_ids
         # v0.19/v0.21: when the file tool and/or the wiki tool is on, run the turn as a bounded
         # tool-loop (file sandbox + Wikipedia), with a name-routing executor.
         tools, tool_executor = self._turn_tools()
@@ -2522,9 +2506,7 @@ class Core:
         """Whether automatic per-turn RAG injection is active (v0.17)."""
         return self._rag_enabled
 
-    def _recall_block(
-        self, query: str, live: list[Message] | None = None, *, extra_dedup_ids: set[str] = frozenset(),
-    ) -> str | None:
+    def _recall_block(self, query: str, live: list[Message] | None = None) -> str | None:
         """The per-turn RAG block (v0.17): the query-relevant past as dated «relevant moments»,
         each **widened to a small window of its session neighbours** (the moment, not the line) —
         or ``None`` when off / no hit above the floor. **Best-effort, never blocks a turn.**
@@ -2540,7 +2522,6 @@ class Core:
         if not hits:
             return None
         window_ids = {vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in (live or [])}
-        window_ids |= set(extra_dedup_ids)  # v0.35: + the verbatim (last-N) sessions, so they aren't re-surfaced
         # anchor dedup (LUMI-071): a chunk's parent_msg_id is the message id, so this matches whether
         # the hit is a whole-message vector (v0.16) or a chunk (v0.30).
         hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]
@@ -2768,6 +2749,7 @@ def build_core(
         recent_summaries=cfg.recent_summaries,
         session_days=cfg.session_days,
         session_detail_n=cfg.session_detail_n,
+        session_format=cfg.session_format,
         day_days=cfg.day_days,
         week_days=cfg.week_days,
         max_day_rows=cfg.max_day_rows,

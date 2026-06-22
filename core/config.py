@@ -25,7 +25,8 @@ from core.memory import (
     MAX_WEEK_ROWS,
     RECENT_SUMMARIES,
     SESSION_DAYS,
-    SESSION_DETAIL_N,
+    SESSION_FORMAT_DEFAULT,
+    SESSION_FORMATS,
     WEEK_DAYS,
 )
 from core.thoughts import (
@@ -162,7 +163,8 @@ class Config:
     # Short-memory recall: 3 date-based windows + the /memory quick-view count + row caps.
     recent_summaries: int = RECENT_SUMMARIES
     session_days: int = SESSION_DAYS
-    session_detail_n: int = SESSION_DETAIL_N  # v0.35: keep last N sessions verbatim; gist the rest (0 = all)
+    session_detail_n: int | None = None       # v0.35: how many recent sessions to add (None = all; 0 = none; N = last N)
+    session_format: str = SESSION_FORMAT_DEFAULT  # v0.35: "summary" (full) or "gist" (one line) per added session
     day_days: int = DAY_DAYS
     week_days: int = WEEK_DAYS
     max_day_rows: int = MAX_DAY_ROWS
@@ -375,7 +377,10 @@ def load_config(*, load_env: bool = True) -> Config:
     recent_env = os.getenv("LUMI_RECENT_SUMMARIES")
     recent_summaries = int(recent_env) if recent_env else RECENT_SUMMARIES
     session_days = int(sd) if (sd := os.getenv("LUMI_SESSION_DAYS")) else SESSION_DAYS
-    session_detail_n = int(sdn) if (sdn := os.getenv("LUMI_SESSION_DETAIL_N")) else SESSION_DETAIL_N  # v0.35
+    session_detail_n = int(sdn) if (sdn := os.getenv("LUMI_SESSION_DETAIL_N")) else None  # v0.35: unset → all
+    session_format = (os.getenv("LUMI_SESSION_FORMAT") or SESSION_FORMAT_DEFAULT).strip().lower()
+    if session_format not in SESSION_FORMATS:  # unknown → the safe default (full summary)
+        session_format = SESSION_FORMAT_DEFAULT
     day_days = int(dd) if (dd := os.getenv("LUMI_DAY_DAYS")) else DAY_DAYS
     week_days = int(wd) if (wd := os.getenv("LUMI_WEEK_DAYS")) else WEEK_DAYS
     max_day_rows = int(mdr) if (mdr := os.getenv("LUMI_MAX_DAY_ROWS")) else MAX_DAY_ROWS
@@ -448,6 +453,7 @@ def load_config(*, load_env: bool = True) -> Config:
         recent_summaries=recent_summaries,
         session_days=session_days,
         session_detail_n=session_detail_n,
+        session_format=session_format,
         day_days=day_days,
         week_days=week_days,
         max_day_rows=max_day_rows,
