@@ -248,6 +248,7 @@ class VectorRecord:
     role: str
     parent_msg_id: str = ""   # v0.30: the message this chunk came from ("" → defaults to msg_id)
     chunk_index: int = 0      # v0.30: 0-based ordinal within the message
+    kind: str = "message"     # v0.36: "message" | "fact" — which memory layer this vector indexes
 
     def __post_init__(self) -> None:
         # JSON round-trips tuples as lists; coerce back so equality/round-trip hold.
@@ -260,6 +261,12 @@ class VectorRecord:
 def vector_msg_id(session_id: str, ts: str, role: str, text: str) -> str:
     """A stable content-addressed id for a **message** (idempotent indexing/backfill)."""
     raw = f"{session_id}|{ts}|{role}|{text}"
+    return hashlib.blake2b(raw.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def fact_vector_id(user_id: str, fact: str) -> str:
+    """A stable content-addressed id for a **fact** vector (v0.36) — idempotent embedding/backfill."""
+    raw = f"fact|{user_id}|{fact}"
     return hashlib.blake2b(raw.encode("utf-8"), digest_size=16).hexdigest()
 
 
@@ -417,12 +424,13 @@ class Repository(Protocol):
         ...
 
     def search_vectors(
-        self, user_id: str, query_vector: list[float], k: int
+        self, user_id: str, query_vector: list[float], k: int, *, kind: str | None = None
     ) -> list[tuple[float, VectorRecord]]:
         """Top-``k`` records by cosine similarity, **scoped to ``user_id``** (descending).
 
         Runs only over the requesting user's vectors — A's records never surface for B
-        (the isolation invariant). A cold/empty store returns ``[]``.
+        (the isolation invariant). A cold/empty store returns ``[]``. ``kind`` (v0.36) filters the
+        candidate set to one layer (``"message"`` | ``"fact"``); ``None`` searches all kinds.
         """
         ...
 

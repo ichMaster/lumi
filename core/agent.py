@@ -103,6 +103,7 @@ from core.repository import (
     VectorRecord,
     WeekSummary,
     chunk_msg_id,
+    fact_vector_id,
     make_message,
     make_thought,
     now_iso,
@@ -259,6 +260,8 @@ RECALL_TOOLS: list[dict] = [
                           "description": "Лише з цієї дати й пізніше (РРРР-ММ-ДД, необовʼязково)."},
                 "before": {"type": "string",
                            "description": "Лише до цієї дати, не включно (РРРР-ММ-ДД, необовʼязково)."},
+                "scope": {"type": "string", "enum": ["messages", "facts", "all"],
+                          "description": "Де шукати: messages (минулі розмови, типово) / facts (стійкі факти про людину) / all."},
             },
             "required": ["query"],
         },
@@ -1839,9 +1842,12 @@ class Core:
                 k = self._recall_tool_k
             after = ((tool_input or {}).get("after") or "").strip() or None    # YYYY-MM-DD date scope
             before = ((tool_input or {}).get("before") or "").strip() or None
+            scope = ((tool_input or {}).get("scope") or "messages").strip().lower()  # v0.36
+            if scope not in ("messages", "facts", "all"):
+                scope = "messages"
             # dedup against what's already in the prompt (the live window + auto-RAG block)
             moments = self.recall_moments(
-                query, k, window_ids=self._turn_dedup_ids, before=before, after=after
+                query, k, window_ids=self._turn_dedup_ids, before=before, after=after, scope=scope
             )
             if not moments:
                 return f"(нічого не згадалося про «{query}»)"
@@ -2432,7 +2438,56 @@ class Core:
             self._repo.reset_vectors(self._embed_model)
         while self.backfill_vectors() > 0:
             pass
+        self.backfill_facts()  # v0.36: embed any not-yet-indexed facts (idempotent)
         self._backfilled = True
+
+    def _embed_facts(self, facts: list[LongTermFact]) -> list[VectorRecord]:
+        """Embed long-term facts as `kind="fact"` vectors (v0.36) — one content-addressed record each
+        (idempotent). Raises on an embedder error (the caller logs + degrades)."""
+        valid = [f for f in facts if f.fact.strip()]
+        if not valid:
+            return []
+        vectors = self._embedder.embed([f.fact[: self._embed_max_chars] for f in valid])
+        out: list[VectorRecord] = []
+        for f, vec in zip(valid, vectors, strict=False):
+            fid = fact_vector_id(f.user_id, f.fact)
+            out.append(VectorRecord(
+                user_id=f.user_id, msg_id=fid, vector=tuple(float(x) for x in vec),
+                text=f.fact, ts=f.ts, role="fact", parent_msg_id=fid, chunk_index=0, kind="fact",
+            ))
+        return out
+
+    def _index_facts(self, facts: list[LongTermFact]) -> None:
+        """Embed + store new facts as `kind="fact"` vectors (best-effort; guarded by ``recall_enabled``).
+        An embedder error is logged + swallowed — the facts are stored and picked up by the backfill."""
+        if not self._recall_enabled or self._embedder is None or not facts:
+            return
+        try:
+            records = self._embed_facts(facts)
+        except Exception as exc:  # noqa: BLE001 — best-effort; the facts are stored, retried by backfill
+            _recall_log.warning("fact index-on-write failed (fact stored; will backfill): %s", exc)
+            return
+        if records:
+            self._repo.add_vectors(records)
+
+    def backfill_facts(self) -> int:
+        """Embed this user's not-yet-indexed facts as `kind="fact"` vectors (v0.36). Idempotent
+        (content-addressed ids; ``add_vectors`` skips ones already present). Returns the count added."""
+        if not self._recall_enabled or self._embedder is None:
+            return 0
+        pending = [
+            f for f in self._repo.facts(self._user_id)
+            if f.fact.strip() and not self._repo.has_vector(self._user_id, fact_vector_id(f.user_id, f.fact))
+        ]
+        if not pending:
+            return 0
+        try:
+            records = self._embed_facts(pending)
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            _recall_log.warning("fact backfill failed: %s", exc)
+            return 0
+        self._repo.add_vectors(records)
+        return len(records)
 
     def _session_vector_ids(self, session_id: str) -> set[str]:
         """The vector (message) ids of one session's messages — to drop a session's own hits from
@@ -2446,7 +2501,7 @@ class Core:
 
     def recall(
         self, query: str, k: int | None = None, *, exclude_session: str | None = None,
-        before: str | None = None, after: str | None = None,
+        before: str | None = None, after: str | None = None, scope: str = "messages",
     ) -> list[tuple[float, VectorRecord]]:
         """Explicit semantic search (the ``/recall`` command, v0.16).
 
@@ -2469,7 +2524,9 @@ class Core:
         pool = max(k * 5, 60) if filtered else k  # over-fetch so the filter still yields ~k
         try:
             [vec] = self._embedder.embed([query[:self._embed_max_chars]], is_query=True)  # QUERY side
-            hits = self._repo.search_vectors(self._user_id, list(vec), pool)
+            # v0.36: scope to one memory layer; "messages" (default) is byte-identical to pre-v0.36.
+            kind = {"messages": "message", "facts": "fact", "all": None}.get(scope, "message")
+            hits = self._repo.search_vectors(self._user_id, list(vec), pool, kind=kind)
         except Exception as exc:  # noqa: BLE001 — recall must never break the UI
             _recall_log.warning("recall search failed: %s", exc)
             return []
@@ -2485,6 +2542,7 @@ class Core:
     def recall_moments(
         self, query: str, k: int | None = None, *, exclude_session: str | None = None,
         window_ids: set[str] | None = None, before: str | None = None, after: str | None = None,
+        scope: str = "messages",
     ) -> list[str]:
         """Explicit `/recall` as **dated dialogue snippets** (the v0.16 hits widened with their
         neighbours, anchor + score marked) — the same context expansion the per-turn RAG uses, so
@@ -2494,7 +2552,7 @@ class Core:
         live window + the auto-RAG block (the recall-tool path); ``None`` → no dedup (the /recall
         command). ``before`` / ``after`` (YYYY-MM-DD) scope the meaning search to a date range.
         Empty / off → ``[]``; never raises."""
-        hits = self.recall(query, k, exclude_session=exclude_session, before=before, after=after)
+        hits = self.recall(query, k, exclude_session=exclude_session, before=before, after=after, scope=scope)
         if window_ids:
             hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]
         if not hits:
@@ -2684,15 +2742,15 @@ class Core:
         except Exception:  # noqa: BLE001 — facts are best-effort
             return
         existing = {f.fact for f in self._repo.facts(self._user_id)}
+        new_facts: list[LongTermFact] = []
         for fact in parse_facts(text):
             if fact in existing:
                 continue  # dedup against what's already stored
-            self._repo.add_fact(
-                LongTermFact(
-                    user_id=self._user_id, fact=fact, meta="", confidence=0.5, ts=now_iso()
-                )
-            )
+            lf = LongTermFact(user_id=self._user_id, fact=fact, meta="", confidence=0.5, ts=now_iso())
+            self._repo.add_fact(lf)
             existing.add(fact)
+            new_facts.append(lf)
+        self._index_facts(new_facts)  # v0.36: embed the new facts (kind="fact"; best-effort)
 
 
 def build_core(

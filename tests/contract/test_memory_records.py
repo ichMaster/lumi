@@ -70,11 +70,18 @@ def test_session_digest_shape():
 
 
 def test_vector_record_shape():
-    # v0.16 recall + v0.30 chunking — ARCHITECTURE §Semantic recall:
-    # {user_id, msg_id, vector, text, ts, role, parent_msg_id, chunk_index}.
+    # v0.16 recall + v0.30 chunking + v0.36 fact embedding — ARCHITECTURE §Semantic recall:
+    # {user_id, msg_id, vector, text, ts, role, parent_msg_id, chunk_index, kind}.
     assert set(VectorRecord.__dataclass_fields__) == {
-        "user_id", "msg_id", "vector", "text", "ts", "role", "parent_msg_id", "chunk_index",
+        "user_id", "msg_id", "vector", "text", "ts", "role", "parent_msg_id", "chunk_index", "kind",
     }
+
+
+def test_vector_record_kind_defaults_to_message():
+    # v0.36: kind is additive — old records (no kind) load as the message layer (back-compatible).
+    r = VectorRecord(user_id="owner", msg_id="abc", vector=[0.1, 0.2],
+                     text="привіт", ts="2026-06-06T00:00:00+00:00", role="user")
+    assert r.kind == "message"
 
 
 def test_vector_record_is_per_user_and_coerces_vector():

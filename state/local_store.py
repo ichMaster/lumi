@@ -392,7 +392,10 @@ class JsonRepository:
         self._persist()  # store.json keeps the model marker
 
     def search_vectors(
-        self, user_id: str, query_vector: list[float], k: int
+        self, user_id: str, query_vector: list[float], k: int, *, kind: str | None = None
     ) -> list[tuple[float, VectorRecord]]:
         # Isolation: only this user's vectors are ever in the candidate set.
-        return _topk_cosine(list(query_vector), self._vectors.get(user_id, []), k)
+        records = self._vectors.get(user_id, [])
+        if kind is not None:  # v0.36: scope to one memory layer ("message" | "fact")
+            records = [r for r in records if r.kind == kind]
+        return _topk_cosine(list(query_vector), records, k)
