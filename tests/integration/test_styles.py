@@ -61,6 +61,21 @@ def test_load_meta_descriptions_from_the_authored_file():
     assert all(not d.startswith("=") for d in descs.values())
 
 
+# --- v0.34 LUMI-138: the style block was compressed (keep the anchors + the form limits) ---
+def test_style_header_compressed_keeps_the_anchors():
+    from core.prompt import STYLE_HEADER
+    assert len(STYLE_HEADER) < 200  # compressed (was ~280)
+    assert "ФОРМА" in STYLE_HEADER and "<style>" in STYLE_HEADER  # the tag instruction stays
+    assert "компетентність" in STYLE_HEADER and "теплот" in STYLE_HEADER  # form, not competence or warmth
+
+
+def test_meta_descriptions_keep_their_form_limits():
+    descs = load_meta_descriptions(load_config(load_env=False).styles_path)
+    # the load-bearing sentence/line limits survive compression (form is the whole point)
+    assert "2–3" in descs["блискавична"] and "4–8" in descs["лагідна"] and "4–6" in descs["лірична"]
+    assert all(len(d) <= 95 for d in descs.values())  # each description stays tight
+
+
 def test_load_styles_missing_file_is_empty(tmp_path):
     assert load_styles(tmp_path / "nope.md") == {}
     assert load_meta_styles(tmp_path / "nope.md") == {}

@@ -868,7 +868,7 @@ class Core:
         no mega-styles are authored. Base styles are no longer dumped into the prompt."""
         if not self._meta:
             return None
-        lines = ["Мега-стилі — обери один, що найкраще пасує:"]
+        lines = ["Палітра:"]  # the "pick one" instruction lives in STYLE_HEADER — no need to repeat it
         for name in sorted(self._meta):
             desc = self._meta_desc.get(name) or ", ".join(self._meta[name])
             lines.append(f"- {name}: {desc}")

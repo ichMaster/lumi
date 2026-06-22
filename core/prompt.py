@@ -51,10 +51,8 @@ def split_reasoning(text: str) -> tuple[str | None, str]:
 # declares it as <style>name</style> (parsed + stripped by split_style). A `/style`
 # recommendation, if set, rides inside the palette text as a soft bias.
 STYLE_HEADER = (
-    "ВАЖЛИВО — СТИЛЬ ВІДПОВІДІ. Сама обери МЕГА-стиль, що найкраще пасує цьому моменту, "
-    "з палітри нижче, і пиши САМЕ в ньому (за описом стилю). Це впливає тільки на форму, "
-    "не на компетентність чи теплоту. Наприкінці познач свій вибір тегом "
-    "<style>назва</style> (сам тег не коментуй)."
+    "ВАЖЛИВО — СТИЛЬ ВІДПОВІДІ. Обери з палітри МЕГА-стиль під момент і пиши в ньому. Це лише ФОРМА "
+    "(не компетентність і не теплота). У кінці: <style>назва</style> (тег не коментуй)."
 )
 
 # Inline style tag: <style>лагідна</style> — Лілі's declared answer style for the turn.
