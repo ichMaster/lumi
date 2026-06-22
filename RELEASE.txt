@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 0.34.0 (2026-06-22)
+---------------------------
+v0.34 — Lean memory: tool-pull, not push (day/week index + style trims):
+- LUMI-136: Day/week digests as a one-line dated index — DAY_GIST_SYSTEM/WEEK_GIST_SYSTEM produce a single ~20-word gist line (the row cap is the wrong lever; these digests are one paragraph), selected by the new LUMI_MEMORY_INDEX flag (off by default; off -> today's paragraph prompts byte-identical). The prompt builder already renders "- [date] body", so the tier becomes a dated index she pulls via messages_on(date). ~-18% of the prompt.
+- LUMI-137: Regenerate the stored day/week digests — Core.regenerate_summaries() (and a /regen-summaries TUI command) force-rebuilds every day/week digest in the window from the kept session summaries, so a format change (LUMI_MEMORY_INDEX) applies retroactively (the lazy refresh skips unchanged days). Lossless (source untouched), idempotent, per-user.
+- LUMI-138: Compress the style palette — STYLE_HEADER (278->177 chars) + the 6 meta-style descriptions tightened (every form-limit kept), and the redundant palette intro dropped. The rendered "# Стиль відповіді" block is ~26% smaller with no voice drift.
+- Canon: a new "Як тече розмова" section (associative flow — add her own association/memory/tangent rather than mirror or summarise; one live side-thread per reply; stills into quiet presence when something is painful) + a canon update.
+- Docs: the lean-memory roadmap (v0.34-v0.37) split by risk + the tool-pull optimization plan with a per-proposal risk evaluation (docs/PROMPT_OPTIMIZATION_II.md).
+No emotion-contract / core-seam change; everything reversible and off-by-default.
+
 Version 0.33.0 (2026-06-21)
 ---------------------------
 v0.33 — Tool-using thoughts (the thought-stream acts via tools):

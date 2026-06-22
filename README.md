@@ -12,7 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.33 — Tool-using thoughts: her inner life can act, not just muse.** The v0.12 thought-stream gains a
+**0.34 — Lean memory: tool-pull, not push (the prompt slims down).** The first slice of moving the verbose
+memory tiers from *injected* to *pulled* (index in the prompt, body fetched by a tool). The **day/week
+digests** can render as a **one-line dated index** instead of paragraphs (`LUMI_MEMORY_INDEX`, off by
+default; off → byte-identical) — she pulls the verbatim day via `messages_on(date)` when she needs it; a
+**`/regen-summaries`** command (and `Core.regenerate_summaries()`) applies the new format to existing digests
+**losslessly** (rebuilt from the kept session summaries — the lazy refresh skips unchanged days). The
+**style palette** is compressed (~26%, every form-limit + voice anchor kept). Low-risk, reversible, no
+contract change. The riskier tiers follow as their own phases: conversations **v0.35**, facts **v0.36**,
+thoughts **v0.37**. See **[docs/PROMPT_OPTIMIZATION_II.md](docs/PROMPT_OPTIMIZATION_II.md)**.
+
+Builds on **0.33's tool-using thoughts.** The v0.12 thought-stream gains a
 **think-path tool-loop**, so a `%directive` can *use a tool* and still end in a thought (its terminal stays
 a thought, never `set_state`). A small family lands on one table-driven engine: **file** (`%note` →
 `notes/<date>.md`, `%review`, `%explore`, **`%journal`** → a full day-review via `journal_write`), **wiki**
