@@ -42,11 +42,11 @@ The status bar shows the active model, so you can confirm the switch.
 mechanically safe — nothing is corrupted — but each one trades something away. The cross-cutting losses on
 **any non-Anthropic provider**:
 
-- **The tool-loop goes dark.** The v0.19 bounded tool-loop is **Anthropic-only** (`core/llm.py`: *"the v0.19
-  tool-loop is Anthropic-only"*). On OpenAI / DeepSeek / MiniMax / local, the **file, Wikipedia, news,
-  web-lookup, image, and journal tools** — and the `%`-thought-tools that ride them — are silently
-  **ignored**: the backend takes a single plain call with no tools. If you depend on any of those features,
-  they stop working off Anthropic.
+- **The tool-loop.** As of **v0.37** the OpenAI-compatible adapter (**OpenAI / DeepSeek / local**) has its
+  own bounded tool-loop via OpenAI **function calling**, so the **file, Wikipedia, news, web-lookup, image,
+  and journal tools** — and the `%`-thought-tools that ride them — **work** on GPT-5.5 / DeepSeek-V4-Pro and
+  OpenAI-compatible local servers. **MiniMax** still has no tool-loop (its tools are silently ignored — a
+  single plain call). If you depend on tools, stay on Anthropic or an OpenAI-compatible provider.
 - **No inner monologue / think box, no `effort`.** Extended thinking is Anthropic-only, so the hidden
   think-step (and the v1.3 inner monologue) is empty and you can't tune reasoning depth.
 - **No prompt caching → more cost + latency.** Лілі's large static prefix (canon + memory digests + mood) is
@@ -109,11 +109,11 @@ OPENAI_API_KEY=sk-...
 
 Restart `./lumi`. Structured output uses JSON mode (gpt-4o handles it well).
 
-**Risks:** all the cross-cutting losses above apply — **no tool-loop** (file / wiki / news / web / image /
-journal go silent), no think box, no prompt caching (every turn re-bills the full prompt). The emotion field
-comes through JSON mode rather than a tool call; gpt-4o is reliable but trips the `calm` fallback more than
-Claude. Her voice shifts toward GPT's, Ukrainian is good-but-not-Claude, and the whole conversation is sent
-to OpenAI under its data policy.
+**Risks:** the remaining cross-cutting losses apply — no think box, no prompt caching (every turn re-bills
+the full prompt). The **tool-loop works** (v0.37, OpenAI function calling — file / wiki / news / web / image /
+journal and the `%`-thought-tools). The emotion field comes through JSON mode rather than a tool call;
+gpt-4o is reliable but trips the `calm` fallback more than Claude. Her voice shifts toward GPT's, Ukrainian
+is good-but-not-Claude, and the whole conversation is sent to OpenAI under its data policy.
 
 ---
 
@@ -131,7 +131,7 @@ DEEPSEEK_API_KEY=sk-...
 
 Restart `./lumi`. You do **not** set a base URL — `deepseek` already maps to `https://api.deepseek.com`.
 
-**Risks:** same as OpenAI (shared adapter — no tool-loop, no think box, no caching, JSON-mode emotion). Two
+**Risks:** same as OpenAI (shared adapter — tool-loop works as of v0.37; no think box, no caching, JSON-mode emotion). Two
 extras: **`deepseek-reasoner`** is a reasoning model whose chain-of-thought the OpenAI-compatible path
 doesn't surface and which adds latency — prefer **`deepseek-chat`** (V3) for Лілі; and the conversation is
 sent to DeepSeek's servers (weigh the privacy/compliance implications for a private companion).

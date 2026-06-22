@@ -64,6 +64,34 @@ def _anthropic_messages(messages: list[Message]) -> list:
         for m in messages
     ]
 
+
+def _openai_image(block: dict) -> dict:
+    """A provider-neutral image block → OpenAI's ``image_url`` (base64 data-URL) form (v0.37 tool-loop)."""
+    return {"type": "image_url",
+            "image_url": {"url": f"data:{block['media_type']};base64,{block['data']}"}}
+
+
+def _openai_content(content: object) -> object:
+    """Translate a message ``content`` to OpenAI shape — neutral image blocks become ``image_url``; text
+    blocks and already-translated blocks pass through. A plain string is returned unchanged."""
+    if not isinstance(content, list):
+        return content
+    return [
+        _openai_image(b) if is_image_block(b) and "image_url" not in b else b
+        for b in content
+    ]
+
+
+def _openai_messages(messages: list[Message]) -> list:
+    """Translate each message's content (image blocks → OpenAI form); strings pass through unchanged."""
+    return [
+        {**m, "content": _openai_content(m["content"])}
+        if isinstance(m, dict) and isinstance(m.get("content"), list)
+        else m
+        for m in messages
+    ]
+
+
 _T = TypeVar("_T")
 
 # The structured-output tool the model fills with its turn: text + her state
@@ -635,6 +663,11 @@ class OpenAICompatibleClient:
     parsed into the shared ``{reply, emotion, intensity}`` shape via :func:`parse_emotion_json`, then
     validated by the v0.3 gate. Prompt caching / extended thinking are Anthropic-only and ignored here
     (``cache_prefix`` is accepted but unused; ``last_thinking`` stays ``None``).
+
+    v0.37 **bounded tool-loop:** when ``tools`` + ``tool_executor`` are given, a port of
+    :class:`AnthropicClient`'s loop runs the file / wiki / news / web / journal / image tools (and the
+    ``%``-thought-tools) via **OpenAI function calling** — so GPT-5.5 / DeepSeek-V4-Pro use tools too.
+    The no-tools path is byte-identical to before.
     """
 
     _RETRYABLE_NAMES = {"APIConnectionError", "APITimeoutError", "RateLimitError", "InternalServerError"}
@@ -665,6 +698,9 @@ class OpenAICompatibleClient:
         self._backoff = backoff
         self.last_thinking: str | None = None  # no provider-side thinking on this path
         self.last_stats: ResponseStats | None = None
+        # v0.37: per-ROUND stats of the last tool-loop call, each tagged "tool" or "reply" (a single
+        # call has one "reply" entry) — for the per-round cache monitor, like AnthropicClient.
+        self.last_round_log: list[tuple[str, ResponseStats]] = []
 
     def _create(self, system: str, messages: list[Message], model: str, *, structured: bool) -> object:
         sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
@@ -709,7 +745,8 @@ class OpenAICompatibleClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> str:
-        # v0.33 think-path tools are Anthropic-first; here a thought is a single tool-less call.
+        if tools and tool_executor is not None:  # v0.37 think-path tool-loop (text terminal, no set_state)
+            return self._text_tool_loop(system, messages, model, tools, tool_executor, max_steps)
         return self._content(self._create(system, messages, model, structured=False))
 
     def reply_structured(
@@ -723,8 +760,192 @@ class OpenAICompatibleClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
-        # The v0.19 tool-loop is Anthropic-only; this backend ignores the tool args (single call).
+        if tools and tool_executor is not None:  # v0.37 OpenAI function-calling loop
+            return self._tool_loop(system, messages, model, tools, tool_executor, max_steps)
+        # No tools → the unchanged single JSON call (byte-identical to before).
         return parse_emotion_json(self._content(self._create(system, messages, model, structured=True)))
+
+    # --- v0.37 OpenAI function-calling tool-loop (port of AnthropicClient._tool_loop) ----------------
+    @staticmethod
+    def _to_openai_tools(tools: list[dict]) -> list[dict]:
+        """Lumi tools are Anthropic-shaped (``{name, description, input_schema}``); OpenAI wants the
+        ``{"type":"function","function":{name, description, parameters}}`` form."""
+        return [
+            {"type": "function", "function": {
+                "name": t["name"],
+                "description": t.get("description", ""),
+                "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
+            }}
+            for t in tools
+        ]
+
+    def _request_kwargs(self, model: str, convo: list[dict]) -> dict:
+        """Base request kwargs for a tool-loop round (effort threaded in by LUMI-147)."""
+        return {"model": model, "messages": convo, "max_tokens": self._max_tokens}
+
+    def _tool_loop(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        tools: list[dict],
+        tool_executor: Callable[[str, dict], str | dict],
+        max_steps: int,
+    ) -> dict:
+        """Bounded OpenAI function-calling loop — the structured (``{reply, emotion, intensity}``) terminal.
+
+        Non-terminal ``tool_calls`` run via ``tool_executor`` and feed back as **untrusted** ``role:"tool"``
+        results (recall → her own **recollection**); the first message with **no** ``tool_calls`` is the
+        answer (parsed as the emotion JSON, validated by the v0.3 gate). The final round forces a JSON
+        answer (``tool_choice="none"`` + ``response_format``) so the turn always terminates.
+        """
+        oai_tools = self._to_openai_tools(tools)
+        convo: list[dict] = [{"role": "system", "content": system + _JSON_STATE_INSTRUCTION},
+                             *_openai_messages(messages)]
+        acc = {"input": 0, "output": 0, "cr": 0, "latency": 0}
+        self.last_round_log = []
+        for step in range(max_steps + 1):
+            kwargs = self._request_kwargs(model, convo)
+            if step >= max_steps:  # final round → no more tools, force a JSON answer (always terminates)
+                kwargs["tool_choice"] = "none"
+                kwargs["response_format"] = {"type": "json_object"}
+            else:
+                kwargs["tools"] = oai_tools
+                kwargs["tool_choice"] = "auto"
+            resp, rstats = self._round(kwargs, model, acc)
+            msg = resp.choices[0].message
+            calls = getattr(msg, "tool_calls", None)
+            if not calls:  # terminal — this message is the answer
+                self.last_round_log.append(("reply", rstats))
+                self._finalize_loop(acc, model)
+                return parse_emotion_json(getattr(msg, "content", "") or "")
+            self.last_round_log.append(("tool", rstats))
+            self._run_tool_round(convo, msg, calls, tool_executor)
+        self._finalize_loop(acc, model)
+        return {"reply": ""}  # safety net — the forced final round returns above
+
+    def _text_tool_loop(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        tools: list[dict],
+        tool_executor: Callable[[str, dict], str | dict],
+        max_steps: int,
+    ) -> str:
+        """Like :meth:`_tool_loop` but the terminal is **plain text** (the v0.33 thought, no JSON) — the
+        think-path twin. The final round drops the tools (``tool_choice="none"``, no ``response_format``)
+        so the model answers in text."""
+        oai_tools = self._to_openai_tools(tools)
+        convo: list[dict] = [{"role": "system", "content": system}, *_openai_messages(messages)]
+        acc = {"input": 0, "output": 0, "cr": 0, "latency": 0}
+        self.last_round_log = []
+        for step in range(max_steps + 1):
+            kwargs = self._request_kwargs(model, convo)
+            if step >= max_steps:  # final round → force a text answer (no tools)
+                kwargs["tool_choice"] = "none"
+            else:
+                kwargs["tools"] = oai_tools
+                kwargs["tool_choice"] = "auto"
+            resp, rstats = self._round(kwargs, model, acc)
+            msg = resp.choices[0].message
+            calls = getattr(msg, "tool_calls", None)
+            if not calls:  # terminal — the model answered in text (the thought)
+                self.last_round_log.append(("reply", rstats))
+                self._finalize_loop(acc, model)
+                return getattr(msg, "content", "") or ""
+            self.last_round_log.append(("tool", rstats))
+            self._run_tool_round(convo, msg, calls, tool_executor)
+        self._finalize_loop(acc, model)
+        return ""  # safety net — the forced final round returns above
+
+    def _round(self, kwargs: dict, model: str, acc: dict) -> tuple[object, ResponseStats]:
+        """One bounded create call: run it (retried), accumulate stats, return (resp, this-round stats)."""
+        started = time.monotonic()
+        resp = self._run(lambda: self._client.chat.completions.create(**kwargs))
+        latency = int((time.monotonic() - started) * 1000)
+        self._accumulate(resp, acc, latency)
+        return resp, self._round_stats(resp, model, latency)
+
+    def _run_tool_round(
+        self, convo: list[dict], msg: object, calls: list, tool_executor: Callable[[str, dict], str | dict]
+    ) -> None:
+        """Append the assistant ``tool_calls`` turn, execute each (parallel) call, and feed the results
+        back — one ``role:"tool"`` message per call, then any image result as a follow-up user turn."""
+        convo.append(self._assistant_tool_turn(msg, calls))
+        images: list[dict] = []
+        for tc in calls:  # OpenAI may return several (parallel) calls — execute all
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+            if not isinstance(args, dict):
+                args = {}
+            raw = tool_executor(tc.function.name, args)
+            convo.append(self._tool_result_msg(tc.id, raw))
+            if is_image_block(raw):
+                images.append(raw)
+        # A role:"tool" message can't carry an image → send each as a follow-up user turn so the model
+        # actually sees it (the Anthropic path puts the image straight in the tool_result; OpenAI can't).
+        for img in images:
+            convo.append({"role": "user", "content": [_openai_image(img)]})
+
+    @staticmethod
+    def _assistant_tool_turn(msg: object, calls: list) -> dict:
+        """Serialize the assistant turn carrying ``tool_calls`` — the API requires it to precede the
+        ``role:"tool"`` results. Built explicitly (not ``model_dump``) so it stays SDK-agnostic + mockable."""
+        return {
+            "role": "assistant",
+            "content": getattr(msg, "content", None) or None,
+            "tool_calls": [
+                {"id": tc.id, "type": "function",
+                 "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"}}
+                for tc in calls
+            ],
+        }
+
+    @staticmethod
+    def _tool_result_msg(call_id: str, raw: object) -> dict:
+        """Frame one tool result as a ``role:"tool"`` message (untrusted / recollection / image-ack)."""
+        if is_image_block(raw):
+            # OpenAI can't put an image in a role:"tool" message → acknowledge here; the image rides a
+            # separate user turn (see _run_tool_round) so the model can see it next round.
+            return {"role": "tool", "tool_call_id": call_id,
+                    "content": _UNTRUSTED_PREFIX + "(image returned; shown next turn)"}
+        if is_trusted_text(raw):  # v0.31 recall: her own recollection, not untrusted data
+            return {"role": "tool", "tool_call_id": call_id,
+                    "content": _RECOLLECTION_PREFIX + str(raw.get("text", ""))}
+        return {"role": "tool", "tool_call_id": call_id, "content": _UNTRUSTED_PREFIX + str(raw)}
+
+    def _round_stats(self, resp: object, model: str, latency_ms: int) -> ResponseStats:
+        """Stats for ONE round (no accumulation) — for the per-round cache log."""
+        usage = getattr(resp, "usage", None)
+        details = getattr(usage, "prompt_tokens_details", None)
+        return ResponseStats(
+            model=model, latency_ms=latency_ms,
+            input_tokens=getattr(usage, "prompt_tokens", None),
+            output_tokens=getattr(usage, "completion_tokens", None),
+            cache_read_tokens=getattr(details, "cached_tokens", None) if details is not None else None,
+            cache_write_tokens=None, thinking=False,
+        )
+
+    @staticmethod
+    def _accumulate(resp: object, acc: dict, latency_ms: int) -> None:
+        usage = getattr(resp, "usage", None)
+        details = getattr(usage, "prompt_tokens_details", None)
+        acc["input"] += getattr(usage, "prompt_tokens", 0) or 0
+        acc["output"] += getattr(usage, "completion_tokens", 0) or 0
+        acc["cr"] += (getattr(details, "cached_tokens", 0) or 0) if details is not None else 0
+        acc["latency"] += latency_ms
+
+    def _finalize_loop(self, acc: dict, model: str) -> None:
+        """Set ``last_stats`` to the per-turn total (summed across rounds), like AnthropicClient."""
+        self.last_stats = ResponseStats(
+            model=model, latency_ms=acc["latency"],
+            input_tokens=acc["input"], output_tokens=acc["output"],
+            cache_read_tokens=acc["cr"], cache_write_tokens=None, thinking=False,
+        )
+        self.last_thinking = None
 
     def _run(self, fn: Callable[[], _T]) -> _T:
         try:
