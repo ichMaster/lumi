@@ -12,7 +12,9 @@ EMOTIONS = ("joy", "calm", "playful", "tender", "thoughtful", "serious", "surpri
 def test_load_canon_reads_the_configured_file():
     cfg = load_config(load_env=False)
     canon = load_canon(cfg.canon_path)
-    assert "Лілі" in canon
+    # name-agnostic: the persona name may be re-authored (e.g. Лілі → Стхіра); assert the canon loads
+    # with its expected structure, not a specific name.
+    assert canon.lstrip().startswith("Ти —") and "## Хто ти" in canon
     assert len(canon) > 200
 
 
