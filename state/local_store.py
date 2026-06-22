@@ -302,6 +302,19 @@ class JsonRepository:
     def facts(self, user_id: str) -> list[LongTermFact]:
         return list(self._facts.get(user_id, []))
 
+    def set_fact_core(self, user_id: str, fact: str, core: bool) -> None:
+        # v0.36: re-flag a fact's identity-core membership in place (LongTermFact is frozen → replace).
+        facts = self._facts.get(user_id)
+        if not facts:
+            return
+        changed = False
+        for i, f in enumerate(facts):
+            if f.fact == fact and f.core != core:
+                facts[i] = replace(f, core=core)
+                changed = True
+        if changed:
+            self._persist()
+
     def get_facts_digest(self, user_id: str) -> FactsDigest | None:
         return self._facts_digests.get(user_id)
 

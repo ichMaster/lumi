@@ -53,8 +53,15 @@ def test_short_summary_is_per_user():
 
 
 def test_long_term_fact_shape():
+    # v0.36: core (identity-core flag) is additive — old records load as core=False.
     fields = set(LongTermFact.__dataclass_fields__)
-    assert fields == {"user_id", "fact", "meta", "confidence", "ts"}
+    assert fields == {"user_id", "fact", "meta", "confidence", "ts", "core"}
+
+
+def test_long_term_fact_core_defaults_false():
+    f = LongTermFact(user_id="owner", fact="loves tea", meta="", confidence=0.5,
+                     ts="2026-06-06T00:00:00+00:00")
+    assert f.core is False
 
 
 def test_long_term_fact_is_per_user():

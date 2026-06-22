@@ -68,7 +68,9 @@ def summary_sentences(n_messages: int) -> int:
 FACTS_SYSTEM = (
     "Виокрем стійкі, довготривалі факти про співрозмовника з діалогу — "
     "по одному факту на рядок, стисло (імʼя, уподобання, важливі обставини). "
-    "Лише те, що варто памʼятати надовго. Якщо нічого вартого — поверни порожньо."
+    "Лише те, що варто памʼятати надовго. Якщо нічого вартого — поверни порожньо. "
+    "Якщо факт стосується ЯДРА особистості (імʼя, ключові стосунки, цінності, межі, "
+    "домовленості) — постав на початку рядка позначку [C]."
 )
 
 # Leading bullet/numbering characters to strip from a fact line.
@@ -222,6 +224,37 @@ def facts_digest_request(facts: Sequence[str], target: int) -> tuple[str, list[d
     return FACTS_DIGEST_SYSTEM.format(target=target), [{"role": "user", "content": content}]
 
 
+# v0.36 — pick the identity-core: the most defining facts always kept in the prompt. Boundaries &
+# standing agreements MUST be kept (the code also pins them, but instruct the model too).
+CORE_SELECT_SYSTEM = (
+    "Перед тобою список стійких фактів про співрозмовника. Обери НЕ БІЛЬШЕ {target} НАЙважливіших — "
+    "ядро особистості та стосунків: імʼя, ключові стосунки, головні цінності й уподобання, важливі "
+    "обставини. ОБОВʼЯЗКОВО залиш усі межі та домовленості. Поверни ЛИШЕ обрані факти дослівно, "
+    "по одному на рядок, без вступів, без маркерів і нумерації."
+)
+
+
+def core_select_request(facts: Sequence[str], target: int) -> tuple[str, list[dict[str, str]]]:
+    """Build the (system, messages) to pick the identity-core (≤ ``target`` facts) from a pool —
+    the v0.36 backfill + session-start re-flag. Reply is one fact per line (:func:`parse_facts`)."""
+    content = "Стійкі факти про співрозмовника:\n" + "\n".join(f"- {f}" for f in facts)
+    return CORE_SELECT_SYSTEM.format(target=target), [{"role": "user", "content": content}]
+
+
+# Boundary / standing-agreement markers — facts that are PINNED into the core (never cut by the cap).
+_PIN_MARKERS = (
+    "межа", "межі", "межу", "не можна", "ніколи", "завжди", "домовил", "домовленіст",
+    "обіцян", "кордон", "не хоче, щоб", "просив не", "просила не",
+)
+
+
+def is_pinned_fact(fact: str) -> bool:
+    """A boundary / standing-agreement fact is **pinned** into the identity-core (v0.36) — kept
+    even past ``LUMI_FACTS_CORE_MAX``. A keyword heuristic over the fact text."""
+    low = fact.lower()
+    return any(marker in low for marker in _PIN_MARKERS)
+
+
 def compaction_plan(n_messages: int, compacted_count: int, window: int, batch: int) -> int:
     """Decide how many oldest messages should be compacted (the new high-water mark).
 
@@ -248,15 +281,31 @@ def digest_request(
     return COMPACTION_DIGEST_SYSTEM, [{"role": "user", "content": content}]
 
 
+_CORE_MARKER_RE = re.compile(r"^\[c\]\s*", re.IGNORECASE)  # v0.36: the [C] identity-core marker
+
+
+def _split_core_marker(line: str) -> tuple[str, bool]:
+    """Strip a leading ``[C]`` core-marker (v0.36); returns ``(clean_line, is_core)``."""
+    m = _CORE_MARKER_RE.match(line)
+    return (line[m.end():].strip(), True) if m else (line, False)
+
+
 def parse_facts(text: str) -> list[str]:
     """Parse the model's line-per-fact reply into clean fact strings.
 
-    Strips bullets/numbering and drops blank lines; order preserved, no dedup
-    (the core dedups against what's already stored).
+    Strips bullets/numbering and the optional ``[C]`` core-marker (v0.36), drops blank lines;
+    order preserved, no dedup (the core dedups against what's already stored).
     """
-    facts: list[str] = []
+    return [fact for fact, _core in parse_facts_with_core(text)]
+
+
+def parse_facts_with_core(text: str) -> list[tuple[str, bool]]:
+    """Parse the line-per-fact reply into ``(fact, is_core)`` — the ``[C]`` marker is the v0.36
+    initial core guess. Same cleaning as :func:`parse_facts` (which discards the flag)."""
+    out: list[tuple[str, bool]] = []
     for line in text.splitlines():
         cleaned = line.strip().lstrip(_BULLET_CHARS).strip()
+        cleaned, is_core = _split_core_marker(cleaned)
         if cleaned:
-            facts.append(cleaned)
-    return facts
+            out.append((cleaned, is_core))
+    return out

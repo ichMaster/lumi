@@ -199,6 +199,7 @@ class Config:
     closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
     facts_digest: bool = True       # consolidate long-term facts into a compact prompt digest
     facts_digest_max: int = 150     # target lines for the consolidated facts digest
+    facts_core_max: int = 0         # v0.36: identity-core cap (0 → the core-flag lifecycle is off)
     prompt_cache: bool = True       # v0.15: mark the stable prompt prefix as a cache breakpoint
     prompt_cache_ttl: str = "5m"    # cache lifetime: 5m (default) or 1h (keeps it warm across thinks)
     usage_report: bool = True       # write per-session token usage + cost report to .lumi/ on session close
@@ -558,6 +559,7 @@ def load_config(*, load_env: bool = True) -> Config:
         date_tool_max_days=int(os.getenv("LUMI_DATE_TOOL_MAX_DAYS") or 14),
         date_tool_max_calls=int(os.getenv("LUMI_DATE_TOOL_MAX_CALLS") or 3),
         facts_digest_max=int(os.getenv("LUMI_FACTS_DIGEST_MAX") or 150),
+        facts_core_max=int(os.getenv("LUMI_FACTS_CORE_MAX") or 0),
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
         thoughts_max_lines=int(os.getenv("LUMI_THOUGHTS_MAX_LINES") or THOUGHTS_MAX_LINES),

@@ -130,13 +130,20 @@ class WeekSummary:
 
 @dataclass(frozen=True)
 class LongTermFact:
-    """A durable fact about a user, accumulated across sessions. Per-user (private)."""
+    """A durable fact about a user, accumulated across sessions. Per-user (private).
+
+    ``core`` (v0.36, additive — old records default ``False``) marks the **identity-core**: the
+    facts always injected into the prompt (name, key relationships, hard boundaries, standing
+    agreements). It is curated by a one-off backfill + an initial guess at extraction, then
+    re-ranked to ``LUMI_FACTS_CORE_MAX`` at session start (boundaries pinned). See ROADMAP §v0.36.
+    """
 
     user_id: str
     fact: str
     meta: str
     confidence: float
     ts: str
+    core: bool = False
 
 
 @dataclass(frozen=True)
@@ -370,6 +377,10 @@ class Repository(Protocol):
 
     def facts(self, user_id: str) -> list[LongTermFact]:
         """The user's accumulated long-term facts."""
+        ...
+
+    def set_fact_core(self, user_id: str, fact: str, core: bool) -> None:
+        """Set the ``core`` (identity-core) flag on the matching fact (v0.36). No-op if absent."""
         ...
 
     def get_facts_digest(self, user_id: str) -> FactsDigest | None:
