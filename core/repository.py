@@ -144,6 +144,7 @@ class LongTermFact:
     confidence: float
     ts: str
     core: bool = False
+    obsolete: bool = False  # v0.36: marked stale/duplicate/irrelevant → excluded from every fact path (kept for audit)
 
 
 @dataclass(frozen=True)
@@ -381,6 +382,11 @@ class Repository(Protocol):
 
     def set_fact_core(self, user_id: str, fact: str, core: bool) -> None:
         """Set the ``core`` (identity-core) flag on the matching fact (v0.36). No-op if absent."""
+        ...
+
+    def set_fact_obsolete(self, user_id: str, fact: str, obsolete: bool) -> None:
+        """Set the ``obsolete`` flag on the matching fact (v0.36) — excludes it from every fact
+        path while keeping it in the store (non-destructive). No-op if absent."""
         ...
 
     def get_facts_digest(self, user_id: str) -> FactsDigest | None:

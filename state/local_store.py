@@ -304,13 +304,20 @@ class JsonRepository:
 
     def set_fact_core(self, user_id: str, fact: str, core: bool) -> None:
         # v0.36: re-flag a fact's identity-core membership in place (LongTermFact is frozen → replace).
+        self._update_fact(user_id, fact, core=core)
+
+    def set_fact_obsolete(self, user_id: str, fact: str, obsolete: bool) -> None:
+        # v0.36: mark a fact obsolete in place (kept in the store, excluded from every fact path).
+        self._update_fact(user_id, fact, obsolete=obsolete)
+
+    def _update_fact(self, user_id: str, fact: str, **fields: bool) -> None:
         facts = self._facts.get(user_id)
         if not facts:
             return
         changed = False
         for i, f in enumerate(facts):
-            if f.fact == fact and f.core != core:
-                facts[i] = replace(f, core=core)
+            if f.fact == fact and any(getattr(f, k) != v for k, v in fields.items()):
+                facts[i] = replace(f, **fields)
                 changed = True
         if changed:
             self._persist()

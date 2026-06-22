@@ -1358,7 +1358,8 @@ class Core:
         # Long-term facts: inject the consolidated digest + any facts added since it was built
         # (verbatim tail), instead of all raw facts. Falls back to raw when no digest exists.
         raw_facts = self._repo.facts(self._user_id)
-        core_facts = [f.fact for f in raw_facts if f.core]  # v0.36: the curated identity-core
+        stale = {f.fact for f in raw_facts if f.obsolete}  # v0.36: excluded from every fact path
+        core_facts = [f.fact for f in raw_facts if f.core and not f.obsolete]  # the curated identity-core
         if self._facts_core_only and core_facts:
             # v0.36: inject ONLY the identity-core; the episodic tail is reachable via recall(scope=facts).
             facts = core_facts
@@ -1369,6 +1370,8 @@ class Core:
                 facts = [ln for ln in digest.summary.split("\n") if ln.strip()] + tail
             else:
                 facts = [f.fact for f in raw_facts]
+            if stale:  # v0.36: hide obsolete facts from the digest/raw path too
+                facts = [f for f in facts if f not in stale]
         digest = self._repo.get_digest(session.id)
         # v0.10: inject the active relationship level's authored block (warmth/openness, never
         # competence). The persisted level is the prior turn's (a fresh user sits at the default).
@@ -1679,7 +1682,7 @@ class Core:
         """
         if self._facts_core_max <= 0:
             return
-        all_facts = self._repo.facts(self._user_id)
+        all_facts = [f for f in self._repo.facts(self._user_id) if not f.obsolete]  # v0.36: skip stale
         if not all_facts:
             return
         pool = [f for f in all_facts if f.core] or all_facts  # first run → backfill over all facts
@@ -2593,6 +2596,11 @@ class Core:
             hits = [(s, r) for (s, r) in hits if r.ts[:10] < before]
         if after:
             hits = [(s, r) for (s, r) in hits if r.ts[:10] >= after]
+        # v0.36: drop obsolete facts — excluded from every fact path (recall tool + auto fact-RAG).
+        if any(r.kind == "fact" for _s, r in hits):
+            stale = {f.fact for f in self._repo.facts(self._user_id) if f.obsolete}
+            if stale:
+                hits = [(s, r) for (s, r) in hits if not (r.kind == "fact" and r.text in stale)]
         return hits[:k]
 
     def recall_moments(
