@@ -24,6 +24,16 @@ WEEK_DAYS = 14    # tier 3: per Mon–Sun week digest (≤MAX_WEEK_ROWS lines) f
 MAX_DAY_ROWS = 4  # rows in a day's consolidated digest
 MAX_WEEK_ROWS = 6  # rows in a week's consolidated digest
 RECENT_SUMMARIES = 5  # the /memory quick-view count (not a prompt tier)
+# v0.35 (LUMI-139): keep only the last N sessions in the window verbatim; gist the rest to a one-line index.
+# 0 = off → the whole window stays verbatim (byte-identical to pre-v0.35).
+SESSION_DETAIL_N = 0
+
+
+def session_gist(gist: str, summary: str) -> str:
+    """A session's one-line entry for the gisted conversation tier (v0.35) — the v0.9 ``gist`` if present,
+    else a one-line truncation of the detailed ``summary`` (pre-v0.9 records have no gist; never empty)."""
+    g = (gist or "").strip()
+    return g or " ".join((summary or "").split())[:120]
 
 # Instruction for end-of-session summarization (an internal memory note, not Лілі
 # speaking). The target length is appended per-session (summary_request), scaled

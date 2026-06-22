@@ -56,6 +56,14 @@ def test_memory_index_default_off_and_override(monkeypatch):
     assert load_config(load_env=False).memory_index is True
 
 
+def test_session_detail_n_default_zero_and_override(monkeypatch):
+    # v0.35 LUMI-139: keep last N sessions verbatim, gist the rest — 0 (all verbatim) by default.
+    monkeypatch.delenv("LUMI_SESSION_DETAIL_N", raising=False)
+    assert load_config(load_env=False).session_detail_n == 0
+    monkeypatch.setenv("LUMI_SESSION_DETAIL_N", "1")
+    assert load_config(load_env=False).session_detail_n == 1
+
+
 def test_closeness_mood_shift_scale_default_and_override(monkeypatch):
     # the daily mood-shift strength (0..1; on/off accepted); unset → full (1.0).
     monkeypatch.delenv("LUMI_CLOSENESS_MOOD_SHIFT", raising=False)

@@ -57,6 +57,7 @@ from core.memory import (
     MAX_WEEK_ROWS,
     RECENT_SUMMARIES,
     SESSION_DAYS,
+    SESSION_DETAIL_N,
     WEEK_DAYS,
     clamp_rows,
     compaction_plan,
@@ -66,6 +67,7 @@ from core.memory import (
     facts_request,
     parse_facts,
     parse_summary,
+    session_gist,
     summary_request,
     trim_history,
     week_summary_request,
@@ -339,6 +341,7 @@ class Core:
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
         recent_summaries: int = RECENT_SUMMARIES,
         session_days: int = SESSION_DAYS,
+        session_detail_n: int = SESSION_DETAIL_N,
         day_days: int = DAY_DAYS,
         week_days: int = WEEK_DAYS,
         max_day_rows: int = MAX_DAY_ROWS,
@@ -589,6 +592,7 @@ class Core:
         # date-based recall date-based short-memory windows (config/env-tunable): session/day/week spans + caps.
         self._recent_summaries = recent_summaries  # /memory quick-view count
         self._session_days = session_days  # tier 1: detailed session summaries window
+        self._session_detail_n = session_detail_n  # v0.35: keep last N verbatim; gist the older window (0 = all)
         self._day_days = day_days  # tier 2: per-day digests window
         self._week_days = week_days  # tier 3: per-week digests window
         self._max_day_rows = max_day_rows
@@ -1315,9 +1319,15 @@ class Core:
             if body:
                 day_summaries.append(f"[{ds.date}] {body}")
         session_since = (today - timedelta(days=self._session_days)).isoformat()
+        # v0.35 (LUMI-139): keep the last N sessions verbatim (the live thread); gist the older ones to a
+        # one-line dated index (she pulls their detail via messages_on / recall / auto-RAG). N <= 0 → all
+        # verbatim (byte-identical to pre-v0.35). The window is chronological (oldest-first).
+        window = self._repo.summaries_since(self._user_id, session_since)
+        detail_cut = max(0, len(window) - self._session_detail_n) if self._session_detail_n > 0 else 0
         summaries = [
-            f"[{format_date(s.ts)}] {s.summary}"
-            for s in self._repo.summaries_since(self._user_id, session_since)
+            f"[{format_date(s.ts)}] "
+            + (s.summary if i >= detail_cut else session_gist(s.gist, s.summary))
+            for i, s in enumerate(window)
         ]
         # Long-term facts: inject the consolidated digest + any facts added since it was built
         # (verbatim tail), instead of all raw facts. Falls back to raw when no digest exists.
@@ -2734,6 +2744,7 @@ def build_core(
         compaction_batch=cfg.compaction_batch,
         recent_summaries=cfg.recent_summaries,
         session_days=cfg.session_days,
+        session_detail_n=cfg.session_detail_n,
         day_days=cfg.day_days,
         week_days=cfg.week_days,
         max_day_rows=cfg.max_day_rows,

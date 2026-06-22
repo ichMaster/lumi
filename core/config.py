@@ -25,6 +25,7 @@ from core.memory import (
     MAX_WEEK_ROWS,
     RECENT_SUMMARIES,
     SESSION_DAYS,
+    SESSION_DETAIL_N,
     WEEK_DAYS,
 )
 from core.thoughts import (
@@ -161,6 +162,7 @@ class Config:
     # Short-memory recall: 3 date-based windows + the /memory quick-view count + row caps.
     recent_summaries: int = RECENT_SUMMARIES
     session_days: int = SESSION_DAYS
+    session_detail_n: int = SESSION_DETAIL_N  # v0.35: keep last N sessions verbatim; gist the rest (0 = all)
     day_days: int = DAY_DAYS
     week_days: int = WEEK_DAYS
     max_day_rows: int = MAX_DAY_ROWS
@@ -373,6 +375,7 @@ def load_config(*, load_env: bool = True) -> Config:
     recent_env = os.getenv("LUMI_RECENT_SUMMARIES")
     recent_summaries = int(recent_env) if recent_env else RECENT_SUMMARIES
     session_days = int(sd) if (sd := os.getenv("LUMI_SESSION_DAYS")) else SESSION_DAYS
+    session_detail_n = int(sdn) if (sdn := os.getenv("LUMI_SESSION_DETAIL_N")) else SESSION_DETAIL_N  # v0.35
     day_days = int(dd) if (dd := os.getenv("LUMI_DAY_DAYS")) else DAY_DAYS
     week_days = int(wd) if (wd := os.getenv("LUMI_WEEK_DAYS")) else WEEK_DAYS
     max_day_rows = int(mdr) if (mdr := os.getenv("LUMI_MAX_DAY_ROWS")) else MAX_DAY_ROWS
@@ -444,6 +447,7 @@ def load_config(*, load_env: bool = True) -> Config:
         compaction_batch=compaction_batch,
         recent_summaries=recent_summaries,
         session_days=session_days,
+        session_detail_n=session_detail_n,
         day_days=day_days,
         week_days=week_days,
         max_day_rows=max_day_rows,
