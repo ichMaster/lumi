@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 0.35.0 (2026-06-22)
+---------------------------
+v0.35 — Lean memory II: the conversation tier (gist the past sessions):
+- Two orthogonal flags now control the "## Останні розмови" block. LUMI_SESSION_DETAIL_N = how many of the most-recent sessions to add (unset = all; 0 = none; N = last N). LUMI_SESSION_FORMAT = the form each added session takes: "summary" (full) or "gist" (one line). A lean prompt is just LUMI_SESSION_FORMAT=gist; the default (both unset) is all-sessions-full, byte-identical to pre-v0.35.
+- Reuses the v0.9 per-session gist: every session already stores BOTH a detailed summary and a one-line gist (written once at session close). The flags only SELECT which field to render per turn -- no regeneration, no model call, no write to store.json.
+- A gisted session's detail stays reachable: auto-RAG (push) surfaces relevant lines (its dedup keys off the live window, not the summary tier), and recall / messages_on / messages_between (pull) fetch the exact exchange.
+- (LUMI-139 gist tier + LUMI-140 reconstruction, then reworked into the orthogonal count x format flags.)
+- Docs: docs/MEMORY_SESSION_LOGIC_UK.md -- the full memory/session logic (when summaries are generated, how the flags work, what runs each turn) in Ukrainian.
+- think-seed examples activated (core/think_seeds.md); the canon load test made name-agnostic after the persona was re-authored.
+No emotion-contract / core-seam change; everything reversible and off-by-default.
+
 Version 0.34.0 (2026-06-22)
 ---------------------------
 v0.34 — Lean memory: tool-pull, not push (day/week index + style trims):

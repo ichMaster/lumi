@@ -12,7 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.34 — Lean memory: tool-pull, not push (the prompt slims down).** The first slice of moving the verbose
+**0.35 — Lean memory II: the conversation tier.** The biggest prompt block (`## Останні розмови`, the
+per-session summaries) gets **two orthogonal controls**: **`LUMI_SESSION_DETAIL_N`** — *how many* of the
+most-recent sessions to add (unset = all · `0` = none · `N` = last N) — and **`LUMI_SESSION_FORMAT`** — the
+*form* each takes: **`summary`** (full) or **`gist`** (one line). So a lean prompt is just
+`LUMI_SESSION_FORMAT=gist` (every session a one-liner), while the **default (unset)** stays all-sessions-full,
+byte-identical. It **reuses the v0.9 per-session `gist`** (already written at each session's close — **no
+regeneration**); a gisted session's detail stays one query away via **auto-RAG** (push) and **`recall`** /
+**`messages_on`** / **`messages_between`** (pull). No contract change. Memory/session logic is documented in
+**[docs/MEMORY_SESSION_LOGIC_UK.md](docs/MEMORY_SESSION_LOGIC_UK.md)** (UA).
+
+Builds on **0.34's lean memory (tool-pull).** The first slice of moving the verbose
 memory tiers from *injected* to *pulled* (index in the prompt, body fetched by a tool). The **day/week
 digests** can render as a **one-line dated index** instead of paragraphs (`LUMI_MEMORY_INDEX`, off by
 default; off → byte-identical) — she pulls the verbatim day via `messages_on(date)` when she needs it; a
