@@ -36,6 +36,36 @@ The status bar shows the active model, so you can confirm the switch.
 
 ---
 
+## Risks of switching — what you trade away
+
+Лілі was built and tuned on Claude Opus 4.8. Every switch is **reversible** (see *Switching back* below) and
+mechanically safe — nothing is corrupted — but each one trades something away. The cross-cutting losses on
+**any non-Anthropic provider**:
+
+- **The tool-loop goes dark.** The v0.19 bounded tool-loop is **Anthropic-only** (`core/llm.py`: *"the v0.19
+  tool-loop is Anthropic-only"*). On OpenAI / DeepSeek / MiniMax / local, the **file, Wikipedia, news,
+  web-lookup, image, and journal tools** — and the `%`-thought-tools that ride them — are silently
+  **ignored**: the backend takes a single plain call with no tools. If you depend on any of those features,
+  they stop working off Anthropic.
+- **No inner monologue / think box, no `effort`.** Extended thinking is Anthropic-only, so the hidden
+  think-step (and the v1.3 inner monologue) is empty and you can't tune reasoning depth.
+- **No prompt caching → more cost + latency.** Лілі's large static prefix (canon + memory digests + mood) is
+  cached on Anthropic and re-sent **uncached on every turn** elsewhere — each turn re-bills the whole prompt
+  at full input price.
+- **The emotion channel leans on a weaker path.** Anthropic emits `{reply, emotion, intensity}` as a tool
+  call; the other providers fake it through JSON mode. The v0.3 gate still catches bad output (unknown
+  emotion → `calm`, intensity clamped), so a turn never crashes — but weaker models trip it more often, so
+  the emotion (and her face) flattens toward `calm`.
+- **Ukrainian + persona depth.** Her canon and voice are Ukrainian; as you leave Opus 4.8, capability and
+  Ukrainian fluency drop, so canon adherence and the layered states (mood / closeness / needs) get shallower.
+- **Data leaves differently.** Each cloud provider sees the conversation under its own data policy; the cost
+  report estimates non-Claude pricing (unknown models fall back to an Opus-tier estimate, so the figure may
+  be off).
+
+Per-provider specifics are in each section below; *Switching back to Opus 4.8* covers the round trip.
+
+---
+
 ## 1. Anthropic — Claude tiers (the default)
 
 Already working. Change only the model id to switch tier:
@@ -47,8 +77,17 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 - No install needed.
-- This is the **only** tier with extended thinking, `effort`, and prompt caching.
+- Anthropic is the **only provider** with extended thinking, `effort`, and prompt caching — but within it,
+  **Haiku 4.5 is the exception**: no extended thinking and no `effort` (the think box stays empty on Haiku),
+  though it keeps prompt caching.
 - Restart `./lumi`.
+
+**Risks (staying on Claude) — the lowest-risk switches.** **Sonnet 4.6** keeps everything Opus has — 1M
+context, thinking, `effort`, caching, **and the tool-loop** — at roughly ⅗ the price; you mainly lose some
+depth of persona and literary nuance. **Haiku 4.5** is cheapest and fastest but the biggest step down: a
+**200K context window** (vs 1M — a long history + RAG + tool results can overflow it), no thinking/`effort`,
+and weaker adherence to the canon and the structured emotion field (more `calm` fallbacks). Tier down for
+cost/speed, not for the fullest Лілі.
 
 ---
 
@@ -70,6 +109,12 @@ OPENAI_API_KEY=sk-...
 
 Restart `./lumi`. Structured output uses JSON mode (gpt-4o handles it well).
 
+**Risks:** all the cross-cutting losses above apply — **no tool-loop** (file / wiki / news / web / image /
+journal go silent), no think box, no prompt caching (every turn re-bills the full prompt). The emotion field
+comes through JSON mode rather than a tool call; gpt-4o is reliable but trips the `calm` fallback more than
+Claude. Her voice shifts toward GPT's, Ukrainian is good-but-not-Claude, and the whole conversation is sent
+to OpenAI under its data policy.
+
 ---
 
 ## 3. DeepSeek
@@ -86,6 +131,11 @@ DEEPSEEK_API_KEY=sk-...
 
 Restart `./lumi`. You do **not** set a base URL — `deepseek` already maps to `https://api.deepseek.com`.
 
+**Risks:** same as OpenAI (shared adapter — no tool-loop, no think box, no caching, JSON-mode emotion). Two
+extras: **`deepseek-reasoner`** is a reasoning model whose chain-of-thought the OpenAI-compatible path
+doesn't surface and which adds latency — prefer **`deepseek-chat`** (V3) for Лілі; and the conversation is
+sent to DeepSeek's servers (weigh the privacy/compliance implications for a private companion).
+
 ---
 
 ## 4. MiniMax
@@ -101,6 +151,11 @@ MINIMAX_API_KEY=...
 
 Restart `./lumi`. If your MiniMax account is on a different region/host, set `LUMI_LLM_BASE_URL` to
 override (default is `https://api.minimax.io/v1`).
+
+**Risks:** the **least-exercised path** in Lumi (plain HTTP, no SDK), so the highest chance of contract
+drift. Same cross-cutting losses (no tool-loop, no think box, no caching), and the emotion field rides plain
+JSON — the weakest structured-output mode, so expect more `calm` fallbacks. Ukrainian quality is uncertain;
+sanity-check the voice on a few turns before relying on it.
 
 ---
 
@@ -124,6 +179,40 @@ LUMI_LLM_BASE_URL=http://localhost:11434/v1    # Ollama; LM Studio is usually :1
 ```
 
 Restart `./lumi`. (LM Studio: start its local server, use its base URL — same idea.)
+
+**Risks (highest).** Free, private, and offline — but a small local model is the furthest from the tuned
+Лілі: weakest at **Ukrainian**, at the **structured emotion field** (frequent `calm` fallbacks, occasional
+malformed output), and at holding the **canon/persona** across a long prompt. Local context windows are
+often small (4K–32K) while **Лілі's prompt is large** (canon + memory digests + mood + RAG + tool results),
+so it can overflow and truncate — incoherence or errors. No tool-loop, no think box, no caching; slow on CPU
+without a GPU. Good for testing the plumbing offline; not for the real relationship.
+
+---
+
+## Switching away — and back to Opus 4.8
+
+Switching is **always reversible** and mechanically safe: set `LUMI_PROVIDER=anthropic` +
+`LUMI_MODEL=claude-opus-4-8` and restart. The contracts that matter are provider-neutral — the locked
+emotion enum and the memory record shapes — and **embeddings / RAG are independent** of the chat model
+(`LUMI_EMBED_PROVIDER`), so your vector store is untouched by the round trip. Nothing is corrupted.
+
+But the round trip is **not behaviorally lossless** — some of the weaker model's residue persists *after* you
+switch back:
+
+- **Memory it wrote stays.** While off Opus, Лілі still writes short summaries, long-term facts, impressions,
+  inner-life / journal entries and thoughts — in the *other* model's voice and quality. Those records remain
+  in the store and are injected after you return, so a stint on a weaker model leaves a fainter, blander
+  trail in her memory of you that outlives the switch.
+- **The day's mood is cached.** Mood is generated once per local day and cached until local midnight
+  (`/mood`). If today's reading was written by the other model, it stays in force after you switch back,
+  until it recomputes tomorrow.
+- **A tool-loop gap.** Anything the tools would have done off Anthropic (journal entries, `%`-thoughts,
+  file / news / web actions) simply didn't happen during that window — not an error, just missing.
+- **Cold cache on return.** Prompt caches are model-scoped, so the first turn back on Opus 4.8 re-writes the
+  cache (a normal one-off).
+
+None of this needs cleanup — it fades as new Opus-written memory accrues. For a clean slate after a long
+stint on another model, `/forget` clears that user's memory (drastic; per-user).
 
 ---
 
