@@ -1,6 +1,19 @@
 Lumi — Release notes
 ====================
 
+Version 0.37.0 (2026-06-24)
+---------------------------
+v0.37 — OpenAI engine: tool-loop + runtime model toggle (GPT-5.5 ↔ Opus 4.8). A non-Anthropic frontier model becomes a real Opus alternative — tools, tunable reasoning, a runtime engine swap, and a visible think-box — with the Anthropic path untouched (off → byte-identical):
+- LUMI-146 — OpenAI tool-loop (function-calling port): ported AnthropicClient's bounded loop to OpenAICompatibleClient via OpenAI function calling, so the file / wiki / news / web / journal / image tools (and the %-thought-tools) work on GPT-5.5 / DeepSeek-V4-Pro. Untrusted/recollection framing, forced final round, parallel tool_calls, and the image-result divergence handled; the no-tools path is byte-identical.
+- LUMI-147 — reasoning_effort passthrough: LUMI_EFFORT now reaches OpenAI/DeepSeek as reasoning_effort (single calls + tool-loop rounds); xhigh/max clamp to high; unknown values dropped.
+- LUMI-148 — /model runtime engine toggle: Core.switch_model rebuilds the client from the loaded config keys + re-points the model; a /model TUI command (config aliases) swaps Opus 4.8 ↔ GPT-5.5 mid-session, no restart.
+Follow-ups (live GPT-5.5 enablement):
+- max_completion_tokens for GPT-5 / o-series reasoning models (they reject max_tokens); DeepSeek/local keep max_tokens.
+- OpenAI Responses-API path for reasoning models — the one endpoint where function tools + reasoning_effort + a reasoning summary coexist, so GPT-5.5 gets the tool-loop, tunable depth, and a populated think-box; auto-selected by model id (LUMI_OPENAI_RESPONSES / _SUMMARY).
+- In-band thinking_summary (single turn, no second call) for when the provider summary is withheld, with native-first precedence so Opus's real reasoning is never shadowed.
+- /model aliases (LUMI_MODEL_ALIASES); MODELS_SETUP.md refreshed for gpt-5.5 + the two OpenAI paths.
+No contract change ({reply, emotion, intensity} + memory shapes intact); no paid calls in tests; full suite green.
+
 Version 0.36.0 (2026-06-22)
 ---------------------------
 v0.36 — Lean memory III: facts core + fact recall. Facts now reach the prompt three ways (mirroring messages) — a static identity-core, a per-turn auto fact-RAG push, and a recall pull tool — plus a hygiene path:

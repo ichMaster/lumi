@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.36 — Lean memory III: the facts tier.** Facts now reach the prompt **three ways** (mirroring messages):
+**0.37 — OpenAI engine: tool-loop + runtime model toggle (GPT-5.5 ↔ Opus 4.8).** A non-Anthropic frontier
+model becomes a real Opus alternative — the bounded **tool-loop** is ported to **OpenAI function calling** (so
+the file / wiki / news / web / journal / image tools and the `%`-thought-tools work on **GPT-5.5 /
+DeepSeek-V4-Pro**), **`LUMI_EFFORT`** is passed through as `reasoning_effort`, and a **`/model`** TUI command
+swaps the engine **mid-session** (no restart, config aliases via **`LUMI_MODEL_ALIASES`**). For GPT-5's
+reasoning models a dedicated **Responses-API path** (auto-selected by id; **`LUMI_OPENAI_RESPONSES`** /
+**`_SUMMARY`**) carries tools + effort + a **visible think-box** together — from OpenAI's `reasoning.summary`
+or an in-band **`thinking_summary`** field (single turn) — with **Opus's real reasoning never shadowed**. The
+Anthropic path is **byte-identical**; no contract change; no paid calls in tests. See
+**[docs/MODELS_SETUP.md](docs/MODELS_SETUP.md)** + **[docs/GPT55_SWITCH_AND_TOOL_LOOP.md](docs/GPT55_SWITCH_AND_TOOL_LOOP.md)**.
+
+Builds on **0.36 — Lean memory III: the facts tier.** Facts now reach the prompt **three ways** (mirroring messages):
 an always-injected **identity-core** — the `core`-flagged facts (name, key relationships, **boundaries &
 agreements**), re-ranked to **`LUMI_FACTS_CORE_MAX`** at each session start (boundaries pinned) and injected
 **instead of** the digest behind **`LUMI_FACTS_CORE_ONLY`**; a per-turn **auto fact-RAG** push
