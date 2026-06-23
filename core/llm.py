@@ -92,6 +92,37 @@ def _openai_messages(messages: list[Message]) -> list:
     ]
 
 
+# --- v0.37 OpenAI Responses API (reasoning models: GPT-5 / o-series) ------------------------------
+# The Responses endpoint (`client.responses.create`) is the ONLY OpenAI path where function tools +
+# `reasoning_effort` coexist AND a reasoning *summary* is returned — so GPT-5.5 gets tools, tunable
+# depth, and a visible think-box. Its wire shape differs from chat completions (input items, a flat
+# tool schema, function_call/function_call_output, state via previous_response_id).
+
+def _responses_image(block: dict) -> dict:
+    """A provider-neutral image block → the Responses API ``input_image`` (base64 data-URL) form."""
+    return {"type": "input_image", "image_url": f"data:{block['media_type']};base64,{block['data']}"}
+
+
+def _responses_input(messages: list[Message]) -> list:
+    """Translate Lumi messages → Responses API ``input`` items (string content passes through; a content
+    list becomes ``input_text``/``input_image`` parts)."""
+    out: list = []
+    for m in messages:
+        role = m.get("role", "user") if isinstance(m, dict) else "user"
+        content = m.get("content") if isinstance(m, dict) else None
+        if isinstance(content, list):
+            parts: list = []
+            for b in content:
+                if is_image_block(b):
+                    parts.append(_responses_image(b))
+                elif isinstance(b, dict) and "text" in b:
+                    parts.append({"type": "input_text", "text": str(b["text"])})
+            out.append({"role": role, "content": parts})
+        else:
+            out.append({"role": role, "content": "" if content is None else str(content)})
+    return out
+
+
 _T = TypeVar("_T")
 
 # The structured-output tool the model fills with its turn: text + her state
@@ -984,6 +1015,274 @@ class OpenAICompatibleClient:
             raise LLMError(f"OpenAI-compatible call failed: {exc}") from exc
 
 
+class OpenAIResponsesClient:
+    """OpenAI **Responses API** path for reasoning models (GPT-5 family / o-series) — v0.37.
+
+    The only OpenAI endpoint where **function tools + ``reasoning_effort`` coexist** AND a reasoning
+    **summary** is returned (``reasoning.summary``). So GPT-5.5 gets the bounded tool-loop, tunable depth,
+    *and* a visible think-box (the summary feeds ``last_thinking`` like Anthropic's summarized thinking —
+    the v1.3 inner monologue seam, provider-agnostically). Selected by :func:`build_llm` for OpenAI
+    reasoning models; non-reasoning OpenAI ids and DeepSeek/local keep :class:`OpenAICompatibleClient`.
+
+    Wire shape differs from chat completions: ``input`` items (not ``messages``), a flat tool schema
+    (``{"type":"function","name",...}``), ``function_call`` output items answered by
+    ``function_call_output`` input items, and turn state carried by ``previous_response_id`` (so the
+    reasoning context survives across tool rounds). The ``{reply, emotion, intensity}`` contract is the
+    same (the v0.3 gate validates the terminal answer)."""
+
+    _RETRYABLE_NAMES = {"APIConnectionError", "APITimeoutError", "RateLimitError", "InternalServerError"}
+
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        base_url: str | None = None,
+        max_tokens: int = 1024,
+        effort: str | None = None,
+        summary: str = "auto",
+        retries: int = 2,
+        backoff: float = 0.5,
+        _client: object | None = None,
+    ) -> None:
+        if _client is not None:
+            self._client = _client
+        else:
+            if not api_key:
+                raise LLMError("LUMI_PROVIDER=openai needs OPENAI_API_KEY in .env.")
+            import openai  # optional extra ('models'); imported only inside this client
+
+            self._client = openai.OpenAI(api_key=api_key, base_url=base_url or None)
+        self._max_tokens = max_tokens
+        self._effort = effort
+        # Reasoning-summary granularity: "auto"/"concise"/"detailed" → a think-box; "off"/"none"/"" → no
+        # summary requested (e.g. if your org isn't verified for summaries). Reasoning still happens.
+        self._summary = (summary or "").strip().lower()
+        self._retries = retries
+        self._backoff = backoff
+        self.last_thinking: str | None = None
+        self.last_stats: ResponseStats | None = None
+        self.last_round_log: list[tuple[str, ResponseStats]] = []
+
+    def _reasoning(self) -> dict:
+        """The ``reasoning`` request block: a summary (for the think-box) + the mapped effort when set."""
+        r: dict = {}
+        if self._summary and self._summary not in ("off", "none"):
+            r["summary"] = self._summary
+        if self._effort:
+            mapped = _OPENAI_EFFORT.get(self._effort)
+            if mapped:
+                r["effort"] = mapped
+        return r
+
+    def reply(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> str:
+        if tools and tool_executor is not None:
+            return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=False)
+        answer, _ = self._single(system, messages, model, structured=False)
+        return answer
+
+    def reply_structured(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> dict:
+        if tools and tool_executor is not None:
+            return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=True)
+        answer, _ = self._single(system, messages, model, structured=True)
+        return parse_emotion_json(answer)
+
+    @staticmethod
+    def _to_responses_tools(tools: list[dict]) -> list[dict]:
+        """Lumi tools (Anthropic-shaped) → the Responses **flat** function form (name at top level)."""
+        return [
+            {"type": "function", "name": t["name"], "description": t.get("description", ""),
+             "parameters": t.get("input_schema", {"type": "object", "properties": {}})}
+            for t in tools
+        ]
+
+    def _create(self, kwargs: dict) -> object:
+        """One retried ``responses.create`` (kwargs passed in so the loop var isn't captured by a lambda)."""
+        return self._run(lambda: self._client.responses.create(**kwargs))
+
+    def _single(self, system: str, messages: list[Message], model: str, *, structured: bool) -> tuple[str, list]:
+        """One Responses call (no tools): parse the answer + reasoning summary, capture stats."""
+        kwargs: dict = {
+            "model": model,
+            "instructions": system + (_JSON_STATE_INSTRUCTION if structured else ""),
+            "input": _responses_input(messages),
+            "max_output_tokens": self._max_tokens,
+        }
+        reasoning = self._reasoning()
+        if reasoning:
+            kwargs["reasoning"] = reasoning
+        if structured:
+            kwargs["text"] = {"format": {"type": "json_object"}}
+        started = time.monotonic()
+        resp = self._create(kwargs)
+        latency = int((time.monotonic() - started) * 1000)
+        reasoning_txt, answer, calls = self._parse_output(resp)
+        self._capture(resp, model, latency, reasoning_txt)
+        self.last_round_log = [("reply", self.last_stats)]
+        return answer, calls
+
+    def _loop(
+        self, system: str, messages: list[Message], model: str,
+        tools: list[dict], tool_executor: Callable[[str, dict], str | dict], max_steps: int, *, structured: bool,
+    ) -> object:
+        """Bounded Responses tool-loop. Non-terminal ``function_call``s run via ``tool_executor`` and feed
+        back as ``function_call_output`` items (state via ``previous_response_id``); the first response with
+        no calls is the answer (JSON for structured, text for the think path). The final round forces an
+        answer (``tool_choice="none"``)."""
+        rtools = self._to_responses_tools(tools)
+        instructions = system + (_JSON_STATE_INSTRUCTION if structured else "")
+        convo_input = _responses_input(messages)
+        acc = {"input": 0, "output": 0, "cr": 0, "latency": 0, "think": []}
+        self.last_round_log = []
+        last_id: str | None = None
+        for step in range(max_steps + 1):
+            kwargs: dict = {"model": model, "input": convo_input, "max_output_tokens": self._max_tokens}
+            reasoning = self._reasoning()
+            if reasoning:
+                kwargs["reasoning"] = reasoning
+            if last_id is None:  # round 0 carries the system prompt; later rounds reuse server state
+                kwargs["instructions"] = instructions
+            else:
+                kwargs["previous_response_id"] = last_id
+            if step >= max_steps:  # final round → force an answer (no more tools)
+                kwargs["tool_choice"] = "none"
+                if structured:
+                    kwargs["text"] = {"format": {"type": "json_object"}}
+            else:
+                kwargs["tools"] = rtools
+                kwargs["tool_choice"] = "auto"
+            started = time.monotonic()
+            resp = self._create(kwargs)
+            latency = int((time.monotonic() - started) * 1000)
+            last_id = getattr(resp, "id", None)
+            reasoning_txt, answer, calls = self._parse_output(resp)
+            self._accumulate(resp, acc, latency, reasoning_txt)
+            rstats = self._round_stats(resp, model, latency, reasoning_txt)
+            if not calls:  # terminal — the answer round
+                self.last_round_log.append(("reply", rstats))
+                self._finalize(acc, model)
+                return parse_emotion_json(answer) if structured else answer
+            self.last_round_log.append(("tool", rstats))
+            convo_input = self._tool_outputs(calls, tool_executor)
+        self._finalize(acc, model)
+        return {"reply": ""} if structured else ""
+
+    def _tool_outputs(self, calls: list, tool_executor: Callable[[str, dict], str | dict]) -> list:
+        """Run each (parallel) call → ``function_call_output`` items; an image result rides a follow-up
+        user ``input_image`` item (a function_call_output can't carry an image)."""
+        out: list = []
+        images: list[dict] = []
+        for call in calls:
+            try:
+                args = json.loads(getattr(call, "arguments", "") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+            if not isinstance(args, dict):
+                args = {}
+            raw = tool_executor(getattr(call, "name", ""), args)
+            out.append({"type": "function_call_output", "call_id": getattr(call, "call_id", None),
+                        "output": self._framed(raw)})
+            if is_image_block(raw):
+                images.append(raw)
+        for img in images:
+            out.append({"role": "user", "content": [_responses_image(img)]})
+        return out
+
+    @staticmethod
+    def _framed(raw: object) -> str:
+        """Frame a tool result as the ``function_call_output`` text (untrusted / recollection / image-ack)."""
+        if is_image_block(raw):
+            return _UNTRUSTED_PREFIX + "(image returned; shown next turn)"
+        if is_trusted_text(raw):  # v0.31 recall: her own recollection, not untrusted data
+            return _RECOLLECTION_PREFIX + str(raw.get("text", ""))
+        return _UNTRUSTED_PREFIX + str(raw)
+
+    @staticmethod
+    def _parse_output(resp: object) -> tuple[str, str, list]:
+        """Split a Responses ``output`` into (reasoning summary, answer text, function_call items)."""
+        reasoning: list[str] = []
+        answer: list[str] = []
+        calls: list = []
+        for item in getattr(resp, "output", []) or []:
+            itype = getattr(item, "type", None)
+            if itype == "reasoning":
+                for s in getattr(item, "summary", []) or []:
+                    if getattr(s, "type", None) == "summary_text":
+                        reasoning.append(getattr(s, "text", "") or "")
+            elif itype == "function_call":
+                calls.append(item)
+            elif itype == "message":
+                for c in getattr(item, "content", []) or []:
+                    if getattr(c, "type", None) == "output_text":
+                        answer.append(getattr(c, "text", "") or "")
+        return "\n".join(r for r in reasoning if r), "".join(answer), calls
+
+    @staticmethod
+    def _stats(resp: object, model: str, latency_ms: int, reasoning_txt: str) -> ResponseStats:
+        usage = getattr(resp, "usage", None)
+        idet = getattr(usage, "input_tokens_details", None)
+        return ResponseStats(
+            model=model, latency_ms=latency_ms,
+            input_tokens=getattr(usage, "input_tokens", None),
+            output_tokens=getattr(usage, "output_tokens", None),
+            cache_read_tokens=getattr(idet, "cached_tokens", None) if idet is not None else None,
+            cache_write_tokens=None, thinking=bool(reasoning_txt),
+        )
+
+    def _round_stats(self, resp: object, model: str, latency_ms: int, reasoning_txt: str) -> ResponseStats:
+        return self._stats(resp, model, latency_ms, reasoning_txt)
+
+    def _capture(self, resp: object, model: str, latency_ms: int, reasoning_txt: str) -> None:
+        self.last_stats = self._stats(resp, model, latency_ms, reasoning_txt)
+        self.last_thinking = reasoning_txt or None
+
+    def _accumulate(self, resp: object, acc: dict, latency_ms: int, reasoning_txt: str) -> None:
+        usage = getattr(resp, "usage", None)
+        idet = getattr(usage, "input_tokens_details", None)
+        acc["input"] += getattr(usage, "input_tokens", 0) or 0
+        acc["output"] += getattr(usage, "output_tokens", 0) or 0
+        acc["cr"] += (getattr(idet, "cached_tokens", 0) or 0) if idet is not None else 0
+        acc["latency"] += latency_ms
+        if reasoning_txt:
+            acc["think"].append(reasoning_txt)
+
+    def _finalize(self, acc: dict, model: str) -> None:
+        self.last_stats = ResponseStats(
+            model=model, latency_ms=acc["latency"],
+            input_tokens=acc["input"], output_tokens=acc["output"],
+            cache_read_tokens=acc["cr"], cache_write_tokens=None, thinking=bool(acc["think"]),
+        )
+        self.last_thinking = "\n".join(acc["think"]) or None
+
+    def _run(self, fn: Callable[[], _T]) -> _T:
+        try:
+            return _call_with_retries(
+                fn, retries=self._retries, backoff=self._backoff,
+                is_retryable=lambda exc: type(exc).__name__ in self._RETRYABLE_NAMES,
+            )
+        except Exception as exc:  # noqa: BLE001 — wrap any API/network failure as LLMError (never hang)
+            raise LLMError(f"OpenAI Responses call failed: {exc}") from exc
+
+
 class MiniMaxClient:
     """MiniMax chat API (``chatcompletion_v2``) via stdlib HTTP — v0.18. No SDK dependency.
 
@@ -1270,6 +1569,12 @@ def build_llm(cfg: Config) -> LLMClient:
         )
     if provider in ("openai", "deepseek", "local"):
         base_url, key = _openai_compatible_target(cfg, provider)
+        if provider == "openai" and _use_responses_api(cfg.openai_responses, cfg.model):
+            # Reasoning models (GPT-5 / o-series): the Responses API path → tools + effort + a think-box.
+            return OpenAIResponsesClient(
+                key, base_url=base_url, max_tokens=cfg.max_tokens, effort=cfg.effort,
+                summary=cfg.openai_reasoning_summary,
+            )
         # OpenAI's GPT-5 / o-series reasoning models reject `max_tokens` (require `max_completion_tokens`);
         # DeepSeek + local OpenAI-compatible servers still take `max_tokens`. Pick per provider.
         token_param = "max_completion_tokens" if provider == "openai" else "max_tokens"
@@ -1284,6 +1589,21 @@ def build_llm(cfg: Config) -> LLMClient:
         f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "
         f"{', '.join(KNOWN_PROVIDERS)}."
     )
+
+
+# OpenAI reasoning-model id prefixes → the Responses API path (tools + effort + reasoning summary).
+_OPENAI_REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _use_responses_api(mode: str, model: str) -> bool:
+    """Whether to route an OpenAI request through the Responses API. ``mode`` (``LUMI_OPENAI_RESPONSES``):
+    ``on``/``off`` force it; ``auto`` (default) detects a reasoning model by id prefix (gpt-5 / o-series)."""
+    m = (mode or "auto").strip().lower()
+    if m in ("on", "true", "1", "yes"):
+        return True
+    if m in ("off", "false", "0", "no"):
+        return False
+    return (model or "").strip().lower().startswith(_OPENAI_REASONING_PREFIXES)
 
 
 def _openai_compatible_target(cfg: Config, provider: str) -> tuple[str | None, str]:

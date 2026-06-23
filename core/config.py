@@ -381,6 +381,11 @@ class Config:
     deepseek_api_key: str = field(default="", repr=False)
     minimax_api_key: str = field(default="", repr=False)
     llm_base_url: str = ""  # override base_url for an OpenAI-compatible / local server (Ollama, LM Studio)
+    # v0.37 — OpenAI Responses API for reasoning models (GPT-5 / o-series): tools + effort + a think-box.
+    # auto (default) routes reasoning ids through it; on/off force it. The reasoning-summary granularity
+    # (auto|concise|detailed|off) — "off" if your org isn't verified for summaries (reasoning still runs).
+    openai_responses: str = "auto"
+    openai_reasoning_summary: str = "auto"
 
 
 def load_config(*, load_env: bool = True) -> Config:
@@ -652,4 +657,6 @@ def load_config(*, load_env: bool = True) -> Config:
         deepseek_api_key=(os.getenv("DEEPSEEK_API_KEY") or "").strip(),
         minimax_api_key=(os.getenv("MINIMAX_API_KEY") or "").strip(),
         llm_base_url=(os.getenv("LUMI_LLM_BASE_URL") or "").strip(),
+        openai_responses=(os.getenv("LUMI_OPENAI_RESPONSES") or "auto").strip().lower(),
+        openai_reasoning_summary=(os.getenv("LUMI_OPENAI_SUMMARY") or "auto").strip().lower(),
     )

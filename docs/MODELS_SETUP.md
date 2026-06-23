@@ -62,9 +62,10 @@ mechanically safe — nothing is corrupted — but each one trades something awa
   and journal tools** — and the `%`-thought-tools that ride them — **work** on GPT-5.5 / DeepSeek-V4-Pro and
   OpenAI-compatible local servers. **MiniMax** still has no tool-loop (its tools are silently ignored — a
   single plain call). If you depend on tools, stay on Anthropic or an OpenAI-compatible provider.
-- **No inner monologue / think box.** Extended thinking is Anthropic-only, so the hidden think-step (and the
-  v1.3 inner monologue) is empty. You **can** still tune a GPT-5 / DeepSeek-reasoner's depth via `LUMI_EFFORT`
-  (v0.37 → `reasoning_effort`), but the reasoning itself isn't surfaced.
+- **Inner monologue / think box.** On most providers the hidden think-step (v1.3 inner monologue) is empty.
+  **Exception:** OpenAI **reasoning models on the Responses API** (`gpt-5.5`, o-series — v0.37) return a
+  **reasoning summary** that *does* populate the think-box, and `LUMI_EFFORT` tunes its depth. DeepSeek's
+  reasoner reasons but doesn't surface it (Lumi uses Chat Completions there); MiniMax/local have no think box.
 - **No prompt caching → more cost + latency.** Лілі's large static prefix (canon + memory digests + mood) is
   cached on Anthropic and re-sent **uncached on every turn** elsewhere — each turn re-bills the whole prompt
   at full input price.
@@ -119,17 +120,31 @@ Get a key at <https://platform.openai.com/api-keys>, then in `.env`:
 
 ```ini
 LUMI_PROVIDER=openai
-LUMI_MODEL=gpt-4o              # or gpt-4.1 / gpt-4o-mini (cheaper)
+LUMI_MODEL=gpt-5.5            # a reasoning model — or gpt-4o / gpt-4.1 (non-reasoning, cheaper)
 OPENAI_API_KEY=sk-...
 ```
 
-Restart `./lumi`. Structured output uses JSON mode (gpt-4o handles it well).
+Restart `./lumi`.
 
-**Risks:** the remaining cross-cutting losses apply — no think box, no prompt caching (every turn re-bills
-the full prompt). The **tool-loop works** (v0.37, OpenAI function calling — file / wiki / news / web / image /
-journal and the `%`-thought-tools). The emotion field comes through JSON mode rather than a tool call;
-gpt-4o is reliable but trips the `calm` fallback more than Claude. Her voice shifts toward GPT's, Ukrainian
-is good-but-not-Claude, and the whole conversation is sent to OpenAI under its data policy.
+**Two paths, picked automatically by model id (v0.37):**
+
+- **Reasoning models — `gpt-5.5`, the o-series** → the **Responses API**. This is the one OpenAI path where
+  the **tool-loop + `LUMI_EFFORT` + a think-box all work together**: tools fire, `reasoning_effort` is
+  honored, and a **reasoning summary** populates the think-box (the same seam Opus uses — so the v1.3 inner
+  monologue shows on GPT-5.5 too). `LUMI_EFFORT` (low/medium/high; Lumi's xhigh/max → high) tunes depth.
+- **Non-reasoning models — `gpt-4o`, `gpt-4.1`** → Chat Completions with JSON-mode structured output. The
+  tool-loop works; there's no think box (these models don't reason).
+
+Knobs (defaults are fine): `LUMI_OPENAI_RESPONSES=auto|on|off` forces the path; `LUMI_OPENAI_SUMMARY=auto|concise|detailed|off`
+sets the reasoning-summary detail (use `off` if your org isn't verified for summaries — reasoning still
+runs, the think-box just stays empty). Give reasoning models output room: `LUMI_MAX_TOKENS=16000` (reasoning
+tokens count toward output).
+
+**Risks:** no Anthropic-style prompt caching (OpenAI caches input automatically, but the big static prefix
+isn't a guaranteed discount). The emotion field comes through JSON mode rather than a tool call — reliable on
+GPT-5.5/gpt-4o but trips the `calm` fallback more than Claude. Her voice shifts toward GPT's, Ukrainian is
+good-but-not-Claude, and the whole conversation is sent to OpenAI under its data policy (the Responses path
+stores turn state server-side via `previous_response_id`).
 
 ---
 
