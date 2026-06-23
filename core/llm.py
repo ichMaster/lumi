@@ -137,6 +137,13 @@ _EMOTION_TOOL = {
             "reply": {"type": "string", "description": "Текст відповіді Лілі (лише її слова)."},
             "emotion": {"type": "string", "enum": [e.value for e in Emotion]},
             "intensity": {"type": "number", "minimum": 0, "maximum": 1},
+            "thinking_summary": {
+                "type": "string",
+                "description": (
+                    "Короткий ПУБЛІЧНИЙ підсумок міркування для боксу Thinking: 1-3 короткі речення, "
+                    "тією ж мовою, що й reply; не приватний chain-of-thought."
+                ),
+            },
             # v0.10: an ADDITIVE read of the user's message (not Лілі). Optional — the
             # emotion contract (`required` below) is untouched; the core validates it.
             "relation": {
@@ -158,11 +165,17 @@ _EMOTION_TOOL = {
 # For JSON-mode providers (OpenAI/DeepSeek/local v0.18, MiniMax) that have no tool-call: ask for the
 # same shape as plain JSON. Appended to `system` only on the structured call; the v0.3 gate still validates.
 _JSON_STATE_INSTRUCTION = (
-    "\n\nReturn ONLY a single JSON object (no prose, no markdown fences) with exactly these keys: "
+    "\n\nReturn ONLY a single JSON object (no prose, no markdown fences) with these required keys: "
     '"reply" (string — Лілі\'s reply text, her words only), '
     '"emotion" (one of: ' + ", ".join(e.value for e in Emotion) + "), "
     '"intensity" (number between 0 and 1). '
     'Example: {"reply": "...", "emotion": "calm", "intensity": 0.6}'
+)
+
+_JSON_THINKING_SUMMARY_INSTRUCTION = (
+    ' You may also include optional "thinking_summary" (string — a SHORT PUBLIC summary for the '
+    'Thinking box, 1–3 short sentences, same language as the reply, not private chain-of-thought). '
+    'If you include it, keep it separate from "reply" — do not put <think> tags inside "reply".'
 )
 
 
@@ -186,7 +199,6 @@ _RECOLLECTION_PREFIX = (
     "[ТВІЙ ВЛАСНИЙ СПОГАД — це твоя пам'ять про минулі розмови, не зовнішнє джерело. "
     "Можеш спиратися на це як на своє і говорити від себе.]\n"
 )
-
 
 def trusted_text(text: str) -> dict:
     """Wrap a tool result the loop should frame as **trusted** (her own memory), not untrusted data
@@ -1018,11 +1030,11 @@ class OpenAICompatibleClient:
 class OpenAIResponsesClient:
     """OpenAI **Responses API** path for reasoning models (GPT-5 family / o-series) — v0.37.
 
-    The only OpenAI endpoint where **function tools + ``reasoning_effort`` coexist** AND a reasoning
-    **summary** is returned (``reasoning.summary``). So GPT-5.5 gets the bounded tool-loop, tunable depth,
-    *and* a visible think-box (the summary feeds ``last_thinking`` like Anthropic's summarized thinking —
-    the v1.3 inner monologue seam, provider-agnostically). Selected by :func:`build_llm` for OpenAI
-    reasoning models; non-reasoning OpenAI ids and DeepSeek/local keep :class:`OpenAICompatibleClient`.
+    The only OpenAI endpoint where **function tools + ``reasoning_effort`` coexist**. GPT-5.5 gets the
+    bounded tool-loop, tunable depth, and a visible think-box from either OpenAI's `reasoning.summary`
+    or a public ``thinking_summary`` field in the same terminal JSON answer. Selected by
+    :func:`build_llm` for OpenAI reasoning models; non-reasoning OpenAI ids and DeepSeek/local keep
+    :class:`OpenAICompatibleClient`.
 
     Wire shape differs from chat completions: ``input`` items (not ``messages``), a flat tool schema
     (``{"type":"function","name",...}``), ``function_call`` output items answered by
@@ -1054,11 +1066,12 @@ class OpenAIResponsesClient:
             self._client = openai.OpenAI(api_key=api_key, base_url=base_url or None)
         self._max_tokens = max_tokens
         self._effort = effort
-        # Reasoning-summary granularity: "auto"/"concise"/"detailed" → a think-box; "off"/"none"/"" → no
-        # summary requested (e.g. if your org isn't verified for summaries). Reasoning still happens.
+        # Reasoning-summary granularity: "auto"/"concise"/"detailed" → ask OpenAI for a provider summary;
+        # "off"/"none"/"" → skip that summary request (reasoning still happens).
         self._summary = (summary or "").strip().lower()
-        # The status bar's "thinking" flag (Core.thinking) reads `_thinking`. This client reasons; it shows
-        # a visible think-box only when a summary is requested — so the indicator tracks the summary setting.
+        # The status bar's "thinking" flag (Core.thinking) reads `_thinking`. This client asks for a visible
+        # Thinking box only when the summary setting is on; then the box may come from provider reasoning or
+        # the one-request public `thinking_summary` field in the structured reply.
         self._thinking = self._summary not in ("", "off", "none")
         self._retries = retries
         self._backoff = backoff
@@ -1124,9 +1137,12 @@ class OpenAIResponsesClient:
 
     def _single(self, system: str, messages: list[Message], model: str, *, structured: bool) -> tuple[str, list]:
         """One Responses call (no tools): parse the answer + reasoning summary, capture stats."""
+        instructions = system + _JSON_STATE_INSTRUCTION
+        if structured and self._thinking:
+            instructions += _JSON_THINKING_SUMMARY_INSTRUCTION
         kwargs: dict = {
             "model": model,
-            "instructions": system + (_JSON_STATE_INSTRUCTION if structured else ""),
+            "instructions": instructions if structured else system,
             "input": _responses_input(messages),
             "max_output_tokens": self._max_tokens,
         }
@@ -1152,7 +1168,11 @@ class OpenAIResponsesClient:
         no calls is the answer (JSON for structured, text for the think path). The final round forces an
         answer (``tool_choice="none"``)."""
         rtools = self._to_responses_tools(tools)
-        instructions = system + (_JSON_STATE_INSTRUCTION if structured else "")
+        instructions = system
+        if structured:
+            instructions += _JSON_STATE_INSTRUCTION
+            if self._thinking:
+                instructions += _JSON_THINKING_SUMMARY_INSTRUCTION
         convo_input = _responses_input(messages)
         acc = {"input": 0, "output": 0, "cr": 0, "latency": 0, "think": []}
         self.last_round_log = []

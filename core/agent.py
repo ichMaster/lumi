@@ -694,8 +694,8 @@ class Core:
         self.last_emotion: EmotionState | None = None
         # The relational read of the user's last message (v0.10; internal, feeds closeness).
         self.last_relation: RelationRead = RelationRead()
-        # The model's reasoning summary from the last turn (None when thinking is
-        # off or absent), for a client to render alongside the reply.
+        # The model's visible thinking from the last turn (inline <think>, a public
+        # structured summary, or a provider summary), for a client to render.
         self.last_thinking: str | None = None
         # Stats for the last reply + running totals, for the TUI status line.
         self.last_stats: ResponseStats | None = None
@@ -2269,9 +2269,19 @@ class Core:
             tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
         )
         # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of
-        # the reply field; the clean text is shown/stored. Prefer the model's tagged
-        # inline reasoning; fall back to the provider's summarized thinking channel.
+        # the reply field; the clean text is shown/stored. Precedence: the model's tagged
+        # inline reasoning, then the provider's **native** summarized thinking (Opus extended
+        # thinking / OpenAI reasoning.summary — the real thing), then the optional public
+        # `thinking_summary` field as a FALLBACK. Native-before-field keeps Opus untouched:
+        # its real summary always wins and is never shadowed by a self-written one-liner; the
+        # field only lights the box where there is no native summary (e.g. gpt-5.5 with the
+        # summary withheld, or an Anthropic model with extended thinking off).
         inline_thinking, reply_text = split_reasoning(str(raw.get("reply") or ""))
+        structured_thinking = raw.get("thinking_summary")
+        if not isinstance(structured_thinking, str) or not structured_thinking.strip():
+            structured_thinking = None
+        else:
+            structured_thinking = structured_thinking.strip()
         tag_emotion, reply_text = split_emotion(reply_text)
         # Лілі's self-chosen answer style — record it (for the status "who") and strip it.
         tag_style, reply_text = split_style(reply_text)
@@ -2279,7 +2289,7 @@ class Core:
             self.last_style = tag_style
         # Strip a leading [date-time] the model may echo from the timestamped history.
         reply_text = strip_leading_stamp(reply_text)
-        self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None)
+        self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None) or structured_thinking
         self._accumulate_stats(turn=True)  # the reply turn (+ any housekeeping above already folded in)
 
         # Merge emotion sources: the structured tool wins when present; otherwise the

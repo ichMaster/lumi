@@ -2,8 +2,8 @@
 
 A scripted ``responses.create`` fake drives ``OpenAIResponsesClient`` so the loop's wire format is
 exercised: tool execution via function_call/function_call_output, untrusted/recollection framing, the
-reasoning summary → think-box, the forced final round, parallel calls, the image divergence, and the
-chat-vs-responses selection.
+provider reasoning summary / public thinking_summary → think-box, the forced final round, parallel
+calls, the image divergence, and the chat-vs-responses selection.
 """
 from __future__ import annotations
 
@@ -131,6 +131,22 @@ def test_summary_off_omits_summary_but_keeps_reasoning_block_empty():
     c, comp = _client(_QueueResponses([_resp([_message(_STATE_JSON)])]), summary="off", effort="high")
     c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-5.5")
     assert "summary" not in comp.calls[0]["reasoning"] and comp.calls[0]["reasoning"]["effort"] == "high"
+    assert "thinking_summary" not in comp.calls[0]["instructions"]
+
+
+def test_public_thinking_summary_rides_in_the_same_structured_call():
+    c, comp = _client(_QueueResponses([
+        _resp([_message(
+            '{"reply":"ок","emotion":"joy","intensity":0.9,'
+            '"thinking_summary":"Зважила тон, лишила відповідь теплою й короткою."}'
+        )], usage=_usage(10, 5)),
+    ]), summary="detailed")
+    payload = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-5.5")
+    state = validate(payload)
+    assert state.emotion.value == "joy"
+    assert payload["thinking_summary"] == "Зважила тон, лишила відповідь теплою й короткою."
+    assert "thinking_summary" in comp.calls[0]["instructions"]
+    assert c.last_thinking is None  # Core lifts the public field into the Thinking box
 
 
 # --- the tool-loop ---------------------------------------------------------------------------------

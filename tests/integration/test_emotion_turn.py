@@ -105,6 +105,34 @@ def test_tool_emotion_takes_precedence_over_the_tag(tmp_path):
     assert state.reply == "ок"  # tag still stripped
 
 
+def test_public_thinking_summary_populates_last_thinking(tmp_path):
+    # When there is NO provider-native summary, the optional public thinking_summary fills the box.
+    llm = MockLLMClient(states={
+        "reply": "Привіт!",
+        "emotion": "joy",
+        "intensity": 0.8,
+        "thinking_summary": "Зважила теплоту й відповіла коротко.",
+    })
+    core = _core(tmp_path, llm)
+    state = core.reply("привіт", core.start_session())
+    assert state.reply == "Привіт!"
+    assert core.last_thinking == "Зважила теплоту й відповіла коротко."
+
+
+def test_provider_native_thinking_wins_over_public_summary(tmp_path):
+    # Opus-safety: a provider's REAL summarized thinking (Opus extended thinking / OpenAI
+    # reasoning.summary) takes precedence over the optional public thinking_summary field, so Opus's
+    # genuine inner monologue is never shadowed by a self-written one-liner.
+    llm = MockLLMClient(
+        thinking="REAL provider summary",  # what AnthropicClient sets from its thinking blocks
+        states={"reply": "Привіт!", "emotion": "joy", "intensity": 0.8,
+                "thinking_summary": "self-written one-liner"},
+    )
+    core = _core(tmp_path, llm)
+    core.reply("привіт", core.start_session())
+    assert core.last_thinking == "REAL provider summary"  # native wins, not the public field
+
+
 def test_history_replays_the_emotion_tag_to_the_model(tmp_path):
     # The fix for "emotion works only at the beginning": Лілі's prior reply is
     # replayed WITH its <emotion> tag (from the stored field), so the model keeps

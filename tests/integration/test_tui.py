@@ -210,6 +210,20 @@ async def test_thinking_box_clears_when_a_turn_has_no_thinking(tmp_path):
         assert app._thinking_shown is None  # box emptied
 
 
+async def test_openai_style_public_thinking_summary_populates_the_box(tmp_path):
+    llm = MockLLMClient(states={
+        "reply": "Привіт!",
+        "emotion": "calm",
+        "intensity": 0.5,
+        "thinking_summary": "Зважила тон і відповіла коротко та тепло.",
+    })
+    llm._thinking = True  # OpenAI Responses path: the status says "thinking on"
+    app = LumiApp(_core(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert app._thinking_shown == "Зважила тон і відповіла коротко та тепло."
+
+
 async def test_quit_summarizes_session_then_exits(tmp_path):
     repo = JsonRepository(tmp_path / "store.json")
     core = Core(llm=MockLLMClient("ok"), repository=repo, canon="Ти — Лілі.", model="m")
