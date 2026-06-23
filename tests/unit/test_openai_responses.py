@@ -111,6 +111,14 @@ def test_effort_threaded_and_clamped():
     assert comp.calls[0]["reasoning"]["effort"] == "high"  # max → high
 
 
+def test_thinking_flag_tracks_summary_setting():
+    # Core.thinking (the status bar "thinking: on/off") reads the client's _thinking attribute.
+    c, _ = _client(_QueueResponses([_resp([_message(_STATE_JSON)])]))
+    assert c._thinking is True  # default summary=auto → a visible think-box → status shows on
+    c_off, _ = _client(_QueueResponses([_resp([_message(_STATE_JSON)])]), summary="off")
+    assert c_off._thinking is False  # no summary requested → no box → status shows off
+
+
 def test_summary_off_omits_summary_but_keeps_reasoning_block_empty():
     c, comp = _client(_QueueResponses([_resp([_message(_STATE_JSON)])]), summary="off", effort="high")
     c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-5.5")

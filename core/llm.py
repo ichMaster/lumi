@@ -1057,6 +1057,9 @@ class OpenAIResponsesClient:
         # Reasoning-summary granularity: "auto"/"concise"/"detailed" → a think-box; "off"/"none"/"" → no
         # summary requested (e.g. if your org isn't verified for summaries). Reasoning still happens.
         self._summary = (summary or "").strip().lower()
+        # The status bar's "thinking" flag (Core.thinking) reads `_thinking`. This client reasons; it shows
+        # a visible think-box only when a summary is requested — so the indicator tracks the summary setting.
+        self._thinking = self._summary not in ("", "off", "none")
         self._retries = retries
         self._backoff = backoff
         self.last_thinking: str | None = None
