@@ -105,6 +105,14 @@ def test_single_structured_parses_answer_and_think_box():
     assert kw["input"] == [{"role": "user", "content": "hi"}]  # message → Responses input item
 
 
+def test_empty_reasoning_summary_yields_no_think_box():
+    # A reasoning item present but with an empty summary array (summary withheld) → reply works, box empty.
+    empty_reasoning = SimpleNamespace(type="reasoning", summary=[])
+    c, _ = _client(_QueueResponses([_resp([empty_reasoning, _message(_STATE_JSON)])]))
+    state = validate(c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-5.5"))
+    assert state.emotion.value == "joy" and c.last_thinking is None  # the diagnostic logs summary_parts=0
+
+
 def test_effort_threaded_and_clamped():
     c, comp = _client(_QueueResponses([_resp([_message(_STATE_JSON)])]), effort="max")
     c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-5.5")

@@ -136,9 +136,14 @@ Restart `./lumi`.
   tool-loop works; there's no think box (these models don't reason).
 
 Knobs (defaults are fine): `LUMI_OPENAI_RESPONSES=auto|on|off` forces the path; `LUMI_OPENAI_SUMMARY=auto|concise|detailed|off`
-sets the reasoning-summary detail (use `off` if your org isn't verified for summaries — reasoning still
-runs, the think-box just stays empty). Give reasoning models output room: `LUMI_MAX_TOKENS=16000` (reasoning
+sets the reasoning-summary detail. Give reasoning models output room: `LUMI_MAX_TOKENS=16000` (reasoning
 tokens count toward output).
+
+**If the think-box stays empty** (but replies work): reasoning is happening, the *summary* just isn't coming
+back. Lumi logs `responses.output items=… summary_parts=… reasoning_chars=…` to `.lumi/lumi.log` so you can
+see which case it is — `summary_parts=0` means OpenAI returned no summary for that request. Common reasons:
+**organization not verified** (verify at platform.openai.com → Settings → Organization), the model returning
+no summary for a given turn, or `LUMI_OPENAI_SUMMARY=off`. It's not a single universal gate — check the log.
 
 **Risks:** no Anthropic-style prompt caching (OpenAI caches input automatically, but the big static prefix
 isn't a guaranteed discount). The emotion field comes through JSON mode rather than a tool call — reliable on

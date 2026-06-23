@@ -1221,14 +1221,24 @@ class OpenAIResponsesClient:
 
     @staticmethod
     def _parse_output(resp: object) -> tuple[str, str, list]:
-        """Split a Responses ``output`` into (reasoning summary, answer text, function_call items)."""
+        """Split a Responses ``output`` into (reasoning summary, answer text, function_call items).
+
+        Reads the **full** ``output`` (reasoning + message + function_call items), not just
+        ``output_text`` — and logs what came back so an empty think-box can be diagnosed empirically: a
+        missing ``reasoning`` item vs. a reasoning item whose ``summary`` array is empty (a withheld
+        summary — e.g. org not verified, or none returned for that request)."""
         reasoning: list[str] = []
         answer: list[str] = []
         calls: list = []
+        types: list = []
+        summary_parts = 0
         for item in getattr(resp, "output", []) or []:
             itype = getattr(item, "type", None)
+            types.append(itype)
             if itype == "reasoning":
-                for s in getattr(item, "summary", []) or []:
+                parts = getattr(item, "summary", []) or []
+                summary_parts += len(parts)
+                for s in parts:
                     if getattr(s, "type", None) == "summary_text":
                         reasoning.append(getattr(s, "text", "") or "")
             elif itype == "function_call":
@@ -1237,7 +1247,13 @@ class OpenAIResponsesClient:
                 for c in getattr(item, "content", []) or []:
                     if getattr(c, "type", None) == "output_text":
                         answer.append(getattr(c, "text", "") or "")
-        return "\n".join(r for r in reasoning if r), "".join(answer), calls
+        reasoning_txt = "\n".join(r for r in reasoning if r)
+        answer_txt = "".join(answer)
+        _log.info(
+            "responses.output items=%s summary_parts=%d reasoning_chars=%d answer_chars=%d calls=%d",
+            types, summary_parts, len(reasoning_txt), len(answer_txt), len(calls),
+        )
+        return reasoning_txt, answer_txt, calls
 
     @staticmethod
     def _stats(resp: object, model: str, latency_ms: int, reasoning_txt: str) -> ResponseStats:
