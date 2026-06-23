@@ -152,6 +152,30 @@ def test_build_llm_threads_effort_into_openai_client(monkeypatch):
     assert isinstance(client, OpenAICompatibleClient) and client._effort == "high"
 
 
+# --- v0.37 fix: the token param differs by provider (GPT-5 rejects max_tokens) ---------------------
+def test_default_token_param_is_max_tokens():
+    c = _client('{"reply":"a","emotion":"calm","intensity":0.5}')
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "deepseek-chat")
+    kwargs = c._client._completions.last_kwargs
+    assert kwargs["max_tokens"] == 1024 and "max_completion_tokens" not in kwargs
+
+
+def test_openai_uses_max_completion_tokens_param():
+    c = OpenAICompatibleClient(
+        "k", max_tokens_param="max_completion_tokens",
+        _client=_fake_openai('{"reply":"a","emotion":"calm","intensity":0.5}'))
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gpt-5.5")
+    kwargs = c._client._completions.last_kwargs
+    assert kwargs["max_completion_tokens"] == 1024 and "max_tokens" not in kwargs  # GPT-5 reasoning models
+
+
+def test_build_llm_picks_token_param_per_provider(monkeypatch):
+    openai = pytest.importorskip("openai")
+    monkeypatch.setattr(openai, "OpenAI", lambda **kw: object())  # no SDK auth / network
+    assert build_llm(Config(provider="openai", openai_api_key="k"))._max_tokens_param == "max_completion_tokens"
+    assert build_llm(Config(provider="deepseek", deepseek_api_key="k"))._max_tokens_param == "max_tokens"
+
+
 # --- factory wiring ---------------------------------------------------------------------------------
 def test_factory_builds_openai_compatible_for_each_provider():
     # openai / deepseek with key → an OpenAICompatibleClient (constructed with an injected fake below

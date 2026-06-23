@@ -684,6 +684,7 @@ class OpenAICompatibleClient:
         *,
         base_url: str | None = None,
         max_tokens: int = 1024,
+        max_tokens_param: str = "max_tokens",
         effort: str | None = None,
         retries: int = 2,
         backoff: float = 0.5,
@@ -701,6 +702,9 @@ class OpenAICompatibleClient:
 
             self._client = openai.OpenAI(api_key=api_key, base_url=base_url or None)
         self._max_tokens = max_tokens
+        # v0.37: GPT-5 / o-series reasoning models reject `max_tokens` (400 → "use max_completion_tokens");
+        # OpenAI uses `max_completion_tokens`, DeepSeek/local keep `max_tokens`. The builder picks per provider.
+        self._max_tokens_param = max_tokens_param
         self._effort = effort  # v0.37: reasoning_effort for GPT-5 family / DeepSeek (mapped, omitted if unset)
         self._retries = retries
         self._backoff = backoff
@@ -723,7 +727,7 @@ class OpenAICompatibleClient:
     def _create(self, system: str, messages: list[Message], model: str, *, structured: bool) -> object:
         sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
         payload = [{"role": "system", "content": sys_text}, *messages]
-        kwargs: dict = {"model": model, "messages": payload, "max_tokens": self._max_tokens}
+        kwargs: dict = {"model": model, "messages": payload, self._max_tokens_param: self._max_tokens}
         if structured:
             kwargs["response_format"] = {"type": "json_object"}  # JSON mode (OpenAI + DeepSeek + most local)
         self._apply_effort(kwargs)  # v0.37: GPT-5 family / DeepSeek reasoning depth (omitted if unset)
@@ -800,7 +804,7 @@ class OpenAICompatibleClient:
 
     def _request_kwargs(self, model: str, convo: list[dict]) -> dict:
         """Base request kwargs for a tool-loop round, with ``reasoning_effort`` when set (v0.37)."""
-        kwargs = {"model": model, "messages": convo, "max_tokens": self._max_tokens}
+        kwargs = {"model": model, "messages": convo, self._max_tokens_param: self._max_tokens}
         self._apply_effort(kwargs)
         return kwargs
 
@@ -1266,7 +1270,12 @@ def build_llm(cfg: Config) -> LLMClient:
         )
     if provider in ("openai", "deepseek", "local"):
         base_url, key = _openai_compatible_target(cfg, provider)
-        return OpenAICompatibleClient(key, base_url=base_url, max_tokens=cfg.max_tokens, effort=cfg.effort)
+        # OpenAI's GPT-5 / o-series reasoning models reject `max_tokens` (require `max_completion_tokens`);
+        # DeepSeek + local OpenAI-compatible servers still take `max_tokens`. Pick per provider.
+        token_param = "max_completion_tokens" if provider == "openai" else "max_tokens"
+        return OpenAICompatibleClient(
+            key, base_url=base_url, max_tokens=cfg.max_tokens, max_tokens_param=token_param, effort=cfg.effort,
+        )
     if provider == "minimax":
         if not cfg.minimax_api_key:
             raise LLMError("LUMI_PROVIDER=minimax needs MINIMAX_API_KEY in .env.")
