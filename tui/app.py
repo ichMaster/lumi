@@ -423,7 +423,12 @@ class LumiApp(App[None]):
 
         Always replaces the box contents — never the chat — so the box holds just
         the most recent response's thinking, and is empty when there was none.
+
+        v0.38: honours ``LUMI_THINK_SHOW`` — ``off`` hides the box entirely (the monologue is still
+        logged in the core); ``debug``/``open`` render it.
         """
+        if getattr(self._core, "think_show", "debug") == "off":
+            thinking = None
         self._thinking_shown = thinking or None
         box = self.query_one("#thinking", RichLog)
         box.clear()

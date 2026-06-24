@@ -224,6 +224,18 @@ async def test_openai_style_public_thinking_summary_populates_the_box(tmp_path):
         assert app._thinking_shown == "Зважила тон і відповіла коротко та тепло."
 
 
+async def test_think_show_off_hides_the_box(tmp_path):
+    # v0.38 LUMI-150: LUMI_THINK_SHOW=off → the monologue is captured in the core but the TUI box stays empty.
+    llm = MockLLMClient("ага", thinking="Прихована думка.")
+    core = Core(llm=llm, repository=JsonRepository(tmp_path / "store.json"),
+                canon="Ти — Лілі.", model="m", think_show="off")
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "раз")
+        assert core.last_thinking == "Прихована думка."  # captured in the core (ephemeral)
+        assert app._thinking_shown is None               # hidden in the TUI (off)
+
+
 async def test_quit_summarizes_session_then_exits(tmp_path):
     repo = JsonRepository(tmp_path / "store.json")
     core = Core(llm=MockLLMClient("ok"), repository=repo, canon="Ти — Лілі.", model="m")

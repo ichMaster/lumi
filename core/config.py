@@ -212,6 +212,9 @@ class Config:
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking: bool = DEFAULT_THINKING
     effort: str | None = DEFAULT_EFFORT
+    # v0.38 Inner Voice: how the think monologue is surfaced — debug (operator-visible box, default) /
+    # open (surfaced as her inner voice) / off (hidden). It is logged (never persisted to long-term memory).
+    think_show: str = "debug"
     # v0.4 ambient context — all off unless configured (graceful degradation).
     location: str | None = None
     lat: float | None = None
@@ -464,6 +467,9 @@ def load_config(*, load_env: bool = True) -> Config:
     effort_env = os.getenv("LUMI_EFFORT")
     effort = effort_env.strip().lower() if effort_env and effort_env.strip() else DEFAULT_EFFORT
 
+    _think_show = (os.getenv("LUMI_THINK_SHOW") or "debug").strip().lower()
+    think_show = _think_show if _think_show in ("debug", "open", "off") else "debug"
+
     def _float(name: str) -> float | None:
         raw = os.getenv(name)
         try:
@@ -517,6 +523,7 @@ def load_config(*, load_env: bool = True) -> Config:
         max_tokens=max_tokens,
         thinking=thinking,
         effort=effort,
+        think_show=think_show,
         location=os.getenv("LUMI_LOCATION") or None,
         lat=_float("LUMI_LAT"),
         lon=_float("LUMI_LON"),

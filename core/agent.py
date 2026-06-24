@@ -158,6 +158,7 @@ _recall_log = logging.getLogger("lumi.recall")
 # Per-session usage ledger + cost report is best-effort; failures logged here, never raised.
 _usage_log = logging.getLogger("lumi.usage")
 _core_log = logging.getLogger("lumi.core")  # composition-root notices (e.g. inner-voice fallback, v0.38)
+_think_log = logging.getLogger("lumi.think")  # v0.38: the monologue's logged tier (never persisted)
 
 # Cap text length before embedding: the model reads only ~512 tokens, and a huge message (e.g. a
 # pasted book chapter — 100k+ chars) tokenizes pathologically slowly and can hang the embedder.
@@ -356,6 +357,7 @@ class Core:
         llm_factory: Callable[[str, str], LLMClient] | None = None,  # v0.37: (provider, model) → LLMClient
         model_aliases: dict[str, tuple[str, str]] | None = None,     # v0.37: /model aliases (from config)
         reasoning_directive: str = REASONING_DIRECTIVE,  # v0.38: the think-phase instruction (inner_voice → here)
+        think_show: str = "debug",  # v0.38: monologue surfacing — debug / open / off (logged, never persisted)
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
@@ -495,6 +497,8 @@ class Core:
         # v0.38 Inner Voice: the think-phase instruction appended to the canon — the generic
         # REASONING_DIRECTIVE by default, or the authored core/inner_voice.md when LUMI_INNER_VOICE is on.
         self._reasoning_directive = reasoning_directive
+        # v0.38: how the monologue is surfaced (debug/open/off); validated, default debug.
+        self._think_show = think_show if think_show in ("debug", "open", "off") else "debug"
         self._model = model
         # v0.37 LUMI-148: runtime `/model` engine toggle — the active provider, a (provider, model) →
         # LLMClient factory (rebuilds from the loaded config keys), and the configured aliases.
@@ -719,6 +723,12 @@ class Core:
     def provider(self) -> str:
         """The active provider/engine family — set at build, updated by :meth:`switch_model` (v0.37)."""
         return self._active_provider
+
+    @property
+    def think_show(self) -> str:
+        """How the think monologue is surfaced — ``debug`` / ``open`` / ``off`` (v0.38). A client reads it
+        to decide whether to render the Thinking box; ``off`` hides it entirely."""
+        return self._think_show
 
     @property
     def model_aliases(self) -> dict[str, tuple[str, str]]:
@@ -2297,6 +2307,9 @@ class Core:
         # Strip a leading [date-time] the model may echo from the timestamped history.
         reply_text = strip_leading_stamp(reply_text)
         self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None) or structured_thinking
+        # v0.38: the monologue's logged tier — ephemeral, never persisted to long-term memory. Off → silent.
+        if self.last_thinking and self._think_show != "off":
+            _think_log.info("think: %s", self.last_thinking)
         self._accumulate_stats(turn=True)  # the reply turn (+ any housekeeping above already folded in)
 
         # Merge emotion sources: the structured tool wins when present; otherwise the
@@ -2986,6 +2999,7 @@ def build_core(
         repository=repository,
         canon=canon,
         reasoning_directive=reasoning_directive,
+        think_show=cfg.think_show,
         model=cfg.model,
         provider=cfg.provider,
         llm_factory=_llm_factory,
