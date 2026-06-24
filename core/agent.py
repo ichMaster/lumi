@@ -97,6 +97,7 @@ from core.prompt import (
     REASONING_DIRECTIVE,
     build_system_prompt,
     load_canon,
+    load_inner_voice,
     split_emotion,
     split_reasoning,
     split_style,
@@ -156,6 +157,7 @@ _recall_log = logging.getLogger("lumi.recall")
 
 # Per-session usage ledger + cost report is best-effort; failures logged here, never raised.
 _usage_log = logging.getLogger("lumi.usage")
+_core_log = logging.getLogger("lumi.core")  # composition-root notices (e.g. inner-voice fallback, v0.38)
 
 # Cap text length before embedding: the model reads only ~512 tokens, and a huge message (e.g. a
 # pasted book chapter — 100k+ chars) tokenizes pathologically slowly and can hang the embedder.
@@ -353,6 +355,7 @@ class Core:
         provider: str = "",
         llm_factory: Callable[[str, str], LLMClient] | None = None,  # v0.37: (provider, model) → LLMClient
         model_aliases: dict[str, tuple[str, str]] | None = None,     # v0.37: /model aliases (from config)
+        reasoning_directive: str = REASONING_DIRECTIVE,  # v0.38: the think-phase instruction (inner_voice → here)
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
@@ -489,6 +492,9 @@ class Core:
         self._llm = llm
         self._repo = repository
         self._canon = canon
+        # v0.38 Inner Voice: the think-phase instruction appended to the canon — the generic
+        # REASONING_DIRECTIVE by default, or the authored core/inner_voice.md when LUMI_INNER_VOICE is on.
+        self._reasoning_directive = reasoning_directive
         self._model = model
         # v0.37 LUMI-148: runtime `/model` engine toggle — the active provider, a (provider, model) →
         # LLMClient factory (rebuilds from the loaded config keys), and the configured aliases.
@@ -1450,8 +1456,9 @@ class Core:
             closeness = closeness_block(self._closeness_levels, level)
         # Append the reasoning directive to the canon so any pre-answer reasoning is
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
+        # v0.38: this is the generic REASONING_DIRECTIVE, or her authored inner_voice.md when on.
         # v0.25: when the news tool is on, add the authored "how she delivers news" line (EN→UK, cited).
-        canon = f"{self._canon}\n\n{REASONING_DIRECTIVE}"
+        canon = f"{self._canon}\n\n{self._reasoning_directive}"
         if self._news_enabled:
             from core.news import NEWS_DIRECTIVE
 
@@ -2959,6 +2966,16 @@ def build_core(
             embedder = None
 
     canon = load_canon(cfg.canon_path)
+    # v0.38 Inner Voice: load the authored think instruction when on; a missing/empty file degrades to
+    # the generic REASONING_DIRECTIVE (logged, never a crash). Off → the directive, byte-identical.
+    reasoning_directive = REASONING_DIRECTIVE
+    if cfg.inner_voice:
+        voice = load_inner_voice(cfg.inner_voice_path)
+        if voice:
+            reasoning_directive = voice
+        else:
+            _core_log.warning("LUMI_INNER_VOICE on but %s missing/empty — using REASONING_DIRECTIVE",
+                              cfg.inner_voice_path)
     # v0.11 face themes: load the manifest here (the composition root), so the Core class
     # itself stays interface-independent — it only receives the theme data.
     from viewer.themes import load_themes  # local import: keep core/ free of a viewer dependency
@@ -2968,6 +2985,7 @@ def build_core(
         llm=llm,
         repository=repository,
         canon=canon,
+        reasoning_directive=reasoning_directive,
         model=cfg.model,
         provider=cfg.provider,
         llm_factory=_llm_factory,

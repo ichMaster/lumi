@@ -77,6 +77,10 @@ def _parse_model_aliases(raw: str) -> dict[str, tuple[str, str]]:
 # Default canon path (config-referenced — never hardcoded in the core).
 DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 
+# v0.38 Inner Voice: the editable three-voice think-phase instruction (replaces REASONING_DIRECTIVE
+# when LUMI_INNER_VOICE is on). Config-referenced; off → the hardcoded directive, byte-identical.
+DEFAULT_INNER_VOICE_PATH = _REPO_ROOT / "core" / "inner_voice.md"
+
 # Answer styles (overlays); editable like the canon. Optional.
 DEFAULT_STYLES_PATH = _REPO_ROOT / "core" / "styles.md"
 
@@ -188,6 +192,9 @@ class Config:
     # v0.37 LUMI-148: `/model` runtime-toggle aliases (alias → (provider, model)); from LUMI_MODEL_ALIASES.
     model_aliases: dict[str, tuple[str, str]] = field(default_factory=lambda: dict(DEFAULT_MODEL_ALIASES))
     canon_path: Path = DEFAULT_CANON_PATH
+    # v0.38 Inner Voice: load core/inner_voice.md as the think directive (off → REASONING_DIRECTIVE).
+    inner_voice: bool = False
+    inner_voice_path: Path = DEFAULT_INNER_VOICE_PATH
     styles_path: Path = DEFAULT_STYLES_PATH
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
@@ -404,6 +411,9 @@ def load_config(*, load_env: bool = True) -> Config:
     canon_env = os.getenv("LUMI_CANON_PATH")
     canon_path = Path(canon_env) if canon_env else DEFAULT_CANON_PATH
 
+    inner_voice_env = os.getenv("LUMI_INNER_VOICE_FILE")
+    inner_voice_path = Path(inner_voice_env) if inner_voice_env else DEFAULT_INNER_VOICE_PATH
+
     styles_env = os.getenv("LUMI_STYLES_PATH")
     styles_path = Path(styles_env) if styles_env else DEFAULT_STYLES_PATH
 
@@ -489,6 +499,8 @@ def load_config(*, load_env: bool = True) -> Config:
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
         model_aliases=_parse_model_aliases(os.getenv("LUMI_MODEL_ALIASES", "")),
         canon_path=canon_path,
+        inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default
+        inner_voice_path=inner_voice_path,
         styles_path=styles_path,
         store_path=store_path,
         memory_window=memory_window,

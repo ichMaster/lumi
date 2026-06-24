@@ -143,6 +143,21 @@ def load_canon(path: str | Path) -> str:
     return text
 
 
+def load_inner_voice(path: str | Path) -> str | None:
+    """Read the v0.38 inner-voice think instruction (`core/inner_voice.md`), or ``None`` if missing/empty.
+
+    Unlike the canon, this is **opt-in** (``LUMI_INNER_VOICE``) and **degrades gracefully**: a missing or
+    empty file returns ``None`` so the caller falls back to :data:`REASONING_DIRECTIVE` (never crashes a
+    turn). The returned text **replaces** the generic directive — it must itself keep the ``<think>…</think>``
+    wrap instruction so :func:`split_reasoning` still lifts the monologue out of the reply.
+    """
+    voice_path = Path(path)
+    if not voice_path.is_file():
+        return None
+    text = voice_path.read_text(encoding="utf-8").strip()
+    return text or None
+
+
 def build_system_prompt(
     canon: str,
     summaries: Sequence[str] | None = None,
