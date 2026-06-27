@@ -8,6 +8,7 @@ from core.closeness import validate_relation
 from core.config import Config
 from core.emotion import validate
 from core.llm import (
+    GeminiClient,
     MiniMaxClient,
     MockLLMClient,
     OpenAICompatibleClient,
@@ -34,12 +35,23 @@ def _minimax(content: str, usage: dict | None = None) -> MiniMaxClient:
     return MiniMaxClient("k", _transport=transport)
 
 
+def _gemini(content: str, usage: dict | None = None) -> GeminiClient:
+    def transport(url, headers, body):
+        resp = {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": content}]}}]}
+        if usage is not None:
+            resp["usageMetadata"] = usage
+        return resp
+
+    return GeminiClient("k", _transport=transport)
+
+
 def _backends_valid():
-    return [_openai(_VALID), _minimax(_VALID), MockLLMClient(states={"reply": "ок", "emotion": "joy", "intensity": 0.9})]
+    return [_openai(_VALID), _minimax(_VALID), _gemini(_VALID),
+            MockLLMClient(states={"reply": "ок", "emotion": "joy", "intensity": 0.9})]
 
 
 def _backends_malformed():
-    return [_openai(_MALFORMED), _minimax(_MALFORMED)]
+    return [_openai(_MALFORMED), _minimax(_MALFORMED), _gemini(_MALFORMED)]
 
 
 # --- the shared v0.3 gate is uniform across providers ---------------------------------------------

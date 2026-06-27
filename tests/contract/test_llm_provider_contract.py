@@ -14,6 +14,7 @@ from core.clock import fixed_clock
 from core.emotion import EmotionState, validate
 from core.llm import (
     AnthropicClient,
+    GeminiClient,
     LLMClient,
     LLMError,
     MiniMaxClient,
@@ -47,11 +48,17 @@ def _minimax(content: str = '{"reply":"ок","emotion":"joy","intensity":0.9}') 
     return MiniMaxClient("k", _transport=lambda u, h, b: {"choices": [{"message": {"content": content}}]})
 
 
+def _gemini(content: str = '{"reply":"ок","emotion":"joy","intensity":0.9}') -> GeminiClient:
+    resp = {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": content}]}}]}
+    return GeminiClient("k", _transport=lambda u, h, b: resp)
+
+
 def _mock() -> MockLLMClient:
     return MockLLMClient("ок", states={"reply": "ок", "emotion": "joy", "intensity": 0.9})
 
 
-_BACKENDS = [("anthropic", _anthropic), ("openai", _openai), ("minimax", _minimax), ("mock", _mock)]
+_BACKENDS = [("anthropic", _anthropic), ("openai", _openai), ("minimax", _minimax),
+             ("gemini", _gemini), ("mock", _mock)]
 
 
 # --- the LLMClient + emotion-field contract, parametrised over every backend -----------------------

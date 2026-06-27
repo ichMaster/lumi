@@ -123,6 +123,60 @@ def _responses_input(messages: list[Message]) -> list:
     return out
 
 
+# --- v0.39 Gemini engine (Google Gemini behind the LLMClient seam) --------------------------------
+# Gemini's wire shape: contents/parts (role user|model), a top-level systemInstruction, generationConfig,
+# and safetySettings. Reuses the stdlib-urllib transport already proven by core/imagegen.py + weblookup.py.
+
+# The most permissive disablable safety thresholds — so Лілі's intimate register isn't sanitised (probed
+# GO, v0.39 LUMI-151). A still-blocked candidate degrades to the v0.3 gate (never a crash); see GeminiClient.
+_GEMINI_SAFETY = [
+    {"category": c, "threshold": "BLOCK_NONE"}
+    for c in (
+        "HARM_CATEGORY_HARASSMENT",
+        "HARM_CATEGORY_HATE_SPEECH",
+        "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "HARM_CATEGORY_DANGEROUS_CONTENT",
+    )
+]
+
+# responseSchema for JSON-mode structured output → {reply, emotion, intensity} (the v0.3 gate still validates).
+_GEMINI_EMOTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "reply": {"type": "string"},
+        "emotion": {"type": "string", "enum": [e.value for e in Emotion]},
+        "intensity": {"type": "number"},
+    },
+    "required": ["reply", "emotion", "intensity"],
+    "propertyOrdering": ["reply", "emotion", "intensity"],
+}
+
+# A blocked/empty candidate (e.g. a SAFETY finish) has no text — the v0.3 gate raises on an empty reply,
+# so the structured path substitutes this minimal calm placeholder instead of crashing the turn.
+_GEMINI_BLOCKED_STATE = {"reply": "…", "emotion": "calm", "intensity": 0.3}
+
+
+def _gemini_part(block: object) -> dict:
+    """A message content block → a Gemini ``part`` (image → ``inlineData``, else ``text``)."""
+    if is_image_block(block):
+        return {"inlineData": {"mimeType": block["media_type"], "data": block["data"]}}  # type: ignore[index]
+    if isinstance(block, dict) and "text" in block:
+        return {"text": str(block["text"])}
+    return {"text": str(block)}
+
+
+def _gemini_contents(messages: list[Message]) -> list:
+    """Translate Lumi messages → Gemini ``contents`` (``assistant``→``model``; string or part list)."""
+    out: list = []
+    for m in messages:
+        role = "model" if (isinstance(m, dict) and m.get("role") == "assistant") else "user"
+        content = m.get("content") if isinstance(m, dict) else None
+        parts = ([_gemini_part(b) for b in content] if isinstance(content, list)
+                 else [{"text": "" if content is None else str(content)}])
+        out.append({"role": role, "parts": parts})
+    return out
+
+
 _T = TypeVar("_T")
 
 # The structured-output tool the model fills with its turn: text + her state
@@ -1446,6 +1500,145 @@ class MiniMaxClient:
             raise LLMError(f"MiniMax call failed: {exc}") from exc
 
 
+class GeminiClient:
+    """Google **Gemini** via stdlib HTTP (``generateContent``) — v0.39. No SDK dependency.
+
+    The wire shape differs from OpenAI: ``contents``/``parts`` (role ``user``/``model``), a top-level
+    ``systemInstruction``, nested ``generationConfig``, and ``safetySettings``. Structured output is
+    requested as JSON (``responseMimeType`` + ``responseSchema``) and parsed via :func:`parse_emotion_json`
+    → the v0.3 gate. **Safety:** the most permissive thresholds are set so Лілі's intimate register isn't
+    sanitised; a still-blocked/empty candidate degrades to ``{"reply": ""}`` → the gate fills ``calm``
+    (never crashes/hangs). A ``_transport`` callable ``(url, headers, body) -> dict`` is injectable for
+    tests (no network). **v0.39 LUMI-152** is the base (single call); the function-calling tool-loop
+    (LUMI-153) and thinking → the think-box (LUMI-154) extend it.
+    """
+
+    _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    _RETRYABLE_NAMES = {"HTTPError", "URLError", "TimeoutError"}
+
+    def __init__(
+        self,
+        api_key: str | None,
+        *,
+        max_tokens: int = 1024,
+        effort: str | None = None,
+        retries: int = 2,
+        backoff: float = 0.5,
+        _transport: Callable[[str, dict, dict], dict] | None = None,
+    ) -> None:
+        if not api_key and _transport is None:
+            raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
+        self._key = api_key or ""
+        self._max_tokens = max_tokens
+        self._effort = effort  # v0.39 LUMI-154 maps this to a thinking budget; unused in the base
+        self._retries = retries
+        self._backoff = backoff
+        self._transport = _transport
+        self.last_thinking: str | None = None
+        self.last_stats: ResponseStats | None = None
+        self.last_round_log: list[tuple[str, ResponseStats]] = []
+
+    def _post(self, model: str, body: dict) -> dict:
+        url = self._ENDPOINT.format(model=model) + f"?key={self._key}"
+        headers = {"Content-Type": "application/json"}
+        if self._transport is not None:
+            return self._transport(url, headers, body)
+        import urllib.request  # stdlib HTTP path; imported only when actually calling out
+
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
+        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — fixed Gemini host
+            return json.loads(resp.read())
+
+    def _generation_config(self, *, structured: bool) -> dict:
+        cfg: dict = {"maxOutputTokens": self._max_tokens}
+        if structured:
+            cfg["responseMimeType"] = "application/json"
+            cfg["responseSchema"] = _GEMINI_EMOTION_SCHEMA
+        return cfg
+
+    def _body(self, system: str, messages: list[Message], *, structured: bool) -> dict:
+        sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
+        return {
+            "systemInstruction": {"parts": [{"text": sys_text}]},
+            "contents": _gemini_contents(messages),
+            "generationConfig": self._generation_config(structured=structured),
+            "safetySettings": _GEMINI_SAFETY,
+        }
+
+    def _create(self, system: str, messages: list[Message], model: str, *, structured: bool) -> dict:
+        body = self._body(system, messages, structured=structured)
+        started = time.monotonic()
+        resp = self._run(lambda: self._post(model, body))
+        self._capture(resp, model, int((time.monotonic() - started) * 1000))
+        return resp
+
+    @staticmethod
+    def _text_of(resp: dict) -> str:
+        """The first candidate's joined text, or ``""`` for a blocked/empty candidate (graceful degrade)."""
+        cands = (resp.get("candidates") if isinstance(resp, dict) else None) or []
+        if not cands:
+            return ""
+        parts = (cands[0].get("content") or {}).get("parts") or []
+        return " ".join(p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")).strip()
+
+    def _capture(self, resp: dict, model: str, latency_ms: int) -> None:
+        usage = (resp.get("usageMetadata") if isinstance(resp, dict) else None) or {}
+        self.last_stats = ResponseStats(
+            model=model,
+            latency_ms=latency_ms,
+            input_tokens=usage.get("promptTokenCount"),
+            output_tokens=usage.get("candidatesTokenCount"),
+            cache_read_tokens=usage.get("cachedContentTokenCount"),
+            cache_write_tokens=None,
+            thinking=False,
+        )
+        self.last_thinking = None
+
+    def reply(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> str:
+        # LUMI-152 base — a single tool-less call (the think-path tool-loop lands in LUMI-153).
+        return self._text_of(self._create(system, messages, model, structured=False))
+
+    def reply_structured(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> dict:
+        # LUMI-152 base — a single structured call (the function-calling tool-loop lands in LUMI-153).
+        text = self._text_of(self._create(system, messages, model, structured=True))
+        if not text:  # blocked/empty candidate → a graceful calm placeholder (the gate needs a reply)
+            return dict(_GEMINI_BLOCKED_STATE)
+        return parse_emotion_json(text)
+
+    def _run(self, fn: Callable[[], _T]) -> _T:
+        try:
+            return _call_with_retries(
+                fn,
+                retries=self._retries,
+                backoff=self._backoff,
+                is_retryable=lambda exc: type(exc).__name__ in self._RETRYABLE_NAMES,
+            )
+        except LLMError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — wrap any API/network failure as LLMError (never hang)
+            raise LLMError(f"Gemini call failed: {exc}") from exc
+
+
 class MockLLMClient:
     """A canned :class:`LLMClient` for tests — never touches the network.
 
@@ -1580,7 +1773,7 @@ class MockLLMClient:
 # Providers selectable via `LUMI_PROVIDER`, each mapping to an LLMClient behind this seam. "openai",
 # "deepseek" and "local" are served by the one OpenAI-compatible adapter (different base_url/key);
 # "minimax" by its own. Adapters register their branch here as they land (LUMI-076/077).
-KNOWN_PROVIDERS = ("anthropic", "openai", "deepseek", "minimax", "local")
+KNOWN_PROVIDERS = ("anthropic", "openai", "deepseek", "minimax", "local", "gemini")
 
 
 def build_llm(cfg: Config) -> LLMClient:
@@ -1624,6 +1817,10 @@ def build_llm(cfg: Config) -> LLMClient:
         if not cfg.minimax_api_key:
             raise LLMError("LUMI_PROVIDER=minimax needs MINIMAX_API_KEY in .env.")
         return MiniMaxClient(cfg.minimax_api_key, base_url=cfg.llm_base_url or None, max_tokens=cfg.max_tokens)
+    if provider == "gemini":  # v0.39 — Google Gemini behind the same seam (key shared with image/web gen)
+        if not cfg.gemini_api_key:
+            raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
+        return GeminiClient(cfg.gemini_api_key, max_tokens=cfg.max_tokens, effort=cfg.effort)
     raise LLMError(
         f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "
         f"{', '.join(KNOWN_PROVIDERS)}."

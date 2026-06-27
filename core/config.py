@@ -54,6 +54,7 @@ DEFAULT_MODEL_ALIASES: dict[str, tuple[str, str]] = {
     "gpt-5.5": ("openai", "gpt-5.5"),
     "gpt": ("openai", "gpt-5.5"),
     "deepseek": ("deepseek", "deepseek-chat"),
+    "gemini": ("gemini", "gemini-3.1-pro-preview"),  # v0.39 — verified id (gemini-3.1-pro 404s)
 }
 
 
@@ -390,6 +391,7 @@ class Config:
     openai_api_key: str = field(default="", repr=False)
     deepseek_api_key: str = field(default="", repr=False)
     minimax_api_key: str = field(default="", repr=False)
+    gemini_api_key: str = field(default="", repr=False)  # v0.39 Gemini engine (shared with image/web gen)
     llm_base_url: str = ""  # override base_url for an OpenAI-compatible / local server (Ollama, LM Studio)
     # v0.37 — OpenAI Responses API for reasoning models (GPT-5 / o-series): tools + effort + a think-box.
     # auto (default) routes reasoning ids through it; on/off force it. The reasoning-summary granularity
@@ -674,6 +676,7 @@ def load_config(*, load_env: bool = True) -> Config:
         api_key=os.getenv("ANTHROPIC_API_KEY"),
         openai_api_key=(os.getenv("OPENAI_API_KEY") or "").strip(),
         deepseek_api_key=(os.getenv("DEEPSEEK_API_KEY") or "").strip(),
+        gemini_api_key=(os.getenv("GEMINI_API_KEY") or "").strip(),
         minimax_api_key=(os.getenv("MINIMAX_API_KEY") or "").strip(),
         llm_base_url=(os.getenv("LUMI_LLM_BASE_URL") or "").strip(),
         openai_responses=(os.getenv("LUMI_OPENAI_RESPONSES") or "auto").strip().lower(),
