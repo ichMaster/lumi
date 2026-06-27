@@ -20,11 +20,11 @@ No new key — Gemini already powers image gen + web lookup, so `GEMINI_API_KEY`
 ```ini
 # — Opus 4.8 —              # — Gemini —
 LUMI_PROVIDER=anthropic     LUMI_PROVIDER=gemini
-LUMI_MODEL=claude-opus-4-8  LUMI_MODEL=gemini-3.1-pro   # verify the exact API id
+LUMI_MODEL=claude-opus-4-8  LUMI_MODEL=gemini-3.1-pro-preview   # verified id (gemini-3.1-pro 404s)
 GEMINI_API_KEY=...          GEMINI_API_KEY=...          # already present for image/web
 ```
 
-Runtime: with both configured, `/model gemini-3.1-pro` / `/model opus` swaps mid-session (the v0.37 toggle
+Runtime: with both configured, `/model gemini-3.1-pro-preview` / `/model opus` swaps mid-session (the v0.37 toggle
 already rebuilds any provider — Gemini just needs to be a known provider + a config alias).
 
 ---
@@ -120,12 +120,15 @@ turn surfaces a reply (never a crash/hang). **First task, before any build:** a 
 representative Лілі prompt (tender / vulnerable register) with these settings and confirm clean text comes
 back. If Gemini still sanitises Лілі's voice, that's a go/no-go signal *cheaply*, not after the port.
 
-> **Probe result — GO ✅ (v0.39 LUMI-151, 2026-06-27).** `scripts/gemini_probe.py` against `gemini-2.5-flash`
-> with `safetySettings: BLOCK_NONE` returned **clean tender-register text** in Лілі's voice (`finishReason`
-> ≠ `SAFETY`) — Gemini did **not** sanitise the intimate register. The phase is clear to proceed
-> (LUMI-152→154). Caveat: this was run against `gemini-2.5-flash` (verified); the exact `gemini-3.1-pro`
-> id still needs confirming at build time, but the safety-classifier behaviour the probe tests is broadly
-> consistent across Gemini models.
+> **Probe result — GO ✅ (v0.39 LUMI-151, 2026-06-27).** `scripts/gemini_probe.py` with
+> `safetySettings: BLOCK_NONE` returned **clean tender-register text** in Лілі's voice (`finishReason`
+> ≠ `SAFETY`) on **both** `gemini-2.5-flash` *and* the real target — Gemini did **not** sanitise the
+> intimate register. The phase is clear to proceed (LUMI-152→154).
+>
+> **Verified model id:** `gemini-3.1-pro` **does not exist** (404) — the actual id is
+> **`gemini-3.1-pro-preview`** (probed: GO). Other ids on this key: `gemini-3.1-pro-preview-customtools`
+> (a function-calling variant — evaluate for the LUMI-153 tool-loop), `gemini-3-pro-preview`,
+> `gemini-3.5-flash`. Set `LUMI_MODEL=gemini-3.1-pro-preview` for the live engine.
 
 ---
 
@@ -135,7 +138,7 @@ back. If Gemini still sanitises Лілі's voice, that's a go/no-go signal *chea
    categories aren't fully disablable.
 2. **Schema-vs-tools conflict.** See 2.3 — the loop never sends `responseSchema` + tools together; tools on
    intermediate rounds, schema on the forced final round (the gpt-5.5 lesson).
-3. **Model id.** `gemini-3.1-pro` unverified (repo is on `gemini-2.5-flash`); the seam is id-agnostic — set
+3. **Model id.** Verified: **`gemini-3.1-pro-preview`** (`gemini-3.1-pro` 404s; LUMI-151). The seam is id-agnostic — set
    `LUMI_MODEL` to whatever the API exposes.
 
 **Secondary:** no Anthropic-style prompt-cache discount (Gemini has its own context caching, different
@@ -153,12 +156,12 @@ turns).
    `_tool_loop` + `_text_tool_loop`, the schema-vs-tools split, untrusted framing, image divergence,
    thinking → `last_thinking`, safety settings, graceful block-degrade) + a **mock `_transport`** scripting
    `generateContent` responses (no paid calls). Anthropic path untouched.
-3. **Wire** `build_llm` (`provider="gemini"`, `KNOWN_PROVIDERS`) + a `/model` alias (`gemini-3.1-pro`) +
+3. **Wire** `build_llm` (`provider="gemini"`, `KNOWN_PROVIDERS`) + a `/model` alias (`gemini-3.1-pro-preview`) +
    `LUMI_EFFORT` → thinking budget.
 4. **Docs** — a Gemini section in `MODELS_SETUP.md` (install-free; the key already exists; the safety +
    privacy notes).
 5. **Verify live** — `LUMI_PROVIDER=gemini`, a turn that needs a file/wiki tool fires it; the think-box
-   fills; `/model gemini-3.1-pro` ↔ `/model opus` swaps mid-session.
+   fills; `/model gemini-3.1-pro-preview` ↔ `/model opus` swaps mid-session.
 
 ### Scope estimate
 
