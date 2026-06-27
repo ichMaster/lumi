@@ -225,6 +225,40 @@ without a GPU. Good for testing the plumbing offline; not for the real relations
 
 ---
 
+## 6. Google Gemini (v0.39)
+
+**No install** — Gemini uses plain HTTP (stdlib `urllib`), not an SDK, and the **key already exists**
+(`GEMINI_API_KEY` powers image gen + web lookup). In `.env`:
+
+```ini
+LUMI_PROVIDER=gemini
+LUMI_MODEL=gemini-3.1-pro-preview   # the verified id — gemini-3.1-pro 404s
+GEMINI_API_KEY=...                  # already present
+```
+
+Restart `./lumi`, or swap at runtime: `/model gemini` ↔ `/model opus` (the alias is built in).
+
+**What works (a near-full engine):**
+- **The tool-loop** — file / wiki / news / web / journal / image tools + the `%`-thought-tools, via Gemini
+  **function calling**. (Intermediate rounds offer tools; the final round forces the JSON answer — the
+  schema-vs-tools split.)
+- **A visible think-box** — with `LUMI_THINKING=on`, Gemini returns a **reasoning summary**
+  (`includeThoughts`) that fills the Thinking box, and **`LUMI_EFFORT`** tunes the thinking budget
+  (low/medium/high/xhigh/max → a token budget; `max` = dynamic). Pairs with the v0.38 inner voice — the
+  three-voice torg shows. Gemini surfaces thoughts more readily than OpenAI's often-withheld summary.
+- The `{reply, emotion, intensity}` field via JSON mode (`responseSchema`), validated by the v0.3 gate.
+
+**Safety:** Лілі's intimate register is sent with the most permissive `safetySettings` (`BLOCK_NONE`) — the
+v0.39 probe confirmed Gemini returns her tender voice cleanly. A still-blocked response degrades to a calm
+placeholder (never a crash).
+
+**Risks:** the conversation is sent to **Google** under its data policy (weigh it for a private companion);
+no Anthropic-style prompt-cache discount (Gemini has its own context caching, different economics); and as
+with any non-Claude engine, Ukrainian fluency and canon depth shift from the Opus-tuned baseline. Note the
+`-preview` model id may change as Google promotes it — verify with `ListModels` if a turn 404s.
+
+---
+
 ## Switching away — and back to Opus 4.8
 
 Switching is **always reversible** and mechanically safe: set `LUMI_PROVIDER=anthropic` +

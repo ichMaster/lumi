@@ -155,6 +155,10 @@ _GEMINI_EMOTION_SCHEMA = {
 # so the structured path substitutes this minimal calm placeholder instead of crashing the turn.
 _GEMINI_BLOCKED_STATE = {"reply": "…", "emotion": "calm", "intensity": 0.3}
 
+# v0.39 LUMI-154: Lumi effort tiers → a Gemini ``thinkingBudget`` (tokens; -1 = dynamic/unbounded). Omitted
+# when effort is unset (the model's default budget). ``includeThoughts`` surfaces the reasoning → the box.
+_GEMINI_THINKING_BUDGET = {"low": 1024, "medium": 4096, "high": 8192, "xhigh": 16384, "max": -1}
+
 
 def _gemini_part(block: object) -> dict:
     """A message content block → a Gemini ``part`` (image → ``inlineData``, else ``text``)."""
@@ -1522,6 +1526,7 @@ class GeminiClient:
         *,
         max_tokens: int = 1024,
         effort: str | None = None,
+        thinking: bool = False,
         retries: int = 2,
         backoff: float = 0.5,
         _transport: Callable[[str, dict, dict], dict] | None = None,
@@ -1530,7 +1535,10 @@ class GeminiClient:
             raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
         self._key = api_key or ""
         self._max_tokens = max_tokens
-        self._effort = effort  # v0.39 LUMI-154 maps this to a thinking budget; unused in the base
+        self._effort = effort  # v0.39 LUMI-154 → a thinking budget when thinking is on
+        # v0.39 LUMI-154: when on, request includeThoughts → the reasoning surfaces in the think-box (the
+        # v0.38 inner-voice seam). Also read by the status bar (Core.thinking) as `_thinking`.
+        self._thinking = thinking
         self._retries = retries
         self._backoff = backoff
         self._transport = _transport
@@ -1549,11 +1557,26 @@ class GeminiClient:
         with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — fixed Gemini host
             return json.loads(resp.read())
 
+    def _thinking_config(self) -> dict | None:
+        """``thinkingConfig`` when thinking is on — ``includeThoughts`` (surface the reasoning) + a budget
+        from ``effort`` (omitted when unset → the model's default). ``None`` when thinking is off."""
+        if not self._thinking:
+            return None
+        cfg: dict = {"includeThoughts": True}
+        if self._effort:
+            budget = _GEMINI_THINKING_BUDGET.get(self._effort)
+            if budget is not None:
+                cfg["thinkingBudget"] = budget
+        return cfg
+
     def _generation_config(self, *, structured: bool) -> dict:
         cfg: dict = {"maxOutputTokens": self._max_tokens}
         if structured:
             cfg["responseMimeType"] = "application/json"
             cfg["responseSchema"] = _GEMINI_EMOTION_SCHEMA
+        tc = self._thinking_config()
+        if tc:
+            cfg["thinkingConfig"] = tc
         return cfg
 
     def _body(self, system: str, messages: list[Message], *, structured: bool) -> dict:
@@ -1590,6 +1613,14 @@ class GeminiClient:
         """The answer text, or ``""`` for a blocked/empty candidate (graceful degrade)."""
         return self._text_from_parts(self._parts_of(resp))
 
+    @staticmethod
+    def _thinking_from_parts(parts: list) -> str:
+        """Join the ``thought: true`` text parts — Gemini's reasoning summary → the think-box (LUMI-154)."""
+        return "\n".join(
+            p.get("text", "") for p in parts
+            if isinstance(p, dict) and p.get("thought") and p.get("text")
+        ).strip()
+
     def _capture(self, resp: dict, model: str, latency_ms: int) -> None:
         usage = (resp.get("usageMetadata") if isinstance(resp, dict) else None) or {}
         self.last_stats = ResponseStats(
@@ -1599,9 +1630,9 @@ class GeminiClient:
             output_tokens=usage.get("candidatesTokenCount"),
             cache_read_tokens=usage.get("cachedContentTokenCount"),
             cache_write_tokens=None,
-            thinking=False,
+            thinking=self._thinking,
         )
-        self.last_thinking = None
+        self.last_thinking = self._thinking_from_parts(self._parts_of(resp)) or None
 
     def reply(
         self,
@@ -1669,10 +1700,13 @@ class GeminiClient:
         gtools = [{"functionDeclarations": self._to_gemini_tools(tools)}]
         sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
         contents = _gemini_contents(messages)
-        acc = {"input": 0, "output": 0, "cr": 0, "latency": 0}
+        acc: dict = {"input": 0, "output": 0, "cr": 0, "latency": 0, "think": []}
         self.last_round_log = []
         for step in range(max_steps + 1):
             gen: dict = {"maxOutputTokens": self._max_tokens}
+            tc = self._thinking_config()
+            if tc:  # LUMI-154 — surface the reasoning across the loop rounds too
+                gen["thinkingConfig"] = tc
             body: dict = {
                 "systemInstruction": {"parts": [{"text": sys_text}]},
                 "contents": contents, "generationConfig": gen, "safetySettings": _GEMINI_SAFETY,
@@ -1689,6 +1723,9 @@ class GeminiClient:
             self._accumulate(resp, acc, latency)
             rstats = self._round_stats(resp, model, latency)
             parts = self._parts_of(resp)
+            tk = self._thinking_from_parts(parts)  # LUMI-154 — collect each round's reasoning
+            if tk:
+                acc["think"].append(tk)
             calls = [p["functionCall"] for p in parts if isinstance(p, dict) and "functionCall" in p]
             if not calls:  # terminal — the answer round
                 self.last_round_log.append(("reply", rstats))
@@ -1729,7 +1766,8 @@ class GeminiClient:
         return ResponseStats(
             model=model, latency_ms=latency_ms,
             input_tokens=usage.get("promptTokenCount"), output_tokens=usage.get("candidatesTokenCount"),
-            cache_read_tokens=usage.get("cachedContentTokenCount"), cache_write_tokens=None, thinking=False,
+            cache_read_tokens=usage.get("cachedContentTokenCount"), cache_write_tokens=None,
+            thinking=self._thinking,
         )
 
     @staticmethod
@@ -1744,9 +1782,9 @@ class GeminiClient:
         self.last_stats = ResponseStats(
             model=model, latency_ms=acc["latency"],
             input_tokens=acc["input"], output_tokens=acc["output"],
-            cache_read_tokens=acc["cr"], cache_write_tokens=None, thinking=False,
+            cache_read_tokens=acc["cr"], cache_write_tokens=None, thinking=self._thinking,
         )
-        self.last_thinking = None
+        self.last_thinking = "\n".join(acc["think"]) or None  # LUMI-154 — accumulated reasoning → the box
 
     def _run(self, fn: Callable[[], _T]) -> _T:
         try:
@@ -1907,10 +1945,10 @@ def build_llm(cfg: Config) -> LLMClient:
     never learns which backend it got — it depends only on the :class:`LLMClient` seam.
     """
     provider = (cfg.provider or "anthropic").strip().lower()
-    if provider != "anthropic" and cfg.thinking:
-        # Extended thinking (and prompt caching, task budgets) are Anthropic-only; on other providers it
-        # is ignored, not an error — the turn still completes (the v0.3 gate is uniform).
-        _log.debug("extended thinking is Anthropic-only — ignored for provider %r", provider)
+    if provider not in ("anthropic", "gemini") and cfg.thinking:
+        # Extended thinking is Anthropic-native; Gemini honours it too (v0.39 → includeThoughts). On the
+        # rest it is ignored, not an error — the turn still completes (the v0.3 gate is uniform).
+        _log.debug("extended thinking is Anthropic/Gemini-only — ignored for provider %r", provider)
     if provider == "minimax" and cfg.effort:
         # reasoning_effort is honored on Anthropic + the OpenAI-compatible adapter (v0.37), not MiniMax.
         _log.debug("effort is Anthropic-only — ignored for provider %r", provider)
@@ -1943,7 +1981,9 @@ def build_llm(cfg: Config) -> LLMClient:
     if provider == "gemini":  # v0.39 — Google Gemini behind the same seam (key shared with image/web gen)
         if not cfg.gemini_api_key:
             raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
-        return GeminiClient(cfg.gemini_api_key, max_tokens=cfg.max_tokens, effort=cfg.effort)
+        return GeminiClient(
+            cfg.gemini_api_key, max_tokens=cfg.max_tokens, effort=cfg.effort, thinking=cfg.thinking,
+        )
     raise LLMError(
         f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "
         f"{', '.join(KNOWN_PROVIDERS)}."
