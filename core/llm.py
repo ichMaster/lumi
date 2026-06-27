@@ -1573,13 +1573,22 @@ class GeminiClient:
         return resp
 
     @staticmethod
-    def _text_of(resp: dict) -> str:
-        """The first candidate's joined text, or ``""`` for a blocked/empty candidate (graceful degrade)."""
+    def _parts_of(resp: dict) -> list:
+        """The first candidate's content parts (``[]`` for a blocked/empty candidate)."""
         cands = (resp.get("candidates") if isinstance(resp, dict) else None) or []
-        if not cands:
-            return ""
-        parts = (cands[0].get("content") or {}).get("parts") or []
-        return " ".join(p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")).strip()
+        return ((cands[0].get("content") or {}).get("parts") or []) if cands else []
+
+    @staticmethod
+    def _text_from_parts(parts: list) -> str:
+        """Join the visible (non-``thought``) text parts — the answer (thinking is handled in LUMI-154)."""
+        return " ".join(
+            p.get("text", "") for p in parts
+            if isinstance(p, dict) and p.get("text") and not p.get("thought")
+        ).strip()
+
+    def _text_of(self, resp: dict) -> str:
+        """The answer text, or ``""`` for a blocked/empty candidate (graceful degrade)."""
+        return self._text_from_parts(self._parts_of(resp))
 
     def _capture(self, resp: dict, model: str, latency_ms: int) -> None:
         usage = (resp.get("usageMetadata") if isinstance(resp, dict) else None) or {}
@@ -1605,7 +1614,8 @@ class GeminiClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> str:
-        # LUMI-152 base — a single tool-less call (the think-path tool-loop lands in LUMI-153).
+        if tools and tool_executor is not None:  # v0.39 LUMI-153 think-path tool-loop (text terminal)
+            return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=False)
         return self._text_of(self._create(system, messages, model, structured=False))
 
     def reply_structured(
@@ -1619,11 +1629,124 @@ class GeminiClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
-        # LUMI-152 base — a single structured call (the function-calling tool-loop lands in LUMI-153).
+        if tools and tool_executor is not None:  # v0.39 LUMI-153 function-calling loop
+            return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=True)
         text = self._text_of(self._create(system, messages, model, structured=True))
         if not text:  # blocked/empty candidate → a graceful calm placeholder (the gate needs a reply)
             return dict(_GEMINI_BLOCKED_STATE)
         return parse_emotion_json(text)
+
+    # --- v0.39 LUMI-153 Gemini function-calling tool-loop ---------------------------------------------
+    @staticmethod
+    def _to_gemini_tools(tools: list[dict]) -> list[dict]:
+        """Lumi tools (Anthropic-shaped) → Gemini ``functionDeclarations`` (name/description/parameters)."""
+        return [
+            {"name": t["name"], "description": t.get("description", ""),
+             "parameters": t.get("input_schema", {"type": "object", "properties": {}})}
+            for t in tools
+        ]
+
+    @staticmethod
+    def _framed_response(raw: object) -> dict:
+        """A ``functionResponse.response`` object framing the result (untrusted / recollection / image-ack)."""
+        if is_image_block(raw):
+            return {"result": _UNTRUSTED_PREFIX + "(image returned; shown next turn)"}
+        if is_trusted_text(raw):  # v0.31 recall: her own recollection, not untrusted data
+            return {"result": _RECOLLECTION_PREFIX + str(raw.get("text", ""))}
+        return {"result": _UNTRUSTED_PREFIX + str(raw)}
+
+    def _run_create(self, model: str, body: dict) -> dict:
+        """One retried ``generateContent`` (body passed as an arg so the loop var isn't captured)."""
+        return self._run(lambda: self._post(model, body))
+
+    def _loop(
+        self, system: str, messages: list[Message], model: str,
+        tools: list[dict], tool_executor: Callable[[str, dict], str | dict], max_steps: int, *, structured: bool,
+    ) -> object:
+        """Bounded Gemini function-calling loop. Intermediate rounds offer tools and **no** ``responseSchema``
+        (the schema-vs-tools split); the forced final round drops tools (and, structured, sets the schema).
+        Terminal = a response with **no** ``functionCall`` part → parse the text (JSON for structured)."""
+        gtools = [{"functionDeclarations": self._to_gemini_tools(tools)}]
+        sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
+        contents = _gemini_contents(messages)
+        acc = {"input": 0, "output": 0, "cr": 0, "latency": 0}
+        self.last_round_log = []
+        for step in range(max_steps + 1):
+            gen: dict = {"maxOutputTokens": self._max_tokens}
+            body: dict = {
+                "systemInstruction": {"parts": [{"text": sys_text}]},
+                "contents": contents, "generationConfig": gen, "safetySettings": _GEMINI_SAFETY,
+            }
+            if step >= max_steps:  # final round → force an answer (no tools); JSON schema for structured
+                if structured:
+                    gen["responseMimeType"] = "application/json"
+                    gen["responseSchema"] = _GEMINI_EMOTION_SCHEMA
+            else:  # intermediate → offer tools, NO responseSchema (the schema-vs-tools split)
+                body["tools"] = gtools
+            started = time.monotonic()
+            resp = self._run_create(model, body)
+            latency = int((time.monotonic() - started) * 1000)
+            self._accumulate(resp, acc, latency)
+            rstats = self._round_stats(resp, model, latency)
+            parts = self._parts_of(resp)
+            calls = [p["functionCall"] for p in parts if isinstance(p, dict) and "functionCall" in p]
+            if not calls:  # terminal — the answer round
+                self.last_round_log.append(("reply", rstats))
+                self._finalize(acc, model)
+                text = self._text_from_parts(parts)
+                if not structured:
+                    return text
+                return parse_emotion_json(text) if text else dict(_GEMINI_BLOCKED_STATE)
+            self.last_round_log.append(("tool", rstats))
+            self._run_tool_round(contents, parts, calls, tool_executor)
+        self._finalize(acc, model)
+        return dict(_GEMINI_BLOCKED_STATE) if structured else ""
+
+    def _run_tool_round(
+        self, contents: list, parts: list, calls: list, tool_executor: Callable[[str, dict], str | dict]
+    ) -> None:
+        """Append the model's ``functionCall`` turn, run each (parallel) call, and feed the results back as
+        ``functionResponse`` parts (an image result also rides an ``inlineData`` part in the same user turn)."""
+        contents.append({"role": "model",
+                         "parts": [p for p in parts if isinstance(p, dict) and "functionCall" in p]})
+        out_parts: list = []
+        images: list = []
+        for call in calls:
+            name = call.get("name", "")
+            args = call.get("args") or {}
+            if not isinstance(args, dict):
+                args = {}
+            raw = tool_executor(name, args)
+            out_parts.append({"functionResponse": {"name": name, "response": self._framed_response(raw)}})
+            if is_image_block(raw):
+                images.append(raw)
+        for img in images:  # Gemini takes images inline in a user turn (not inside a functionResponse)
+            out_parts.append(_gemini_part(img))
+        contents.append({"role": "user", "parts": out_parts})
+
+    def _round_stats(self, resp: dict, model: str, latency_ms: int) -> ResponseStats:
+        usage = (resp.get("usageMetadata") if isinstance(resp, dict) else None) or {}
+        return ResponseStats(
+            model=model, latency_ms=latency_ms,
+            input_tokens=usage.get("promptTokenCount"), output_tokens=usage.get("candidatesTokenCount"),
+            cache_read_tokens=usage.get("cachedContentTokenCount"), cache_write_tokens=None, thinking=False,
+        )
+
+    @staticmethod
+    def _accumulate(resp: dict, acc: dict, latency_ms: int) -> None:
+        usage = (resp.get("usageMetadata") if isinstance(resp, dict) else None) or {}
+        acc["input"] += usage.get("promptTokenCount") or 0
+        acc["output"] += usage.get("candidatesTokenCount") or 0
+        acc["cr"] += usage.get("cachedContentTokenCount") or 0
+        acc["latency"] += latency_ms
+
+    def _finalize(self, acc: dict, model: str) -> None:
+        self.last_stats = ResponseStats(
+            model=model, latency_ms=acc["latency"],
+            input_tokens=acc["input"], output_tokens=acc["output"],
+            cache_read_tokens=acc["cr"], cache_write_tokens=None, thinking=False,
+        )
+        self.last_thinking = None
 
     def _run(self, fn: Callable[[], _T]) -> _T:
         try:
