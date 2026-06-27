@@ -45,6 +45,21 @@ def test_generate_default_filename_is_a_slug(tmp_path):
     assert "art/cat-in-glasses.png" in out and (tmp_path / "art" / "cat-in-glasses.png").is_file()
 
 
+def test_filename_with_art_prefix_is_not_doubled(tmp_path):
+    # The model often passes "art/foo.png" itself — it must land in art/, not art/art/.
+    maker = ImageMaker(tmp_path, image_gen=_stub(b"PNG"))
+    out = maker.execute("generate_image", {"prompt": "x", "filename": "art/mood.png"})
+    assert out.startswith("created art/mood.png")
+    assert (tmp_path / "art" / "mood.png").is_file()
+    assert not (tmp_path / "art" / "art").exists()  # no double-nested folder
+
+
+def test_filename_with_leading_slash_normalized(tmp_path):
+    maker = ImageMaker(tmp_path, image_gen=_stub(b"PNG"))
+    out = maker.execute("generate_image", {"prompt": "x", "filename": "/art/sky.png"})
+    assert out.startswith("created art/sky.png") and (tmp_path / "art" / "sky.png").is_file()
+
+
 def test_generate_refuses_existing_no_overwrite(tmp_path):
     (tmp_path / "art").mkdir()
     (tmp_path / "art" / "cat.png").write_bytes(b"ORIGINAL")

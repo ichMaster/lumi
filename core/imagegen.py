@@ -41,7 +41,7 @@ GENERATE_TOOLS: list[dict] = [
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "Опис того, що намалювати (англійською або українською)."},
-                "filename": {"type": "string", "description": "Необовʼязкова назва файлу (.png) у теці art/."},
+                "filename": {"type": "string", "description": "Необовʼязкова назва файлу — лише імʼя (напр. mood.png); теку art/ додано автоматично, не дублюй префікс."},
             },
             "required": ["prompt"],
         },
@@ -139,7 +139,10 @@ class ImageMaker:
         filename = name.strip() if isinstance(name, str) and name.strip() else f"{_slug(prompt)}.png"
         if not filename.lower().endswith(".png"):
             filename += ".png"
-        rel = f"{self._subdir}/{filename}"
+        # The model often includes the "art/" prefix itself (it's told the file lands in art/) — don't
+        # double it into art/art/…; otherwise prepend the subdir to a bare name.
+        filename = filename.lstrip("/")
+        rel = filename if filename.startswith(f"{self._subdir}/") else f"{self._subdir}/{filename}"
         f = safe_path(self._root, rel)  # rejects ../absolute/symlink before any write
         if f.exists():
             return f"error: file already exists (no overwrite): {rel!r}"
