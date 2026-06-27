@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 0.38.0 (2026-06-27)
+---------------------------
+v0.38 — Inner Voice: the authored three-voice think-phase instruction. Лілі's pre-reply reasoning moves from a hardcoded directive into an editable file authored as her three-voice negotiation (Імпульс / Тверезість / Стандарт), weighing mood + closeness. No new engine (reuses the v0.37 think infra), no contract change, off → byte-identical:
+- LUMI-149 — Inner Voice: authored core/inner_voice.md + loader + LUMI_INNER_VOICE. load_inner_voice reads the editable three-voice instruction (graceful fallback to REASONING_DIRECTIVE on missing/empty); Core takes a reasoning_directive used in the system prompt; build_core loads the file when on. Provider-agnostic (shapes reasoning on Opus + gpt-5.5).
+- LUMI-150 — LUMI_THINK_SHOW: think-show modes (debug/open/off) + a think-log tier. The monologue is logged to a lumi.think tier when not off, but never persisted to long-term memory; the TUI hides the box when off.
+- Voice refinements: sharpened the anti-smoothing in inner_voice.md (don't varnish real friction; Тверезість names the "smoothing to please" failure) + an inner_voice_trace.md debug variant that labels the three voices in <think>.
+No contract change ({reply, emotion, intensity} + memory shapes intact); no paid calls in tests; full suite green.
+
 Version 0.37.0 (2026-06-24)
 ---------------------------
 v0.37 — OpenAI engine: tool-loop + runtime model toggle (GPT-5.5 ↔ Opus 4.8). A non-Anthropic frontier model becomes a real Opus alternative — tools, tunable reasoning, a runtime engine swap, and a visible think-box — with the Anthropic path untouched (off → byte-identical):

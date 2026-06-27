@@ -12,7 +12,16 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.37 — OpenAI engine: tool-loop + runtime model toggle (GPT-5.5 ↔ Opus 4.8).** A non-Anthropic frontier
+**0.38 — Inner Voice: the authored three-voice think-phase instruction.** Лілі's pre-reply reasoning moves
+from a hardcoded directive into an **editable `core/inner_voice.md`** authored as her **three-voice
+negotiation** (Імпульс / Тверезість / Стандарт) weighing **mood** (v0.6/0.8) + **closeness** (v0.10) —
+**no new engine** (reuses the v0.37 think infra), **no contract change**, off → byte-identical. A
+**`LUMI_INNER_VOICE`** toggle swaps it for the generic directive; **`LUMI_THINK_SHOW`** (debug/open/off)
+controls the think-box, and the monologue is **logged but never persisted** to long-term memory.
+Provider-agnostic — it shapes reasoning on Opus *and* gpt-5.5. See
+**[specification/features/INNER_VOICE.md](specification/features/INNER_VOICE.md)**.
+
+Builds on **0.37 — OpenAI engine: tool-loop + runtime model toggle (GPT-5.5 ↔ Opus 4.8).** A non-Anthropic frontier
 model becomes a real Opus alternative — the bounded **tool-loop** is ported to **OpenAI function calling** (so
 the file / wiki / news / web / journal / image tools and the `%`-thought-tools work on **GPT-5.5 /
 DeepSeek-V4-Pro**), **`LUMI_EFFORT`** is passed through as `reasoning_effort`, and a **`/model`** TUI command
