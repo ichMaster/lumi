@@ -80,6 +80,16 @@ def test_intermediate_round_offers_tools_no_schema():
     assert "responseSchema" not in first["generationConfig"]  # the schema-vs-tools split
 
 
+def test_tool_round_uses_tool_aware_instruction_not_only_json():
+    # The bug fix: a strong "Return ONLY a single JSON object" on tool rounds makes Gemini encode the tool
+    # call as JSON instead of a native functionCall. Tool rounds must use the tool-aware variant.
+    c, t = _client(_Queue([_resp([_fcall("read_file", {})]), _resp([{"text": _STATE_JSON}])]))
+    c.reply_structured("s", [{"role": "user", "content": "hi"}], "m",
+                       tools=_TOOLS, tool_executor=lambda n, i: "x")
+    instr = t.bodies[0]["systemInstruction"]["parts"][0]["text"]
+    assert "functionCall" in instr and "ONLY a single JSON object" not in instr
+
+
 def test_function_response_framed_untrusted():
     c, t = _client(_Queue([_resp([_fcall("read_file", {})]), _resp([{"text": _STATE_JSON}])]))
     c.reply_structured("s", [{"role": "user", "content": "hi"}], "m",
@@ -117,6 +127,7 @@ def test_force_finish_drops_tools_sets_schema():
     assert validate(out).reply == "кінець" and len(t.bodies) == 3  # rounds 0,1 (tools) + 2 (forced)
     final = t.bodies[-1]
     assert "tools" not in final and final["generationConfig"]["responseSchema"]["required"]
+    assert "ONLY a single JSON object" in final["systemInstruction"]["parts"][0]["text"]  # strong on final
 
 
 def test_parallel_function_calls_all_execute():

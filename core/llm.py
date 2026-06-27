@@ -159,6 +159,17 @@ _GEMINI_BLOCKED_STATE = {"reply": "…", "emotion": "calm", "intensity": 0.3}
 # when effort is unset (the model's default budget). ``includeThoughts`` surfaces the reasoning → the box.
 _GEMINI_THINKING_BUDGET = {"low": 1024, "medium": 4096, "high": 8192, "xhigh": 16384, "max": -1}
 
+# v0.39 LUMI-153 fix: the strong "return ONLY a single JSON object" instruction makes Gemini encode a tool
+# call AS JSON text instead of a NATIVE functionCall (it never fires the tool). On tool rounds use this
+# variant, which separates the two clearly; the forced final round still uses the strong one + responseSchema.
+_GEMINI_TOOL_JSON_INSTRUCTION = (
+    "\n\nWhen you need a tool, issue a NATIVE function call (a functionCall) — do NOT write the tool call as "
+    "JSON text. Only when giving your FINAL reply to the user (and not calling any tool), output it as a "
+    'single JSON object with exactly: "reply" (string — Лілі\'s words only), "emotion" (one of: '
+    + ", ".join(e.value for e in Emotion) + '), "intensity" (number 0..1). '
+    "A function call and the final JSON reply are different things — never put the JSON inside a tool call."
+)
+
 
 def _gemini_part(block: object) -> dict:
     """A message content block → a Gemini ``part`` (image → ``inlineData``, else ``text``)."""
@@ -1698,11 +1709,18 @@ class GeminiClient:
         (the schema-vs-tools split); the forced final round drops tools (and, structured, sets the schema).
         Terminal = a response with **no** ``functionCall`` part → parse the text (JSON for structured)."""
         gtools = [{"functionDeclarations": self._to_gemini_tools(tools)}]
-        sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
         contents = _gemini_contents(messages)
         acc: dict = {"input": 0, "output": 0, "cr": 0, "latency": 0, "think": []}
         self.last_round_log = []
         for step in range(max_steps + 1):
+            final = step >= max_steps
+            # Tool rounds use the tool-aware JSON instruction (the strong "ONLY JSON" makes Gemini encode the
+            # tool call as JSON instead of a native functionCall); the forced final round uses the strong
+            # instruction + responseSchema. The think path sends no JSON instruction.
+            if structured:
+                sys_text = system + (_JSON_STATE_INSTRUCTION if final else _GEMINI_TOOL_JSON_INSTRUCTION)
+            else:
+                sys_text = system
             gen: dict = {"maxOutputTokens": self._max_tokens}
             tc = self._thinking_config()
             if tc:  # LUMI-154 — surface the reasoning across the loop rounds too
@@ -1711,7 +1729,7 @@ class GeminiClient:
                 "systemInstruction": {"parts": [{"text": sys_text}]},
                 "contents": contents, "generationConfig": gen, "safetySettings": _GEMINI_SAFETY,
             }
-            if step >= max_steps:  # final round → force an answer (no tools); JSON schema for structured
+            if final:  # final round → force an answer (no tools); JSON schema for structured
                 if structured:
                     gen["responseMimeType"] = "application/json"
                     gen["responseSchema"] = _GEMINI_EMOTION_SCHEMA
