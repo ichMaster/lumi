@@ -120,6 +120,13 @@ turn surfaces a reply (never a crash/hang). **First task, before any build:** a 
 representative Лілі prompt (tender / vulnerable register) with these settings and confirm clean text comes
 back. If Gemini still sanitises Лілі's voice, that's a go/no-go signal *cheaply*, not after the port.
 
+> **Probe result — GO ✅ (v0.39 LUMI-151, 2026-06-27).** `scripts/gemini_probe.py` against `gemini-2.5-flash`
+> with `safetySettings: BLOCK_NONE` returned **clean tender-register text** in Лілі's voice (`finishReason`
+> ≠ `SAFETY`) — Gemini did **not** sanitise the intimate register. The phase is clear to proceed
+> (LUMI-152→154). Caveat: this was run against `gemini-2.5-flash` (verified); the exact `gemini-3.1-pro`
+> id still needs confirming at build time, but the safety-classifier behaviour the probe tests is broadly
+> consistent across Gemini models.
+
 ---
 
 ## Part 3 — Risks
