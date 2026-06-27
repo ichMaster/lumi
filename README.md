@@ -12,7 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.38 — Inner Voice: the authored three-voice think-phase instruction.** Лілі's pre-reply reasoning moves
+**0.39 — Gemini engine: Google Gemini as a switchable backend.** A **third frontier engine** behind the one
+`LLMClient` seam — chat + the structured emotion field + the **function-calling tool-loop** + **thinking →
+the think-box** — switchable via **`/model gemini`** ↔ `/model opus`. Reuses the repo's existing Gemini
+`urllib` caller + `GEMINI_API_KEY` (so the transport is install-free). Two risks were designed in up front
+(the gpt-5.5 lesson): a **safety probe** confirmed Лілі's intimate register survives Gemini's filters
+(`BLOCK_NONE`), and the **schema-vs-tools split** is baked into the loop. The verified model id is
+**`gemini-3.1-pro-preview`**. With `LUMI_THINKING=on` Gemini's reasoning summary fills the think-box — so
+the v0.38 three-voice torg shows. **No contract change**; the Anthropic path is untouched; off →
+byte-identical. See **[docs/GEMINI_ENGINE.md](docs/GEMINI_ENGINE.md)** + **[docs/MODELS_SETUP.md](docs/MODELS_SETUP.md)**.
+
+Builds on **0.38 — Inner Voice: the authored three-voice think-phase instruction.** Лілі's pre-reply reasoning moves
 from a hardcoded directive into an **editable `core/inner_voice.md`** authored as her **three-voice
 negotiation** (Імпульс / Тверезість / Стандарт) weighing **mood** (v0.6/0.8) + **closeness** (v0.10) —
 **no new engine** (reuses the v0.37 think infra), **no contract change**, off → byte-identical. A

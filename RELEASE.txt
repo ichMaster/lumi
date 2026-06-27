@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 0.39.0 (2026-06-27)
+---------------------------
+v0.39 — Gemini engine: Google Gemini as a switchable backend. A third frontier engine behind the LLMClient seam — chat + the structured emotion field + the function-calling tool-loop + thinking → the think-box — switchable via /model like Opus 4.8 <-> GPT-5.5. Reuses the repo's existing Gemini urllib caller + GEMINI_API_KEY. Anthropic path untouched; off -> byte-identical:
+- LUMI-151 — Gemini safety probe (go/no-go): scripts/gemini_probe.py confirmed Лілі's intimate register survives Gemini's filters (BLOCK_NONE) and resolved the model id (gemini-3.1-pro 404s; the real id is gemini-3.1-pro-preview).
+- LUMI-152 — GeminiClient: chat + structured {reply, emotion, intensity} via responseSchema (v0.3 gate); safetySettings + graceful block-degrade; build_llm/KNOWN_PROVIDERS + a /model alias; Config.gemini_api_key (shared with image/web gen).
+- LUMI-153 — Gemini tool-loop: the function-calling port (functionCall/functionResponse, the schema-vs-tools split, untrusted/recollection framing, image divergence via inlineData, parallel calls).
+- LUMI-154 — Gemini thinking -> the think-box: thinkingConfig/includeThoughts -> last_thinking (the v0.38 inner-voice seam, so the three-voice torg shows); LUMI_EFFORT -> a thinking budget.
+- Fix: tool rounds no longer send the strong "return ONLY JSON" instruction (Gemini was encoding tool calls as JSON instead of native functionCalls, so tools never fired).
+No contract change ({reply, emotion, intensity} + memory shapes intact); Gemini joins the cross-provider contract + parity tests; no paid calls in CI; full suite green.
+
 Version 0.38.0 (2026-06-27)
 ---------------------------
 v0.38 — Inner Voice: the authored three-voice think-phase instruction. Лілі's pre-reply reasoning moves from a hardcoded directive into an editable file authored as her three-voice negotiation (Імпульс / Тверезість / Стандарт), weighing mood + closeness. No new engine (reuses the v0.37 think infra), no contract change, off → byte-identical:
