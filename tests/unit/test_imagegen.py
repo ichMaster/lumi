@@ -1,7 +1,18 @@
 """v0.23 LUMI-095 — the ImageGen seam + generate_image tool (core/imagegen.py). No network."""
 from __future__ import annotations
 
-from core.imagegen import GENERATE_TOOL_NAMES, GENERATE_TOOLS, ImageGenError, ImageMaker, _slug
+import base64
+import json
+import urllib.request
+
+from core.imagegen import (
+    GENERATE_TOOL_NAMES,
+    GENERATE_TOOLS,
+    ImageGenError,
+    ImageMaker,
+    _slug,
+    gemini_image_gen,
+)
 
 
 def _stub(data=b"\x89PNG-fake"):
@@ -90,6 +101,36 @@ def test_generate_error_degrades(tmp_path):
 def test_executor_never_raises(tmp_path):
     maker = ImageMaker(tmp_path, image_gen=_stub())
     assert maker.execute("bogus", {"prompt": "x"}).startswith("error: unknown image tool")
+
+
+def test_gemini_image_gen_forces_image_only_modality(monkeypatch):
+    # Pins the fix: the request must ask for IMAGE only (["TEXT","IMAGE"] lets the model reply with
+    # prose and no image). Monkeypatches urllib — no paid call.
+    captured: dict = {}
+
+    class _Resp:
+        def __init__(self, data: bytes) -> None:
+            self._d = data
+
+        def read(self) -> bytes:
+            return self._d
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a) -> bool:
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data)
+        png = base64.b64encode(b"PNGDATA").decode()
+        return _Resp(json.dumps({"candidates": [{"content": {"parts": [{"inlineData": {"data": png}}]}}]}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    out = gemini_image_gen()("a serene cat")
+    assert out == b"PNGDATA"
+    assert captured["body"]["generationConfig"]["responseModalities"] == ["IMAGE"]
 
 
 def test_slug_helper():

@@ -86,7 +86,9 @@ def gemini_image_gen(*, model: str = "gemini-2.5-flash-image", key: str | None =
             raise ImageGenError("GEMINI_API_KEY is not set — image generation needs a Gemini key.")
         body = json.dumps({
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+            # IMAGE-only — with ["TEXT","IMAGE"] the model may reply with prose and no image (e.g. "That's
+            # a beautiful…"), which then fails _extract_image. Forcing IMAGE makes generation reliable.
+            "generationConfig": {"responseModalities": ["IMAGE"]},
         }).encode()
         req = urllib.request.Request(
             endpoint, data=body, method="POST",
