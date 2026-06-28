@@ -63,10 +63,29 @@ class ImageTools:
         media_type = media_type_for(rel) if isinstance(rel, str) else None
         if media_type is None:
             return f"error: not an image (png/jpg/gif/webp): {rel!r}"
-        f = safe_path(self._root, rel)  # rejects ../absolute/symlink-out before any I/O
-        if not f.is_file():
+        f = self._resolve(rel)
+        if f is None:
             return f"error: image not found: {rel!r}"
         size = f.stat().st_size
         if size > self._max_bytes:
             return f"error: image too large: {size} bytes > {self._max_bytes} cap"
         return image_block(f, media_type=media_type)  # the neutral image block (dict) → an image tool_result
+
+    def _resolve(self, rel: str) -> Path | None:
+        """Resolve an image path within the sandbox. Tries the path as-given; for a **bare name** (no
+        folder) also looks in ``art/`` (where ``generate_image`` saves) and then **anywhere** in the
+        sandbox — so ``view_image("foo.png")`` finds ``art/foo.png``. ``safe_path`` guards traversal; an
+        explicit folder path that doesn't exist is **not** guessed. Returns the file or ``None``."""
+        f = safe_path(self._root, rel)  # rejects ../absolute/symlink-out before any I/O
+        if f.is_file():
+            return f
+        if "/" in rel or "\\" in rel:  # an explicit path that's missing — don't guess elsewhere
+            return None
+        art = safe_path(self._root, f"art/{rel}")  # the generate_image convention
+        if art.is_file():
+            return art
+        matches = sorted(  # last resort: the same basename anywhere in the sandbox (shallowest first)
+            (p for p in self._root.rglob("*") if p.is_file() and p.name == rel),
+            key=lambda p: (len(p.parts), str(p)),
+        )
+        return matches[0] if matches else None
