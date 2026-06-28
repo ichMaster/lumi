@@ -232,7 +232,8 @@ without a GPU. Good for testing the plumbing offline; not for the real relations
 
 ```ini
 LUMI_PROVIDER=gemini
-LUMI_MODEL=gemini-3.1-pro-preview   # the verified id — gemini-3.1-pro 404s
+LUMI_MODEL=gemini-2.5-pro            # recommended: stable, a thinking model, a large daily quota
+# LUMI_MODEL=gemini-3.1-pro-preview # newest, but a tight 250 req/day cap on Tier 1 (preview; gemini-3.1-pro 404s)
 GEMINI_API_KEY=...                  # already present
 ```
 
@@ -256,6 +257,27 @@ placeholder (never a crash).
 no Anthropic-style prompt-cache discount (Gemini has its own context caching, different economics); and as
 with any non-Claude engine, Ukrainian fluency and canon depth shift from the Opus-tuned baseline. Note the
 `-preview` model id may change as Google promotes it — verify with `ListModels` if a turn 404s.
+
+**Known quirks (and the nets in place).** Gemini — especially the **2.5 family** — leans into an *agentic
+text* format that needs guarding. The app handles the common cases; **`/model opus` is the clean escape** if a
+new shape surfaces (Opus 4.8 does none of these):
+
+- **Rate limit (HTTP 429) → "unavailable" line.** Preview ids (`gemini-3.1-pro-preview`) carry a tight
+  **250 requests/day** on Tier 1; a heavy session (tool-loop turns + image gen + scheduled `%`-thoughts)
+  exhausts it. Fixes: use a **stable** id (`gemini-2.5-pro` / `gemini-2.5-flash` — far larger RPD), **lower
+  `LUMI_TOOL_MAX_STEPS`** (on Gemini *each tool round is a separate request*, so a high cap burns the daily
+  budget fast), or wait — **RPD resets at midnight Pacific** (≈10:00 Kyiv). Raise the ceiling by upgrading the
+  Gemini API tier (link a billing account to the Cloud project behind the key; see the AI Studio rate-limit
+  page).
+- **Empty reply (only the emoji).** Gemini counts *thinking* tokens against `maxOutputTokens`, so a deep think
+  at `LUMI_EFFORT=high` can consume the whole budget and leave no answer (`finishReason: MAX_TOKENS` → the
+  gate fills `calm`). The client now reserves the answer budget **on top of** the thinking budget, so this is
+  handled — if it ever recurs, lower `LUMI_EFFORT` or raise `LUMI_MAX_TOKENS`.
+- **Leaked `tool_code` / `api_response`.** The 2.5 models sometimes write a tool call as a
+  `` ```tool_code `` / `<tool_code>` block — and even hallucinate an `<api_response>` — instead of a native
+  function call. The client **salvages** offered-tool code calls into real calls and **strips** any leftover
+  simulation from the visible reply, so neither leaks to the user; but the format is unstable, so `/model
+  opus` is the reliable fallback if it keeps appearing.
 
 ---
 
