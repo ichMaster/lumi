@@ -158,6 +158,11 @@ _GEMINI_BLOCKED_STATE = {"reply": "…", "emotion": "calm", "intensity": 0.3}
 # v0.39 LUMI-154: Lumi effort tiers → a Gemini ``thinkingBudget`` (tokens; -1 = dynamic/unbounded). Omitted
 # when effort is unset (the model's default budget). ``includeThoughts`` surfaces the reasoning → the box.
 _GEMINI_THINKING_BUDGET = {"low": 1024, "medium": 4096, "high": 8192, "xhigh": 16384, "max": -1}
+# Gemini counts thinking tokens toward ``maxOutputTokens`` — so a deep think can consume the whole budget
+# and leave no room for the answer (empty candidate, finishReason MAX_TOKENS). We reserve ``max_tokens`` for
+# the reply *on top of* the thinking budget; for a dynamic/unset budget (-1 or no effort) we add this default
+# headroom so the answer is never starved.
+_GEMINI_THINKING_HEADROOM = 8192
 
 # v0.39 LUMI-153 fix: the strong "return ONLY a single JSON object" instruction makes Gemini encode a tool
 # call AS JSON text instead of a NATIVE functionCall (it never fires the tool). On tool rounds use this
@@ -1581,11 +1586,17 @@ class GeminiClient:
         return cfg
 
     def _generation_config(self, *, structured: bool) -> dict:
-        cfg: dict = {"maxOutputTokens": self._max_tokens}
+        tc = self._thinking_config()
+        # Reserve max_tokens for the ANSWER on top of the thinking budget — Gemini counts thinking against
+        # maxOutputTokens, so without this a deep think starves the reply to empty (see _GEMINI_THINKING_HEADROOM).
+        out = self._max_tokens
+        if tc is not None:
+            budget = tc.get("thinkingBudget")
+            out += budget if isinstance(budget, int) and budget > 0 else _GEMINI_THINKING_HEADROOM
+        cfg: dict = {"maxOutputTokens": out}
         if structured:
             cfg["responseMimeType"] = "application/json"
             cfg["responseSchema"] = _GEMINI_EMOTION_SCHEMA
-        tc = self._thinking_config()
         if tc:
             cfg["thinkingConfig"] = tc
         return cfg

@@ -68,6 +68,29 @@ def test_effort_unset_omits_budget_but_keeps_include_thoughts():
     assert tc["includeThoughts"] is True and "thinkingBudget" not in tc
 
 
+def test_maxoutputtokens_reserves_answer_room_on_top_of_thinking():
+    # Gemini counts thinking toward maxOutputTokens — the answer budget must sit ON TOP of the budget,
+    # else a deep think starves the reply to empty (the bug: thinkingBudget==maxOutputTokens → no answer).
+    c, t = _client(_Queue([_resp([{"text": _STATE_JSON}])]), thinking=True, effort="high", max_tokens=8192)
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m")
+    gc = t.bodies[0]["generationConfig"]
+    assert gc["thinkingConfig"]["thinkingBudget"] == 8192
+    assert gc["maxOutputTokens"] == 8192 + 8192  # answer room + thinking budget
+
+
+def test_maxoutputtokens_unchanged_without_thinking():
+    c, t = _client(_Queue([_resp([{"text": _STATE_JSON}])]), thinking=False, max_tokens=8192)
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m")
+    assert t.bodies[0]["generationConfig"]["maxOutputTokens"] == 8192
+
+
+def test_maxoutputtokens_adds_headroom_for_dynamic_budget():
+    # effort="max" → budget -1 (dynamic): reserve a default headroom so the answer is never starved.
+    c, t = _client(_Queue([_resp([{"text": _STATE_JSON}])]), thinking=True, effort="max", max_tokens=4096)
+    c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m")
+    assert t.bodies[0]["generationConfig"]["maxOutputTokens"] == 4096 + 8192  # max_tokens + headroom
+
+
 # --- across the tool-loop --------------------------------------------------------------------------
 def test_thinking_accumulates_across_loop_rounds():
     c, t = _client(_Queue([
