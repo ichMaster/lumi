@@ -11,6 +11,7 @@ v0.1 ``reply(...)`` returns plain text; v0.3 will return a validated
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import re
@@ -169,11 +170,61 @@ _GEMINI_THINKING_HEADROOM = 8192
 # variant, which separates the two clearly; the forced final round still uses the strong one + responseSchema.
 _GEMINI_TOOL_JSON_INSTRUCTION = (
     "\n\nWhen you need a tool, issue a NATIVE function call (a functionCall) — do NOT write the tool call as "
-    "JSON text. Only when giving your FINAL reply to the user (and not calling any tool), output it as a "
-    'single JSON object with exactly: "reply" (string — Лілі\'s words only), "emotion" (one of: '
+    "JSON text, Python code, or a ```tool_code```/<tool_code> block. Only when giving your FINAL reply to the "
+    'user (and not calling any tool), output it as a single JSON object with exactly: "reply" (string — '
+    "Лілі's words only), \"emotion\" (one of: "
     + ", ".join(e.value for e in Emotion) + '), "intensity" (number 0..1). '
     "A function call and the final JSON reply are different things — never put the JSON inside a tool call."
 )
+
+# Gemini-2.5 sometimes emits a code-style tool call (```tool_code\nprint(recall(query="…"))``` or
+# <tool_code>…</tool_code>) instead of a native functionCall — the loop would leak it to the user as text.
+# These salvage such a block into a native {name, args} call. Best-effort, never raises.
+_TOOL_CODE_FENCE = re.compile(r"```(?:tool_code|tool|python|py)?\s*\n?(.*?)```", re.DOTALL | re.IGNORECASE)
+_TOOL_CODE_TAG = re.compile(r"<tool_code>(.*?)</tool_code>", re.DOTALL | re.IGNORECASE)
+_BARE_CALL = re.compile(r"^\s*(?:print\s*\()?\s*[A-Za-z_]\w*\s*\(", re.DOTALL)
+
+
+def _calls_from_code(code: str, tool_names: frozenset[str] | set[str]) -> list[dict]:
+    """Parse ``name(key=val, …)`` (optionally wrapped in ``print(...)``) statements from a code snippet into
+    ``{name, args}`` calls, keeping only those whose name is an offered tool. Literal args only (ast)."""
+    try:
+        tree = ast.parse(code.strip())
+    except (SyntaxError, ValueError):
+        return []
+    found: list[dict] = []
+    for stmt in tree.body:
+        call = stmt.value if isinstance(stmt, ast.Expr) else None
+        if not isinstance(call, ast.Call):
+            continue
+        if (isinstance(call.func, ast.Name) and call.func.id == "print"
+                and len(call.args) == 1 and isinstance(call.args[0], ast.Call)):
+            call = call.args[0]  # unwrap print(<call>)
+        if not isinstance(call.func, ast.Name) or call.func.id not in tool_names:
+            continue
+        args: dict = {}
+        for kw in call.keywords:
+            if kw.arg is None:
+                continue
+            try:
+                args[kw.arg] = ast.literal_eval(kw.value)
+            except (ValueError, SyntaxError):
+                continue
+        found.append({"name": call.func.id, "args": args})
+    return found
+
+
+def _parse_tool_code(text: str, tool_names: frozenset[str] | set[str]) -> list[dict]:
+    """Salvage code-style tool calls Gemini emits as text. Returns [] when nothing matches an offered tool."""
+    if not text or not tool_names:
+        return []
+    snippets = _TOOL_CODE_FENCE.findall(text) + _TOOL_CODE_TAG.findall(text)
+    if not snippets and _BARE_CALL.match(text.strip()):
+        snippets = [text.strip()]  # the whole reply is the bare call (no fence)
+    out: list[dict] = []
+    for snip in snippets:
+        out.extend(_calls_from_code(snip, tool_names))
+    return out
 
 
 def _gemini_part(block: object) -> dict:
@@ -1756,10 +1807,18 @@ class GeminiClient:
             if tk:
                 acc["think"].append(tk)
             calls = [p["functionCall"] for p in parts if isinstance(p, dict) and "functionCall" in p]
-            if not calls:  # terminal — the answer round
+            if not calls:
+                text = self._text_from_parts(parts)
+                # Gemini-2.5 sometimes writes the tool call as a ```tool_code```/<tool_code> block instead of a
+                # native functionCall — salvage and continue (not on the forced final round, which has no tools).
+                salvaged = [] if final else _parse_tool_code(text, {t["name"] for t in tools})
+                if salvaged:
+                    self.last_round_log.append(("tool", rstats))
+                    self._run_tool_round(contents, [{"functionCall": c} for c in salvaged], salvaged, tool_executor)
+                    continue
+                # terminal — the answer round
                 self.last_round_log.append(("reply", rstats))
                 self._finalize(acc, model)
-                text = self._text_from_parts(parts)
                 if not structured:
                     return text
                 return parse_emotion_json(text) if text else dict(_GEMINI_BLOCKED_STATE)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from core.emotion import validate
 from core.images import image_block
-from core.llm import GeminiClient, trusted_text
+from core.llm import GeminiClient, _parse_tool_code, trusted_text
 
 _TOOLS = [{"name": "read_file", "description": "read", "input_schema": {"type": "object"}}]
 _STATE_JSON = '{"reply":"ок","emotion":"joy","intensity":0.9}'
@@ -173,3 +173,51 @@ def test_text_tool_loop_returns_text():
                   tools=_TOOLS, tool_executor=lambda n, i: "x")
     assert out == "я подумала. ЕМОЦІЯ: calm"  # plain text, no JSON parse
     assert "responseSchema" not in t.bodies[-1]["generationConfig"]  # think path never forces JSON
+
+
+# --- code-style tool-call salvage (Gemini-2.5 ```tool_code``` instead of a native functionCall) ----
+def test_parse_tool_code_fence_with_print():
+    code = '```tool_code\nprint(recall(query="про що", after="2026-06-13", before="2026-06-20"))\n```'
+    assert _parse_tool_code(code, {"recall"}) == [
+        {"name": "recall", "args": {"query": "про що", "after": "2026-06-13", "before": "2026-06-20"}}]
+
+
+def test_parse_tool_code_angle_tags():
+    assert _parse_tool_code("<tool_code> recall(query=\"x\") </tool_code>", {"recall"}) == [
+        {"name": "recall", "args": {"query": "x"}}]
+
+
+def test_parse_tool_code_bare_call_no_fence():
+    assert _parse_tool_code('read_file(path="a.txt")', {"read_file"}) == [
+        {"name": "read_file", "args": {"path": "a.txt"}}]
+
+
+def test_parse_tool_code_ignores_unknown_function():
+    assert _parse_tool_code("```tool_code\nprint(foo(x=1))\n```", {"recall"}) == []
+
+
+def test_parse_tool_code_plain_prose_is_not_a_call():
+    assert _parse_tool_code("Звісно тут! Чекала на тебе.", {"recall"}) == []
+    assert _parse_tool_code("Hello (world), how are you?", {"recall"}) == []  # false fence, unknown name
+
+
+def test_loop_salvages_tool_code_block_as_a_native_call():
+    # The screenshot bug: Gemini emits a ```tool_code``` block instead of a functionCall — it leaked to the
+    # user as text. The loop must salvage it, run the tool, and continue to a real answer.
+    c, _ = _client(_Queue([
+        _resp([{"text": '```tool_code\nprint(read_file(path="a"))\n```'}]),
+        _resp([{"text": _STATE_JSON}]),
+    ]))
+    seen = []
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
+                             tools=_TOOLS, tool_executor=lambda n, i: seen.append((n, i)) or "line: hi")
+    assert validate(out).emotion.value == "joy"  # reached the real terminal answer
+    assert seen == [("read_file", {"path": "a"})]  # the code-style call was executed natively
+
+
+def test_loop_plain_text_answer_still_terminal():
+    # A normal text reply (no tool_code) must still terminate — salvage never hijacks a real answer.
+    c, _ = _client(_Queue([_resp([{"text": _STATE_JSON}])]))
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
+                             tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert validate(out).emotion.value == "joy"
