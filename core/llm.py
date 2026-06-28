@@ -227,6 +227,35 @@ def _parse_tool_code(text: str, tool_names: frozenset[str] | set[str]) -> list[d
     return out
 
 
+# Gemini-2.5 sometimes leaks its tool-protocol *simulation* into the visible answer — a ```tool_code```/
+# <tool_code>…</tool_code> call (e.g. a set_state it isn't actually calling) plus a hallucinated
+# <api_response>…</api_response> — followed by the real reply. These strip that markup, keeping her words.
+_API_RESPONSE_TAG = re.compile(r"<api_response>.*?</api_response>", re.DOTALL | re.IGNORECASE)
+_TOOL_CODE_TAG_STRIP = re.compile(r"<tool_code>.*?</tool_code>", re.DOTALL | re.IGNORECASE)
+_TOOL_CODE_FENCE_STRIP = re.compile(r"```\s*tool_code\b.*?```", re.DOTALL | re.IGNORECASE)
+_STRAY_PRINT_LINE = re.compile(r"^\s*print\s*\(.*\)\s*$", re.MULTILINE)
+
+
+def _strip_tool_simulation(text: str) -> str:
+    """Remove leaked tool-protocol markup from a reply (``<tool_code>``/``<api_response>`` blocks, a
+    ```tool_code``` fence, and stray ``print(...)`` lines), leaving the human-facing text. Fast no-op on a
+    clean reply; never strips a normal ```python``` block the user might be shown."""
+    if not text or ("tool_code" not in text and "api_response" not in text and "print(" not in text):
+        return text
+    out = _API_RESPONSE_TAG.sub("", text)
+    out = _TOOL_CODE_TAG_STRIP.sub("", out)
+    out = _TOOL_CODE_FENCE_STRIP.sub("", out)
+    out = _STRAY_PRINT_LINE.sub("", out)
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
+
+
+def _clean_state(state: dict) -> dict:
+    """Strip leaked tool-protocol markup from a parsed ``{reply, emotion, intensity}`` state's reply field."""
+    if isinstance(state, dict) and isinstance(state.get("reply"), str):
+        state["reply"] = _strip_tool_simulation(state["reply"])
+    return state
+
+
 def _gemini_part(block: object) -> dict:
     """A message content block → a Gemini ``part`` (image → ``inlineData``, else ``text``)."""
     if is_image_block(block):
@@ -1720,7 +1749,7 @@ class GeminiClient:
     ) -> str:
         if tools and tool_executor is not None:  # v0.39 LUMI-153 think-path tool-loop (text terminal)
             return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=False)
-        return self._text_of(self._create(system, messages, model, structured=False))
+        return _strip_tool_simulation(self._text_of(self._create(system, messages, model, structured=False)))
 
     def reply_structured(
         self,
@@ -1738,7 +1767,7 @@ class GeminiClient:
         text = self._text_of(self._create(system, messages, model, structured=True))
         if not text:  # blocked/empty candidate → a graceful calm placeholder (the gate needs a reply)
             return dict(_GEMINI_BLOCKED_STATE)
-        return parse_emotion_json(text)
+        return _clean_state(parse_emotion_json(text))
 
     # --- v0.39 LUMI-153 Gemini function-calling tool-loop ---------------------------------------------
     @staticmethod
@@ -1820,8 +1849,8 @@ class GeminiClient:
                 self.last_round_log.append(("reply", rstats))
                 self._finalize(acc, model)
                 if not structured:
-                    return text
-                return parse_emotion_json(text) if text else dict(_GEMINI_BLOCKED_STATE)
+                    return _strip_tool_simulation(text)
+                return _clean_state(parse_emotion_json(text)) if text else dict(_GEMINI_BLOCKED_STATE)
             self.last_round_log.append(("tool", rstats))
             self._run_tool_round(contents, parts, calls, tool_executor)
         self._finalize(acc, model)

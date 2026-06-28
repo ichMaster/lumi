@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from core.emotion import validate
 from core.images import image_block
-from core.llm import GeminiClient, _parse_tool_code, trusted_text
+from core.llm import GeminiClient, _parse_tool_code, _strip_tool_simulation, trusted_text
 
 _TOOLS = [{"name": "read_file", "description": "read", "input_schema": {"type": "object"}}]
 _STATE_JSON = '{"reply":"ок","emotion":"joy","intensity":0.9}'
@@ -221,3 +221,41 @@ def test_loop_plain_text_answer_still_terminal():
     out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
                              tools=_TOOLS, tool_executor=lambda n, i: "x")
     assert validate(out).emotion.value == "joy"
+
+
+# --- terminal-reply sanitiser (leaked <tool_code>/<api_response> simulation in the visible answer) --
+def test_strip_tool_simulation_screenshot_case():
+    # The exact leak: a set_state code call + a hallucinated api_response, then the real reply.
+    leaked = (
+        "<tool_code> print(set_state(relation={'warmth': 0.8, 'playful': 0.9})) </tool_code> "
+        '<api_response> {"tool_name": "set_state", "tool_output": "{\'status\': \'ok\'}"} </api_response> '
+        "Тоді бери скальпель, їжачку. 😉"
+    )
+    assert _strip_tool_simulation(leaked) == "Тоді бери скальпель, їжачку. 😉"
+
+
+def test_strip_tool_simulation_fenced_form():
+    leaked = "```tool_code\nprint(set_state(emotion='calm', intensity=0.3))\n```\nПривіт, я тут."
+    assert _strip_tool_simulation(leaked) == "Привіт, я тут."
+
+
+def test_strip_tool_simulation_leaves_clean_text_untouched():
+    clean = "Просто тепла відповідь без жодного коду."
+    assert _strip_tool_simulation(clean) is clean  # fast no-op path
+
+
+def test_strip_tool_simulation_keeps_real_python_block():
+    # A legit ```python``` block the user is shown must survive (only ```tool_code``` is stripped).
+    shown = "Ось приклад:\n```python\nprint('hi')\n```"
+    assert "```python" in _strip_tool_simulation(shown)
+
+
+def test_loop_terminal_strips_leaked_simulation_from_reply():
+    # The reply JSON's "reply" field carries the leaked blocks — the terminal must clean it.
+    polluted = ('{"reply": "<tool_code> print(set_state(relation={\'warmth\': 0.8})) </tool_code> '
+                'Тоді бери скальпель.", "emotion": "playful", "intensity": 0.9}')
+    c, _ = _client(_Queue([_resp([{"text": polluted}])]))
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
+                             tools=_TOOLS, tool_executor=lambda n, i: "x")
+    st = validate(out)
+    assert st.reply == "Тоді бери скальпель." and st.emotion.value == "playful"
