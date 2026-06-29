@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 0.39.1 (2026-06-29)
+---------------------------
+v0.39 post-release fixes — Gemini engine hardening + image tools. All on the Gemini reply path; the Anthropic path is untouched:
+- Gemini format-leak nets: salvage code-style tool calls (```tool_code```/<tool_code>) into native calls; strip leaked tool-protocol simulation (<tool_code> plus a hallucinated <api_response>) from the visible reply; tolerate <t_think>/<thinking> reasoning-tag variants in split_reasoning; unwrap HTML-wrapped replies (<p>...</p>/<br>) that the Markdown renderer silently dropped.
+- Empty-reply fix: reserve the answer budget on top of the thinking budget (maxOutputTokens = max_tokens + thinking budget), so a deep think no longer starves the reply to empty (the calm/emoji-only turn).
+- Image tools: force IMAGE-only modality (Gemini was returning prose, no image); don't double the art/ prefix when the model passes "art/foo.png"; view_image resolves a bare name in art/ (and anywhere) for the generate->view round-trip; a named file is understood as a sandbox file to open, not a missing attachment.
+- Docs: recommend the stable gemini-2.5-pro and document the Gemini quirks/nets (429/RPD cap + midnight-Pacific reset, the empty-reply budget fix, the tool_code/HTML leaks) in MODELS_SETUP.md.
+- Roadmap: added the /mode reply-tier dial (Opus/Sonnet/Haiku) to the planned v0.40 model routing.
+
 Version 0.39.0 (2026-06-27)
 ---------------------------
 v0.39 — Gemini engine: Google Gemini as a switchable backend. A third frontier engine behind the LLMClient seam — chat + the structured emotion field + the function-calling tool-loop + thinking → the think-box — switchable via /model like Opus 4.8 <-> GPT-5.5. Reuses the repo's existing Gemini urllib caller + GEMINI_API_KEY. Anthropic path untouched; off -> byte-identical:

@@ -22,6 +22,13 @@ the think-box** — switchable via **`/model gemini`** ↔ `/model opus`. Reuses
 the v0.38 three-voice torg shows. **No contract change**; the Anthropic path is untouched; off →
 byte-identical. See **[docs/GEMINI_ENGINE.md](docs/GEMINI_ENGINE.md)** + **[docs/MODELS_SETUP.md](docs/MODELS_SETUP.md)**.
 
+**0.39.1** hardens the Gemini reply channel: it **salvages** code-style tool calls (```` ```tool_code ````/`<tool_code>`)
+into native calls, **strips** leaked tool-protocol scaffolding (`<tool_code>` + a hallucinated `<api_response>`)
+and `<t_think>` reasoning tags, and **unwraps** `<p>…</p>` HTML — so the reply never leaks scaffolding nor
+vanishes — plus reserves answer tokens **on top of** the thinking budget (no more empty replies) and fixes the
+image tools (IMAGE-only modality, no double `art/`, bare-name `view_image`). **`gemini-2.5-pro`** is now the
+recommended stable id (the preview's 250 req/day cap is tight).
+
 Builds on **0.38 — Inner Voice: the authored three-voice think-phase instruction.** Лілі's pre-reply reasoning moves
 from a hardcoded directive into an **editable `core/inner_voice.md`** authored as her **three-voice
 negotiation** (Імпульс / Тверезість / Стандарт) weighing **mood** (v0.6/0.8) + **closeness** (v0.10) —
