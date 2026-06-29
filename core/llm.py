@@ -12,6 +12,7 @@ v0.1 ``reply(...)`` returns plain text; v0.3 will return a validated
 from __future__ import annotations
 
 import ast
+import html
 import json
 import logging
 import re
@@ -249,10 +250,36 @@ def _strip_tool_simulation(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
+# Gemini sometimes wraps the reply in HTML (``<p>…</p>``, ``<br>``) — which the TUI's Markdown renderer
+# DROPS, so the message vanishes from the chat. Normalise the common tags back to plain text. Allowlist of
+# real HTML tags only, so non-HTML angle content in prose is left alone.
+_HTML_BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_P_BOUNDARY = re.compile(r"</p\s*>\s*<p\b[^>]*>", re.IGNORECASE)  # paragraph join → blank line
+_HTML_TAG = re.compile(
+    r"</?(?:p|br|div|span|b|i|em|strong|u|s|ul|ol|li|h[1-6]|a|code|pre|blockquote|hr)\b[^>]*>", re.IGNORECASE)
+
+
+def _strip_html(text: str) -> str:
+    """Turn stray reply HTML (``<p>…</p>``/``<br>``) into plain text the Markdown renderer shows; a fast
+    no-op when there's no ``<`` at all. Only known HTML tags are removed — other ``<…>`` content is kept."""
+    if not text or "<" not in text:
+        return text
+    out = _HTML_BR.sub("\n", text)
+    out = _HTML_P_BOUNDARY.sub("\n\n", out)
+    out = _HTML_TAG.sub("", out)
+    out = html.unescape(out)  # &amp; &lt; &quot; → & < "
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
+
+
+def _sanitize_reply(text: str) -> str:
+    """Clean a Gemini terminal reply of leaked scaffolding: tool-protocol simulation + stray HTML wrapping."""
+    return _strip_html(_strip_tool_simulation(text))
+
+
 def _clean_state(state: dict) -> dict:
-    """Strip leaked tool-protocol markup from a parsed ``{reply, emotion, intensity}`` state's reply field."""
+    """Sanitise a parsed ``{reply, emotion, intensity}`` state's reply field (tool simulation + HTML)."""
     if isinstance(state, dict) and isinstance(state.get("reply"), str):
-        state["reply"] = _strip_tool_simulation(state["reply"])
+        state["reply"] = _sanitize_reply(state["reply"])
     return state
 
 
@@ -1749,7 +1776,7 @@ class GeminiClient:
     ) -> str:
         if tools and tool_executor is not None:  # v0.39 LUMI-153 think-path tool-loop (text terminal)
             return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=False)
-        return _strip_tool_simulation(self._text_of(self._create(system, messages, model, structured=False)))
+        return _sanitize_reply(self._text_of(self._create(system, messages, model, structured=False)))
 
     def reply_structured(
         self,
@@ -1849,7 +1876,7 @@ class GeminiClient:
                 self.last_round_log.append(("reply", rstats))
                 self._finalize(acc, model)
                 if not structured:
-                    return _strip_tool_simulation(text)
+                    return _sanitize_reply(text)
                 return _clean_state(parse_emotion_json(text)) if text else dict(_GEMINI_BLOCKED_STATE)
             self.last_round_log.append(("tool", rstats))
             self._run_tool_round(contents, parts, calls, tool_executor)

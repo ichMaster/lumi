@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from core.emotion import validate
 from core.images import image_block
-from core.llm import GeminiClient, _parse_tool_code, _strip_tool_simulation, trusted_text
+from core.llm import (
+    GeminiClient,
+    _parse_tool_code,
+    _strip_html,
+    _strip_tool_simulation,
+    trusted_text,
+)
 
 _TOOLS = [{"name": "read_file", "description": "read", "input_schema": {"type": "object"}}]
 _STATE_JSON = '{"reply":"ок","emotion":"joy","intensity":0.9}'
@@ -259,3 +265,33 @@ def test_loop_terminal_strips_leaked_simulation_from_reply():
                              tools=_TOOLS, tool_executor=lambda n, i: "x")
     st = validate(out)
     assert st.reply == "Тоді бери скальпель." and st.emotion.value == "playful"
+
+
+# --- HTML-wrapped reply (Gemini sends <p>…</p>; Rich Markdown drops it → reply vanishes) ------------
+def test_strip_html_paragraph_wrapping():
+    leaked = ("<p>Це питання про коріння, рибалко.</p>\n<p>Чи можна пересадити старе дерево?</p>\n"
+              "<p>Ти питаєш, що важливіше.</p>")
+    assert _strip_html(leaked) == (
+        "Це питання про коріння, рибалко.\n\nЧи можна пересадити старе дерево?\n\nТи питаєш, що важливіше.")
+
+
+def test_strip_html_br_and_inline_tags_and_entities():
+    assert _strip_html("Перший<br>другий <b>жирний</b> &amp; третій") == "Перший\nдругий жирний & третій"
+
+
+def test_strip_html_no_angle_brackets_is_noop():
+    s = "Просто текст без тегів."
+    assert _strip_html(s) is s  # fast path
+
+
+def test_strip_html_keeps_non_html_angle_content():
+    # math-ish / emoticon angle content is not an HTML tag → preserved
+    assert _strip_html("3 < 5 і <3 тобі") == "3 < 5 і <3 тобі"
+
+
+def test_loop_terminal_unwraps_html_reply():
+    polluted = '{"reply": "<p>Привіт, рибалко.</p><p>Я тут.</p>", "emotion": "calm", "intensity": 0.3}'
+    c, _ = _client(_Queue([_resp([{"text": polluted}])]))
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
+                             tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert validate(out).reply == "Привіт, рибалко.\n\nЯ тут."
