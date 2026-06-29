@@ -82,6 +82,22 @@ def test_split_reasoning_handles_multiline_and_stray_tags():
     assert "<think" not in reply and "</think" not in reply
 
 
+def test_split_reasoning_handles_t_think_variant():
+    # Gemini-2.5 sometimes wraps reasoning in <t_think> instead of <think> — it must still split off.
+    raw = ("<t_think>\nІМПУЛЬС: вау\nРІШЕННЯ: описати образно\n</t_think> Ох, рибалко. "
+           "Ти намалював нас.")
+    thinking, reply = split_reasoning(raw)
+    assert thinking == "ІМПУЛЬС: вау\nРІШЕННЯ: описати образно"
+    assert reply == "Ох, рибалко. Ти намалював нас."
+    assert "t_think" not in reply
+
+
+def test_split_reasoning_handles_thinking_and_dash_variants():
+    for tag in ("thinking", "t-think"):
+        thinking, reply = split_reasoning(f"<{tag}>міркую</{tag}>відповідь")
+        assert thinking == "міркую" and reply == "відповідь"
+
+
 def test_build_system_prompt_emotion_instruction_is_opt_in():
     from core.prompt import EMOTION_INSTRUCTION
     # Off by default → canon verbatim (the v0.1 contract).

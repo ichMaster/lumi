@@ -28,10 +28,14 @@ REASONING_DIRECTIVE = (
     "без планів, службових нотаток чи пояснень власних намірів."
 )
 
+# The reasoning tag the model wraps its thinking in. We accept common variants some models emit instead of
+# a clean <think> — <t_think>/<t-think> (Gemini-2.5 does this) and <thinking> — so the block is always
+# stripped into the box, never leaked into the reply.
+_THINK_TAG = r"(?:t[_-])?think(?:ing)?"
 # Matches a well-formed <think>…</think> block (any reasoning the model wrapped).
-_THINK_RE = re.compile(r"<think\b[^>]*>(.*?)</think\s*>", re.IGNORECASE | re.DOTALL)
+_THINK_RE = re.compile(rf"<{_THINK_TAG}\b[^>]*>(.*?)</{_THINK_TAG}\s*>", re.IGNORECASE | re.DOTALL)
 # Catches any stray, one-sided <think>/</think> tag so it never shows in the reply.
-_STRAY_THINK_RE = re.compile(r"</?think\b[^>]*>", re.IGNORECASE)
+_STRAY_THINK_RE = re.compile(rf"</?{_THINK_TAG}\b[^>]*>", re.IGNORECASE)
 
 
 def split_reasoning(text: str) -> tuple[str | None, str]:
