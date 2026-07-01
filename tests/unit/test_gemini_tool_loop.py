@@ -267,6 +267,28 @@ def test_loop_terminal_strips_leaked_simulation_from_reply():
     assert st.reply == "Тоді бери скальпель." and st.emotion.value == "playful"
 
 
+def test_strip_pseudo_xml_tool_tags():
+    # The screenshot: <tools.set_state></tools.set_state> (dotted, empty pair) before the reply.
+    assert _strip_tool_simulation("<tools.set_state></tools.set_state>Прийнято. Наш «потік».") == (
+        "Прийнято. Наш «потік».")
+    # bare <set_state> and <function_call> variants too
+    assert _strip_tool_simulation("<set_state>Готово.</set_state>") == "Готово."
+    assert _strip_tool_simulation("<function_call/>Ось.") == "Ось."
+
+
+def test_strip_scaffold_tags_leave_code_generics_alone():
+    # A code generic the user might be shown must survive — it's not a tool-protocol tag.
+    assert _strip_tool_simulation("Тип: Vec<some_type> — ось так.") == "Тип: Vec<some_type> — ось так."
+
+
+def test_loop_terminal_strips_pseudo_xml_tool_tag():
+    polluted = '{"reply": "<tools.set_state></tools.set_state>Прийнято. Наш «потік».", "emotion": "calm", "intensity": 0.3}'
+    c, _ = _client(_Queue([_resp([{"text": polluted}])]))
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
+                             tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert validate(out).reply == "Прийнято. Наш «потік»."
+
+
 # --- HTML-wrapped reply (Gemini sends <p>…</p>; Rich Markdown drops it → reply vanishes) ------------
 def test_strip_html_paragraph_wrapping():
     leaked = ("<p>Це питання про коріння, рибалко.</p>\n<p>Чи можна пересадити старе дерево?</p>\n"

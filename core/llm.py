@@ -235,17 +235,25 @@ _API_RESPONSE_TAG = re.compile(r"<api_response>.*?</api_response>", re.DOTALL | 
 _TOOL_CODE_TAG_STRIP = re.compile(r"<tool_code>.*?</tool_code>", re.DOTALL | re.IGNORECASE)
 _TOOL_CODE_FENCE_STRIP = re.compile(r"```\s*tool_code\b.*?```", re.DOTALL | re.IGNORECASE)
 _STRAY_PRINT_LINE = re.compile(r"^\s*print\s*\(.*\)\s*$", re.MULTILINE)
+# Pseudo-XML tool-protocol tags Gemini invents (empty or wrapping), e.g. <tools.set_state></tools.set_state>,
+# <set_state>, <function_call>. Vocabulary-scoped (tool/tools[.x], and the known protocol words) so real code
+# generics the user might be shown (Vec<some_type>) are NOT stripped.
+_SCAFFOLD_TAG = re.compile(
+    r"</?(?:tools?\b[\w.]*|set_state|tool_call|tool_use|tool_response|tool_output|"
+    r"function_call|functioncall|tool_code|api_response)\b[^>]*>", re.IGNORECASE)
 
 
 def _strip_tool_simulation(text: str) -> str:
-    """Remove leaked tool-protocol markup from a reply (``<tool_code>``/``<api_response>`` blocks, a
-    ```tool_code``` fence, and stray ``print(...)`` lines), leaving the human-facing text. Fast no-op on a
-    clean reply; never strips a normal ```python``` block the user might be shown."""
-    if not text or ("tool_code" not in text and "api_response" not in text and "print(" not in text):
+    """Remove leaked tool-protocol markup from a reply — ``<tool_code>``/``<api_response>`` blocks, a
+    ```tool_code``` fence, pseudo-XML tool tags (``<tools.set_state>``/``<set_state>``…), and stray
+    ``print(...)`` lines — leaving the human-facing text. Fast no-op on a clean reply; never strips a normal
+    ```python``` block or a code generic (``Vec<some_type>``) the user might be shown."""
+    if not text or ("<" not in text and "```" not in text and "print(" not in text):
         return text
     out = _API_RESPONSE_TAG.sub("", text)
     out = _TOOL_CODE_TAG_STRIP.sub("", out)
     out = _TOOL_CODE_FENCE_STRIP.sub("", out)
+    out = _SCAFFOLD_TAG.sub("", out)
     out = _STRAY_PRINT_LINE.sub("", out)
     return re.sub(r"\n{3,}", "\n\n", out).strip()
 
