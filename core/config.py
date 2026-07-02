@@ -192,6 +192,13 @@ class Config:
     model: str = DEFAULT_MODEL
     # v0.37 LUMI-148: `/model` runtime-toggle aliases (alias → (provider, model)); from LUMI_MODEL_ALIASES.
     model_aliases: dict[str, tuple[str, str]] = field(default_factory=lambda: dict(DEFAULT_MODEL_ALIASES))
+    # v0.40 LUMI-155: per-operation model routing — route internal ops to cheaper Claude tiers while
+    # the visible reply stays on `model`. Each unset ("") → that op runs on `model` (byte-identical).
+    # The tier vars name CLAUDE ids: routing applies only while the active provider is "anthropic"
+    # (on a foreign engine — gpt-5.5 / gemini — every call falls back to `model`).
+    model_think: str = ""         # LUMI_MODEL_THINK — the think path (kind="think")
+    model_mood: str = ""          # LUMI_MODEL_MOOD — the daily mood call (kind="mood")
+    model_housekeeping: str = ""  # LUMI_MODEL_HOUSEKEEPING — session-start / session-close / compaction
     canon_path: Path = DEFAULT_CANON_PATH
     # v0.38 Inner Voice: load core/inner_voice.md as the think directive (off → REASONING_DIRECTIVE).
     inner_voice: bool = False
@@ -505,6 +512,9 @@ def load_config(*, load_env: bool = True) -> Config:
     return Config(
         provider=os.getenv("LUMI_PROVIDER", "anthropic"),
         model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
+        model_think=(os.getenv("LUMI_MODEL_THINK") or "").strip(),
+        model_mood=(os.getenv("LUMI_MODEL_MOOD") or "").strip(),
+        model_housekeeping=(os.getenv("LUMI_MODEL_HOUSEKEEPING") or "").strip(),
         model_aliases=_parse_model_aliases(os.getenv("LUMI_MODEL_ALIASES", "")),
         canon_path=canon_path,
         inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default

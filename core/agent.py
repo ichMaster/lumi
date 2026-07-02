@@ -356,6 +356,9 @@ class Core:
         provider: str = "",
         llm_factory: Callable[[str, str], LLMClient] | None = None,  # v0.37: (provider, model) → LLMClient
         model_aliases: dict[str, tuple[str, str]] | None = None,     # v0.37: /model aliases (from config)
+        model_think: str = "",         # v0.40: route kind="think" to this Claude tier (unset → model)
+        model_mood: str = "",          # v0.40: route kind="mood" (unset → model)
+        model_housekeeping: str = "",  # v0.40: route session-start/-close/compaction (unset → model)
         reasoning_directive: str = REASONING_DIRECTIVE,  # v0.38: the think-phase instruction (inner_voice → here)
         think_show: str = "debug",  # v0.38: monologue surfacing — debug / open / off (logged, never persisted)
         user_id: str = DEFAULT_USER_ID,
@@ -500,6 +503,11 @@ class Core:
         # v0.38: how the monologue is surfaced (debug/open/off); validated, default debug.
         self._think_show = think_show if think_show in ("debug", "open", "off") else "debug"
         self._model = model
+        # v0.40 LUMI-155: per-operation tier routing — Claude ids, applied via _model_for(kind);
+        # each unset ("") → that op runs on self._model.
+        self._model_think = model_think.strip()
+        self._model_mood = model_mood.strip()
+        self._model_housekeeping = model_housekeeping.strip()
         # v0.37 LUMI-148: runtime `/model` engine toggle — the active provider, a (provider, model) →
         # LLMClient factory (rebuilds from the loaded config keys), and the configured aliases.
         self._active_provider = provider
@@ -1501,6 +1509,24 @@ class Core:
             fact_recall=fact_recall,  # v0.36: the per-turn fact-RAG push — top-K relevant non-core facts
         )
 
+    def _model_for(self, kind: str) -> str:
+        """The model for one internal operation (v0.40 Layer 1 routing).
+
+        ``think`` / ``mood`` / the housekeeping kinds (``session-start`` / ``session-close`` /
+        ``compaction`` / bare ``housekeeping``) route to their configured Claude tier; an unset tier —
+        and the visible ``reply`` path, which never comes through here — stays on ``self._model``.
+        **Provider guard:** the tier vars name Claude ids, so routing applies only while the active
+        engine is Anthropic; on a foreign engine (gpt-5.5 / gemini) every call uses ``self._model``
+        (a Claude id must never reach another provider's API).
+        """
+        if self._active_provider and self._active_provider != "anthropic":
+            return self._model
+        if kind == "think":
+            return self._model_think or self._model
+        if kind == "mood":
+            return self._model_mood or self._model
+        return self._model_housekeeping or self._model
+
     def _housekeeping_reply(
         self, system: str, messages: list[Message], cache_prefix: str | None = None,
         kind: str = "housekeeping",
@@ -1523,7 +1549,7 @@ class Core:
         self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted by the monitor
         try:
             kwargs: dict = {
-                "system": system, "messages": messages, "model": self._model,
+                "system": system, "messages": messages, "model": self._model_for(kind),
                 "cache_prefix": cache_prefix if self._prompt_cache else None,
             }
             if tools is not None:  # v0.33 think-path tool-loop — omit when tool-less (call unchanged)
@@ -3004,6 +3030,9 @@ def build_core(
         provider=cfg.provider,
         llm_factory=_llm_factory,
         model_aliases=cfg.model_aliases,
+        model_think=cfg.model_think,
+        model_mood=cfg.model_mood,
+        model_housekeeping=cfg.model_housekeeping,
         user_id=user_id,
         memory_window=cfg.memory_window,
         compaction_batch=cfg.compaction_batch,
