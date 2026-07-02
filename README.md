@@ -12,7 +12,21 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.39 — Gemini engine: Google Gemini as a switchable backend.** A **third frontier engine** behind the one
+**0.40 — Model routing: per-operation tiers (cost control, off by default).** One model no longer serves every
+call: a `_model_for(kind)` resolver routes the **thoughts** (`LUMI_MODEL_THINK`), the **daily mood**
+(`LUMI_MODEL_MOOD`) and the **session summaries/facts/compaction** (`LUMI_MODEL_HOUSEKEEPING`) to cheaper
+Claude tiers — **the visible reply stays on `LUMI_MODEL` (Opus)**, and each routed operation's tool-loop
+follows its model for free. A **provider guard** makes routing a no-op while the active engine is
+GPT-5.5/Gemini (a Claude id never reaches a foreign API). The shipped **`/model opus ⇄ sonnet ⇄ haiku`**
+aliases are the explicit reply-tier dial (pinned to compose with routing; no automatic downgrade — and
+`/model haiku` no longer 400s: thinking/`effort` are now gated per model). Plus a **char cap** on
+`read_file`/`read_around` results (`LUMI_FILE_READ_MAX_CHARS`, explicit truncation marker) and a **gated
+Layer 2** (`LUMI_TOOL_STEP_ROUTING`, off): the Anthropic tool-loop digs its continuation rounds on a cheap
+step tier and speaks the final round on the voice (the R2 two-pass). **All unset → one model,
+byte-identical.** See **[docs/MODEL_ROUTING_IMPLEMENTATION.md](docs/MODEL_ROUTING_IMPLEMENTATION.md)** +
+**[docs/LLM_OPERATIONS_COST.md](docs/LLM_OPERATIONS_COST.md)**.
+
+Builds on **0.39 — Gemini engine: Google Gemini as a switchable backend.** A **third frontier engine** behind the one
 `LLMClient` seam — chat + the structured emotion field + the **function-calling tool-loop** + **thinking →
 the think-box** — switchable via **`/model gemini`** ↔ `/model opus`. Reuses the repo's existing Gemini
 `urllib` caller + `GEMINI_API_KEY` (so the transport is install-free). Two risks were designed in up front

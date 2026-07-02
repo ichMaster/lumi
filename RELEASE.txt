@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 0.40.0 (2026-07-02)
+---------------------------
+v0.40 — Model routing: per-operation tiers (cost control, off by default). The reply stays on Opus; the internals go cheaper:
+- Layer 1 per-operation routing (LUMI-155): a _model_for(kind) resolver + LUMI_MODEL_THINK/_MOOD/_HOUSEKEEPING route think / mood / session-start / session-close / compaction (and their tool-loops) to cheaper Claude tiers; the visible reply stays on LUMI_MODEL. Provider guard: routing is a no-op while the active engine is GPT-5.5/Gemini (a Claude id never reaches a foreign API). Unset -> byte-identical.
+- Reply-tier dial pinned (LUMI-156): /model opus <-> sonnet <-> haiku (the shipped v0.37 aliases) is the explicit reply-tier dial — tests pin that it moves the reply while routed ops keep their tiers; MODELS_SETUP.md gains the three-tier dial section. No new command; no automatic downgrade.
+- read_file/read_around char cap (LUMI-157): LUMI_FILE_READ_MAX_CHARS (default 8000) bounds a read result by characters with an explicit truncation marker (line caps alone don't bound long lines).
+- Layer 2 per-step routing (LUMI-158, gated OFF): behind LUMI_TOOL_STEP_ROUTING the Anthropic tool-loop digs continuation rounds on a cheap step tier and speaks the final round on the call's model (the R2 two-pass); the per-round cache log tags each round's actual model; the OpenAI/Gemini loops are untouched.
+- Fix: /model haiku no longer 400s — thinking/effort are now gated per model (Haiku 4.5 supports neither; its think box stays empty by design).
+- Cost observability (LUMI-159): closed as operator-run — the tier vars are live and the per-kind cache/cost reports accumulate for a later measured note.
+
 Version 0.39.1 (2026-06-29)
 ---------------------------
 v0.39 post-release fixes — Gemini engine hardening + image tools. All on the Gemini reply path; the Anthropic path is untouched:
