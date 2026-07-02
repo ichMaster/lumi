@@ -829,14 +829,15 @@ class LumiApp(App[None]):
         self._emit(body, Markdown(body))
 
     def _model_command(self, text: str) -> None:
-        """Show or swap the active engine on the fly — `/model`, `/model opus`, `/model gpt-5.5`, or
+        """Show or swap the active engine on the fly — `/model`, `/model opus`, `/model gpt-5.5`,
+        `/model claude-haiku-4-5-20251001` (a bare full id — provider inferred, v0.41 LUMI-163), or
         `/model provider:id` (v0.37 LUMI-148). No restart; the status bar reflects the new model."""
         arg = text[len("/model"):].strip()
         alias_list = ", ".join(sorted(self._core.model_aliases)) or "(none configured)"
         if not arg:
             current = f"{self._core.provider or '?'} / {self._core.model}"
             body = (f"**Двигун:** {current}\n\nАліаси: {alias_list}\n"
-                    "`/model <аліас>` або `/model provider:id` — перемкнути без рестарту.")
+                    "`/model <аліас>`, `/model <повний-id>` або `/model provider:id` — перемкнути без рестарту.")
             self._emit(body, Markdown(body))
             return
         try:

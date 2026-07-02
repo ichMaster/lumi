@@ -343,6 +343,19 @@ def _is_ymd(s: str) -> bool:
         return False
 
 
+# v0.41 LUMI-163: bare-full-id → provider inference for /model (checked after aliases + provider:id).
+# Ordered; first matching prefix wins. An unknown prefix keeps the clear reject (never guesses).
+_MODEL_ID_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("claude-", "anthropic"),
+    ("gpt-", "openai"),
+    ("o1", "openai"),
+    ("o3", "openai"),
+    ("o4", "openai"),
+    ("gemini-", "gemini"),
+    ("deepseek-", "deepseek"),
+)
+
+
 class Core:
     """Лілі's interface-independent, user-scoped turn engine."""
 
@@ -746,9 +759,11 @@ class Core:
         return dict(self._model_aliases)
 
     def resolve_model_target(self, arg: str) -> tuple[str, str]:
-        """Resolve a ``/model`` argument to ``(provider, model)``: a configured alias (case-insensitive)
-        or the explicit ``provider:model`` form. Raises :class:`ValueError` with a clear message on an
-        unknown alias (the v0.37 reject path) — never guesses a provider from a bare model id."""
+        """Resolve a ``/model`` argument to ``(provider, model)``: a configured alias (case-insensitive),
+        the explicit ``provider:model`` form, or (v0.41 LUMI-163) a **bare full model id** whose provider
+        is inferred by prefix (``claude-*`` → anthropic, ``gpt-*``/``o1``/``o3``/``o4`` → openai,
+        ``gemini-*`` → gemini, ``deepseek-*`` → deepseek). Raises :class:`ValueError` with a clear
+        message on anything else."""
         token = (arg or "").strip()
         if not token:
             raise ValueError("No model given — try /model <alias>.")
@@ -759,8 +774,14 @@ class Core:
             provider, model = token.split(":", 1)
             if provider.strip() and model.strip():
                 return provider.strip().lower(), model.strip()
+        for prefix, provider in _MODEL_ID_PREFIXES:  # v0.41: a bare full id → provider by prefix
+            if token.lower().startswith(prefix):
+                return provider, token
         known = ", ".join(sorted(self._model_aliases)) or "(none configured)"
-        raise ValueError(f"Unknown model '{token}'. Try an alias ({known}) or provider:model.")
+        raise ValueError(
+            f"Unknown model '{token}'. Try an alias ({known}), a full model id "
+            "(claude-*/gpt-*/gemini-*/deepseek-*), or provider:model."
+        )
 
     def switch_model(self, provider: str, model: str) -> None:
         """Swap the active engine at runtime — rebuild the :class:`LLMClient` from the (already-loaded)

@@ -120,6 +120,9 @@ cost/speed, not for the fullest Лілі.
 The swap re-points the **reply** model for this run only (nothing persists — the next start uses
 `LUMI_MODEL`), the status bar reflects it, and the new tier starts on a cold prompt cache (one-off).
 A tier swap is always an **explicit, reversible choice** — Lumi never downgrades the reply on its own.
+A **bare full id** also works — `/model claude-haiku-4-5-20251001`, `/model gpt-5.5-mini` — the
+provider is inferred by prefix (`claude-*`/`gpt-*`/`o*`/`gemini-*`/`deepseek-*`); anything else still
+needs `provider:id` (v0.41).
 
 **Per-operation routing (`LUMI_MODEL_*`, off by default).** Independently of the dial, the internal
 operations can run on cheaper tiers while the visible reply stays on `LUMI_MODEL`:

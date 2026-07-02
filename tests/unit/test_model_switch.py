@@ -119,3 +119,26 @@ def test_build_core_wires_provider_aliases_and_factory(tmp_path):
     # The factory closure rebuilds via build_llm from the config keys → a keyless provider surfaces LLMError.
     with pytest.raises(LLMError, match="OPENAI_API_KEY"):
         core.switch_model("openai", "gpt-5.5")
+
+
+# --- v0.41 LUMI-163: bare full-id → provider inference ----------------------------------------------
+def test_resolve_bare_full_id_infers_provider_by_prefix(tmp_path):
+    c = _core(tmp_path)
+    assert c.resolve_model_target("claude-haiku-4-5-20251001") == ("anthropic", "claude-haiku-4-5-20251001")
+    assert c.resolve_model_target("gpt-5.5-mini") == ("openai", "gpt-5.5-mini")
+    assert c.resolve_model_target("o3-mini") == ("openai", "o3-mini")
+    assert c.resolve_model_target("gemini-2.5-flash") == ("gemini", "gemini-2.5-flash")
+    assert c.resolve_model_target("deepseek-chat") == ("deepseek", "deepseek-chat")
+
+
+def test_resolve_alias_and_provider_id_win_over_prefix(tmp_path):
+    # An alias or explicit provider:id resolves BEFORE the prefix map (existing behaviour unchanged).
+    c = _core(tmp_path, aliases={"claude-x": ("openai", "not-a-claude")})
+    assert c.resolve_model_target("claude-x") == ("openai", "not-a-claude")  # alias wins
+    assert c.resolve_model_target("local:claude-clone") == ("local", "claude-clone")  # explicit wins
+
+
+def test_resolve_unknown_prefix_still_rejected_with_hint(tmp_path):
+    c = _core(tmp_path)
+    with pytest.raises(ValueError, match="full model id"):
+        c.resolve_model_target("llama-3-70b")
