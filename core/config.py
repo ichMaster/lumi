@@ -261,6 +261,7 @@ class Config:
     files_dir: Path = DEFAULT_FILES_DIR  # sandbox root (per-user subdirs under it)
     file_read_lines: int = 200      # default / max lines returned by one read_file call
     file_read_max_total: int = 2000  # max total lines one turn may read across all read_file calls
+    file_read_max_chars: int = 8000  # v0.40: per-result char cap on read_file/read_around (long lines)
     file_find_max: int = 50         # max matches find_in_file returns
     file_write_max: int = 65536     # max bytes of one create_file/append_file write (v0.20)
     file_copy_max: int = 5 * 1024 * 1024  # max source bytes for one copy_file (v0.29; separate from write)
@@ -568,6 +569,7 @@ def load_config(*, load_env: bool = True) -> Config:
         files_dir=Path(os.getenv("LUMI_FILES_DIR")) if os.getenv("LUMI_FILES_DIR") else DEFAULT_FILES_DIR,
         file_read_lines=int(os.getenv("LUMI_FILE_READ_LINES") or 200),
         file_read_max_total=int(os.getenv("LUMI_FILE_READ_MAX_TOTAL") or 2000),
+        file_read_max_chars=int(os.getenv("LUMI_FILE_READ_MAX_CHARS") or 8000),
         file_find_max=int(os.getenv("LUMI_FILE_FIND_MAX") or 50),
         file_write_max=int(os.getenv("LUMI_FILE_WRITE_MAX") or 65536),
         file_copy_max=int(os.getenv("LUMI_FILE_COPY_MAX") or 5 * 1024 * 1024),

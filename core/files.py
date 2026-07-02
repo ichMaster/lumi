@@ -257,6 +257,7 @@ class FileTools:
         read_lines: int = 200,
         find_max: int = 50,
         read_max_total: int | None = None,
+        read_max_chars: int = 8000,
         write_max: int = 65536,
         copy_max: int = 5 * 1024 * 1024,
         search_max_files: int = 200,
@@ -269,6 +270,9 @@ class FileTools:
         self._read_lines = max(1, read_lines)
         self._find_max = max(1, find_max)
         self._read_max_total = read_max_total  # per-turn total-read cap (None = unlimited)
+        # v0.40 LUMI-157: per-result char cap on read_file/read_around — the line caps alone don't
+        # bound long lines (200 huge lines can still bloat every subsequent loop step).
+        self._read_max_chars = max(1, read_max_chars)
         self._write_max = max(1, write_max)  # per-write content-size cap, bytes (v0.20)
         self._copy_max = max(1, copy_max)  # per-copy source-size cap, bytes (v0.29)
         self._search_max_files = max(1, search_max_files)  # v0.32 search caps: files / lines / chars
@@ -404,7 +408,7 @@ class FileTools:
         self._lines_read += len(window)  # count toward the per-turn read budget
         body = "\n".join(f"{start + idx}: {ln}" for idx, ln in enumerate(window))
         last = start + len(window) - 1
-        return f"{rel} (lines {start}–{last}, total_lines={total}):\n{body}"
+        return self._clamp_chars(f"{rel} (lines {start}–{last}, total_lines={total}):\n{body}")
 
     def _stat_file(self, inp: dict) -> str:
         """Return one file's size + created/modified dates (v0.29; read-only, no listing)."""
@@ -517,7 +521,17 @@ class FileTools:
         self._lines_read += len(window)  # count toward the per-turn read budget
         body = "\n".join(f"{i}: {ln}{'   ← (це)' if i == line else ''}" for i, ln in window)
         first, last = window[0][0], window[-1][0]
-        return f"{rel} (lines {first}–{last} around {line}, total_lines={total}):\n{body}"
+        return self._clamp_chars(f"{rel} (lines {first}–{last} around {line}, total_lines={total}):\n{body}")
+
+    def _clamp_chars(self, out: str) -> str:
+        """Char-cap a read result (v0.40 LUMI-157) with an explicit marker — never a silent cut, so
+        she knows to re-read a narrower range instead of trusting a truncated text as complete."""
+        if len(out) <= self._read_max_chars:
+            return out
+        return (
+            out[: self._read_max_chars].rstrip()
+            + f"\n… (capped at {self._read_max_chars} chars; read a narrower range)"
+        )
 
     # --- the two non-destructive write tools (v0.20) ---------------------------------------------
     def _content(self, inp: dict) -> bytes:

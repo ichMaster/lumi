@@ -446,6 +446,7 @@ class Core:
         files_dir: Path | None = None,
         file_read_lines: int = 200,
         file_read_max_total: int = 2000,
+        file_read_max_chars: int = 8000,
         file_find_max: int = 50,
         file_write_max: int = 65536,
         file_copy_max: int = 5 * 1024 * 1024,
@@ -569,6 +570,7 @@ class Core:
         self._files_dir = files_dir
         self._file_read_lines = file_read_lines
         self._file_read_max_total = file_read_max_total
+        self._file_read_max_chars = file_read_max_chars  # v0.40: per-result char cap (read_file/read_around)
         self._file_find_max = file_find_max
         self._file_write_max = file_write_max
         self._file_copy_max = file_copy_max  # v0.29 copy_file source-size cap
@@ -1932,7 +1934,8 @@ class Core:
         root.mkdir(parents=True, exist_ok=True)
         tools = FileTools(
             root, read_lines=self._file_read_lines, find_max=self._file_find_max,
-            read_max_total=self._file_read_max_total, write_max=self._file_write_max,
+            read_max_total=self._file_read_max_total, read_max_chars=self._file_read_max_chars,
+            write_max=self._file_write_max,
             copy_max=self._file_copy_max,
             search_max_files=self._file_search_max_files,
             search_max_lines=self._file_search_max_lines,
@@ -3121,6 +3124,7 @@ def build_core(
         files_dir=cfg.files_dir,
         file_read_lines=cfg.file_read_lines,
         file_read_max_total=cfg.file_read_max_total,
+        file_read_max_chars=cfg.file_read_max_chars,
         file_find_max=cfg.file_find_max,
         file_write_max=cfg.file_write_max,
         file_copy_max=cfg.file_copy_max,

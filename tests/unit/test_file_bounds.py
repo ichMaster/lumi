@@ -79,3 +79,36 @@ def test_per_turn_budget_resets_between_turns(tmp_path):
     assert "5: L5" in mock.tool_calls[-1][2] and "6: L6" not in mock.tool_calls[-1][2]  # capped this turn
     core.reply("turn2", core.start_session())  # a fresh turn → fresh FileTools → fresh budget
     assert "5: L5" in mock.tool_calls[-1][2]  # can read again
+
+
+# --- per-result char cap (v0.40 LUMI-157) ----------------------------------------------------------
+def test_read_file_char_cap_truncates_with_marker(tmp_path):
+    (tmp_path / "wide.txt").write_text("x" * 5000 + "\n" + "y" * 5000 + "\n", encoding="utf-8")
+    ft = FileTools(tmp_path, read_max_chars=1000)
+    out = ft.execute("read_file", {"path": "wide.txt"})
+    assert "… (capped at 1000 chars; read a narrower range)" in out  # explicit, never silent
+    assert len(out) <= 1000 + 60  # the capped body + the marker line
+
+
+def test_read_around_char_cap_truncates_with_marker(tmp_path):
+    (tmp_path / "wide.txt").write_text("\n".join("z" * 900 for _ in range(9)) + "\n", encoding="utf-8")
+    ft = FileTools(tmp_path, read_max_chars=1200)
+    out = ft.execute("read_around", {"path": "wide.txt", "line": 5, "k": 4})
+    assert "… (capped at 1200 chars; read a narrower range)" in out
+
+
+def test_read_file_ordinary_result_has_no_marker(tmp_path):
+    _big(tmp_path, 10)
+    ft = FileTools(tmp_path)  # the default cap is generous — ordinary files unchanged
+    out = ft.execute("read_file", {"path": "big.txt"})
+    assert "capped at" not in out and "1: L1" in out and "10: L10" in out
+
+
+def test_char_cap_composes_with_line_caps(tmp_path):
+    # The line clamp applies first (window), then the char cap bounds the result body.
+    (tmp_path / "wide.txt").write_text("\n".join("w" * 500 for _ in range(20)) + "\n", encoding="utf-8")
+    ft = FileTools(tmp_path, read_lines=10, read_max_total=15, read_max_chars=2000)
+    out = ft.execute("read_file", {"path": "wide.txt", "line_count": 10})
+    assert "capped at 2000 chars" in out
+    out2 = ft.execute("read_file", {"path": "wide.txt", "start_line": 11, "line_count": 10})
+    assert "6: " not in out2  # the per-turn line budget still holds beneath the char cap
