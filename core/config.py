@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
 from dotenv import load_dotenv
 
@@ -73,6 +74,48 @@ def _parse_model_aliases(raw: str) -> dict[str, tuple[str, str]]:
         provider, model = target.split(":", 1)
         if alias and provider.strip() and model.strip():
             out[alias] = (provider.strip().lower(), model.strip())
+    return out
+
+
+# v0.41 LUMI-160: a model PROFILE — one provider-homogeneous set {reply, think, mood, housekeeping}
+# switched as a whole by /model-set (the v0.40 tier vars generalized per provider). One `provider`
+# field per profile is the structural homogeneity rule: cross-provider mixing is deferred (it would
+# make the router pick a *client*, not just a model id).
+class ModelProfile(NamedTuple):
+    provider: str
+    reply: str
+    think: str
+    mood: str
+    housekeeping: str
+
+
+# The three authored default sets — frontier reply, balanced think/mood, cheapest housekeeping.
+DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
+    "anthropic": ModelProfile("anthropic", "claude-opus-4-8", "claude-sonnet-4-6",
+                              "claude-sonnet-4-6", "claude-haiku-4-5-20251001"),
+    "openai": ModelProfile("openai", "gpt-5.5", "gpt-5.5-mini", "gpt-5.5-mini", "gpt-5.5-nano"),
+    "gemini": ModelProfile("gemini", "gemini-3.1-pro-preview", "gemini-2.5-flash",
+                           "gemini-2.5-flash", "gemini-2.5-flash-lite"),
+}
+
+
+def _parse_model_profiles(raw: str) -> dict[str, ModelProfile]:
+    """Parse ``LUMI_MODEL_PROFILES`` (``name=provider:reply,think,mood,housekeeping;…``) merged onto
+    the defaults. Entries are ``;``-separated (the tier list needs the comma); malformed entries are
+    skipped (never raise); an empty value yields the defaults unchanged."""
+    out = dict(DEFAULT_MODEL_PROFILES)
+    for item in (raw or "").split(";"):
+        item = item.strip()
+        if not item or "=" not in item:
+            continue
+        name, target = item.split("=", 1)
+        name = name.strip().lower()
+        if ":" not in target:
+            continue
+        provider, tiers = target.split(":", 1)
+        parts = [p.strip() for p in tiers.split(",")]
+        if name and provider.strip() and len(parts) == 4 and all(parts):
+            out[name] = ModelProfile(provider.strip().lower(), *parts)
     return out
 
 # Default canon path (config-referenced — never hardcoded in the core).
@@ -192,6 +235,8 @@ class Config:
     model: str = DEFAULT_MODEL
     # v0.37 LUMI-148: `/model` runtime-toggle aliases (alias → (provider, model)); from LUMI_MODEL_ALIASES.
     model_aliases: dict[str, tuple[str, str]] = field(default_factory=lambda: dict(DEFAULT_MODEL_ALIASES))
+    # v0.41 LUMI-160: named per-provider tier sets for /model-set; from LUMI_MODEL_PROFILES.
+    model_profiles: dict[str, ModelProfile] = field(default_factory=lambda: dict(DEFAULT_MODEL_PROFILES))
     # v0.40 LUMI-155: per-operation model routing — route internal ops to cheaper Claude tiers while
     # the visible reply stays on `model`. Each unset ("") → that op runs on `model` (byte-identical).
     # The tier vars name CLAUDE ids: routing applies only while the active provider is "anthropic"
@@ -524,6 +569,7 @@ def load_config(*, load_env: bool = True) -> Config:
         tool_step_routing=(os.getenv("LUMI_TOOL_STEP_ROUTING") or "off").strip().lower() in _TRUTHY,
         model_tool_step=(os.getenv("LUMI_MODEL_TOOL_STEP") or "").strip(),
         model_aliases=_parse_model_aliases(os.getenv("LUMI_MODEL_ALIASES", "")),
+        model_profiles=_parse_model_profiles(os.getenv("LUMI_MODEL_PROFILES", "")),
         canon_path=canon_path,
         inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default
         inner_voice_path=inner_voice_path,
