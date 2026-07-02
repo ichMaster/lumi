@@ -133,3 +133,69 @@ def test_env_var_mode_guard_unchanged_without_a_profile(tmp_path):
                  model_think="claude-sonnet-4-6")
     core.switch_model("gemini", "gemini-3.1-pro")
     assert core._model_for("think") == "gemini-3.1-pro"  # guard: no Claude id on a foreign engine
+
+
+# --- LUMI-162: the /model-set TUI command + status bar ------------------------------------------------
+async def test_model_set_lists_profiles_and_marks_active(tmp_path):
+    from tui.app import ChatInput, LumiApp
+
+    new = MockLLMClient(states=_STATE)
+    core = _core(tmp_path, MockLLMClient(states=_STATE), factory=lambda p, m: new)
+    core.switch_profile("anthropic")
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        app.query_one("#prompt", ChatInput).text = "/model-set"
+        await pilot.press("enter")
+        await pilot.pause()
+        joined = "\n".join(app.transcript)
+        assert "Профілі моделей" in joined and "gemini" in joined
+        assert "← активний" in joined  # the active profile is marked
+
+
+async def test_model_set_switches_the_whole_stack_and_status_shows_profile(tmp_path):
+    from tui.app import ChatInput, LumiApp
+
+    new = MockLLMClient(states=_STATE)
+    core = _core(tmp_path, MockLLMClient(states=_STATE), factory=lambda p, m: new)
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        app.query_one("#prompt", ChatInput).text = "/model-set gemini"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert core.profile == "gemini" and core.model == "g-pro"
+        assert core._model_for("session-close") == "g-lite"
+        assert any("Профіль:" in line and "gemini" in line for line in app.transcript)
+        assert "gemini:" in app._status_text()  # the status bar carries the profile mark
+
+
+async def test_model_set_unknown_profile_is_non_fatal(tmp_path):
+    from tui.app import ChatInput, LumiApp
+
+    core = _core(tmp_path, MockLLMClient(states=_STATE), factory=lambda p, m: MockLLMClient(states=_STATE))
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        app.query_one("#prompt", ChatInput).text = "/model-set bogus"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert any("Unknown profile" in line for line in app.transcript)
+        assert core.profile is None and core.model == "claude-opus-4-8"  # nothing changed
+
+
+async def test_model_and_model_set_do_not_collide(tmp_path):
+    from tui.app import ChatInput, LumiApp
+
+    new = MockLLMClient(states=_STATE)
+    core = _core(tmp_path, MockLLMClient(states=_STATE), factory=lambda p, m: new,
+                 model_aliases={"sonnet": ("anthropic", "claude-sonnet-4-6")})
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        prompt = app.query_one("#prompt", ChatInput)
+        prompt.text = "/model-set anthropic"  # must hit /model-set, not /model with arg "-set …"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert core.profile == "anthropic"
+        prompt.text = "/model sonnet"  # the reply-only path must hit /model and drop the mark
+        await pilot.press("enter")
+        await pilot.pause()
+        assert core.model == "claude-sonnet-4-6" and core.profile is None
+        assert "anthropic:" not in app._status_text()  # the profile mark is gone

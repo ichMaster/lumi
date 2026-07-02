@@ -277,7 +277,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /biorhythm /closeness /recall /web /journal /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /model-set /biorhythm /closeness /recall /web /journal /new /prompt /memory /forget"
             yield prompt
         yield Footer()
 
@@ -453,6 +453,8 @@ class LumiApp(App[None]):
     def _status_text(self, busy: str | None = None) -> str:
         """The technical connection/status line (no icons)."""
         model = self._short_model(self._core.model)
+        if self._core.profile:  # v0.41: an active profile marks the whole-stack mode
+            model = f"{self._core.profile}:{model}"
         think = f" · thinking:{'on' if self._core.thinking else 'off'}"
         snd = f" · sound:{'on' if self._sound_on else 'off'}"
         style_part = f" · style: {self._core.style}"  # always show (incl. 'normal')
@@ -532,6 +534,10 @@ class LumiApp(App[None]):
             return
         if text == "/mood":
             self._show_mood()
+            prompt.focus()
+            return
+        if text == "/model-set" or text.startswith("/model-set "):
+            self._model_set_command(text)
             prompt.focus()
             return
         if text == "/model" or text.startswith("/model "):
@@ -854,6 +860,42 @@ class LumiApp(App[None]):
         body = f"**Двигун:** {provider} / {model} ✓"
         self._emit(body, Markdown(body))
         self._render_status()  # the status bar shows self._core.model
+
+    def _model_set_command(self, text: str) -> None:
+        """List or switch the per-provider model PROFILES — `/model-set`, `/model-set gemini`
+        (v0.41 LUMI-162). One atomic step: the engine + the think/mood/housekeeping tiers together;
+        the reply-only `/model` afterwards drops the profile mark (the stack no longer matches)."""
+        arg = text[len("/model-set"):].strip()
+        profiles = self._core.model_profiles
+        if not arg:
+            active = self._core.profile
+            if not profiles:
+                self._emit("Профілі не налаштовані.", Text("Профілі не налаштовані.", style="yellow"))
+                return
+            lines = []
+            for name in sorted(profiles):
+                p = profiles[name]
+                mark = " **← активний**" if name == active else ""
+                lines.append(f"- **{name}** ({p.provider}): reply `{p.reply}` · think `{p.think}` · "
+                             f"mood `{p.mood}` · housekeeping `{p.housekeeping}`{mark}")
+            body = ("**Профілі моделей:**\n" + "\n".join(lines) +
+                    "\n\n`/model-set <назва>` — перемкнути весь стек (reply + tiers) без рестарту.")
+            self._emit(body, Markdown(body))
+            return
+        try:
+            self._core.switch_profile(arg)
+        except ValueError as exc:  # unknown profile → a clear, non-fatal message
+            self._emit(str(exc), Text(str(exc), style="yellow"))
+            return
+        except LLMError as exc:  # missing key / unknown provider → the old stack stays in place
+            msg = f"Не вдалося перемкнути профіль: {exc}"
+            self._emit(msg, Text(msg, style="red"))
+            return
+        p = profiles[self._core.profile]
+        body = (f"**Профіль:** {self._core.profile} ({p.provider}) ✓ — reply `{p.reply}`, "
+                f"think `{p.think}`, mood `{p.mood}`, housekeeping `{p.housekeeping}`")
+        self._emit(body, Markdown(body))
+        self._render_status()  # the status bar shows profile:model
 
     def _theme_command(self, text: str) -> None:
         """Manually set / clear the face theme — `/theme <name>` and `/theme auto` (v0.11)."""

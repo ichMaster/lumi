@@ -139,6 +139,25 @@ ids — on a non-Anthropic engine (`/model gpt-5.5` / `gemini`) routing is a no-
 active model (a Claude id never reaches a foreign API). A routed op's tool-loop follows its model (one
 call, one tier).
 
+### Model profiles (`/model-set`, v0.41) — the whole stack per provider
+
+A **profile** is a named, provider-homogeneous set `{reply, think, mood, housekeeping}`; three ship
+built-in and `LUMI_MODEL_PROFILES` (`name=provider:reply,think,mood,housekeeping;…`) overrides/extends:
+
+| profile | reply | think / mood | housekeeping |
+|---|---|---|---|
+| `anthropic` | claude-opus-4-8 | claude-sonnet-4-6 | claude-haiku-4-5-20251001 |
+| `openai` | gpt-5.5 | gpt-5.5-mini | gpt-5.5-nano |
+| `gemini` | gemini-3.1-pro-preview | gemini-2.5-flash | gemini-2.5-flash-lite |
+
+- **`/model-set`** lists the profiles (the active one marked); **`/model-set gemini`** switches the
+  engine **and** all tiers in one atomic step — so per-operation routing works **on every provider**
+  (unlike the env tier vars, which are Claude-only). The status bar shows `profile:reply-model`.
+- **`/model <tier|full-id>`** afterwards moves the **reply only** and drops the profile mark (the
+  stack no longer matches a named set; the tiers keep their values).
+- A failed switch (missing key) leaves the old stack untouched; nothing persists across restarts
+  (the next start reads `.env`).
+
 ---
 
 ## 2. OpenAI
