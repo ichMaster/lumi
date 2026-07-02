@@ -161,7 +161,7 @@ episodic long tail is pulled.
 layer — so facts are injected wholesale (the digest). They're the one memory tier with *no* pull path, which
 is exactly why P3 can't land without a new tool.
 
-**Proposal — `recall_facts(query, k)`** → the top-K long-term facts (and v1.4 impressions) by **meaning**.
+**Proposal — `recall_facts(query, k)`** → the top-K long-term facts (and v1.6 impressions) by **meaning**.
 It reuses everything `recall()` already has:
 - the **`Embedder` + `VectorStore`** seams (embed each `LongTermFact` alongside messages, per-user keyed);
 - the same **bounded, per-user-isolated, trusted-history** framing (a fact is her own knowledge, not

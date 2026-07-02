@@ -54,7 +54,7 @@ thing the brain can do in-process.) **No core change.**
         stamp last_fired  (in memory + schedule.state)
     on startup: catch-up pass — fire wall-clock entries missed while closed (≤ LUMI_SCHED_CATCHUP_H)
     on a FAST timer (LUMI_SCHED_TICK_FAST_MS):
-      run EPHEMERAL directives (e.g. %update_state) — fire-and-forget, not persisted, no-op if missed
+      run EPHEMERAL code handlers (e.g. %update_state — a callback, not a model directive) — fire-and-forget, not persisted, no-op if missed
 ```
 
 Three properties, simpler than v0.13's:
@@ -68,16 +68,17 @@ Three properties, simpler than v0.13's:
    bus, just the module's own state, read once on startup for the **catch-up pass**.
 3. **Two cadences.** A normal tick (`LUMI_SCHED_TICK_MS`) evaluates `due()` for the authored schedule
    (durable acts — a miss is recovered by the startup catch-up). A **fast tick**
-   (`LUMI_SCHED_TICK_FAST_MS`) runs **ephemeral** directives like **`%update_state`** — fire-and-forget,
-   never persisted, **a no-op if missed** (the work is idempotent advance-to-`now`, and the lazy
-   session-start path closes any gap). So the v0.4 nudge + the v0.12 `%think` idle trigger **fold in** as
+   (`LUMI_SCHED_TICK_FAST_MS`) runs **ephemeral code handlers** like **`%update_state`** (a registered
+   callback, **not** a model directive — silent: no `Thought`, no model call) — fire-and-forget,
+   never persisted, **a no-op if missed** (the work is a split-invariant advance-to-`now`; her time
+   flows only while the TUI runs — state saved on close, resumed on start, v1.1). So the v0.4 nudge + the v0.12 `%think` idle trigger **fold in** as
    `idle:` entries — one clock, one place to tune, idle *and* wall-clock together.
 
 **Why not a separate always-on scheduler?** It would have to either (a) run while the TUI is down — but it
 can't *execute* anything then (the brain is the TUI), so it would only pile stale entries on disk — or (b)
 own state itself, which rebuilds the heavy thing (process lifecycle, cron↔core consistency, crash
 recovery). A genuinely always-on scheduler belongs at **v2 (the server)**, where the brain *is* always-on;
-there the same `due()` + `run_directive` + the v1 `update(state, now)` simply move into the server loop,
+there the same `due()` + `run_directive` + the v1.1/v1.3 `update(state, now)` simply move into the server loop,
 unchanged.
 
 ---
@@ -208,7 +209,7 @@ delete the in-app timer once the queue path is proven. One clock at the end, not
 | `LUMI_SCHEDULER` | The in-TUI scheduler runs scheduled directives | `off` |
 | `LUMI_SCHEDULE_PATH` | The authored schedule file | `core/schedule.toml` |
 | `LUMI_SCHED_TICK_MS` | How often the in-TUI scheduler evaluates the schedule, in **milliseconds** | `30000` |
-| `LUMI_SCHED_TICK_FAST_MS` | The **fast** tick for ephemeral directives (e.g. `%update_state`), in **milliseconds** | `60000` |
+| `LUMI_SCHED_TICK_FAST_MS` | The **fast** tick for ephemeral code handlers (e.g. `%update_state`), in **milliseconds** | `60000` |
 | `LUMI_SCHED_CATCHUP_H` | On startup, fire wall-clock entries missed within this window (older → skipped) | `6` |
 | `LUMI_SCHED_DAY_CAP` | Global max scheduled thoughts per day (restraint) | `24` |
 
@@ -239,8 +240,8 @@ hours). The build is small and self-contained:
 2. **The in-TUI scheduler loop** — a timer evaluates `due()` each tick and calls `run_directive`
    **directly** (silent → a `Thought`; graduated/outward → outbox); a **startup catch-up pass**; reads the
    TUI's own in-memory last-input for `idle:`. The only un-unit-tested glue (one integration test).
-3. **The tick service** — a fast in-TUI timer for **ephemeral** directives (`%update_state`):
-   fire-and-forget, not persisted, a no-op if missed.
+3. **The tick service** — a fast in-TUI timer for **ephemeral code handlers** (`%update_state` —
+   registered callbacks, not model directives): fire-and-forget, not persisted, a no-op if missed.
 4. **Migrate** the v0.4/v0.12 idle triggers into `idle:` schedule entries; retire the in-app timers.
 
 It's the natural **companion to the tool-thoughts phase**: ship the scheduler and every directive (inward
@@ -254,7 +255,7 @@ It's the natural **companion to the tool-thoughts phase**: ship the scheduler an
 - [ ] 🔲 `due(now, last_fired, spec)` for `every` / `idle` / `at` / `between` / `cron` (pure; fixed-clock tests).
 - [ ] 🔲 `schedule.toml` parser → schedule entries; `schedule.state` (last-fired per entry).
 - [ ] 🔲 The **in-TUI scheduler loop** — a timer evaluates `due()` and calls `run_directive` directly (NOT `_run_turn`); a **startup catch-up pass**; quiet-hours + caps; reads the TUI's in-memory last-input for `idle:`.
-- [ ] 🔲 The **tick service** — a fast in-TUI timer for ephemeral directives (`%update_state`): fire-and-forget, not persisted, collapse a backlog.
+- [ ] 🔲 The **tick service** — a fast in-TUI timer for ephemeral **code handlers** (`%update_state` — callbacks, not model directives): fire-and-forget, not persisted, collapse a backlog.
 - [ ] 🔲 Migrate the v0.4 nudge + the v0.12 `%think` idle trigger to `idle:` entries; retire `_maybe_think`/`_maybe_nudge`.
 - [ ] 🔲 Config: `LUMI_SCHEDULER` / `_SCHEDULE_PATH` / `_SCHED_TICK_MS` / `_SCHED_TICK_FAST_MS` / `_SCHED_CATCHUP_H` / `_SCHED_DAY_CAP`; an operator guide. (No `_DIRECTIVE_QUEUE` / `_ACTIVITY_PATH` — no bus.)
 - [ ] 🔲 Tests: `due(…)` per trigger type (fixed clock); a due entry runs through `run_directive` → records a `Thought`; quiet-hours + per-day caps hold; the **startup catch-up** skips stale + fires the most-recent due; the **tick service** is fire-and-forget (a missed ephemeral tick is a no-op; idempotent `update` advances once); isolation holds. **No real sleeps, no paid calls.**
