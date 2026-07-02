@@ -380,3 +380,14 @@ def test_cache_ttl_5m_default_no_ttl_no_beta():
     blocks = rec.last_kwargs["system"]
     assert blocks[0]["cache_control"] == {"type": "ephemeral"}  # no ttl key
     assert "extra_headers" not in rec.last_kwargs
+
+
+def test_haiku_gets_no_thinking_or_effort_kwargs():
+    # `/model haiku` with LUMI_THINKING/LUMI_EFFORT on must not 400: Haiku supports neither —
+    # the client gates both per model (Opus/Sonnet keep them).
+    rec = _RecordingClient()
+    client = AnthropicClient("sk-test", thinking=True, effort="high", _client=rec)
+    client.reply("sys", [{"role": "user", "content": "hi"}], "claude-haiku-4-5-20251001")
+    assert "thinking" not in rec.last_kwargs and "output_config" not in rec.last_kwargs
+    client.reply("sys", [{"role": "user", "content": "hi"}], "claude-opus-4-8")
+    assert "thinking" in rec.last_kwargs and "output_config" in rec.last_kwargs

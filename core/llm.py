@@ -528,6 +528,11 @@ def _call_with_retries(
     raise AssertionError("retry loop exited without a result")  # pragma: no cover
 
 
+# Claude tiers WITHOUT extended thinking / `effort` (sending either 400s): Haiku. Matched by prefix
+# so dated ids (claude-haiku-4-5-20251001) and future haiku revisions are covered.
+_NO_THINKING_PREFIXES = ("claude-haiku",)
+
+
 class AnthropicClient:
     """Claude Haiku via the official ``anthropic`` SDK.
 
@@ -618,13 +623,17 @@ class AnthropicClient:
         }
         if cached and self._cache_ttl == "1h":  # the 1h cache is behind a beta header
             kwargs["extra_headers"] = {"anthropic-beta": "extended-cache-ttl-2025-04-11"}
-        if self._thinking:
+        # Haiku 4.5 supports neither extended thinking nor `effort` — sending either 400s the call
+        # (hit by `/model haiku` with LUMI_THINKING on). Gate both per model: Haiku runs plain, the
+        # think box stays empty (documented in MODELS_SETUP §1).
+        thinking_ok = not model.startswith(_NO_THINKING_PREFIXES)
+        if self._thinking and thinking_ok:
             # Adaptive extended thinking (Opus 4.8 / Sonnet 4.6): the model reasons
             # in `thinking` blocks before the visible reply. `display: "summarized"`
             # returns a readable summary (default "omitted") → ``last_thinking``.
             # NB: the legacy {type:"enabled", budget_tokens} form 400s on Opus 4.8.
             kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
-        if self._effort:
+        if self._effort and thinking_ok:
             # Tunes thinking depth / token spend (low|medium|high|xhigh|max).
             kwargs["output_config"] = {"effort": self._effort}
         return kwargs
