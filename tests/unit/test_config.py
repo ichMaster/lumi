@@ -9,6 +9,7 @@ def test_defaults_without_env(monkeypatch):
     for key in (
         "LUMI_MODEL",
         "LUMI_PROVIDER",
+        "LUMI_MODEL_PROFILE",  # v0.41: a leaked startup profile would re-point provider/model/tiers
         "LUMI_CANON_PATH",
         "LUMI_STORE_PATH",
         "LUMI_MEMORY_WINDOW",

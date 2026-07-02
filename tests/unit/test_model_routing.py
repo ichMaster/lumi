@@ -123,7 +123,8 @@ def test_provider_guard_no_routing_on_a_foreign_engine(tmp_path):
 
 # --- config ----------------------------------------------------------------------------------------
 def test_config_reads_the_tier_vars(monkeypatch):
-    for var in ("LUMI_MODEL_THINK", "LUMI_MODEL_MOOD", "LUMI_MODEL_HOUSEKEEPING"):
+    for var in ("LUMI_MODEL_THINK", "LUMI_MODEL_MOOD", "LUMI_MODEL_HOUSEKEEPING",
+                "LUMI_MODEL_PROFILE"):  # v0.41: a leaked profile would fill the tiers
         monkeypatch.delenv(var, raising=False)
     cfg = load_config(load_env=False)
     assert cfg.model_think == "" and cfg.model_mood == "" and cfg.model_housekeeping == ""
