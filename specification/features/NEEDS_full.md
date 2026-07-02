@@ -3,13 +3,13 @@
 Лілі's daily temperament (v0.6) and inner life (v1.3) describe **what she feels** and **what she
 does** — but not **why**. Needs add the missing cause: a few core drives whose satisfaction or
 deficit pushes her from *inside*, where the horoscope/biorhythms push from *outside*. Their levels
-live on the v0.41 **tick** (evolving only while the TUI runs — §6); they are **another computed
+live on the v0.42 **tick** (evolving only while the TUI runs — §6); they are **another computed
 input to the daily mood call** (like biorhythms, v0.8), can **fire an act on a threshold** (v1.2),
 **bias the inner-life plan + free-slot choice** (v1.3), and **close from what actually happened**
 in her generated days (v1.4).
 
 **Lands across v1.1–v1.4** (the drives open v1 as their own two phases, then weave into the inner
-life — see §13). It builds on seams that already exist: the v0.41 **tick service** (the code-handler
+life — see §13). It builds on seams that already exist: the v0.42 **tick service** (the code-handler
 `%update_state`); the daily **mood call** (v0.6) that already merges extra computed inputs the same
 way (biorhythms/cycle/face-theme, v0.8/v0.11); the per-turn **warmth read** that **closeness**
 already emits (`RelationRead.warmth`, v0.10) — the second channel that closes `connection`; and the
@@ -152,7 +152,7 @@ not bite its own tail.
 
 ## 6. Tick-driven — her time flows with the TUI
 
-**Her time flows only while the TUI runs.** The levels evolve on the v0.41 **fast tick**:
+**Her time flows only while the TUI runs.** The levels evolve on the v0.42 **fast tick**:
 `%update_state` is a **code handler** on the tick service (not a model directive — silent, no
 `Thought`, no model call) that runs the pure `evolve(levels, last_ts, now)` and persists. When the
 TUI closes, the state is **saved as-is**; on start she **resumes where she left off** (`last_ts`
@@ -312,7 +312,7 @@ Needs open v1 as **two phases of their own** (v1.1–v1.2), then weave into the 
 - the global **`Needs{levels, last_ts}` store** + authored `core/needs.md` (the 6 drives:
   decay/weight/satisfied-by/deficit voice + the **threshold & cooldown** fields v1.2 uses);
 - the pure **`evolve`** — fractional-Δt **decay + drift** (§6's three rules: fractional Δt,
-  split-invariance, evolve-on-read/-before-mutate), run by the v0.41 **fast tick** (`%update_state`
+  split-invariance, evolve-on-read/-before-mutate), run by the v0.42 **fast tick** (`%update_state`
   as a code handler); frozen while the TUI is closed, no catch-up;
 - needs **feed the daily mood call** (the hungriest joins the mood inputs, the v0.8 merge pattern —
   §10.1);
@@ -338,7 +338,7 @@ the tilt lands here, where a plan first exists.
 - **plan-vs-reality** closing (needs rise from what *actually* happened — §5);
 - the **threshold-5 per-day generation** rule (§7), refining the gap-fill.
 
-Depends on **v0.41** (the tick service the levels ride), **v0.6** (the mood it feeds), **v0.8**
+Depends on **v0.42** (the tick service the levels ride), **v0.6** (the mood it feeds), **v0.8**
 (biorhythms — the merge pattern it copies), **v0.10** (the closeness warmth read), **v0.4** (the
 clock), **v0.2** (the Repository); the v1.3 inner-life store / v1.4 away-gap it weaves into. An
 experiment for daily variation from the inside out — same spirit as the horoscope and biorhythms,
