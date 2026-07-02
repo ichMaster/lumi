@@ -44,7 +44,13 @@ from core.closeness import (
     update_closeness,
     validate_relation,
 )
-from core.config import DEFAULT_COMPACTION_BATCH, DEFAULT_MEMORY_WINDOW, Config, load_config
+from core.config import (
+    DEFAULT_COMPACTION_BATCH,
+    DEFAULT_MEMORY_WINDOW,
+    Config,
+    ModelProfile,
+    load_config,
+)
 from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.deidentify import deidentify, personal_terms, topic_words
 from core.embedder import Embedder
@@ -369,6 +375,7 @@ class Core:
         provider: str = "",
         llm_factory: Callable[[str, str], LLMClient] | None = None,  # v0.37: (provider, model) → LLMClient
         model_aliases: dict[str, tuple[str, str]] | None = None,     # v0.37: /model aliases (from config)
+        model_profiles: dict[str, ModelProfile] | None = None,        # v0.41: /model-set tier sets (from config)
         model_think: str = "",         # v0.40: route kind="think" to this Claude tier (unset → model)
         model_mood: str = "",          # v0.40: route kind="mood" (unset → model)
         model_housekeeping: str = "",  # v0.40: route session-start/-close/compaction (unset → model)
@@ -527,6 +534,9 @@ class Core:
         self._active_provider = provider
         self._llm_factory = llm_factory
         self._model_aliases = {k.lower(): v for k, v in (model_aliases or {}).items()}
+        # v0.41 LUMI-161: named per-provider tier sets + the active profile (None → raw env-var mode).
+        self._model_profiles = {k.lower(): v for k, v in (model_profiles or {}).items()}
+        self._active_profile: str | None = None
         self._user_id = user_id
         self._clock = clock  # injectable: real time by default, fixed in tests
         # Ambient "now / here" snapshot (v0.4), set by the client at startup/refresh.
@@ -798,6 +808,38 @@ class Core:
         self._llm = new_llm
         self._model = model
         self._active_provider = provider
+        # v0.41: a reply-only swap leaves the tiers as they were, but the stack no longer matches a
+        # named set — clear the profile mark (switch_profile re-sets it after this call).
+        self._active_profile = None
+
+    def switch_profile(self, name: str) -> None:
+        """Swap the whole model stack to a named per-provider profile (v0.41 LUMI-161): rebuild the
+        client for the profile's provider + reply model (via :meth:`switch_model`) **and** re-point the
+        three v0.40 tier fields — in one step. **Atomic on failure**: ``switch_model`` builds the new
+        client before assigning anything, so a raising factory leaves the old client *and* the old
+        tiers untouched. Raises :class:`ValueError` on an unknown profile, :class:`LLMError` when the
+        provider/key is unavailable."""
+        key = (name or "").strip().lower()
+        profile = self._model_profiles.get(key)
+        if profile is None:
+            known = ", ".join(sorted(self._model_profiles)) or "(none configured)"
+            raise ValueError(f"Unknown profile '{name}'. Known: {known}.")
+        self.switch_model(profile.provider, profile.reply)  # raises → nothing below runs
+        self._model_think = profile.think
+        self._model_mood = profile.mood
+        self._model_housekeeping = profile.housekeeping
+        self._active_profile = key
+
+    @property
+    def profile(self) -> str | None:
+        """The active profile name (v0.41), or ``None`` when running on raw env vars / after a
+        reply-only ``/model`` swap."""
+        return self._active_profile
+
+    @property
+    def model_profiles(self) -> dict[str, ModelProfile]:
+        """A copy of the configured profiles (for the /model-set listing)."""
+        return dict(self._model_profiles)
 
     @property
     def user_id(self) -> str:
@@ -1542,7 +1584,11 @@ class Core:
         engine is Anthropic; on a foreign engine (gpt-5.5 / gemini) every call uses ``self._model``
         (a Claude id must never reach another provider's API).
         """
-        if self._active_provider and self._active_provider != "anthropic":
+        if (self._active_profile is None
+                and self._active_provider and self._active_provider != "anthropic"):
+            # Raw env-var mode: the tier vars are Claude ids — no routing on a foreign engine. Under
+            # an active profile (v0.41) the tiers are provider-homogeneous by construction, so routing
+            # applies on every engine.
             return self._model
         if kind == "think":
             return self._model_think or self._model
@@ -3054,6 +3100,7 @@ def build_core(
         provider=cfg.provider,
         llm_factory=_llm_factory,
         model_aliases=cfg.model_aliases,
+        model_profiles=cfg.model_profiles,
         model_think=cfg.model_think,
         model_mood=cfg.model_mood,
         model_housekeeping=cfg.model_housekeeping,
