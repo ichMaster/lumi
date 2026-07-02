@@ -106,6 +106,36 @@ depth of persona and literary nuance. **Haiku 4.5** is cheapest and fastest but 
 and weaker adherence to the canon and the structured emotion field (more `calm` fallbacks). Tier down for
 cost/speed, not for the fullest Лілі.
 
+### The three-tier dial (`/model opus ⇄ sonnet ⇄ haiku`) + per-operation routing (v0.40)
+
+**Swap the reply tier mid-session, no restart** — the built-in aliases resolve to the Claude tiers:
+
+```
+/model            → show the active engine + the configured aliases
+/model opus       → quality (the default voice)
+/model sonnet     → balanced (~⅗ the price)
+/model haiku      → cheapest — *speak on Haiku* to save most
+```
+
+The swap re-points the **reply** model for this run only (nothing persists — the next start uses
+`LUMI_MODEL`), the status bar reflects it, and the new tier starts on a cold prompt cache (one-off).
+A tier swap is always an **explicit, reversible choice** — Lumi never downgrades the reply on its own.
+
+**Per-operation routing (`LUMI_MODEL_*`, off by default).** Independently of the dial, the internal
+operations can run on cheaper tiers while the visible reply stays on `LUMI_MODEL`:
+
+```ini
+LUMI_MODEL_THINK=claude-sonnet-4-6         # the thought stream (%think and friends)
+LUMI_MODEL_MOOD=claude-sonnet-4-6          # the daily mood call
+LUMI_MODEL_HOUSEKEEPING=claude-haiku-4-5   # session summaries, facts, compaction
+```
+
+Unset → everything runs on `LUMI_MODEL` (byte-identical). The two **compose**: `/model haiku` moves the
+reply (and any *unset* tier), while an op with a configured tier keeps it. The tier vars name **Claude**
+ids — on a non-Anthropic engine (`/model gpt-5.5` / `gemini`) routing is a no-op and every call uses the
+active model (a Claude id never reaches a foreign API). A routed op's tool-loop follows its model (one
+call, one tier).
+
 ---
 
 ## 2. OpenAI

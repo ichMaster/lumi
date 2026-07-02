@@ -134,3 +134,36 @@ def test_config_reads_the_tier_vars(monkeypatch):
     assert cfg.model_think == "claude-sonnet-4-6"
     assert cfg.model_mood == "claude-sonnet-4-6"
     assert cfg.model_housekeeping == "claude-haiku-4-5"  # whitespace stripped
+
+
+# --- the reply-tier dial (/model, shipped v0.37) composes with routing (LUMI-156) -------------------
+def test_tier_swap_moves_reply_while_routed_ops_keep_tiers(tmp_path):
+    llm = MockLLMClient(replies="думка\nЕМОЦІЯ: joy", states=_STATE)
+    core = _core(
+        tmp_path, llm, thoughts_enabled=True, provider="anthropic",
+        llm_factory=lambda p, m: llm, **_TIERS,
+    )
+    core.switch_model("anthropic", "claude-haiku-4-5")  # the /model haiku dial
+    session = core.start_session()
+    core.reply("привіт", session)
+    assert llm.calls[-1]["model"] == "claude-haiku-4-5"  # the reply follows the dial
+    core.think("think")
+    assert llm.calls[-1]["model"] == "tier-think"  # routed ops keep their configured tiers
+    before_close = len(llm.calls)
+    core.end_session(session)
+    assert {c["model"] for c in llm.calls[before_close:]} == {"tier-hk"}
+
+
+def test_tier_swap_with_tiers_unset_moves_everything(tmp_path):
+    # The v0.37 behaviour, unchanged by routing: no tier vars → the dial moves every call.
+    llm = MockLLMClient(replies="думка\nЕМОЦІЯ: joy", states=_STATE)
+    core = _core(
+        tmp_path, llm, thoughts_enabled=True, provider="anthropic",
+        llm_factory=lambda p, m: llm,
+    )
+    core.switch_model("anthropic", "claude-sonnet-4-6")
+    session = core.start_session()
+    core.reply("привіт", session)
+    core.think("think")
+    core.end_session(session)
+    assert {c["model"] for c in llm.calls} == {"claude-sonnet-4-6"}
