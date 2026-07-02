@@ -69,16 +69,18 @@ def test_proactive_due_respects_real_input_and_quiet_hours():
 
 
 def test_think_seeds_file_loads_and_parses():
-    # The new separate seed file: every non-comment line is a valid %directive with a topic.
+    # The new separate seed file: every non-comment line is a valid, REGISTERED %directive — the
+    # authored seeds may use any directive in the registry (v0.33 tool-thoughts included), not just
+    # the original %think/%wonder pair.
     from core.config import load_config
-    from core.thoughts import parse_directive
+    from core.thoughts import REGISTRY, parse_directive
 
     seeds = load_nudges(load_config(load_env=False).think_seeds_path)
     assert seeds  # at least one seed
     for line in seeds:
         assert line.startswith("%")
         parsed = parse_directive(line)
-        assert parsed is not None and parsed.name in ("think", "wonder")
+        assert parsed is not None and parsed.name in REGISTRY
 
 
 def test_pick_nudge_index_avoids_immediate_repeat():
