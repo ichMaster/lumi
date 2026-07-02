@@ -199,3 +199,59 @@ async def test_model_and_model_set_do_not_collide(tmp_path):
         await pilot.pause()
         assert core.model == "claude-sonnet-4-6" and core.profile is None
         assert "anthropic:" not in app._status_text()  # the profile mark is gone
+
+
+# --- LUMI-164: LUMI_MODEL_PROFILE — boot the stack from a named profile --------------------------------
+_MODEL_VARS = ("LUMI_PROVIDER", "LUMI_MODEL", "LUMI_MODEL_THINK", "LUMI_MODEL_MOOD",
+               "LUMI_MODEL_HOUSEKEEPING", "LUMI_MODEL_PROFILE", "LUMI_MODEL_PROFILES")
+
+
+def _clean_env(monkeypatch):
+    for var in _MODEL_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_startup_profile_boots_the_whole_stack(monkeypatch):
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("LUMI_MODEL_PROFILE", "anthropic")
+    cfg = load_config(load_env=False)
+    assert cfg.provider == "anthropic" and cfg.model == "claude-opus-4-8"
+    assert cfg.model_think == "claude-sonnet-4-6" and cfg.model_mood == "claude-sonnet-4-6"
+    assert cfg.model_housekeeping == "claude-haiku-4-5-20251001"
+    assert cfg.model_profile == "anthropic"
+
+
+def test_explicit_env_var_wins_over_the_profile_field(monkeypatch):
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("LUMI_MODEL_PROFILE", "anthropic")
+    monkeypatch.setenv("LUMI_MODEL_THINK", "claude-haiku-4-5-20251001")  # expert override
+    cfg = load_config(load_env=False)
+    assert cfg.model_think == "claude-haiku-4-5-20251001"  # the explicit var wins
+    assert cfg.model_mood == "claude-sonnet-4-6"           # the rest still from the profile
+
+
+def test_unknown_or_unset_profile_is_pure_env_mode(monkeypatch):
+    _clean_env(monkeypatch)
+    monkeypatch.setenv("LUMI_MODEL_PROFILE", "bogus")
+    cfg = load_config(load_env=False)
+    assert cfg.model_profile == "" and cfg.provider == "anthropic"
+    assert cfg.model_think == ""  # no tier routing — today's env mode, byte-identical
+    _clean_env(monkeypatch)
+    assert load_config(load_env=False).model_profile == ""
+
+
+def test_core_boots_with_the_profile_marked(tmp_path):
+    core = Core(
+        llm=MockLLMClient(states=_STATE), repository=JsonRepository(tmp_path / "s.json"),
+        canon="Ти — Лілі.", model="g-pro", provider="gemini", model_profiles=_PROFILES,
+        active_profile="gemini", model_think="g-flash", model_mood="g-flash",
+        model_housekeeping="g-lite", mood_enabled=False, biorhythms_enabled=False,
+        cycle_enabled=False,
+    )
+    assert core.profile == "gemini"
+    assert core._model_for("think") == "g-flash"  # routing on at boot (the guard sees the profile)
+
+
+def test_core_ignores_an_unknown_startup_profile(tmp_path):
+    core = _core(tmp_path, MockLLMClient(states=_STATE), active_profile="bogus")
+    assert core.profile is None

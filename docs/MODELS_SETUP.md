@@ -157,6 +157,9 @@ built-in and `LUMI_MODEL_PROFILES` (`name=provider:reply,think,mood,housekeeping
   stack no longer matches a named set; the tiers keep their values).
 - A failed switch (missing key) leaves the old stack untouched; nothing persists across restarts
   (the next start reads `.env`).
+- **`LUMI_MODEL_PROFILE=anthropic`** boots the whole stack from a profile — one `.env` line instead of
+  five. Any explicitly set `LUMI_PROVIDER`/`LUMI_MODEL`/`LUMI_MODEL_*` var **wins over its profile
+  field** (expert overrides); an unknown/unset name → the plain env-var mode.
 
 ---
 

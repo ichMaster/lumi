@@ -237,6 +237,8 @@ class Config:
     model_aliases: dict[str, tuple[str, str]] = field(default_factory=lambda: dict(DEFAULT_MODEL_ALIASES))
     # v0.41 LUMI-160: named per-provider tier sets for /model-set; from LUMI_MODEL_PROFILES.
     model_profiles: dict[str, ModelProfile] = field(default_factory=lambda: dict(DEFAULT_MODEL_PROFILES))
+    # v0.41 LUMI-164: the profile activated at startup (LUMI_MODEL_PROFILE); "" → raw env-var mode.
+    model_profile: str = ""
     # v0.40 LUMI-155: per-operation model routing — route internal ops to cheaper Claude tiers while
     # the visible reply stays on `model`. Each unset ("") → that op runs on `model` (byte-identical).
     # The tier vars name CLAUDE ids: routing applies only while the active provider is "anthropic"
@@ -560,16 +562,25 @@ def load_config(*, load_env: bool = True) -> Config:
     )
     embed_model = (os.getenv("LUMI_EMBED_MODEL") or _embed_default_model).strip()
 
+    # v0.41 LUMI-164: LUMI_MODEL_PROFILE boots the whole model stack from a named profile — one line
+    # instead of five. Explicitly set LUMI_PROVIDER/LUMI_MODEL/LUMI_MODEL_* vars WIN over the profile
+    # field (expert overrides); an unknown/unset name → pure env-var mode, byte-identical.
+    _profiles = _parse_model_profiles(os.getenv("LUMI_MODEL_PROFILES", ""))
+    _profile_name = (os.getenv("LUMI_MODEL_PROFILE") or "").strip().lower()
+    _prof = _profiles.get(_profile_name)
+
     return Config(
-        provider=os.getenv("LUMI_PROVIDER", "anthropic"),
-        model=os.getenv("LUMI_MODEL", DEFAULT_MODEL),
-        model_think=(os.getenv("LUMI_MODEL_THINK") or "").strip(),
-        model_mood=(os.getenv("LUMI_MODEL_MOOD") or "").strip(),
-        model_housekeeping=(os.getenv("LUMI_MODEL_HOUSEKEEPING") or "").strip(),
+        provider=os.getenv("LUMI_PROVIDER") or (_prof.provider if _prof else "anthropic"),
+        model=os.getenv("LUMI_MODEL") or (_prof.reply if _prof else DEFAULT_MODEL),
+        model_think=(os.getenv("LUMI_MODEL_THINK") or "").strip() or (_prof.think if _prof else ""),
+        model_mood=(os.getenv("LUMI_MODEL_MOOD") or "").strip() or (_prof.mood if _prof else ""),
+        model_housekeeping=(os.getenv("LUMI_MODEL_HOUSEKEEPING") or "").strip()
+        or (_prof.housekeeping if _prof else ""),
         tool_step_routing=(os.getenv("LUMI_TOOL_STEP_ROUTING") or "off").strip().lower() in _TRUTHY,
         model_tool_step=(os.getenv("LUMI_MODEL_TOOL_STEP") or "").strip(),
         model_aliases=_parse_model_aliases(os.getenv("LUMI_MODEL_ALIASES", "")),
-        model_profiles=_parse_model_profiles(os.getenv("LUMI_MODEL_PROFILES", "")),
+        model_profiles=_profiles,
+        model_profile=_profile_name if _prof else "",
         canon_path=canon_path,
         inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default
         inner_voice_path=inner_voice_path,

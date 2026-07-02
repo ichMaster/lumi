@@ -793,6 +793,7 @@ The seam is **already there**: `model` is a per-call argument to `LLMClient.repl
 - **`/model-set`** TUI command: `/model-set` alone lists the profiles + marks the active one; `/model-set gemini` switches; the status bar shows the profile + reply model.
 - **`/model <full-id>`**: a bare id infers its provider by prefix (`claude-*` → anthropic, `gpt-*`/`o*` → openai, `gemini-*` → gemini, `deepseek-*` → deepseek); unknown prefix → the clear non-fatal error (aliases + `provider:id` unchanged).
 - **Docs:** MODELS_SETUP.md — the profiles section (the three authored sets + how `/model` and `/model-set` compose).
+- **`LUMI_MODEL_PROFILE` (startup):** boot the whole stack from a named profile — one `.env` line instead of five; an explicitly set `LUMI_PROVIDER`/`LUMI_MODEL`/`LUMI_MODEL_*` var wins over its profile field (expert override); unknown/unset → plain env mode; the boot is marked like a `/model-set` (status bar + routing guard).
 
 **DoD:** `/model-set gemini` swaps the engine **and** all four tiers in one step (think/mood/housekeeping route to the Gemini tiers — routing now works on every provider); `/model-set anthropic` restores the Claude set; `/model <full-id>` re-points the reply alone with the provider inferred; a failed switch leaves engine + tiers unchanged (atomic); profiles unset → v0.40 behavior byte-identical; the `{reply, emotion, intensity}` contract + per-user isolation untouched; **no automatic downgrade** (a profile switch is an explicit user act).
 

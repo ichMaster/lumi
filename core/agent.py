@@ -376,6 +376,7 @@ class Core:
         llm_factory: Callable[[str, str], LLMClient] | None = None,  # v0.37: (provider, model) → LLMClient
         model_aliases: dict[str, tuple[str, str]] | None = None,     # v0.37: /model aliases (from config)
         model_profiles: dict[str, ModelProfile] | None = None,        # v0.41: /model-set tier sets (from config)
+        active_profile: str = "",      # v0.41 LUMI-164: the profile activated at startup ("" → env mode)
         model_think: str = "",         # v0.40: route kind="think" to this Claude tier (unset → model)
         model_mood: str = "",          # v0.40: route kind="mood" (unset → model)
         model_housekeeping: str = "",  # v0.40: route session-start/-close/compaction (unset → model)
@@ -536,7 +537,10 @@ class Core:
         self._model_aliases = {k.lower(): v for k, v in (model_aliases or {}).items()}
         # v0.41 LUMI-161: named per-provider tier sets + the active profile (None → raw env-var mode).
         self._model_profiles = {k.lower(): v for k, v in (model_profiles or {}).items()}
-        self._active_profile: str | None = None
+        # LUMI-164: a startup profile (already applied to provider/model/tiers by load_config) marks
+        # the boot exactly like a /model-set — the status bar + the routing guard see it.
+        boot = active_profile.strip().lower()
+        self._active_profile: str | None = boot if boot in self._model_profiles else None
         self._user_id = user_id
         self._clock = clock  # injectable: real time by default, fixed in tests
         # Ambient "now / here" snapshot (v0.4), set by the client at startup/refresh.
@@ -3101,6 +3105,7 @@ def build_core(
         llm_factory=_llm_factory,
         model_aliases=cfg.model_aliases,
         model_profiles=cfg.model_profiles,
+        active_profile=cfg.model_profile,
         model_think=cfg.model_think,
         model_mood=cfg.model_mood,
         model_housekeeping=cfg.model_housekeeping,
