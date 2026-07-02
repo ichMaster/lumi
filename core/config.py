@@ -199,6 +199,11 @@ class Config:
     model_think: str = ""         # LUMI_MODEL_THINK — the think path (kind="think")
     model_mood: str = ""          # LUMI_MODEL_MOOD — the daily mood call (kind="mood")
     model_housekeeping: str = ""  # LUMI_MODEL_HOUSEKEEPING — session-start / session-close / compaction
+    # v0.40 LUMI-158 (Layer 2, gated, Anthropic-only): per-step routing inside the tool-loop —
+    # continuation rounds dig on the step tier, the first round + the visible terminal stay on the
+    # call's model (R2 two-pass). Coherence risk with mixed tiers → off by default, A/B before enabling.
+    tool_step_routing: bool = False  # LUMI_TOOL_STEP_ROUTING
+    model_tool_step: str = ""        # LUMI_MODEL_TOOL_STEP — the digging tier (a Claude id)
     canon_path: Path = DEFAULT_CANON_PATH
     # v0.38 Inner Voice: load core/inner_voice.md as the think directive (off → REASONING_DIRECTIVE).
     inner_voice: bool = False
@@ -516,6 +521,8 @@ def load_config(*, load_env: bool = True) -> Config:
         model_think=(os.getenv("LUMI_MODEL_THINK") or "").strip(),
         model_mood=(os.getenv("LUMI_MODEL_MOOD") or "").strip(),
         model_housekeeping=(os.getenv("LUMI_MODEL_HOUSEKEEPING") or "").strip(),
+        tool_step_routing=(os.getenv("LUMI_TOOL_STEP_ROUTING") or "off").strip().lower() in _TRUTHY,
+        model_tool_step=(os.getenv("LUMI_MODEL_TOOL_STEP") or "").strip(),
         model_aliases=_parse_model_aliases(os.getenv("LUMI_MODEL_ALIASES", "")),
         canon_path=canon_path,
         inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default

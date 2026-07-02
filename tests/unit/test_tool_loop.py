@@ -146,3 +146,69 @@ def test_mock_script_respects_max_steps():
     out = mock.reply_structured("sys", [{"role": "user", "content": "hi"}], "m",
                                 tools=_TOOLS, tool_executor=lambda n, i: "x", max_steps=2)
     assert out["emotion"] == "calm" and len(mock.tool_calls) == 2  # capped at max_steps
+
+
+# --- v0.40 LUMI-158: Layer 2 per-step routing (gated, Anthropic-only) -------------------------------
+def test_step_routing_digs_cheap_and_speaks_on_the_calls_model():
+    # 3 scripted rounds: opus tool round → cheap tool round → cheap terminal (discarded) → clean opus final.
+    fake = _queue_fake([
+        _resp([_tooluse("read_file", {"path": "a"})]),          # round 0 — the call's model
+        _resp([_tooluse("read_file", {"path": "b"})]),          # round 1 — the step tier
+        _resp([_tooluse("set_state", _STATE)]),                 # round 2 — cheap terminal → discarded
+        _resp([_tooluse("set_state", _STATE)]),                 # the R2 clean final on the call's model
+    ])
+    client = AnthropicClient("sk-test", step_routing=True, step_model="step-tier", _client=fake)
+    out = client.reply_structured("sys", [{"role": "user", "content": "hi"}], "opus",
+                                  tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert out == _STATE
+    models = [kw["model"] for kw in fake.messages.calls]
+    assert models == ["opus", "step-tier", "step-tier", "opus"]  # first + final on the voice, digging cheap
+    final = fake.messages.calls[-1]
+    assert final["tool_choice"] == {"type": "tool", "name": "set_state"}  # R2's separate clean final call
+    # The per-round log tags each round's ACTUAL model (cache-monitor attribution).
+    assert [(tag, s.model) for tag, s in client.last_round_log] == [
+        ("tool", "opus"), ("tool", "step-tier"), ("tool", "step-tier"), ("reply", "opus")]
+
+
+def test_step_routing_no_tools_turn_is_untouched():
+    # The first round is always the call's model — a no-tool turn never pays an extra call.
+    fake = _queue_fake([_resp([_tooluse("set_state", _STATE)])])
+    client = AnthropicClient("sk-test", step_routing=True, step_model="step-tier", _client=fake)
+    out = client.reply_structured("sys", [{"role": "user", "content": "hi"}], "opus",
+                                  tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert out == _STATE
+    assert [kw["model"] for kw in fake.messages.calls] == ["opus"]  # one call, no extra final
+
+
+def test_step_routing_off_is_byte_identical():
+    fake = _queue_fake([_resp([_tooluse("read_file", {"path": "a"})]),
+                        _resp([_tooluse("set_state", _STATE)])])
+    client = AnthropicClient("sk-test", _client=fake)  # flag off (default)
+    out = client.reply_structured("sys", [{"role": "user", "content": "hi"}], "opus",
+                                  tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert out == _STATE
+    assert [kw["model"] for kw in fake.messages.calls] == ["opus", "opus"]  # every round on the call's model
+
+
+def test_step_routing_flag_without_model_is_off():
+    fake = _queue_fake([_resp([_tooluse("read_file", {"path": "a"})]),
+                        _resp([_tooluse("set_state", _STATE)])])
+    client = AnthropicClient("sk-test", step_routing=True, step_model="", _client=fake)
+    client.reply_structured("sys", [{"role": "user", "content": "hi"}], "opus",
+                            tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert [kw["model"] for kw in fake.messages.calls] == ["opus", "opus"]
+
+
+def test_step_routing_text_loop_answers_on_the_calls_model():
+    # The think-path twin: cheap digging, the terminal text re-answered tool-less on the call's model.
+    fake = _queue_fake([
+        _resp([_tooluse("read_file", {"path": "a"})]),                       # round 0 — the call's model
+        _resp([SimpleNamespace(type="text", text="чернетка")]),              # cheap terminal → discarded
+        _resp([SimpleNamespace(type="text", text="думка\nЕМОЦІЯ: joy")]),    # clean final on the call's model
+    ])
+    client = AnthropicClient("sk-test", step_routing=True, step_model="step-tier", _client=fake)
+    out = client.reply("sys", [{"role": "user", "content": "hi"}], "think-tier",
+                       tools=_TOOLS, tool_executor=lambda n, i: "x")
+    assert out == "думка\nЕМОЦІЯ: joy"
+    assert [kw["model"] for kw in fake.messages.calls] == ["think-tier", "step-tier", "think-tier"]
+    assert "tools" not in fake.messages.calls[-1]  # the R2 final is a clean, tool-less answer

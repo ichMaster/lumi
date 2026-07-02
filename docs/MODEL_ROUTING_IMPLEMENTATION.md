@@ -207,6 +207,26 @@ _TOOL_TIER = {
 > call). Also note: `read_file` cost is driven by **result size** — capping `line_count`/chars (cost-doc §5)
 > cuts ~29% of the `tool` bill with **no** model change and **no** coherence risk; do that **first**.
 
+### Shipped form (v0.40 LUMI-158) — R2, gated, Anthropic-only
+
+`AnthropicClient` takes `step_routing` + `step_model` (config: `LUMI_TOOL_STEP_ROUTING` +
+`LUMI_MODEL_TOOL_STEP`; both required, **off by default**). Semantics in both loops (`_tool_loop` +
+`_text_tool_loop`):
+
+- **Round 0 always runs on the call's model** — a no-tool turn is untouched (no extra call, no voice change).
+- **Continuation rounds** (digesting tool results) run on `step_model`.
+- When a continuation **tries to answer**, its terminal is **discarded** (logged as a `tool` round — still
+  paid) and **one clean final call on the call's model** produces the visible answer (forced `set_state` in
+  the reply loop; tool-less text in the think loop). The per-round cache log tags each round's **actual**
+  model, so cost attribution stays correct.
+- The OpenAI/Gemini loops are untouched (single-model, as before).
+
+**A/B before enabling:** run two matched weeks (`LUMI_TOOL_STEP_ROUTING=on` vs off) with the same tier vars;
+compare (1) the per-`kind` `tool` cost from `cache-log.jsonl`, and (2) reply quality on tool-heavy turns —
+does the final answer still weave the dug-up material in her voice, or does it read like a summary of notes?
+The cost win must beat the discarded-terminal overhead (~one cheap synthesis per tool-using turn) and the
+cold step-tier cache. Revert = flip one env var.
+
 ---
 
 ## 5. Caching considerations

@@ -553,6 +553,8 @@ class AnthropicClient:
         cache_ttl: str = "5m",
         retries: int = 2,
         backoff: float = 0.5,
+        step_routing: bool = False,
+        step_model: str = "",
         _client: object | None = None,
     ) -> None:
         if not api_key:
@@ -567,6 +569,11 @@ class AnthropicClient:
         self._max_tokens = max_tokens
         self._thinking = thinking
         self._effort = effort
+        # v0.40 LUMI-158 (Layer 2, gated, Anthropic-only): route the tool-loop's CONTINUATION rounds
+        # to a cheaper tier while the first round and the visible terminal stay on the call's model
+        # (the R2 two-pass — dig cheap, speak on the voice). Active only when the flag AND a step
+        # model are set; "" → off, the loop is byte-identical.
+        self._step_model = (step_model or "").strip() if step_routing else ""
         # Prompt-cache lifetime: "5m" (default ephemeral) or "1h" (extended — keeps the cached prefix
         # warm across longer gaps, e.g. 10-min proactive thinks; needs the extended-cache-ttl beta).
         self._cache_ttl = cache_ttl
@@ -740,9 +747,13 @@ class AnthropicClient:
         self.last_round_log = []  # per-round (tag, stats) for the cache monitor
         try:
             for step in range(max_steps + 1):
-                kwargs = self._base_kwargs(system, convo, model, cache_prefix)
+                final = step >= max_steps
+                # v0.40 LUMI-158 (Layer 2, gated): continuation rounds dig on the step tier; the first
+                # round and the forced final stay on the call's model. "" (off) → always the call's model.
+                round_model = self._step_model if (self._step_model and step > 0 and not final) else model
+                kwargs = self._base_kwargs(system, convo, round_model, cache_prefix)
                 kwargs["tools"] = all_tools
-                if step >= max_steps:  # final round → force set_state so the turn always terminates
+                if final:  # final round → force set_state so the turn always terminates
                     kwargs["tool_choice"] = {"type": "tool", "name": _EMOTION_TOOL["name"]}
                     kwargs.pop("thinking", None)  # forced tool_choice incompatible with thinking
                 else:
@@ -751,14 +762,30 @@ class AnthropicClient:
                 resp = self._create_retried(kwargs)
                 latency = int((time.monotonic() - started) * 1000)
                 self._accumulate(resp, acc, latency)
-                rstats = self._round_stats(resp, model, latency)  # this round's stats (per-round log)
+                rstats = self._round_stats(resp, round_model, latency)  # per-round log tags the ACTUAL model
 
                 state = self._tool_input(resp, _EMOTION_TOOL["name"])
+                tool_uses = [b for b in getattr(resp, "content", []) if getattr(b, "type", None) == "tool_use"]
+                if (state is not None or not tool_uses) and round_model != model:
+                    # R2: the digging tier tried to answer — discard its terminal and speak ONCE, clean,
+                    # on the call's model (forced set_state over the gathered tool results).
+                    self.last_round_log.append(("tool", rstats))  # the discarded cheap terminal (still paid)
+                    fkwargs = self._base_kwargs(system, convo, model, cache_prefix)
+                    fkwargs["tools"] = all_tools
+                    fkwargs["tool_choice"] = {"type": "tool", "name": _EMOTION_TOOL["name"]}
+                    fkwargs.pop("thinking", None)  # forced tool_choice incompatible with thinking
+                    started = time.monotonic()
+                    resp = self._create_retried(fkwargs)
+                    latency = int((time.monotonic() - started) * 1000)
+                    self._accumulate(resp, acc, latency)
+                    self.last_round_log.append(("reply", self._round_stats(resp, model, latency)))
+                    self._finalize_loop(acc, model)
+                    state = self._tool_input(resp, _EMOTION_TOOL["name"])
+                    return state if state is not None else {"reply": self._text_of(resp)}
                 if state is not None:  # terminal — the turn is done (the answer round)
                     self.last_round_log.append(("reply", rstats))
                     self._finalize_loop(acc, model)
                     return state
-                tool_uses = [b for b in getattr(resp, "content", []) if getattr(b, "type", None) == "tool_use"]
                 if not tool_uses:  # no tool, no set_state → degrade to the text (still the answer round)
                     self.last_round_log.append(("reply", rstats))
                     self._finalize_loop(acc, model)
@@ -805,17 +832,31 @@ class AnthropicClient:
         self.last_round_log = []
         try:
             for step in range(max_steps + 1):
-                kwargs = self._base_kwargs(system, convo, model, cache_prefix)
-                if step < max_steps:  # offer tools until the final round; then force a text answer
+                final = step >= max_steps
+                # v0.40 LUMI-158 (Layer 2, gated): continuations dig on the step tier; first + final
+                # rounds stay on the call's model (which is already the routed think tier under Layer 1).
+                round_model = self._step_model if (self._step_model and step > 0 and not final) else model
+                kwargs = self._base_kwargs(system, convo, round_model, cache_prefix)
+                if not final:  # offer tools until the final round; then force a text answer
                     kwargs["tools"] = list(tools)
                     kwargs["tool_choice"] = {"type": "auto"}
                 started = time.monotonic()
                 resp = self._create_retried(kwargs)
                 latency = int((time.monotonic() - started) * 1000)
                 self._accumulate(resp, acc, latency)
-                rstats = self._round_stats(resp, model, latency)
+                rstats = self._round_stats(resp, round_model, latency)
                 tool_uses = [b for b in getattr(resp, "content", []) if getattr(b, "type", None) == "tool_use"]
                 if not tool_uses:  # terminal — the model answered in text (the thought)
+                    if round_model != model:
+                        # R2: the digging tier answered — discard it and answer once, tool-less, on the
+                        # call's model.
+                        self.last_round_log.append(("tool", rstats))  # the discarded cheap terminal
+                        fkwargs = self._base_kwargs(system, convo, model, cache_prefix)
+                        started = time.monotonic()
+                        resp = self._create_retried(fkwargs)
+                        latency = int((time.monotonic() - started) * 1000)
+                        self._accumulate(resp, acc, latency)
+                        rstats = self._round_stats(resp, model, latency)
                     self.last_round_log.append(("reply", rstats))
                     self._finalize_loop(acc, model)
                     return self._text_of(resp)
@@ -2111,6 +2152,8 @@ def build_llm(cfg: Config) -> LLMClient:
             thinking=cfg.thinking,
             effort=cfg.effort,
             cache_ttl=cfg.prompt_cache_ttl,
+            step_routing=cfg.tool_step_routing,  # v0.40 Layer 2 (gated, Anthropic-only)
+            step_model=cfg.model_tool_step,
         )
     if provider in ("openai", "deepseek", "local"):
         base_url, key = _openai_compatible_target(cfg, provider)
