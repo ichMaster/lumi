@@ -141,8 +141,10 @@ call, one tier).
 
 ### Model profiles (`/model-set`, v0.41) — the whole stack per provider
 
-A **profile** is a named, provider-homogeneous set `{reply, think, mood, housekeeping}`; three ship
-built-in and `LUMI_MODEL_PROFILES` (`name=provider:reply,think,mood,housekeeping;…`) overrides/extends:
+A **profile** is a named, provider-homogeneous set `{reply, think, mood, housekeeping}`. The sets —
+and the `/model` aliases — live in **`core/models.toml`**: edit that file when new models are released
+(no code change). Merge order: code defaults ← `core/models.toml` ← the `.env` vars
+(`LUMI_MODEL_PROFILES` / `LUMI_MODEL_ALIASES`, then the per-field `LUMI_MODEL_*`). The shipped sets:
 
 | profile | reply | think / mood | housekeeping |
 |---|---|---|---|

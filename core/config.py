@@ -59,10 +59,11 @@ DEFAULT_MODEL_ALIASES: dict[str, tuple[str, str]] = {
 }
 
 
-def _parse_model_aliases(raw: str) -> dict[str, tuple[str, str]]:
-    """Parse ``LUMI_MODEL_ALIASES`` (``alias=provider:model,…``) merged onto the defaults. Malformed
-    entries are skipped (never raise); an empty value yields the defaults unchanged."""
-    out = dict(DEFAULT_MODEL_ALIASES)
+def _parse_model_aliases(raw: str, base: dict[str, tuple[str, str]] | None = None) -> dict[str, tuple[str, str]]:
+    """Parse ``LUMI_MODEL_ALIASES`` (``alias=provider:model,…``) merged onto ``base`` (default: the
+    code defaults). Malformed entries are skipped (never raise); an empty value yields the base
+    unchanged."""
+    out = dict(DEFAULT_MODEL_ALIASES if base is None else base)
     for item in (raw or "").split(","):
         item = item.strip()
         if not item or "=" not in item:
@@ -99,11 +100,42 @@ DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
 }
 
 
-def _parse_model_profiles(raw: str) -> dict[str, ModelProfile]:
+def _load_models_file(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str, ModelProfile]]:
+    """Load ``core/models.toml`` (v0.41 LUMI-165) — THE editable file for new model releases:
+    ``[aliases]`` (the /model shortcuts) + ``[profiles.*]`` (one set per family). Both merge over the
+    code defaults; a missing file or a malformed entry is skipped (never fatal — the defaults hold)."""
+    aliases: dict[str, tuple[str, str]] = {}
+    profiles: dict[str, ModelProfile] = {}
+    try:
+        import tomllib
+
+        data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # missing/unreadable/bad TOML → defaults hold
+        return aliases, profiles
+    raw_aliases = data.get("aliases", {})
+    if isinstance(raw_aliases, dict):
+        for name, target in raw_aliases.items():
+            if isinstance(target, str) and ":" in target:
+                provider, model = target.split(":", 1)
+                if provider.strip() and model.strip():
+                    aliases[str(name).strip().lower()] = (provider.strip().lower(), model.strip())
+    raw_profiles = data.get("profiles", {})
+    if isinstance(raw_profiles, dict):
+        for name, block in raw_profiles.items():
+            if not isinstance(block, dict):
+                continue
+            fields = [str(block.get(k, "")).strip()
+                      for k in ("provider", "reply", "think", "mood", "housekeeping")]
+            if all(fields):
+                profiles[str(name).strip().lower()] = ModelProfile(fields[0].lower(), *fields[1:])
+    return aliases, profiles
+
+
+def _parse_model_profiles(raw: str, base: dict[str, ModelProfile] | None = None) -> dict[str, ModelProfile]:
     """Parse ``LUMI_MODEL_PROFILES`` (``name=provider:reply,think,mood,housekeeping;…``) merged onto
-    the defaults. Entries are ``;``-separated (the tier list needs the comma); malformed entries are
-    skipped (never raise); an empty value yields the defaults unchanged."""
-    out = dict(DEFAULT_MODEL_PROFILES)
+    ``base`` (default: the code defaults). Entries are ``;``-separated (the tier list needs the
+    comma); malformed entries are skipped (never raise); an empty value yields the base unchanged."""
+    out = dict(DEFAULT_MODEL_PROFILES if base is None else base)
     for item in (raw or "").split(";"):
         item = item.strip()
         if not item or "=" not in item:
@@ -117,6 +149,9 @@ def _parse_model_profiles(raw: str) -> dict[str, ModelProfile]:
         if name and provider.strip() and len(parts) == 4 and all(parts):
             out[name] = ModelProfile(provider.strip().lower(), *parts)
     return out
+
+# v0.41 LUMI-165: the editable model-profiles file (one [profile] block per family).
+DEFAULT_MODELS_PATH = _REPO_ROOT / "core" / "models.toml"
 
 # Default canon path (config-referenced — never hardcoded in the core).
 DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
@@ -565,7 +600,12 @@ def load_config(*, load_env: bool = True) -> Config:
     # v0.41 LUMI-164: LUMI_MODEL_PROFILE boots the whole model stack from a named profile — one line
     # instead of five. Explicitly set LUMI_PROVIDER/LUMI_MODEL/LUMI_MODEL_* vars WIN over the profile
     # field (expert overrides); an unknown/unset name → pure env-var mode, byte-identical.
-    _profiles = _parse_model_profiles(os.getenv("LUMI_MODEL_PROFILES", ""))
+    # Merge order (weakest → strongest): code defaults ← core/models.toml ← the .env vars — so a
+    # new model release is one edit in models.toml, no code change.
+    _models_path = Path(os.getenv("LUMI_MODELS_FILE") or DEFAULT_MODELS_PATH)
+    _file_aliases, _file_profiles = _load_models_file(_models_path)
+    _base_profiles = dict(DEFAULT_MODEL_PROFILES) | _file_profiles
+    _profiles = _parse_model_profiles(os.getenv("LUMI_MODEL_PROFILES", ""), base=_base_profiles)
     _profile_name = (os.getenv("LUMI_MODEL_PROFILE") or "").strip().lower()
     _prof = _profiles.get(_profile_name)
 
@@ -578,7 +618,9 @@ def load_config(*, load_env: bool = True) -> Config:
         or (_prof.housekeeping if _prof else ""),
         tool_step_routing=(os.getenv("LUMI_TOOL_STEP_ROUTING") or "off").strip().lower() in _TRUTHY,
         model_tool_step=(os.getenv("LUMI_MODEL_TOOL_STEP") or "").strip(),
-        model_aliases=_parse_model_aliases(os.getenv("LUMI_MODEL_ALIASES", "")),
+        model_aliases=_parse_model_aliases(
+            os.getenv("LUMI_MODEL_ALIASES", ""), base=dict(DEFAULT_MODEL_ALIASES) | _file_aliases
+        ),
         model_profiles=_profiles,
         model_profile=_profile_name if _prof else "",
         canon_path=canon_path,

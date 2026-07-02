@@ -1,0 +1,40 @@
+# Lumi models — THE file to edit when new models are released (v0.41).
+#
+# [aliases]      → the /model shortcuts (alias = "provider:model-id").
+# [profiles.*]   → one provider-homogeneous set per family: the reply voice + the cheaper tiers for
+#                  thoughts, the daily mood, and housekeeping (summaries/facts/compaction).
+#
+# Activate a profile at startup with LUMI_MODEL_PROFILE=<name> in .env, or at runtime with
+# /model-set <name>. Everything here merges over the code defaults; the .env vars
+# (LUMI_MODEL_ALIASES / LUMI_MODEL_PROFILES / per-field LUMI_MODEL_*) still win on top.
+# A malformed block is skipped, never fatal.
+
+[aliases]
+opus = "anthropic:claude-opus-4-8"
+sonnet = "anthropic:claude-sonnet-4-6"
+haiku = "anthropic:claude-haiku-4-5-20251001"
+"gpt-5.5" = "openai:gpt-5.5"
+gpt = "openai:gpt-5.5"
+deepseek = "deepseek:deepseek-chat"
+gemini = "gemini:gemini-3.1-pro-preview"
+
+[profiles.anthropic]
+provider = "anthropic"
+reply = "claude-opus-4-8"
+think = "claude-sonnet-4-6"
+mood = "claude-sonnet-4-6"
+housekeeping = "claude-haiku-4-5-20251001"
+
+[profiles.openai]
+provider = "openai"
+reply = "gpt-5.5"
+think = "gpt-5.5-mini"
+mood = "gpt-5.5-mini"
+housekeeping = "gpt-5.5-nano"
+
+[profiles.gemini]
+provider = "gemini"
+reply = "gemini-3.1-pro-preview"
+think = "gemini-2.5-flash"
+mood = "gemini-2.5-flash"
+housekeeping = "gemini-2.5-flash-lite"

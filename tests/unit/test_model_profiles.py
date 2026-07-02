@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 from core.config import (
+    DEFAULT_MODEL_ALIASES,
     DEFAULT_MODEL_PROFILES,
     Config,
     ModelProfile,
@@ -255,3 +256,75 @@ def test_core_boots_with_the_profile_marked(tmp_path):
 def test_core_ignores_an_unknown_startup_profile(tmp_path):
     core = _core(tmp_path, MockLLMClient(states=_STATE), active_profile="bogus")
     assert core.profile is None
+
+
+# --- LUMI-165: core/models.toml — THE editable models file ---------------------------------------------
+from core.config import DEFAULT_MODELS_PATH, _load_models_file  # noqa: E402
+
+
+def test_shipped_models_toml_parses_aliases_and_the_three_families():
+    # Structural, not exact-equality — the owner EDITS this file when new models release.
+    aliases, profiles = _load_models_file(DEFAULT_MODELS_PATH)
+    assert {"opus", "sonnet", "haiku", "gemini"} <= set(aliases)
+    assert {"anthropic", "openai", "gemini"} <= set(profiles)
+    for p in profiles.values():  # homogeneous, fully populated sets
+        assert p.provider and p.reply and p.think and p.mood and p.housekeeping
+
+
+def test_models_file_edit_changes_a_profile_and_an_alias(tmp_path):
+    f = tmp_path / "models.toml"
+    f.write_text(
+        '[aliases]\nopus = "anthropic:claude-opus-5"\n'
+        '[profiles.anthropic]\nprovider="anthropic"\nreply="claude-x"\nthink="t"\nmood="m"\nhousekeeping="h"\n',
+        encoding="utf-8",
+    )
+    aliases, profiles = _load_models_file(f)
+    assert aliases["opus"] == ("anthropic", "claude-opus-5")
+    assert profiles["anthropic"] == ModelProfile("anthropic", "claude-x", "t", "m", "h")
+
+
+def test_models_file_missing_or_malformed_is_skipped(tmp_path):
+    assert _load_models_file(tmp_path / "nope.toml") == ({}, {})
+    bad = tmp_path / "bad.toml"
+    bad.write_text("not [ valid toml", encoding="utf-8")
+    assert _load_models_file(bad) == ({}, {})
+    partial = tmp_path / "partial.toml"
+    partial.write_text(
+        '[aliases]\ngood = "p:m"\nbad = "no-colon"\n'
+        '[profiles.ok]\nprovider="p"\nreply="r"\nthink="t"\nmood="m"\nhousekeeping="h"\n'
+        '[profiles.incomplete]\nprovider="p"\nreply="r"\n',
+        encoding="utf-8",
+    )
+    aliases, profiles = _load_models_file(partial)
+    assert "good" in aliases and "bad" not in aliases
+    assert "ok" in profiles and "incomplete" not in profiles  # malformed skipped, good kept
+
+
+def test_models_file_aliases_feed_config_and_env_wins(tmp_path, monkeypatch):
+    _clean_env(monkeypatch)
+    monkeypatch.delenv("LUMI_MODEL_ALIASES", raising=False)
+    monkeypatch.delenv("LUMI_MODELS_FILE", raising=False)
+    f = tmp_path / "models.toml"
+    f.write_text('[aliases]\nopus = "anthropic:claude-opus-5"\n', encoding="utf-8")
+    monkeypatch.setenv("LUMI_MODELS_FILE", str(f))
+    cfg = load_config(load_env=False)
+    assert cfg.model_aliases["opus"] == ("anthropic", "claude-opus-5")  # the file wins over code
+    assert cfg.model_aliases["haiku"] == DEFAULT_MODEL_ALIASES["haiku"]  # defaults hold
+    monkeypatch.setenv("LUMI_MODEL_ALIASES", "opus=anthropic:claude-opus-6")
+    assert load_config(load_env=False).model_aliases["opus"] == ("anthropic", "claude-opus-6")  # env wins
+
+
+def test_merge_order_defaults_file_env(tmp_path, monkeypatch):
+    _clean_env(monkeypatch)
+    f = tmp_path / "models.toml"
+    f.write_text(
+        '[profiles.gemini]\nprovider="gemini"\nreply="file-r"\nthink="file-t"\nmood="file-m"\nhousekeeping="file-h"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LUMI_MODELS_FILE", str(f))
+    cfg = load_config(load_env=False)
+    assert cfg.model_profiles["gemini"].reply == "file-r"  # the file wins over the code default
+    assert cfg.model_profiles["anthropic"] == DEFAULT_MODEL_PROFILES["anthropic"]  # defaults hold
+    monkeypatch.setenv("LUMI_MODEL_PROFILES", "gemini=gemini:env-r,env-t,env-m,env-h")
+    cfg = load_config(load_env=False)
+    assert cfg.model_profiles["gemini"].reply == "env-r"  # the env var wins over the file
