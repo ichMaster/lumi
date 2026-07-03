@@ -50,7 +50,7 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 # ("opus=anthropic:claude-opus-4-8,gpt-5.5=openai:gpt-5.5"). The model ids are still verified per provider.
 DEFAULT_MODEL_ALIASES: dict[str, tuple[str, str]] = {
     "opus": ("anthropic", "claude-opus-4-8"),
-    "sonnet": ("anthropic", "claude-sonnet-4-6"),
+    "sonnet": ("anthropic", "claude-sonnet-5"),
     "haiku": ("anthropic", "claude-haiku-4-5-20251001"),
     "gpt-5.5": ("openai", "gpt-5.5"),
     "gpt": ("openai", "gpt-5.5"),
@@ -92,8 +92,8 @@ class ModelProfile(NamedTuple):
 
 # The three authored default sets — frontier reply, balanced think/mood, cheapest housekeeping.
 DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
-    "anthropic": ModelProfile("anthropic", "claude-opus-4-8", "claude-sonnet-4-6",
-                              "claude-sonnet-4-6", "claude-haiku-4-5-20251001"),
+    "anthropic": ModelProfile("anthropic", "claude-opus-4-8", "claude-sonnet-5",
+                              "claude-sonnet-5", "claude-haiku-4-5-20251001"),
     "openai": ModelProfile("openai", "gpt-5.5", "gpt-5.5-mini", "gpt-5.5-mini", "gpt-5.5-nano"),
     "gemini": ModelProfile("gemini", "gemini-3.1-pro-preview", "gemini-2.5-flash",
                            "gemini-2.5-flash", "gemini-2.5-flash-lite"),

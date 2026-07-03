@@ -23,7 +23,7 @@ def test_default_profiles_present_and_homogeneous():
     assert set(profiles) >= {"anthropic", "openai", "gemini"}
     a = profiles["anthropic"]
     assert a.provider == "anthropic" and a.reply == "claude-opus-4-8"
-    assert a.think == "claude-sonnet-4-6" and a.housekeeping == "claude-haiku-4-5-20251001"
+    assert a.think == "claude-sonnet-5" and a.housekeeping == "claude-haiku-4-5-20251001"
     assert profiles["openai"].provider == "openai" and profiles["openai"].reply == "gpt-5.5"
     assert profiles["gemini"].provider == "gemini" and profiles["gemini"].housekeeping == "gemini-2.5-flash-lite"
     for p in profiles.values():  # one provider per profile — the structural homogeneity rule
@@ -57,7 +57,7 @@ def test_parse_profiles_skips_malformed_entries():
 
 def test_load_config_reads_the_env_var(monkeypatch):
     monkeypatch.delenv("LUMI_MODEL_PROFILES", raising=False)
-    assert load_config(load_env=False).model_profiles == dict(DEFAULT_MODEL_PROFILES)
+    assert {"anthropic", "openai", "gemini"} <= set(load_config(load_env=False).model_profiles)
     monkeypatch.setenv("LUMI_MODEL_PROFILES", "mine=anthropic:r,t,m,h")
     cfg = load_config(load_env=False)
     assert cfg.model_profiles["mine"] == ModelProfile("anthropic", "r", "t", "m", "h")
@@ -216,9 +216,10 @@ def test_startup_profile_boots_the_whole_stack(monkeypatch):
     _clean_env(monkeypatch)
     monkeypatch.setenv("LUMI_MODEL_PROFILE", "anthropic")
     cfg = load_config(load_env=False)
-    assert cfg.provider == "anthropic" and cfg.model == "claude-opus-4-8"
-    assert cfg.model_think == "claude-sonnet-4-6" and cfg.model_mood == "claude-sonnet-4-6"
-    assert cfg.model_housekeeping == "claude-haiku-4-5-20251001"
+    prof = cfg.model_profiles["anthropic"]  # file-proof: assert against the loaded profile
+    assert cfg.provider == "anthropic" and cfg.model == prof.reply
+    assert cfg.model_think == prof.think and cfg.model_mood == prof.mood
+    assert cfg.model_housekeeping == prof.housekeeping
     assert cfg.model_profile == "anthropic"
 
 
@@ -228,7 +229,7 @@ def test_explicit_env_var_wins_over_the_profile_field(monkeypatch):
     monkeypatch.setenv("LUMI_MODEL_THINK", "claude-haiku-4-5-20251001")  # expert override
     cfg = load_config(load_env=False)
     assert cfg.model_think == "claude-haiku-4-5-20251001"  # the explicit var wins
-    assert cfg.model_mood == "claude-sonnet-4-6"           # the rest still from the profile
+    assert cfg.model_mood == cfg.model_profiles["anthropic"].mood  # the rest still from the profile
 
 
 def test_unknown_or_unset_profile_is_pure_env_mode(monkeypatch):

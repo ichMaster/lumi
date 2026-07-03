@@ -148,7 +148,7 @@ and the `/model` aliases — live in **`core/models.toml`**: edit that file when
 
 | profile | reply | think / mood | housekeeping |
 |---|---|---|---|
-| `anthropic` | claude-opus-4-8 | claude-sonnet-4-6 | claude-haiku-4-5-20251001 |
+| `anthropic` | claude-opus-4-8 | claude-sonnet-5 | claude-haiku-4-5-20251001 |
 | `openai` | gpt-5.5 | gpt-5.5-mini | gpt-5.5-nano |
 | `gemini` | gemini-3.1-pro-preview | gemini-2.5-flash | gemini-2.5-flash-lite |
 
