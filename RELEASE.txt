@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 0.41.0 (2026-07-03)
+---------------------------
+v0.41 — Model profiles: per-provider tier sets (/model-set). One name moves the whole model stack; core/models.toml becomes THE file to edit when new models release:
+- Profile config (LUMI-160): ModelProfile {provider, reply, think, mood, housekeeping} + three authored families (anthropic / openai / gemini) + the LUMI_MODEL_PROFILES override parser (malformed skipped, merged onto defaults).
+- Core.switch_profile (LUMI-161): one atomic step re-points the engine + reply + all three v0.40 tier fields; a raising factory leaves everything untouched; under an active profile the provider guard steps aside, so per-operation routing now works on EVERY engine (Claude-only before).
+- /model-set (LUMI-162): list the profiles (active marked) or switch the whole stack; the status bar shows profile:model; a reply-only /model drops the mark.
+- /model <full-id> (LUMI-163): a bare full model id infers its provider by prefix (claude-*/gpt-*/o*/gemini-*/deepseek-*); aliases + provider:id unchanged.
+- LUMI_MODEL_PROFILE (LUMI-164): boot the stack from a named profile — one .env line instead of five; explicitly set LUMI_* vars win as expert overrides; the boot is marked like a /model-set.
+- core/models.toml (LUMI-165): [aliases] + [profiles.*] in one editable file, merged code defaults <- models.toml <- .env vars; missing/malformed entries skipped, never fatal.
+- Models: the sonnet alias + the anthropic think/mood tiers moved to claude-sonnet-5 (via models.toml — the first edit through the new file).
+
 Version 0.40.0 (2026-07-02)
 ---------------------------
 v0.40 — Model routing: per-operation tiers (cost control, off by default). The reply stays on Opus; the internals go cheaper:

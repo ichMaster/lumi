@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.40 — Model routing: per-operation tiers (cost control, off by default).** One model no longer serves every
+**0.41 — Model profiles: per-provider tier sets (`/model-set`).** One name now moves the **whole model
+stack**: a **profile** is a provider-homogeneous set `{reply, think, mood, housekeeping}`, three ship
+authored (**anthropic / openai / gemini**), and they live in **`core/models.toml`** — THE file to edit
+when new models release (aliases included; merge order: code defaults ← models.toml ← `.env`).
+**`/model-set gemini`** swaps the engine **and** all tiers in one atomic step — so the v0.40
+per-operation routing now works **on every engine**, not just Anthropic. **`LUMI_MODEL_PROFILE=anthropic`**
+boots the stack from a profile (one `.env` line instead of five; explicit `LUMI_MODEL_*` vars stay as
+expert overrides), the status bar shows `profile:model`, and `/model` still moves the **reply alone**
+(now also accepting a bare full id — provider inferred by prefix). Sonnet tier moved to **claude-sonnet-5**
+via the new file. See **[docs/MODELS_SETUP.md](docs/MODELS_SETUP.md)**.
+
+Builds on **0.40 — Model routing: per-operation tiers (cost control, off by default).** One model no longer serves every
 call: a `_model_for(kind)` resolver routes the **thoughts** (`LUMI_MODEL_THINK`), the **daily mood**
 (`LUMI_MODEL_MOOD`) and the **session summaries/facts/compaction** (`LUMI_MODEL_HOUSEKEEPING`) to cheaper
 Claude tiers — **the visible reply stays on `LUMI_MODEL` (Opus)**, and each routed operation's tool-loop
