@@ -78,7 +78,7 @@ The record gains one field (additive — a contract change, pinned by the memory
 - **`topics`** — the tuple of topic names this record (message, or chunk under v0.30) is assigned to,
   from the taxonomy; possibly empty (a message that matches no topic above the floor). Ordered by
   descending assignment score. Only **`kind="message"`** records are tagged — the v0.36 fact vectors
-  (and v0.43 thought vectors) keep an empty `topics`.
+  (and v1.8 thought vectors) keep an empty `topics`.
 
 Everything else (`user_id`, `msg_id`, `vector`, `text`, `ts`, `role`, v0.30's `parent_msg_id` /
 `chunk_index`, and v0.36's `kind`) is unchanged. The `Repository` gains a small **`retag_vectors`**
@@ -170,9 +170,9 @@ long message can carry **different topics in different passages** — and routin
 whose topic matches the conversation, which is strictly finer than message-level tagging. With chunking
 off, the message is the unit, as before.
 
-## Composition with the other vector kinds (v0.36 facts, v0.43 thoughts)
+## Composition with the other vector kinds (v0.36 facts, v1.8 thoughts)
 
-The store also holds `kind="fact"` vectors (v0.36) and, once v0.43 lands, `kind="thought"` vectors.
+The store also holds `kind="fact"` vectors (v0.36) and, once v1.8 lands, `kind="thought"` vectors.
 Thematic recall is **message-layer only**: tagging and routing apply to `kind="message"` records;
 fact/thought vectors stay untagged, and the v0.36 auto fact-RAG block, the `/recall` command, and the
 v0.31 recall tool run unrouted (byte-identical). Extending topics to the other scopes is a possible
@@ -189,7 +189,7 @@ default embedder is Ukrainian-capable). Лілі keeps her agency through the **
 
 ## Mapping to the roadmap
 
-**v0.44 — Semantic recall V: thematic recall (topic routing)**, a refinement of the recall line
+**v1.9 — Semantic recall V: thematic recall (topic routing)**, a refinement of the recall line
 (v0.16 index + v0.17 auto-RAG/context-expansion). Adds a topic label to each message `VectorRecord`, a
 local embedding classifier (index-time tagging + per-turn active-topic pick), an over-fetching router
 in front of the v0.17/v0.30 selection, and Лілі's `topics` emit on `set_state`. Depends on **v0.16**
