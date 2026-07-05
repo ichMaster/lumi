@@ -1,0 +1,50 @@
+# Lumi thought schedule (v0.42) — when Лілі's %directives fire on a clock.
+#
+# Each [[schedule]] row binds one directive to one trigger (+ an optional raw seed topic).
+# The whole scheduler is off unless LUMI_SCHEDULER=on; and each row is off until you set
+# enabled = true. A scheduled act is a GIFT, never a demand — off by default, quiet hours + caps apply.
+#
+# Triggers (pick one per row):
+#   every   = "10m"                       — a wall-clock interval
+#   idle    = "15m"                       — idle since your last message (the migrated nudge)
+#   at      = "08:00"   days = [...]       — a fixed daily/weekly minute (fires once)
+#   between = "07:00-09:00"  every = "20m" — a windowed periodic
+#   cron    = "*/10 7-9 * * 1-5"           — a raw 5-field cron (minute hour dom month dow)
+#
+# Seeds use {placeholders} — resolved AT FIRE TIME against live state (never stored resolved).
+
+# free-muse when you've been away (the migrated idle %think — LUMI-169 wires this to the old timer)
+[[schedule]]
+directive = "think"
+idle = "10m"
+enabled = false
+
+# a glance at the world a few times a day, seeded by the ambient headline
+[[schedule]]
+directive = "catchup"
+between = "08:00-22:00"
+every   = "2h"
+topic   = "{ambient_news}"
+enabled = false
+
+# a morning news brief on weekdays, on a topic she follows
+[[schedule]]
+directive = "brief"
+at    = "08:00"
+days  = ["mon", "tue", "wed", "thu", "fri"]
+topic = "{interest}"
+enabled = false
+
+# a nightly deep-read toward whatever she's been hungry to understand
+[[schedule]]
+directive = "learn"
+at    = "23:00"
+topic = "{hungriest_need}"
+enabled = false
+
+# the OPEN directive — any custom task you author, on any clock (the topic IS the instruction)
+[[schedule]]
+directive = "prompt"
+at    = "08:00"
+topic = "напиши коротке хайку про сьогоднішню погоду: {weather}"
+enabled = false

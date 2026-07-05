@@ -168,6 +168,10 @@ DEFAULT_NUDGE_PATH = _REPO_ROOT / "core" / "nudges.md"
 # v0.12 proactive-think seeds (%think {topic}) — separate file from the v0.4 nudge openers.
 DEFAULT_THINK_SEEDS_PATH = _REPO_ROOT / "core" / "think_seeds.md"
 
+# v0.42 thought scheduler — the authored schedule + the module's own last-fired state (not a bus).
+DEFAULT_SCHEDULE_PATH = _REPO_ROOT / "core" / "schedule.toml"
+DEFAULT_SCHEDULE_STATE_PATH = _REPO_ROOT / ".lumi" / "schedule.state"
+
 # Emotion→emoji map (v0.5); editable. Optional (built-in default in core/emoji.py).
 DEFAULT_EMOJI_PATH = _REPO_ROOT / "core" / "emoji.md"
 
@@ -322,6 +326,14 @@ class Config:
     idle_seconds: int = 240
     nudge_path: Path = DEFAULT_NUDGE_PATH
     think_seeds_path: Path = DEFAULT_THINK_SEEDS_PATH  # v0.12 proactive-think seed menu (%think …)
+    # v0.42 thought scheduler — an in-TUI module (no daemon, no bus). Off → today's idle timer unchanged.
+    scheduler: bool = False                                  # LUMI_SCHEDULER
+    schedule_path: Path = DEFAULT_SCHEDULE_PATH              # LUMI_SCHEDULE_PATH
+    schedule_state_path: Path = DEFAULT_SCHEDULE_STATE_PATH  # the module's last-fired state (not a bus)
+    sched_tick_ms: int = 30000                               # LUMI_SCHED_TICK_MS — scheduler eval interval
+    sched_tick_fast_ms: int = 60000                          # LUMI_SCHED_TICK_FAST_MS — the ephemeral tick
+    sched_catchup_h: int = 6                                 # LUMI_SCHED_CATCHUP_H — startup catch-up window
+    sched_day_cap: int = 24                                  # LUMI_SCHED_DAY_CAP — global thoughts/day
     quiet_hours: tuple[int, int] | None = None  # the v0.4 idle nudge's quiet window
     thoughts_quiet_hours: tuple[int, int] | None = None  # the v0.12 proactive-think's (independent)
     # v0.7.x TUI send/receive sound — off by default; toggled at runtime (Ctrl+S).
@@ -654,6 +666,12 @@ def load_config(*, load_env: bool = True) -> Config:
         idle_seconds=int(idle_seconds_env) if idle_seconds_env else 240,
         nudge_path=Path(nudge_path_env) if nudge_path_env else DEFAULT_NUDGE_PATH,
         think_seeds_path=Path(ts) if (ts := os.getenv("LUMI_THINK_SEEDS_PATH")) else DEFAULT_THINK_SEEDS_PATH,
+        scheduler=_parse_bool(os.getenv("LUMI_SCHEDULER")),
+        schedule_path=Path(sp) if (sp := os.getenv("LUMI_SCHEDULE_PATH")) else DEFAULT_SCHEDULE_PATH,
+        sched_tick_ms=int(os.getenv("LUMI_SCHED_TICK_MS") or 30000),
+        sched_tick_fast_ms=int(os.getenv("LUMI_SCHED_TICK_FAST_MS") or 60000),
+        sched_catchup_h=int(os.getenv("LUMI_SCHED_CATCHUP_H") or 6),
+        sched_day_cap=int(os.getenv("LUMI_SCHED_DAY_CAP") or 24),
         quiet_hours=quiet_hours,
         thoughts_quiet_hours=thoughts_quiet_hours,
         emoji_path=Path(emoji_env) if (emoji_env := os.getenv("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,
