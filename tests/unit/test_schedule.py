@@ -132,10 +132,11 @@ def test_parse_malformed_toml_is_empty_never_raises():
     assert parse_schedule("not [ valid toml =") == []
 
 
-def test_shipped_schedule_toml_parses_all_disabled():
+def test_shipped_schedule_toml_parses():
     entries = load_schedule(DEFAULT_SCHEDULE_PATH)
     assert len(entries) >= 5  # think/catchup/brief/learn/prompt
-    assert all(not e.enabled for e in entries)  # ships opted-out
+    # v0.42 LUMI-169: the idle %think ships enabled (migrated default-on idle); the rituals opt-in.
+    assert all(not e.enabled for e in entries if e.directive != "think")
 
 
 # --- schedule.state --------------------------------------------------------------------------------

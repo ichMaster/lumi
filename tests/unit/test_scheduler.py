@@ -153,3 +153,54 @@ def test_tick_service_collapses_reentrant_tick():
     svc.register("slow", slow)
     svc.tick()
     assert seen == ["start", "end"]  # the nested tick did NOT re-run the handler
+
+
+# --- LUMI-169: migrate idle triggers → idle: entries; retire the in-app timers ---------------------
+def test_graduates_only_muse_family_and_respects_ratio():
+    from tui.scheduler import graduates
+
+    assert graduates("think", 0, 1.0) is True  # ratio 1 → always
+    assert graduates("wonder", 0, 1.0) is True
+    assert graduates("think", 0, 0.0) is False  # ratio 0 → never
+    assert graduates("brief", 0, 1.0) is False  # not an idle-muse directive → never speaks
+    assert graduates("catchup", 0, 1.0) is False
+    # deterministic per seed (should_graduate: seed % 100 < ratio*100)
+    assert graduates("think", 10, 0.2) is True and graduates("think", 30, 0.2) is False
+
+
+def test_migrated_schedule_enables_the_idle_think():
+    from core.config import DEFAULT_SCHEDULE_PATH
+    from core.schedule import load_schedule
+
+    entries = load_schedule(DEFAULT_SCHEDULE_PATH)
+    idle_thinks = [e for e in entries if e.directive == "think" and e.trigger.kind == "idle"]
+    assert idle_thinks and idle_thinks[0].enabled  # the migrated idle %think ships enabled
+    # the new rituals stay opt-in
+    assert all(not e.enabled for e in entries if e.directive in ("catchup", "brief", "learn", "prompt"))
+
+
+async def _mount(tmp_path, monkeypatch, *, scheduler: str):
+    from tui.app import LumiApp
+
+    monkeypatch.setenv("LUMI_SCHEDULER", scheduler)
+    monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")  # a long tick so nothing fires during the test
+    monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
+    core = Core(
+        llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=fixed_clock(_dt(h=14, mi=30)),  # far from the 08:00/23:00 at-entries → no catch-up fires
+        mood_enabled=False, thoughts_enabled=True,
+    )
+    return LumiApp(core)
+
+
+async def test_scheduler_on_wires_the_module(tmp_path, monkeypatch):
+    app = await _mount(tmp_path, monkeypatch, scheduler="on")
+    async with app.run_test():
+        assert app._scheduler is not None and app._tick_service is not None  # scheduler owns the clock
+
+
+async def test_scheduler_off_leaves_the_legacy_path(tmp_path, monkeypatch):
+    app = await _mount(tmp_path, monkeypatch, scheduler="off")
+    async with app.run_test():
+        assert app._scheduler is None and app._tick_service is None  # legacy in-app timers own idle

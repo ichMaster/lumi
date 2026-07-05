@@ -248,6 +248,8 @@ class LumiApp(App[None]):
         self._scheduler = None
         self._sched_busy: bool = False  # scheduled acts serialize (they share the model)
         self._tick_service = None  # v0.42 fast ephemeral-handler tick (LUMI-168); on when scheduler on
+        self._sched_seed_n = 0  # v0.42 LUMI-169: per-fire seed for scheduled-think graduation
+        self._thoughts_spoken_ratio = 0.0  # set in on_mount; the fraction of idle thinks that speak
         # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
         self._bridge: bool = False
         self._voice: bool = False  # v0.14: the local voicer also consumes the outbox
@@ -314,10 +316,14 @@ class LumiApp(App[None]):
         self._last_activity = self._last_nudge_ts = self._last_think_ts = now
         # Two separate menus, two independent timers — the nudge (openers) and the think (seeds)
         # run together and pace on their own stamps.
-        if self._nudge_enabled:  # v0.4: random opener from nudges.md after idle_seconds
+        # v0.42 LUMI-169: when the scheduler is ON it owns the idle rule (the migrated `idle:` %think
+        # entry, which graduates a fraction to spoken) — so the legacy in-app timers are retired. When
+        # OFF, they run exactly as before (byte-identical).
+        self._thoughts_spoken_ratio = cfg.thoughts_spoken_ratio  # for scheduled-think graduation
+        if self._nudge_enabled and not cfg.scheduler:  # v0.4: random opener from nudges.md after idle
             self._nudges = load_nudges(cfg.nudge_path)
             self.set_interval(30, self._maybe_nudge)
-        if cfg.thoughts:  # v0.12: random %think seed from think_seeds.md (A) or free musing (B)
+        if cfg.thoughts and not cfg.scheduler:  # v0.12: random %think seed (A) or free musing (B)
             self._think_seeds = load_nudges(cfg.think_seeds_path)
             self.set_interval(30, self._maybe_think)
         # v0.42: the in-TUI scheduler — fires %directives on a clock via run_directive (no bus, no daemon).
@@ -831,6 +837,8 @@ class LumiApp(App[None]):
         """Run scheduled directives one at a time off-thread through the `%`-router. A directive records
         a `Thought` silently; an outward one (`%share`, a pushing `%brief`) reaches the outbox via its own
         tool. Placeholders in the topic resolve at fire time inside `run_directive`→`resolve`."""
+        from tui.scheduler import graduates  # local import (module loads only when scheduler on)
+
         self._sched_busy = True
         try:
             for entry in entries:
@@ -838,9 +846,18 @@ class LumiApp(App[None]):
                     break
                 text = f"%{entry.directive}" + (f" {entry.topic}" if entry.topic else "")
                 try:
-                    await asyncio.to_thread(self._core.run_directive, text, self._session)
+                    outcome = await asyncio.to_thread(self._core.run_directive, text, self._session)
                 except Exception:  # noqa: BLE001 — a scheduled act must never crash the UI
                     _log.exception("scheduled directive failed: %%%s", entry.directive)
+                    continue
+                # v0.42 LUMI-169: an idle-muse (%think/%wonder) graduates a fraction to a spoken turn —
+                # she speaks first, grounded in the thought (subsuming the v0.4 nudge).
+                self._sched_seed_n += 1
+                if (outcome.is_directive and outcome.thought is not None and self._session is not None
+                        and graduates(entry.directive, self._sched_seed_n, self._thoughts_spoken_ratio)):
+                    seed = (f"(ти щойно подумала: «{outcome.thought.text}» — напиши йому перша, "
+                            "коротко поділись цим або почни з цього розмову)")
+                    await self._run_turn(seed, hidden=True)
             self._render_stats()  # scheduled acts consume tokens too — reflect their cost
         finally:
             self._sched_busy = False

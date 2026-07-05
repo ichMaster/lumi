@@ -26,8 +26,19 @@ from core.schedule import (
     load_state,
     save_state,
 )
+from core.thoughts import should_graduate
 
 _log = logging.getLogger("lumi.scheduler")
+
+# The idle-muse family that can graduate to a spoken self-turn (she speaks first) — the v0.42 LUMI-169
+# subsuming of the v0.4 idle nudge. Other directives surface silently (a Thought) or via their own tool.
+_SPOKEN_DIRECTIVES = ("think", "wonder")
+
+
+def graduates(directive: str, seed_n: int, ratio: float) -> bool:
+    """Whether a scheduled idle-muse fire graduates to a spoken turn (~``ratio`` of the time,
+    deterministic per ``seed_n`` — the migrated nudge behavior)."""
+    return directive in _SPOKEN_DIRECTIVES and should_graduate(seed_n, ratio)
 
 
 class TickService:

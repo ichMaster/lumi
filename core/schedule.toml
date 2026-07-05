@@ -13,11 +13,13 @@
 #
 # Seeds use {placeholders} — resolved AT FIRE TIME against live state (never stored resolved).
 
-# free-muse when you've been away (the migrated idle %think — LUMI-169 wires this to the old timer)
+# free-muse when you've been away — the migrated idle %think (v0.42 LUMI-169). Enabled by default so
+# turning the scheduler on preserves today's idle thinks (still gated by LUMI_THOUGHTS); a fraction
+# graduate to a spoken turn (she speaks first), subsuming the v0.4 idle nudge. Cadence = LUMI_THOUGHTS_INTERVAL_S.
 [[schedule]]
 directive = "think"
 idle = "10m"
-enabled = false
+enabled = true
 
 # a glance at the world a few times a day, seeded by the ambient headline
 [[schedule]]
