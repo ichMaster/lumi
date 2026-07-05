@@ -247,6 +247,7 @@ class LumiApp(App[None]):
         # v0.42 the in-TUI thought scheduler (no daemon, no bus); configured in on_mount, off by default.
         self._scheduler = None
         self._sched_busy: bool = False  # scheduled acts serialize (they share the model)
+        self._tick_service = None  # v0.42 fast ephemeral-handler tick (LUMI-168); on when scheduler on
         # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
         self._bridge: bool = False
         self._voice: bool = False  # v0.14: the local voicer also consumes the outbox
@@ -321,7 +322,10 @@ class LumiApp(App[None]):
             self.set_interval(30, self._maybe_think)
         # v0.42: the in-TUI scheduler — fires %directives on a clock via run_directive (no bus, no daemon).
         if cfg.scheduler:
-            from tui.scheduler import Scheduler  # imported lazily so the module loads only when on
+            from tui.scheduler import (  # imported lazily (only when scheduler on)
+                Scheduler,
+                TickService,
+            )
 
             self._scheduler = Scheduler(
                 load_schedule(cfg.schedule_path), cfg.schedule_state_path,
@@ -330,6 +334,9 @@ class LumiApp(App[None]):
             for entry in self._scheduler.catch_up(now, catchup_h=cfg.sched_catchup_h):
                 self.run_worker(self._run_scheduled([entry]), exclusive=False)  # startup catch-up
             self.set_interval(max(1.0, cfg.sched_tick_ms / 1000), self._sched_tick)
+            # The fast tick service (LUMI-168): ephemeral code handlers (v1.1 registers %update_state).
+            self._tick_service = TickService()
+            self.set_interval(max(1.0, cfg.sched_tick_fast_ms / 1000), self._tick_service.tick)
         # v0.13 bridge: the TUI consumes the inbox FIFO (Telegram → file) on a fast poll, and
         # mirrors Лілі's replies to the outbox FIFO (→ Telegram). Off unless LUMI_BRIDGE=on.
         self._bridge = cfg.bridge
@@ -801,6 +808,13 @@ class LumiApp(App[None]):
                 await self._run_turn(seed, hidden=True)
         finally:
             self._think_busy = False
+
+    def register_tick(self, name: str, handler) -> None:
+        """Register an ephemeral **code handler** on the fast tick service (v0.42 LUMI-168) — a zero-arg
+        callback (no `Thought`, no model call). The seam v1.1 uses for `%update_state`; a no-op if the
+        scheduler (and thus the tick service) is off."""
+        if self._tick_service is not None:
+            self._tick_service.register(name, handler)
 
     def _sched_tick(self) -> None:
         """Scheduler tick (v0.42): fire every schedule entry that's `due()` now, **in-process** via

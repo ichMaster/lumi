@@ -114,3 +114,42 @@ def test_scheduled_entry_runs_through_run_directive_and_records_a_thought(tmp_pa
         outcome = core.run_directive(text, session)
         assert outcome.is_directive and outcome.thought is not None
     assert core.recent_thoughts()  # the scheduled fire recorded a Thought (silent surfacing)
+
+
+# --- LUMI-168: the fast tick service (ephemeral code handlers, not model directives) ---------------
+def test_tick_service_runs_registered_handlers():
+    from tui.scheduler import TickService
+
+    svc = TickService()
+    calls = []
+    svc.register("update_state", lambda: calls.append("x"))
+    svc.tick()
+    svc.tick()
+    assert calls == ["x", "x"]  # a registered code handler runs each tick — no Thought, no model call
+
+
+def test_tick_service_swallows_a_raising_handler():
+    from tui.scheduler import TickService
+
+    svc = TickService()
+    ok = []
+    svc.register("boom", lambda: (_ for _ in ()).throw(RuntimeError("nope")))
+    svc.register("fine", lambda: ok.append(1))
+    svc.tick()  # must not raise
+    assert ok == [1]  # a sibling handler still runs after one raises
+
+
+def test_tick_service_collapses_reentrant_tick():
+    from tui.scheduler import TickService
+
+    svc = TickService()
+    seen = []
+
+    def slow():
+        seen.append("start")
+        svc.tick()  # a re-entrant tick while this one runs → dropped (no pile-up)
+        seen.append("end")
+
+    svc.register("slow", slow)
+    svc.tick()
+    assert seen == ["start", "end"]  # the nested tick did NOT re-run the handler

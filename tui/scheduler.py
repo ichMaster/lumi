@@ -13,6 +13,7 @@ just ``set_interval → scheduler.due_now() → run_directive`` off-thread. See 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -27,6 +28,42 @@ from core.schedule import (
 )
 
 _log = logging.getLogger("lumi.scheduler")
+
+
+class TickService:
+    """The fast in-TUI tick (v0.42 LUMI-168) — for **ephemeral code handlers**, not model directives.
+
+    A registered handler is a **zero-arg callback** doing silent bookkeeping (**no `Thought`, no model
+    call**) — the home of the future `%update_state` (v1.1 needs / v1.3 inner-life: a split-invariant
+    advance-to-`now`). Fire-and-forget: a handler exception is swallowed (never breaks the UI); a backlog
+    **collapses to one run** (a re-entrant tick is skipped, never queued); a missed tick is a **no-op**
+    (nothing runs while the TUI is closed — the work is idempotent advance-to-`now`, so a gap is harmless).
+
+    v1.1 just calls :meth:`register` with its callback — this ships the mechanism + the seam.
+    """
+
+    def __init__(self) -> None:
+        self._handlers: dict[str, Callable[[], None]] = {}
+        self._running = False
+
+    def register(self, name: str, handler: Callable[[], None]) -> None:
+        """Register (or replace) a code handler by name — a zero-arg callback, not a model directive."""
+        self._handlers[name] = handler
+
+    def tick(self) -> None:
+        """Run every registered handler once. Re-entrant ticks are dropped (a backlog collapses to one);
+        a handler that raises is logged and swallowed."""
+        if self._running:
+            return  # a slow handler is still running → drop this tick (no queue, no pile-up)
+        self._running = True
+        try:
+            for name, handler in list(self._handlers.items()):
+                try:
+                    handler()
+                except Exception:  # noqa: BLE001 — an ephemeral tick must never crash the UI
+                    _log.exception("tick handler %r failed", name)
+        finally:
+            self._running = False
 
 
 def _quiet_vetoed(now: datetime, entry: ScheduleEntry, quiet_hours: tuple[int, int] | None) -> bool:
