@@ -37,6 +37,7 @@ from core.llm import LLMError
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.prompt import mark_cache_breakpoint
 from core.repository import Session
+from core.schedule import load_schedule
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
 from tui.bridge import drain_inbox_records, mirror_reply, mirror_user, set_listen_flag
@@ -243,6 +244,9 @@ class LumiApp(App[None]):
         self._think_n: int = 0  # a varying rng_seed + the A/B alternation counter
         self._last_think_ts = self._core.clock()
         self._think_busy: bool = False  # avoid overlapping proactive thinks
+        # v0.42 the in-TUI thought scheduler (no daemon, no bus); configured in on_mount, off by default.
+        self._scheduler = None
+        self._sched_busy: bool = False  # scheduled acts serialize (they share the model)
         # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
         self._bridge: bool = False
         self._voice: bool = False  # v0.14: the local voicer also consumes the outbox
@@ -315,6 +319,17 @@ class LumiApp(App[None]):
         if cfg.thoughts:  # v0.12: random %think seed from think_seeds.md (A) or free musing (B)
             self._think_seeds = load_nudges(cfg.think_seeds_path)
             self.set_interval(30, self._maybe_think)
+        # v0.42: the in-TUI scheduler — fires %directives on a clock via run_directive (no bus, no daemon).
+        if cfg.scheduler:
+            from tui.scheduler import Scheduler  # imported lazily so the module loads only when on
+
+            self._scheduler = Scheduler(
+                load_schedule(cfg.schedule_path), cfg.schedule_state_path,
+                day_cap=cfg.sched_day_cap, quiet_hours=cfg.thoughts_quiet_hours,
+            )
+            for entry in self._scheduler.catch_up(now, catchup_h=cfg.sched_catchup_h):
+                self.run_worker(self._run_scheduled([entry]), exclusive=False)  # startup catch-up
+            self.set_interval(max(1.0, cfg.sched_tick_ms / 1000), self._sched_tick)
         # v0.13 bridge: the TUI consumes the inbox FIFO (Telegram → file) on a fast poll, and
         # mirrors Лілі's replies to the outbox FIFO (→ Telegram). Off unless LUMI_BRIDGE=on.
         self._bridge = cfg.bridge
@@ -786,6 +801,35 @@ class LumiApp(App[None]):
                 await self._run_turn(seed, hidden=True)
         finally:
             self._think_busy = False
+
+    def _sched_tick(self) -> None:
+        """Scheduler tick (v0.42): fire every schedule entry that's `due()` now, **in-process** via
+        `run_directive`. Serialized (`_sched_busy`) so acts don't overlap on the model; skipped while a
+        chat turn is busy. `due_now` stamps last-fired only for the entries it returns."""
+        if self._scheduler is None or self._busy or self._session is None or self._sched_busy:
+            return
+        now = self._core.clock()
+        entries = self._scheduler.due_now(now, last_input=self._last_activity)
+        if entries:
+            self.run_worker(self._run_scheduled(entries), exclusive=False)
+
+    async def _run_scheduled(self, entries: list) -> None:
+        """Run scheduled directives one at a time off-thread through the `%`-router. A directive records
+        a `Thought` silently; an outward one (`%share`, a pushing `%brief`) reaches the outbox via its own
+        tool. Placeholders in the topic resolve at fire time inside `run_directive`→`resolve`."""
+        self._sched_busy = True
+        try:
+            for entry in entries:
+                if self._session is None:
+                    break
+                text = f"%{entry.directive}" + (f" {entry.topic}" if entry.topic else "")
+                try:
+                    await asyncio.to_thread(self._core.run_directive, text, self._session)
+                except Exception:  # noqa: BLE001 — a scheduled act must never crash the UI
+                    _log.exception("scheduled directive failed: %%%s", entry.directive)
+            self._render_stats()  # scheduled acts consume tokens too — reflect their cost
+        finally:
+            self._sched_busy = False
 
     def _poll_inbox(self) -> None:
         """Inbox tick (v0.13/v0.26): drain the `inbox` FIFO (Telegram → file, or dictation → file) on idle

@@ -1,0 +1,145 @@
+"""In-TUI thought scheduler (v0.42 LUMI-167).
+
+The clock that decides **when** a directive fires — an in-process module of the TUI (the only brain),
+**no daemon, no bus**. It owns the schedule + the last-fired ``schedule.state`` and, on a tick, picks the
+entries that are :func:`core.schedule.due` (applying the quiet-hours veto + per-day caps), then the TUI
+runs each **directly** through ``Core.run_directive`` (the ``%``-router, not the reply path). On startup a
+**catch-up pass** fires fixed-time entries missed while the TUI was closed (within a window).
+
+The planning here is **pure and stateful-but-testable** (no Textual, no timers, no model): the TUI glue is
+just ``set_interval → scheduler.due_now() → run_directive`` off-thread. See features/THOUGHT_SCHEDULER.md.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from core.nudge import _in_quiet_hours
+from core.schedule import (
+    ScheduleEntry,
+    _cron_match,
+    due,
+    last_fired_of,
+    load_state,
+    save_state,
+)
+
+_log = logging.getLogger("lumi.scheduler")
+
+
+def _quiet_vetoed(now: datetime, entry: ScheduleEntry, quiet_hours: tuple[int, int] | None) -> bool:
+    """Quiet hours suppress every trigger **except** an explicit ``at:`` the owner set (an alarm beats
+    quiet hours; a periodic glance doesn't)."""
+    if not quiet_hours or not _in_quiet_hours(now, quiet_hours):
+        return False
+    return entry.trigger.kind != "at"
+
+
+def _at_matches(entry: ScheduleEntry, minute: datetime) -> bool:
+    """Does a fixed-time (``at``/``cron``) entry's raw pattern match this minute (ignoring last-fired)?"""
+    t = entry.trigger
+    if t.kind == "at":
+        if t.at_hm is None or (minute.hour, minute.minute) != t.at_hm:
+            return False
+        return not t.days or minute.weekday() in t.days
+    if t.kind == "cron":
+        return _cron_match(t.cron, minute)
+    return False
+
+
+class Scheduler:
+    """Holds the schedule + last-fired state and decides which entries fire on a tick.
+
+    ``day_cap`` is the global daily cap; ``per_dir_cap`` the per-directive daily cap (both restraint,
+    counted in memory and reset at local midnight — a restart resets them, which is fine: the catch-up
+    cap handles downtime). ``quiet_hours`` vetoes non-``at`` triggers inside the window.
+    """
+
+    def __init__(
+        self,
+        entries: list[ScheduleEntry],
+        state_path: str | Path,
+        *,
+        day_cap: int = 24,
+        per_dir_cap: int | None = None,
+        quiet_hours: tuple[int, int] | None = None,
+    ) -> None:
+        self._entries = [e for e in entries if e.enabled]
+        self._state_path = Path(state_path)
+        self._state: dict[str, str] = load_state(state_path)
+        self._day_cap = max(0, day_cap)
+        self._per_dir_cap = self._day_cap if per_dir_cap is None else max(0, per_dir_cap)
+        self._quiet_hours = quiet_hours
+        self._day: str | None = None
+        self._day_count = 0
+        self._per_dir: dict[str, int] = {}
+
+    # --- day-cap bookkeeping (in-memory) ----------------------------------------------------------
+    def _roll_day(self, now: datetime) -> None:
+        today = now.date().isoformat()
+        if today != self._day:
+            self._day, self._day_count, self._per_dir = today, 0, {}
+
+    def _capped(self, entry: ScheduleEntry) -> bool:
+        return (self._day_count >= self._day_cap
+                or self._per_dir.get(entry.directive, 0) >= self._per_dir_cap)
+
+    def _stamp(self, entry: ScheduleEntry, now: datetime) -> None:
+        self._state[entry.id] = now.isoformat()
+        self._day_count += 1
+        self._per_dir[entry.directive] = self._per_dir.get(entry.directive, 0) + 1
+        save_state(self._state_path, self._state)
+
+    # --- the tick ---------------------------------------------------------------------------------
+    def due_now(self, now: datetime, *, last_input: datetime | None = None) -> list[ScheduleEntry]:
+        """The entries to fire at ``now`` — evaluates :func:`due`, vetoes quiet hours, honours the caps,
+        and **stamps** each fired entry (last-fired + counts). Pure of Textual; safe to call each tick."""
+        self._roll_day(now)
+        fires: list[ScheduleEntry] = []
+        for entry in self._entries:
+            if not due(now, last_fired_of(self._state, entry), entry.trigger, last_input=last_input):
+                continue
+            if _quiet_vetoed(now, entry, self._quiet_hours):
+                continue
+            if self._capped(entry):
+                _log.debug("scheduler: %s capped for %s", entry.directive, self._day)
+                continue
+            self._stamp(entry, now)
+            fires.append(entry)
+        return fires
+
+    # --- startup catch-up -------------------------------------------------------------------------
+    def catch_up(self, now: datetime, *, catchup_h: int = 6) -> list[ScheduleEntry]:
+        """Fire fixed-time (``at``/``cron``) entries whose most-recent scheduled minute within the last
+        ``catchup_h`` was **missed** while the TUI was closed. Only the most-recent occurrence fires
+        (never a backlog); older-than-window is skipped. Live triggers (``every``/``idle``/``between``)
+        are handled by the normal tick, so they're excluded here."""
+        self._roll_day(now)
+        fires: list[ScheduleEntry] = []
+        window_start = now - timedelta(hours=max(0, catchup_h))
+        for entry in self._entries:
+            if entry.trigger.kind not in ("at", "cron"):
+                continue
+            last = last_fired_of(self._state, entry)
+            occ = self._most_recent_occurrence(entry, now, window_start)
+            if occ is None or (last is not None and occ <= last):
+                continue  # nothing due in the window, or already fired at/after it
+            if _quiet_vetoed(now, entry, self._quiet_hours) or self._capped(entry):
+                continue
+            self._stamp(entry, now)  # fire once, now (stamped so the live tick won't re-fire this minute)
+            fires.append(entry)
+        return fires
+
+    @staticmethod
+    def _most_recent_occurrence(
+        entry: ScheduleEntry, now: datetime, window_start: datetime
+    ) -> datetime | None:
+        """Scan minutes back from ``now`` to ``window_start``; the most-recent matching minute, or None."""
+        minute = now.replace(second=0, microsecond=0)
+        while minute >= window_start:
+            if _at_matches(entry, minute):
+                return minute
+            minute -= timedelta(minutes=1)
+        return None
