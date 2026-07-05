@@ -44,7 +44,7 @@ reply = "claude-opus-4-8"            # the single-model fallback (roles off)
 think = "claude-sonnet-5"            # v0.40 op-tiers, unchanged
 mood = "claude-sonnet-5"
 housekeeping = "claude-haiku-4-5-20251001"
-talking = "claude-sonnet-5"          # v0.42 roles
+talking = "claude-sonnet-5"          # v0.43 roles
 thinking = "claude-opus-4-8"         #   (thinking runs with extended thinking on)
 emotional = "claude-opus-4-8"
 classifier = "claude-haiku-4-5-20251001"
@@ -152,8 +152,8 @@ restarts and never crosses users.
 
 ## Mapping to the roadmap
 
-**v0.42 — Model roles: register-routed replies**, right after the v0.41 profiles it extends and before
-the v0.43 scheduler. Depends on **v0.41** (profiles + `switch_profile`), **v0.40** (`_model_for` — the
+**v0.43 — Model roles: register-routed replies**, after the v0.41 profiles it extends and the v0.42
+scheduler. Depends on **v0.41** (profiles + `switch_profile`), **v0.40** (`_model_for` — the
 op-tiers it leaves untouched), **v0.3** (the emotion gate every register answers through). The tests
 mirror the phase: the lexical table, the one-call classifier (mocked, floor, failure→talk), the firing
 matrix, the hold (countdown / short-message bypass / re-target / revert), byte-identical off.
