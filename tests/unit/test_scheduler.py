@@ -168,15 +168,14 @@ def test_graduates_only_muse_family_and_respects_ratio():
     assert graduates("think", 10, 0.2) is True and graduates("think", 30, 0.2) is False
 
 
-def test_migrated_schedule_enables_the_idle_think():
+def test_migrated_schedule_has_idle_seeds_row():
+    # Structural — core/schedule.toml is user-editable, so assert the migration SHAPE (an idle seeds
+    # menu), not the enabled-state (the owner may enable rituals / tune rows).
     from core.config import DEFAULT_SCHEDULE_PATH
     from core.schedule import load_schedule
 
     entries = load_schedule(DEFAULT_SCHEDULE_PATH)
-    idle_muse = [e for e in entries if e.trigger.kind == "idle" and e.seeds]
-    assert idle_muse and idle_muse[0].enabled  # the migrated idle muse (a seeds-menu) ships enabled
-    # the new rituals stay opt-in
-    assert all(not e.enabled for e in entries if e.directive in ("catchup", "brief", "learn", "prompt"))
+    assert any(e.trigger.kind == "idle" and e.seeds for e in entries)  # the migrated idle muse
 
 
 async def _mount(tmp_path, monkeypatch, *, scheduler: str):
@@ -280,3 +279,42 @@ async def test_silent_row_does_not_emit_to_chat(tmp_path, monkeypatch):
         await app._run_scheduled([silent])
         assert not any("💭" in line for line in app.transcript)  # silent by default
         assert core.recent_thoughts()  # but the Thought is still recorded (/thoughts + feedback)
+
+
+# --- v0.42: surface each scheduled execution in the chat (LUMI_THOUGHT_SURFACE) --------------------
+async def test_scheduled_fire_logs_meta_line_when_surfacing_on(tmp_path, monkeypatch):
+    from tui.app import LumiApp
+
+    monkeypatch.setenv("LUMI_SCHEDULER", "on")
+    monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")
+    monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
+    monkeypatch.setenv("LUMI_THOUGHT_SURFACE", "on")  # the gate for the chat-log meta line
+    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "0")
+    core = Core(
+        llm=MockLLMClient(replies="тиха думка\nЕМОЦІЯ: calm"),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=fixed_clock(_dt(h=14, mi=30)), mood_enabled=False, thoughts_enabled=True,
+    )
+    app = LumiApp(core)
+    async with app.run_test():
+        await app._run_scheduled([ScheduleEntry("think", Trigger("every", interval_s=1))])
+        assert any(line.startswith("✦") for line in app.transcript)  # the act was marked in the chat
+
+
+async def test_scheduled_fire_no_meta_line_when_surfacing_off(tmp_path, monkeypatch):
+    from tui.app import LumiApp
+
+    monkeypatch.setenv("LUMI_SCHEDULER", "on")
+    monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")
+    monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
+    monkeypatch.setenv("LUMI_THOUGHT_SURFACE", "off")  # default
+    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "0")
+    core = Core(
+        llm=MockLLMClient(replies="тиха думка\nЕМОЦІЯ: calm"),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=fixed_clock(_dt(h=14, mi=30)), mood_enabled=False, thoughts_enabled=True,
+    )
+    app = LumiApp(core)
+    async with app.run_test():
+        await app._run_scheduled([ScheduleEntry("think", Trigger("every", interval_s=1))])
+        assert not any(line.startswith("✦") for line in app.transcript)  # silent by default

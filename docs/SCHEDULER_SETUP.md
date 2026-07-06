@@ -63,6 +63,11 @@ enabled = false
 A `%name!` line in a `seeds` menu shows the same way (the `!` is "open" mode). A `%think`/`%wonder` that
 *graduates* to a spoken turn speaks instead of showing the `💭` line (no double-surface).
 
+**See *when* each act runs (not just its result).** `show`/`!` write the **thought**; to also mark **the
+act itself** in the chat — a dim `✦ Лілі читає новини…` line as it fires, like a typed directive — set
+**`LUMI_THOUGHT_SURFACE=on`** in `.env`. Off (default) → acts run quietly (only `show`/`!` results appear);
+the status line always shows the running act (`✦ %catchup · news…`) regardless.
+
 ### Seeds & placeholders
 
 The `topic` is kept **raw** in the file and expanded **at fire time** against live state (mood, needs,

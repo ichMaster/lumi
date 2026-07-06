@@ -133,11 +133,10 @@ def test_parse_malformed_toml_is_empty_never_raises():
 
 
 def test_shipped_schedule_toml_parses():
+    # Structural only — core/schedule.toml is user-editable runtime config, so don't pin enabled-state.
     entries = load_schedule(DEFAULT_SCHEDULE_PATH)
-    assert len(entries) >= 5  # the idle seeds-menu + catchup/brief/learn/prompt
-    # v0.42: the idle muse (a `seeds` row) ships enabled (migrated default-on idle); the rituals opt-in.
-    assert [e for e in entries if e.enabled and e.seeds]  # exactly the idle seeds row is enabled
-    assert all(not e.enabled for e in entries if not e.seeds)  # every non-seeds ritual is opt-in
+    assert len(entries) >= 5  # the idle seeds-menu + the ritual rows
+    assert any(e.seeds and e.trigger.kind == "idle" for e in entries)  # the migrated idle seeds-menu
 
 
 # --- schedule.state --------------------------------------------------------------------------------

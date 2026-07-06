@@ -861,15 +861,22 @@ class LumiApp(App[None]):
                 text = self._scheduled_text(entry)
                 if not text:  # a seeds row whose file is empty/missing → nothing to fire
                     continue
+                fired = parse_directive(text)  # the actual %name (from the picked seed, for a seeds row)
+                fired_name = fired.name if fired else entry.directive
+                # v0.42: surface the running scheduled act, same as a typed %directive (v0.33) — the
+                # status line shows it, and a gated chat-log meta line (`✦ Лілі …`, LUMI_THOUGHT_SURFACE)
+                # marks each fire in the transcript.
+                self._render_status(busy=thought_status_label(fired_name))
+                if self._thought_surface:
+                    line = thought_meta_line(fired_name)
+                    self._emit(line, Text(line, style=THINKING_COLOR))
                 try:
                     outcome = await asyncio.to_thread(self._core.run_directive, text, self._session)
                 except Exception:  # noqa: BLE001 — a scheduled act must never crash the UI
-                    _log.exception("scheduled directive failed: %s", text.split()[0])
+                    _log.exception("scheduled directive failed: %s", fired_name)
                     continue
                 if not (outcome.is_directive and outcome.thought is not None):
                     continue
-                fired = parse_directive(text)  # the actual %name (from the picked seed, for a seeds row)
-                fired_name = fired.name if fired else entry.directive
                 self._sched_seed_n += 1
                 # v0.42 LUMI-169: an idle-muse (%think/%wonder) graduates a fraction to a spoken turn —
                 # she speaks first, grounded in the thought (subsuming the v0.4 nudge).
@@ -886,6 +893,7 @@ class LumiApp(App[None]):
             self._render_stats()  # scheduled acts consume tokens too — reflect their cost
         finally:
             self._sched_busy = False
+            self._render_status()  # clear the busy label back to the ready state
 
     def _poll_inbox(self) -> None:
         """Inbox tick (v0.13/v0.26): drain the `inbox` FIFO (Telegram → file, or dictation → file) on idle
