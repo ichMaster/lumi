@@ -866,16 +866,23 @@ class LumiApp(App[None]):
                 except Exception:  # noqa: BLE001 — a scheduled act must never crash the UI
                     _log.exception("scheduled directive failed: %s", text.split()[0])
                     continue
-                # v0.42 LUMI-169: an idle-muse (%think/%wonder) graduates a fraction to a spoken turn —
-                # she speaks first, grounded in the thought (subsuming the v0.4 nudge).
+                if not (outcome.is_directive and outcome.thought is not None):
+                    continue
                 fired = parse_directive(text)  # the actual %name (from the picked seed, for a seeds row)
                 fired_name = fired.name if fired else entry.directive
                 self._sched_seed_n += 1
-                if (outcome.is_directive and outcome.thought is not None and self._session is not None
+                # v0.42 LUMI-169: an idle-muse (%think/%wonder) graduates a fraction to a spoken turn —
+                # she speaks first, grounded in the thought (subsuming the v0.4 nudge).
+                if (self._session is not None
                         and graduates(fired_name, self._sched_seed_n, self._thoughts_spoken_ratio)):
                     seed = (f"(ти щойно подумала: «{outcome.thought.text}» — напиши йому перша, "
                             "коротко поділись цим або почни з цього розмову)")
                     await self._run_turn(seed, hidden=True)
+                # v0.42: write the thought to the chat when the row asks for it (`show = true`) or the
+                # fired directive is open (a %name! seed) — the same 💭 line a typed %catchup! shows.
+                elif entry.show or outcome.mode == "open":
+                    body = f"💭 {outcome.thought.text}"
+                    self._emit(body, Markdown(body))
             self._render_stats()  # scheduled acts consume tokens too — reflect their cost
         finally:
             self._sched_busy = False

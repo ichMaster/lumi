@@ -44,6 +44,25 @@ enabled = true
 Durations: `s`/`m`/`h`/`d` (e.g. `"90s"`, `"10m"`, `"2h"`). Days: `mon…sun`. A malformed row is skipped,
 never fatal.
 
+### Show it in the chat (`show = true`)
+
+By default a scheduled act is **silent** — recorded to her thought stream (`/thoughts`) and fed into her
+next reply, but not shown live. Add **`show = true`** to write the result **to the chat** as a `💭` line,
+exactly like a typed **`%catchup!`**:
+
+```toml
+[[schedule]]
+directive = "catchup"
+between = "08:00-22:00"
+every   = "2h"
+topic   = "{ambient_news}"
+show    = true                 # write the 💭 result to the chat (silent without it)
+enabled = false
+```
+
+A `%name!` line in a `seeds` menu shows the same way (the `!` is "open" mode). A `%think`/`%wonder` that
+*graduates* to a spoken turn speaks instead of showing the `💭` line (no double-surface).
+
 ### Seeds & placeholders
 
 The `topic` is kept **raw** in the file and expanded **at fire time** against live state (mood, needs,

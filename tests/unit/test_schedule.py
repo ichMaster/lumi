@@ -206,3 +206,17 @@ def test_shipped_idle_row_uses_the_seeds_menu():
     idle = [e for e in load_schedule(DEFAULT_SCHEDULE_PATH)
             if e.trigger.kind == "idle" and e.enabled]
     assert idle and idle[0].seeds.endswith("think_seeds.md")  # the migrated idle muse reads the menu
+
+
+# --- v0.42: `show` (write the thought to the chat, like a typed %name!) -----------------------------
+def test_parse_show_flag():
+    on = parse_schedule('[[schedule]]\ndirective = "catchup"\nevery = "2h"\nshow = true\n')[0]
+    assert on.show is True
+    off = parse_schedule('[[schedule]]\ndirective = "catchup"\nevery = "2h"\n')[0]
+    assert off.show is False  # default silent
+
+
+def test_shipped_catchup_row_shows_in_chat():
+    from core.config import DEFAULT_SCHEDULE_PATH
+    catchup = [e for e in load_schedule(DEFAULT_SCHEDULE_PATH) if e.directive == "catchup"]
+    assert catchup and catchup[0].show is True  # the example demonstrates show = true

@@ -102,6 +102,7 @@ class ScheduleEntry:
     topic: str | None = None
     enabled: bool = True
     seeds: str = ""  # a %directive-lines file; the fire picks one at random
+    show: bool = False  # v0.42: write the thought to the chat (like a typed %name! open directive)
     days_raw: tuple[str, ...] = field(default=(), repr=False)  # for round-trip/debug only
 
     @property
@@ -228,6 +229,7 @@ def _entry_from_row(row: dict) -> ScheduleEntry | None:
     topic = row.get("topic")
     topic = str(topic).strip() if topic is not None else None
     enabled = bool(row.get("enabled", True))
+    show = bool(row.get("show", False))
     days_raw = tuple(str(d).strip().lower() for d in row.get("days", []) if str(d).strip())
     days = tuple(DOW[d] for d in days_raw if d in DOW)
 
@@ -259,7 +261,8 @@ def _entry_from_row(row: dict) -> ScheduleEntry | None:
     if trig is None:
         return None
     return ScheduleEntry(
-        directive=directive, trigger=trig, topic=topic, enabled=enabled, seeds=seeds, days_raw=days_raw,
+        directive=directive, trigger=trig, topic=topic, enabled=enabled, seeds=seeds, show=show,
+        days_raw=days_raw,
     )
 
 

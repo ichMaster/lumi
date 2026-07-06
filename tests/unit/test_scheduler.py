@@ -240,3 +240,43 @@ def test_scheduled_text_empty_seeds_file(tmp_path):
     app = LumiApp(core)
     e = ScheduleEntry("seeds", Trigger("idle", interval_s=900), seeds=str(empty))
     assert app._scheduled_text(e) == ""  # nothing to fire → skipped by _run_scheduled
+
+
+# --- v0.42: `show` writes the thought to the chat (like a typed %catchup!) --------------------------
+async def test_show_row_emits_thought_to_chat(tmp_path, monkeypatch):
+    from tui.app import LumiApp
+
+    monkeypatch.setenv("LUMI_SCHEDULER", "on")
+    monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")  # long tick — we drive _run_scheduled directly
+    monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
+    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "0")  # isolate `show` from graduation
+    core = Core(
+        llm=MockLLMClient(replies="у світі спокійно сьогодні\nЕМОЦІЯ: calm"),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=fixed_clock(_dt(h=14, mi=30)), mood_enabled=False, thoughts_enabled=True,
+    )
+    app = LumiApp(core)
+    async with app.run_test():
+        shown = ScheduleEntry("think", Trigger("every", interval_s=1), show=True)
+        await app._run_scheduled([shown])
+        assert any("💭" in line for line in app.transcript)  # show=true → written to chat
+
+
+async def test_silent_row_does_not_emit_to_chat(tmp_path, monkeypatch):
+    from tui.app import LumiApp
+
+    monkeypatch.setenv("LUMI_SCHEDULER", "on")
+    monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")
+    monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
+    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "0")  # isolate `show` from graduation
+    core = Core(
+        llm=MockLLMClient(replies="тиха думка\nЕМОЦІЯ: calm"),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=fixed_clock(_dt(h=14, mi=30)), mood_enabled=False, thoughts_enabled=True,
+    )
+    app = LumiApp(core)
+    async with app.run_test():
+        silent = ScheduleEntry("think", Trigger("every", interval_s=1), show=False)
+        await app._run_scheduled([silent])
+        assert not any("💭" in line for line in app.transcript)  # silent by default
+        assert core.recent_thoughts()  # but the Thought is still recorded (/thoughts + feedback)
