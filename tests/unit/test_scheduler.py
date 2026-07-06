@@ -173,8 +173,8 @@ def test_migrated_schedule_enables_the_idle_think():
     from core.schedule import load_schedule
 
     entries = load_schedule(DEFAULT_SCHEDULE_PATH)
-    idle_thinks = [e for e in entries if e.directive == "think" and e.trigger.kind == "idle"]
-    assert idle_thinks and idle_thinks[0].enabled  # the migrated idle %think ships enabled
+    idle_muse = [e for e in entries if e.trigger.kind == "idle" and e.seeds]
+    assert idle_muse and idle_muse[0].enabled  # the migrated idle muse (a seeds-menu) ships enabled
     # the new rituals stay opt-in
     assert all(not e.enabled for e in entries if e.directive in ("catchup", "brief", "learn", "prompt"))
 
@@ -204,3 +204,39 @@ async def test_scheduler_off_leaves_the_legacy_path(tmp_path, monkeypatch):
     app = await _mount(tmp_path, monkeypatch, scheduler="off")
     async with app.run_test():
         assert app._scheduler is None and app._tick_service is None  # legacy in-app timers own idle
+
+
+def test_scheduled_text_picks_a_random_seed_line(tmp_path):
+    from tui.app import LumiApp
+
+    seeds = tmp_path / "seeds.md"
+    seeds.write_text("# a comment (skipped)\n%think про каву\n%wonder! як справи\n", encoding="utf-8")
+    core = Core(llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}), repository=JsonRepository(tmp_path / "s.json"),
+                canon="C", model="m", clock=fixed_clock(_dt()), mood_enabled=False, thoughts_enabled=True)
+    app = LumiApp(core)
+    e = ScheduleEntry("seeds", Trigger("idle", interval_s=900), seeds=str(seeds))
+    picks = {app._scheduled_text(e) for _ in range(20)}
+    assert picks <= {"%think про каву", "%wonder! як справи"}  # only the two %directive lines
+    assert len(picks) == 2  # rotates over the menu (comment skipped)
+
+
+def test_scheduled_text_plain_directive_row(tmp_path):
+    from tui.app import LumiApp
+
+    core = Core(llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}), repository=JsonRepository(tmp_path / "s.json"),
+                canon="C", model="m", clock=fixed_clock(_dt()), mood_enabled=False, thoughts_enabled=True)
+    app = LumiApp(core)
+    e = ScheduleEntry("brief", Trigger("at", at_hm=(8, 0)), topic="{interest}")
+    assert app._scheduled_text(e) == "%brief {interest}"  # topic kept raw (resolves at fire time)
+
+
+def test_scheduled_text_empty_seeds_file(tmp_path):
+    from tui.app import LumiApp
+
+    empty = tmp_path / "empty.md"
+    empty.write_text("# only comments\n", encoding="utf-8")
+    core = Core(llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}), repository=JsonRepository(tmp_path / "s.json"),
+                canon="C", model="m", clock=fixed_clock(_dt()), mood_enabled=False, thoughts_enabled=True)
+    app = LumiApp(core)
+    e = ScheduleEntry("seeds", Trigger("idle", interval_s=900), seeds=str(empty))
+    assert app._scheduled_text(e) == ""  # nothing to fire → skipped by _run_scheduled

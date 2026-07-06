@@ -51,6 +51,104 @@ ambient news…), so the schedule never embeds stale state. Common placeholders:
 `{interest}`, `{hungriest_need}`, `{weather}`. The **`%prompt`** directive makes the topic *itself* the
 instruction — "ask Лілі to do X every morning."
 
+### A `seeds` menu (instead of one fixed topic)
+
+A row can carry a **`seeds`** file instead of a `directive`/`topic` — a file of `%directive` lines. Each
+fire picks **one at random** (no immediate repeat), so a single row rotates through a whole menu, and
+editing the file changes what she muses on (re-read every fire). This is how the shipped idle-muse works:
+
+```toml
+[[schedule]]
+seeds = "core/think_seeds.md"      # one %think/%wonder line picked at random per fire
+idle  = "15m"
+enabled = true
+```
+
+`core/think_seeds.md` holds one `%directive` per line (`# …` lines are comments), e.g.:
+
+```
+%think про що ми говорили сьогодні
+%wonder! що б тобі хотілось створити
+%think подумай над мантрою Om Namah Shivaya
+```
+
+## Recipes — copy-paste rows
+
+Every row needs a **directive** (or a `seeds` file) + **one trigger**, and starts `enabled = false`.
+
+```toml
+# 1) Idle muse — free-thinks after 15 min of silence, a fraction spoken (subsumes the old nudge).
+[[schedule]]
+seeds = "core/think_seeds.md"
+idle  = "15m"
+enabled = true
+
+# 2) A world-glance a few times a day, only in waking hours, seeded by the ambient headline.
+[[schedule]]
+directive = "catchup"
+between = "08:00-22:00"
+every   = "2h"
+topic   = "{ambient_news}"
+enabled = false
+
+# 3) A weekday morning news brief, on a topic she follows.
+[[schedule]]
+directive = "brief"
+at    = "08:00"
+days  = ["mon", "tue", "wed", "thu", "fri"]
+topic = "{interest}"
+enabled = false
+
+# 4) A nightly deep-read toward whatever she's hungry to understand.
+[[schedule]]
+directive = "learn"
+at    = "23:00"
+topic = "{hungriest_need}"
+enabled = false
+
+# 5) A plain wall-clock heartbeat — a %wonder every 30 minutes, no matter what.
+[[schedule]]
+directive = "wonder"
+every = "30m"
+enabled = false
+
+# 6) A weekend-only musing (Sat/Sun 10:00).
+[[schedule]]
+directive = "wonder"
+at    = "10:00"
+days  = ["sat", "sun"]
+enabled = false
+
+# 7) An open custom task — the topic IS the instruction (%prompt), any clock.
+[[schedule]]
+directive = "prompt"
+at    = "08:00"
+topic = "напиши коротке хайку про сьогоднішню погоду: {weather}"
+enabled = false
+
+# 8) The power form — raw 5-field cron (minute hour day-of-month month day-of-week):
+#    every 10 min, 07:00–09:59, Mon–Fri.
+[[schedule]]
+directive = "catchup"
+cron = "*/10 7-9 * * 1-5"
+enabled = false
+
+# 9) A morning "alarm" that fires EVEN in quiet hours (a deliberate `at:` pierces the veto).
+[[schedule]]
+directive = "brief"
+at    = "06:30"
+topic = "{interest}"
+enabled = false
+```
+
+**Notes on the recipes:**
+- **`between` needs `every`** (the interval inside the window); `at` optionally takes `days`.
+- **`idle` vs `every`:** `idle` counts silence since your last message; `every` is wall-clock regardless.
+- **Quiet hours** (`LUMI_THOUGHTS_QUIET_HOURS`) veto `every`/`idle`/`between`/`cron` — but **not** an
+  explicit `at:` you set inside the window (recipe 9), so a morning ritual still lands.
+- **Sub-minute** isn't scheduled; `at`/`cron` resolve to the minute, `every`/`idle` to the second (but no
+  finer than `LUMI_SCHED_TICK_MS`, default 30 s).
+
 ## Tuning
 
 | var | default | meaning |

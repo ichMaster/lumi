@@ -13,12 +13,13 @@
 #
 # Seeds use {placeholders} — resolved AT FIRE TIME against live state (never stored resolved).
 
-# free-muse when you've been away — the migrated idle %think (v0.42 LUMI-169). Enabled by default so
-# turning the scheduler on preserves today's idle thinks (still gated by LUMI_THOUGHTS); a fraction
-# graduate to a spoken turn (she speaks first), subsuming the v0.4 idle nudge. Cadence = LUMI_THOUGHTS_INTERVAL_S.
+# free-muse when you've been away — the migrated idle %think/%wonder (v0.42). `seeds` picks a random
+# %directive line from core/think_seeds.md each fire (no immediate repeat — the old A-menu), so editing
+# that file changes what she muses on. Enabled by default (still gated by LUMI_THOUGHTS); a fraction
+# graduate to a spoken turn (she speaks first), subsuming the v0.4 nudge.
 [[schedule]]
-directive = "think"
-idle = "10m"
+seeds = "core/think_seeds.md"
+idle = "15m"
 enabled = true
 
 # a glance at the world a few times a day, seeded by the ambient headline

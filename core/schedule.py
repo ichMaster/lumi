@@ -89,18 +89,25 @@ class Trigger:
 
 @dataclass(frozen=True)
 class ScheduleEntry:
-    """One authored schedule row: a directive + a trigger + an optional **raw** seed."""
+    """One authored schedule row: a directive + a trigger + an optional **raw** seed.
+
+    ``seeds`` (v0.42) is an alternative to ``directive``/``topic``: a path to a file of ``%directive``
+    lines (e.g. ``core/think_seeds.md``) — the fire picks one at **random** (no immediate repeat), so a
+    single row carries a whole seed menu (the migrated in-app ``%think`` A-menu). When ``seeds`` is set,
+    ``directive`` is a nominal label for the id/cap bucket (defaults to ``"seeds"``).
+    """
 
     directive: str
     trigger: Trigger
     topic: str | None = None
     enabled: bool = True
+    seeds: str = ""  # a %directive-lines file; the fire picks one at random
     days_raw: tuple[str, ...] = field(default=(), repr=False)  # for round-trip/debug only
 
     @property
     def id(self) -> str:
         """A content-stable id (survives reordering) for the ``schedule.state`` key."""
-        return f"{self.directive}#{self.trigger.canonical()}#{self.topic or ''}"
+        return f"{self.directive}#{self.trigger.canonical()}#{self.topic or ''}#{self.seeds}"
 
 
 # --- the pure predicate ----------------------------------------------------------------------------
@@ -213,8 +220,11 @@ def _cron_match(expr: str, now: datetime) -> bool:
 def _entry_from_row(row: dict) -> ScheduleEntry | None:
     """One ``[[schedule]]`` row → a :class:`ScheduleEntry`, or ``None`` if malformed (skipped)."""
     directive = str(row.get("directive", "")).strip()
-    if not directive:
+    seeds = str(row.get("seeds", "")).strip()
+    if not directive and not seeds:
         return None
+    if not directive:  # a seeds-menu row: a nominal label for the id/cap bucket
+        directive = "seeds"
     topic = row.get("topic")
     topic = str(topic).strip() if topic is not None else None
     enabled = bool(row.get("enabled", True))
@@ -248,7 +258,9 @@ def _entry_from_row(row: dict) -> ScheduleEntry | None:
 
     if trig is None:
         return None
-    return ScheduleEntry(directive=directive, trigger=trig, topic=topic, enabled=enabled, days_raw=days_raw)
+    return ScheduleEntry(
+        directive=directive, trigger=trig, topic=topic, enabled=enabled, seeds=seeds, days_raw=days_raw,
+    )
 
 
 def parse_schedule(text: str) -> list[ScheduleEntry]:

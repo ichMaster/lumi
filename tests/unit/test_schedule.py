@@ -134,9 +134,10 @@ def test_parse_malformed_toml_is_empty_never_raises():
 
 def test_shipped_schedule_toml_parses():
     entries = load_schedule(DEFAULT_SCHEDULE_PATH)
-    assert len(entries) >= 5  # think/catchup/brief/learn/prompt
-    # v0.42 LUMI-169: the idle %think ships enabled (migrated default-on idle); the rituals opt-in.
-    assert all(not e.enabled for e in entries if e.directive != "think")
+    assert len(entries) >= 5  # the idle seeds-menu + catchup/brief/learn/prompt
+    # v0.42: the idle muse (a `seeds` row) ships enabled (migrated default-on idle); the rituals opt-in.
+    assert [e for e in entries if e.enabled and e.seeds]  # exactly the idle seeds row is enabled
+    assert all(not e.enabled for e in entries if not e.seeds)  # every non-seeds ritual is opt-in
 
 
 # --- schedule.state --------------------------------------------------------------------------------
@@ -183,3 +184,25 @@ def test_config_scheduler_reads_env(monkeypatch):
     monkeypatch.setenv("LUMI_SCHED_DAY_CAP", "48")
     cfg = load_config(load_env=False)
     assert cfg.scheduler is True and cfg.sched_tick_ms == 15000 and cfg.sched_day_cap == 48
+
+
+# --- v0.42: `seeds` rows (a %directive menu, one picked at random per fire) -------------------------
+def test_parse_seeds_row_without_directive():
+    entries = parse_schedule('[[schedule]]\nseeds = "core/think_seeds.md"\nidle = "15m"\n')
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.seeds == "core/think_seeds.md" and e.directive == "seeds"  # nominal label for the id/cap
+    assert e.trigger.kind == "idle" and e.trigger.interval_s == 900
+
+
+def test_seeds_row_id_is_stable_and_distinct():
+    a = ScheduleEntry("seeds", Trigger("idle", interval_s=900), seeds="core/think_seeds.md")
+    b = ScheduleEntry("seeds", Trigger("idle", interval_s=900), seeds="core/other.md")
+    assert a.id != b.id  # the seeds path is part of the id
+
+
+def test_shipped_idle_row_uses_the_seeds_menu():
+    from core.config import DEFAULT_SCHEDULE_PATH
+    idle = [e for e in load_schedule(DEFAULT_SCHEDULE_PATH)
+            if e.trigger.kind == "idle" and e.enabled]
+    assert idle and idle[0].seeds.endswith("think_seeds.md")  # the migrated idle muse reads the menu

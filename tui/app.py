@@ -249,6 +249,7 @@ class LumiApp(App[None]):
         self._sched_busy: bool = False  # scheduled acts serialize (they share the model)
         self._tick_service = None  # v0.42 fast ephemeral-handler tick (LUMI-168); on when scheduler on
         self._sched_seed_n = 0  # v0.42 LUMI-169: per-fire seed for scheduled-think graduation
+        self._sched_seed_idx: dict[str, int] = {}  # v0.42: per-entry last-picked index for `seeds` rows
         self._thoughts_spoken_ratio = 0.0  # set in on_mount; the fraction of idle thinks that speak
         # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
         self._bridge: bool = False
@@ -833,6 +834,19 @@ class LumiApp(App[None]):
         if entries:
             self.run_worker(self._run_scheduled(entries), exclusive=False)
 
+    def _scheduled_text(self, entry) -> str:
+        """The `%directive` text to fire for a schedule entry. A `seeds` row picks a **random** line from
+        its file (a %directive menu, no immediate repeat — the migrated in-app A-menu; re-read each fire so
+        edits to the file take effect live); otherwise `%{directive} {topic}`."""
+        if entry.seeds:
+            lines = load_nudges(entry.seeds)  # skips comments/blanks; each line is a %directive
+            if not lines:
+                return ""
+            idx = pick_nudge_index(len(lines), self._sched_seed_idx.get(entry.id, -1))
+            self._sched_seed_idx[entry.id] = idx
+            return lines[idx]
+        return f"%{entry.directive}" + (f" {entry.topic}" if entry.topic else "")
+
     async def _run_scheduled(self, entries: list) -> None:
         """Run scheduled directives one at a time off-thread through the `%`-router. A directive records
         a `Thought` silently; an outward one (`%share`, a pushing `%brief`) reaches the outbox via its own
@@ -844,17 +858,21 @@ class LumiApp(App[None]):
             for entry in entries:
                 if self._session is None:
                     break
-                text = f"%{entry.directive}" + (f" {entry.topic}" if entry.topic else "")
+                text = self._scheduled_text(entry)
+                if not text:  # a seeds row whose file is empty/missing → nothing to fire
+                    continue
                 try:
                     outcome = await asyncio.to_thread(self._core.run_directive, text, self._session)
                 except Exception:  # noqa: BLE001 — a scheduled act must never crash the UI
-                    _log.exception("scheduled directive failed: %%%s", entry.directive)
+                    _log.exception("scheduled directive failed: %s", text.split()[0])
                     continue
                 # v0.42 LUMI-169: an idle-muse (%think/%wonder) graduates a fraction to a spoken turn —
                 # she speaks first, grounded in the thought (subsuming the v0.4 nudge).
+                fired = parse_directive(text)  # the actual %name (from the picked seed, for a seeds row)
+                fired_name = fired.name if fired else entry.directive
                 self._sched_seed_n += 1
                 if (outcome.is_directive and outcome.thought is not None and self._session is not None
-                        and graduates(entry.directive, self._sched_seed_n, self._thoughts_spoken_ratio)):
+                        and graduates(fired_name, self._sched_seed_n, self._thoughts_spoken_ratio)):
                     seed = (f"(ти щойно подумала: «{outcome.thought.text}» — напиши йому перша, "
                             "коротко поділись цим або почни з цього розмову)")
                     await self._run_turn(seed, hidden=True)
