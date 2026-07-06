@@ -53,24 +53,45 @@ instruction — "ask Лілі to do X every morning."
 
 ### A `seeds` menu (instead of one fixed topic)
 
-A row can carry a **`seeds`** file instead of a `directive`/`topic` — a file of `%directive` lines. Each
-fire picks **one at random** (no immediate repeat), so a single row rotates through a whole menu, and
-editing the file changes what she muses on (re-read every fire). This is how the shipped idle-muse works:
+A row can carry a **`seeds`** file instead of a `directive`/`topic` — a file of `%directive` lines, one
+per line. This is how the shipped idle-muse works, so she doesn't repeat one fixed thought:
 
 ```toml
 [[schedule]]
-seeds = "core/think_seeds.md"      # one %think/%wonder line picked at random per fire
+seeds = "core/think_seeds.md"      # a menu of %directive lines; one picked per fire
 idle  = "15m"
 enabled = true
 ```
 
-`core/think_seeds.md` holds one `%directive` per line (`# …` lines are comments), e.g.:
+`core/think_seeds.md` holds one `%directive` per line (`# …` lines and blanks are ignored). The lines
+can be **any** directive — the base `%think`/`%wonder` **or** the tool-thoughts — each with its own topic:
 
 ```
 %think про що ми говорили сьогодні
 %wonder! що б тобі хотілось створити
-%think подумай над мантрою Om Namah Shivaya
+%learn! про симуляції і керування ними з ШІ
+%catchup! технології
 ```
+
+**How a `seeds` row fires (the logic), step by step:**
+
+1. **The trigger fires** (here `idle = "15m"`) exactly like any other row — quiet hours + caps still apply.
+2. **The file is re-read every fire**, so editing `think_seeds.md` while Лілі runs changes the menu **live**
+   (no restart) — and `#` comments / blank lines are skipped.
+3. **One line is picked at random**, avoiding an **immediate repeat** (never the same line twice in a row);
+   with one line it always fires that one.
+4. **The picked line runs verbatim through the `%`-router** (`run_directive`) — so `%learn! …` runs the
+   learn tool-thought, `%think …` a free-muse, etc. The line's `!` and topic behave exactly as if typed.
+5. **A picked line only fires if its family is enabled.** `%think`/`%wonder` need `LUMI_THOUGHTS=on`; a
+   tool-thought (`%learn`/`%catchup`/`%search`/`%imagine`/`%share`/…) also needs its family flag
+   (`LUMI_THOUGHT_WIKI`/`_NEWS`/`_WEB`/`_IMAGE`/…). If the family is **off**, that pick is a **silent
+   no-op** — the scheduler records nothing and moves on (no error, no chat leak).
+6. **Graduation** (a fraction spoken aloud) reads the **picked** line's directive: only a `%think`/`%wonder`
+   pick can graduate to a spoken turn; a tool-thought stays silent/outward as usual.
+
+> The `seeds` menu is exactly the old in-app "%think A-menu," now driven by the scheduler — one row
+> instead of a hard-coded timer. Prefer a plain `directive = "…"` row when you want **one** fixed act on a
+> clock; use `seeds` when you want **variety** from a rotating pool.
 
 ## Recipes — copy-paste rows
 
@@ -112,9 +133,9 @@ directive = "wonder"
 every = "30m"
 enabled = false
 
-# 6) A weekend-only musing (Sat/Sun 10:00).
+# 6) A weekend-only reflection (Sat/Sun 10:00).
 [[schedule]]
-directive = "wonder"
+directive = "reflect"
 at    = "10:00"
 days  = ["sat", "sun"]
 enabled = false
