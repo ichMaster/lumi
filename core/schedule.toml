@@ -17,6 +17,10 @@
 # %directive line from core/think_seeds.md each fire (no immediate repeat — the old A-menu), so editing
 # that file changes what she muses on. Enabled by default (still gated by LUMI_THOUGHTS); a fraction
 # graduate to a spoken turn (she speaks first), subsuming the v0.4 nudge.
+
+# thoughts — free-muse every 15 min of idle. To keep it to waking hours (08:00–01:00), set
+# LUMI_THOUGHTS_QUIET_HOURS=1-8 in .env (quiet 01:00–08:00) — the veto applies to idle too.
+# (One trigger per row: `idle` and `between` can't be combined — that would drop the row.)
 [[schedule]]
 seeds = "core/think_seeds.md"
 idle = "15m"
@@ -27,30 +31,54 @@ enabled = true
 # thought silent (recorded to /thoughts + fed into her next reply, but not shown live).
 [[schedule]]
 directive = "catchup"
-between = "08:00-22:00"
-every   = "2h"
-topic   = "{ambient_news}"
+between = "08:30-23:30"
+every   = "3h"
+topic   = "свіжі новини цікаві Віталіку"
 show    = true
-enabled = false
+enabled = true
 
 # a morning news brief on weekdays, on a topic she follows
 [[schedule]]
 directive = "brief"
 at    = "08:00"
 days  = ["mon", "tue", "wed", "thu", "fri"]
-topic = "{interest}"
-enabled = false
+topic = "наука і технології"
+show    = true
+enabled = true
 
 # a nightly deep-read toward whatever she's been hungry to understand
 [[schedule]]
 directive = "learn"
-at    = "23:00"
-topic = "{hungriest_need}"
-enabled = false
+at    = "00:30"
+topic = "{recent}"
+show    = true
+enabled = true
+
+[[schedule]]
+directive = "learn"
+at    = "22:30"
+topic = "{thoughts}"
+show    = true
+enabled = true
 
 # the OPEN directive — any custom task you author, on any clock (the topic IS the instruction)
 [[schedule]]
 directive = "prompt"
-at    = "08:00"
-topic = "напиши коротке хайку про сьогоднішню погоду: {weather}"
-enabled = false
+at    = "07:10"
+topic = "тихий ранковий дотик, без зайвих слів"
+show    = true
+enabled = true
+
+# mood to picture
+[[schedule]]
+directive = "imagine"
+at    = "14:10"
+topic = "який у тебе зараз настрій"
+enabled = true
+
+# journal
+[[schedule]]
+directive = "journal"
+at    = "23:50"
+topic = "збережи найважливіше за цей день"
+enabled = true

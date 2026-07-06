@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 0.42.0 (2026-07-06)
+---------------------------
+v0.42 — Thought scheduler: proactive %directives on a clock (an in-TUI module, no daemon, no bus).
+- Trigger model (LUMI-166): a pure due(now, last_fired, spec) for every / idle / at / between / cron, the core/schedule.toml parser (raw {placeholder} topics), schedule.state (last-fired per entry), and the LUMI_SCHED* config vars.
+- In-TUI scheduler loop (LUMI-167): a tick evaluates due() per row and fires each due directive directly via run_directive (in-process %-router); a startup catch-up for missed fixed-time entries (LUMI_SCHED_CATCHUP_H); quiet-hours veto (an explicit at: pierces it) + per-day and per-directive caps. Operator guide in docs/SCHEDULER_SETUP.md.
+- Tick service (LUMI-168): a separate fast timer for ephemeral CODE handlers (no Thought, no model call) — the seam v1.1's %update_state registers into; fire-and-forget, a missed tick is a no-op.
+- Migrate idle triggers (LUMI-169): the v0.4 nudge + v0.12 %think idle timer fold into an idle: schedule entry; the in-app _maybe_think/_maybe_nudge timers retire when the scheduler is on (byte-identical off). A fraction of idle muses graduate to a spoken turn (she speaks first), subsuming the nudge.
+- Enhancements: `seeds = "core/think_seeds.md"` rows rotate a %directive menu (one picked at random per fire, re-read live); `show = true` writes the thought to the chat as a 💭 line (like a typed %catchup!), and a %name! seed shows the same way; LUMI_THOUGHT_SURFACE marks each scheduled act in the chat (✦ Лілі …).
+- Off by default (LUMI_SCHEDULER); no core change; per-user isolation + the {reply, emotion, intensity} contract untouched.
+
 Version 0.41.0 (2026-07-03)
 ---------------------------
 v0.41 — Model profiles: per-provider tier sets (/model-set). One name moves the whole model stack; core/models.toml becomes THE file to edit when new models release:

@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**0.41 — Model profiles: per-provider tier sets (`/model-set`).** One name now moves the **whole model
+**0.42 — Thought scheduler: proactive `%directives` on a clock.** Лілі's autonomous acts now fire on a
+clock she keeps — *every 10 min*, *idle 15 min*, *at 08:00*, *between 08:00–22:00 every 2h*, *Mondays only*,
+or raw `cron` — via a small **in-TUI scheduler** (no daemon, no bus). A pure `due(now, last_fired, spec)`
+predicate per `core/schedule.toml` row drives `run_directive` **directly**, with a startup **catch-up** for
+fixed-time acts missed while closed, **quiet-hours** veto (an explicit `at:` pierces it) and **per-day
+caps**. A `seeds = "…"` row rotates a `%directive` menu (one picked per fire, re-read live); `show = true`
+(or a `%name!` seed) writes the thought to the chat as a `💭` line, and `LUMI_THOUGHT_SURFACE` marks each
+act (`✦ Лілі …`). The v0.4 nudge + v0.12 `%think` idle timer fold in as an `idle:` row (a fraction speak).
+A separate **fast tick** runs ephemeral code handlers (the seam v1's `%update_state` uses). Off by default
+(`LUMI_SCHEDULER`); no core change. See **[docs/SCHEDULER_SETUP.md](docs/SCHEDULER_SETUP.md)**.
+
+Builds on **0.41 — Model profiles: per-provider tier sets (`/model-set`).** One name now moves the **whole model
 stack**: a **profile** is a provider-homogeneous set `{reply, think, mood, housekeeping}`, three ship
 authored (**anthropic / openai / gemini**), and they live in **`core/models.toml`** — THE file to edit
 when new models release (aliases included; merge order: code defaults ← models.toml ← `.env`).
