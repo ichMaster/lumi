@@ -23,6 +23,10 @@ act (`✦ Лілі …`). The v0.4 nudge + v0.12 `%think` idle timer fold in as 
 A separate **fast tick** runs ephemeral code handlers (the seam v1's `%update_state` uses). Off by default
 (`LUMI_SCHEDULER`); no core change. See **[docs/SCHEDULER_SETUP.md](docs/SCHEDULER_SETUP.md)**.
 
+**0.42.1** stops a spoken-graduation flood: a scheduled idle muse was speaking a full turn on nearly every
+fire. Graduation now uses a genuine per-fire random draw (~`LUMI_THOUGHTS_SPOKEN_RATIO`) and fires only for
+a **loud** muse (`show = true` or a `%name!` seed) — a silent row is recorded only, never shown or spoken.
+
 Builds on **0.41 — Model profiles: per-provider tier sets (`/model-set`).** One name now moves the **whole model
 stack**: a **profile** is a provider-homogeneous set `{reply, think, mood, housekeeping}`, three ship
 authored (**anthropic / openai / gemini**), and they live in **`core/models.toml`** — THE file to edit

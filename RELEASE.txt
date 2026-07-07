@@ -1,6 +1,11 @@
 Lumi — Release notes
 ====================
 
+Version 0.42.1 (2026-07-07)
+---------------------------
+v0.42 post-release fix — the thought scheduler's spoken-graduation flood.
+- Stop the every-15-min spoken flood: a scheduled idle muse was speaking a full turn on almost every fire. Two causes fixed — (1) graduation used a monotonic seed, so should_graduate marked the FIRST ~19 fires as spoken instead of a random ~20%; now a genuine per-fire random draw (~LUMI_THOUGHTS_SPOKEN_RATIO). (2) graduation ignored `show`; now it fires only for a LOUD muse (show = true or a %name! seed). A silent row (show unset, no !) records only — never shown, never spoken.
+
 Version 0.42.0 (2026-07-06)
 ---------------------------
 v0.42 — Thought scheduler: proactive %directives on a clock (an in-TUI module, no daemon, no bus).

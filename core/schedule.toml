@@ -21,9 +21,19 @@
 # thoughts — free-muse every 15 min of idle. To keep it to waking hours (08:00–01:00), set
 # LUMI_THOUGHTS_QUIET_HOURS=1-8 in .env (quiet 01:00–08:00) — the veto applies to idle too.
 # (One trigger per row: `idle` and `between` can't be combined — that would drop the row.)
+
+# silent
 [[schedule]]
 seeds = "core/think_seeds.md"
 idle = "15m"
+show    = false
+enabled = true
+
+# inloud
+[[schedule]]
+seeds = "core/think_seeds2.md"
+idle = "55m"
+show    = true
 enabled = true
 
 # a glance at the world a few times a day, seeded by the ambient headline.
@@ -37,35 +47,21 @@ topic   = "свіжі новини цікаві Віталіку"
 show    = true
 enabled = true
 
-# a morning news brief on weekdays, on a topic she follows
-[[schedule]]
-directive = "brief"
-at    = "08:00"
-days  = ["mon", "tue", "wed", "thu", "fri"]
-topic = "наука і технології"
-show    = true
-enabled = true
-
-# a nightly deep-read toward whatever she's been hungry to understand
-[[schedule]]
-directive = "learn"
-at    = "00:30"
-topic = "{recent}"
-show    = true
-enabled = true
-
-[[schedule]]
-directive = "learn"
-at    = "22:30"
-topic = "{thoughts}"
-show    = true
-enabled = true
 
 # the OPEN directive — any custom task you author, on any clock (the topic IS the instruction)
 [[schedule]]
 directive = "prompt"
 at    = "07:10"
 topic = "тихий ранковий дотик, без зайвих слів"
+show    = true
+enabled = true
+
+# a morning news brief on weekdays, on a topic she follows
+[[schedule]]
+directive = "brief"
+at    = "08:00"
+days  = ["mon", "tue", "wed", "thu", "fri"]
+topic = "наука і технології"
 show    = true
 enabled = true
 
@@ -76,9 +72,24 @@ at    = "14:10"
 topic = "який у тебе зараз настрій"
 enabled = true
 
+[[schedule]]
+directive = "learn"
+at    = "22:30"
+topic = "{thoughts}"
+show    = true
+enabled = true
+
+# a nightly deep-read toward whatever she's been hungry to understand
+[[schedule]]
+directive = "learn"
+at    = "23:30"
+topic = "{recent}"
+show    = true
+enabled = true
+
 # journal
 [[schedule]]
 directive = "journal"
-at    = "23:50"
+at    = "00:30"
 topic = "збережи найважливіше за цей день"
 enabled = true
