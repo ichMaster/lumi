@@ -60,8 +60,12 @@ show    = true                 # write the 💭 result to the chat (silent witho
 enabled = false
 ```
 
-A `%name!` line in a `seeds` menu shows the same way (the `!` is "open" mode). A `%think`/`%wonder` that
-*graduates* to a spoken turn speaks instead of showing the `💭` line (no double-surface).
+A `%name!` line in a `seeds` menu shows the same way (the `!` is "open" mode). **A silent row (`show`
+unset **and** no `!` seed) never surfaces — it's recorded to `/thoughts` and fed into her next reply, but
+never shown and never spoken.** Only a **loud** fire (`show = true` or a `%name!` seed) can surface; among
+those, a `%think`/`%wonder` *graduates* to a spoken turn a fraction of the time
+(`LUMI_THOUGHTS_SPOKEN_RATIO`, default 0.2 — a genuine per-fire chance) and speaks instead of showing the
+`💭` line (no double-surface).
 
 **See *when* each act runs (not just its result).** `show`/`!` write the **thought**; to also mark **the
 act itself** in the chat — a dim `✦ Лілі читає новини…` line as it fires, like a typed directive — set

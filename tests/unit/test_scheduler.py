@@ -261,13 +261,13 @@ async def test_show_row_emits_thought_to_chat(tmp_path, monkeypatch):
         assert any("💭" in line for line in app.transcript)  # show=true → written to chat
 
 
-async def test_silent_row_does_not_emit_to_chat(tmp_path, monkeypatch):
+async def test_silent_row_never_shows_or_speaks_even_at_max_ratio(tmp_path, monkeypatch):
     from tui.app import LumiApp
 
     monkeypatch.setenv("LUMI_SCHEDULER", "on")
     monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")
     monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
-    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "0")  # isolate `show` from graduation
+    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "1")  # even at 100%, a silent row must not speak
     core = Core(
         llm=MockLLMClient(replies="тиха думка\nЕМОЦІЯ: calm"),
         repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
@@ -275,10 +275,34 @@ async def test_silent_row_does_not_emit_to_chat(tmp_path, monkeypatch):
     )
     app = LumiApp(core)
     async with app.run_test():
-        silent = ScheduleEntry("think", Trigger("every", interval_s=1), show=False)
+        silent = ScheduleEntry("think", Trigger("every", interval_s=1), show=False)  # not loud
+        before = len(app.transcript)
         await app._run_scheduled([silent])
-        assert not any("💭" in line for line in app.transcript)  # silent by default
+        # a silent row (show=false, no !) surfaces nothing — no 💭 line and no spoken turn — even at ratio 1
+        assert not any("💭" in line for line in app.transcript)
+        assert not any("тиха думка" in line for line in app.transcript[before:])  # no graduated reply
         assert core.recent_thoughts()  # but the Thought is still recorded (/thoughts + feedback)
+
+
+async def test_loud_row_graduates_to_a_spoken_turn_at_max_ratio(tmp_path, monkeypatch):
+    from tui.app import LumiApp
+
+    monkeypatch.setenv("LUMI_SCHEDULER", "on")
+    monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")
+    monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
+    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "1")  # a loud think graduates every time at 100%
+    core = Core(
+        llm=MockLLMClient(replies="я щойно подумала про течію\nЕМОЦІЯ: calm"),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=fixed_clock(_dt(h=14, mi=30)), mood_enabled=False, thoughts_enabled=True,
+    )
+    app = LumiApp(core)
+    async with app.run_test():
+        loud = ScheduleEntry("think", Trigger("every", interval_s=1), show=True)  # loud
+        await app._run_scheduled([loud])
+        # graduation ran (a spoken self-turn) instead of the 💭 line
+        assert any("течію" in line for line in app.transcript)  # her spoken reply reached the chat
+        assert not any("💭" in line for line in app.transcript)  # graduated → not the 💭 branch
 
 
 # --- v0.42: surface each scheduled execution in the chat (LUMI_THOUGHT_SURFACE) --------------------

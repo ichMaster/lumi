@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import shutil
 import subprocess
 from pathlib import Path
@@ -248,9 +249,8 @@ class LumiApp(App[None]):
         self._scheduler = None
         self._sched_busy: bool = False  # scheduled acts serialize (they share the model)
         self._tick_service = None  # v0.42 fast ephemeral-handler tick (LUMI-168); on when scheduler on
-        self._sched_seed_n = 0  # v0.42 LUMI-169: per-fire seed for scheduled-think graduation
         self._sched_seed_idx: dict[str, int] = {}  # v0.42: per-entry last-picked index for `seeds` rows
-        self._thoughts_spoken_ratio = 0.0  # set in on_mount; the fraction of idle thinks that speak
+        self._thoughts_spoken_ratio = 0.0  # set in on_mount; the fraction of LOUD idle thinks that speak
         # v0.13 bridge state (configured in on_mount; off by default). The TUI reads inbox / writes outbox.
         self._bridge: bool = False
         self._voice: bool = False  # v0.14: the local voicer also consumes the outbox
@@ -877,17 +877,20 @@ class LumiApp(App[None]):
                     continue
                 if not (outcome.is_directive and outcome.thought is not None):
                     continue
-                self._sched_seed_n += 1
-                # v0.42 LUMI-169: an idle-muse (%think/%wonder) graduates a fraction to a spoken turn —
-                # she speaks first, grounded in the thought (subsuming the v0.4 nudge).
-                if (self._session is not None
-                        and graduates(fired_name, self._sched_seed_n, self._thoughts_spoken_ratio)):
+                # v0.42: a scheduled muse surfaces only when it's "loud" — the row asks (`show = true`)
+                # or the fired seed is open (a `%name!` line). A silent row (show=false, no `!`) is
+                # recorded only (→ /thoughts + her next reply), never shown, never spoken.
+                loud = entry.show or outcome.mode == "open"
+                # An idle-muse (%think/%wonder) graduates a FRACTION of its loud fires to a spoken turn —
+                # she speaks first (subsuming the v0.4 nudge). A genuine ~ratio random draw per fire (a
+                # monotonic seed used to make the first ~20 all graduate — the every-15-min flood).
+                if (loud and self._session is not None
+                        and graduates(fired_name, random.randint(0, 99), self._thoughts_spoken_ratio)):
                     seed = (f"(ти щойно подумала: «{outcome.thought.text}» — напиши йому перша, "
                             "коротко поділись цим або почни з цього розмову)")
                     await self._run_turn(seed, hidden=True)
-                # v0.42: write the thought to the chat when the row asks for it (`show = true`) or the
-                # fired directive is open (a %name! seed) — the same 💭 line a typed %catchup! shows.
-                elif entry.show or outcome.mode == "open":
+                # otherwise, if loud, show the 💭 line (the same a typed %catchup! shows)
+                elif loud:
                     body = f"💭 {outcome.thought.text}"
                     self._emit(body, Markdown(body))
             self._render_stats()  # scheduled acts consume tokens too — reflect their cost
