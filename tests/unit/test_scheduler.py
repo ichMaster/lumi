@@ -342,3 +342,43 @@ async def test_scheduled_fire_no_meta_line_when_surfacing_off(tmp_path, monkeypa
     async with app.run_test():
         await app._run_scheduled([ScheduleEntry("think", Trigger("every", interval_s=1))])
         assert not any(line.startswith("✦") for line in app.transcript)  # silent by default
+
+
+# --- v0.42: shown scheduled thoughts → the outbox (Telegram/voicer) via LUMI_SCHED_SHOW_TO_OUTBOX ---
+async def _show_to_outbox_app(tmp_path, monkeypatch, *, flag: str):
+    from tui.app import LumiApp
+
+    monkeypatch.setenv("LUMI_SCHEDULER", "on")
+    monkeypatch.setenv("LUMI_SCHED_TICK_MS", "600000")
+    monkeypatch.setenv("LUMI_SCHEDULE_STATE_PATH", str(tmp_path / "schedule.state"))
+    monkeypatch.setenv("LUMI_THOUGHTS_SPOKEN_RATIO", "0")  # no graduation → the 💭 branch runs
+    monkeypatch.setenv("LUMI_BRIDGE", "on")                # the outbox is active
+    monkeypatch.setenv("LUMI_OUTBOX_PATH", str(tmp_path / "outbox.jsonl"))
+    monkeypatch.setenv("LUMI_SCHED_SHOW_TO_OUTBOX", flag)
+    core = Core(
+        llm=MockLLMClient(replies="думка про течію\nЕМОЦІЯ: calm"),
+        repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+        clock=fixed_clock(_dt(h=14, mi=30)), mood_enabled=False, thoughts_enabled=True,
+    )
+    return LumiApp(core), tmp_path / "outbox.jsonl"
+
+
+async def test_shown_thought_reaches_outbox_when_flag_on(tmp_path, monkeypatch):
+    from state import fifo
+
+    app, outbox = await _show_to_outbox_app(tmp_path, monkeypatch, flag="on")
+    async with app.run_test():
+        await app._run_scheduled([ScheduleEntry("think", Trigger("every", interval_s=1), show=True)])
+        recs = fifo.read_since(outbox, 0)
+        assert recs and any(r["kind"] == "lili" and "течію" in r["text"] for r in recs)  # → Telegram/voicer
+        assert not any("💭" in r["text"] for r in recs)  # the clean text (no 💭 marker) goes to the outbox
+
+
+async def test_shown_thought_not_in_outbox_when_flag_off(tmp_path, monkeypatch):
+    from state import fifo
+
+    app, outbox = await _show_to_outbox_app(tmp_path, monkeypatch, flag="off")
+    async with app.run_test():
+        await app._run_scheduled([ScheduleEntry("think", Trigger("every", interval_s=1), show=True)])
+        assert fifo.read_since(outbox, 0) == []  # shown in TUI only; nothing sent to Telegram
+        assert any("💭" in line for line in app.transcript)  # but still shown in the TUI

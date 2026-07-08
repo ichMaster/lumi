@@ -41,7 +41,13 @@ from core.repository import Session
 from core.schedule import load_schedule
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
-from tui.bridge import drain_inbox_records, mirror_reply, mirror_user, set_listen_flag
+from tui.bridge import (
+    drain_inbox_records,
+    mirror_reply,
+    mirror_thought,
+    mirror_user,
+    set_listen_flag,
+)
 from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
@@ -348,6 +354,7 @@ class LumiApp(App[None]):
         # mirrors Лілі's replies to the outbox FIFO (→ Telegram). Off unless LUMI_BRIDGE=on.
         self._bridge = cfg.bridge
         self._voice = cfg.voice  # v0.14: the local voicer also consumes the outbox
+        self._sched_show_to_outbox = cfg.sched_show_to_outbox  # v0.42: shown scheduled thoughts → outbox
         self._dictation = cfg.dictation  # v0.26: the dictator writes inbox; the TUI drains it
         # The outbox is written when EITHER the Telegram bridge or the local voicer wants it.
         if self._bridge or self._voice:
@@ -893,6 +900,10 @@ class LumiApp(App[None]):
                 elif loud:
                     body = f"💭 {outcome.thought.text}"
                     self._emit(body, Markdown(body))
+                    # v0.42: also deliver a shown thought to Telegram/voicer (LUMI_SCHED_SHOW_TO_OUTBOX) —
+                    # a graduated thought already rides _run_turn → outbox; this covers the 💭 (non-spoken) ones.
+                    if self._sched_show_to_outbox and self._outbox_path is not None:
+                        mirror_thought(self._outbox_path, outcome.thought.text, outcome.thought.emotion)
             self._render_stats()  # scheduled acts consume tokens too — reflect their cost
         finally:
             self._sched_busy = False

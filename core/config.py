@@ -334,6 +334,7 @@ class Config:
     sched_tick_fast_ms: int = 60000                          # LUMI_SCHED_TICK_FAST_MS — the ephemeral tick
     sched_catchup_h: int = 6                                 # LUMI_SCHED_CATCHUP_H — startup catch-up window
     sched_day_cap: int = 24                                  # LUMI_SCHED_DAY_CAP — global thoughts/day
+    sched_show_to_outbox: bool = False                       # LUMI_SCHED_SHOW_TO_OUTBOX — shown thoughts → Telegram/voicer
     quiet_hours: tuple[int, int] | None = None  # the v0.4 idle nudge's quiet window
     thoughts_quiet_hours: tuple[int, int] | None = None  # the v0.12 proactive-think's (independent)
     # v0.7.x TUI send/receive sound — off by default; toggled at runtime (Ctrl+S).
@@ -672,6 +673,7 @@ def load_config(*, load_env: bool = True) -> Config:
         sched_tick_fast_ms=int(os.getenv("LUMI_SCHED_TICK_FAST_MS") or 60000),
         sched_catchup_h=int(os.getenv("LUMI_SCHED_CATCHUP_H") or 6),
         sched_day_cap=int(os.getenv("LUMI_SCHED_DAY_CAP") or 24),
+        sched_show_to_outbox=_parse_bool(os.getenv("LUMI_SCHED_SHOW_TO_OUTBOX")),
         quiet_hours=quiet_hours,
         thoughts_quiet_hours=thoughts_quiet_hours,
         emoji_path=Path(emoji_env) if (emoji_env := os.getenv("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,

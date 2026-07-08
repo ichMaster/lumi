@@ -52,6 +52,13 @@ def mirror_reply(outbox_path: str | Path, state: EmotionState) -> int:
     )
 
 
+def mirror_thought(outbox_path: str | Path, text: str, emotion: str = "calm", intensity: float = 0.5) -> int:
+    """Append a **surfaced proactive thought** to the outbox as a Лілі message (v0.42) — so a scheduled
+    `show`/`%name!` thought reaches Telegram + the voicer, not just the TUI. ``kind="lili"`` like a reply;
+    the 💭 marker stays TUI-only (the outbox carries the clean text)."""
+    return fifo.append(outbox_path, text, kind="lili", emotion=emotion, intensity=intensity)
+
+
 def mirror_user(outbox_path: str | Path, text: str) -> int:
     """Append **your keyboard message** (``kind="user"``) to the `outbox` so it shows in Telegram too.
 
