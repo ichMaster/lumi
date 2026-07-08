@@ -12,6 +12,15 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**1.0 — the v0 axis is complete.** Every v0 phase (v0.1–v0.42) has shipped: the interface-independent
+core with the three-layer + semantic memory (RAG, the recall tools), the locked emotion channel with
+mood / biorhythms / closeness, the local face viewer + themed wardrobes, the Telegram bridge, local
+voice + dictation, the file / wiki / image / news / journal / web-lookup tools on the bounded
+tool-loop, the thought-stream + the thought scheduler, and three switchable engines
+(Anthropic / OpenAI / Gemini) with per-operation routing + profiles. The one leftover, v0.43 (model
+roles), moved after v1.9 in the roadmap. Next: **v1 — personality** (needs, inner life, inner
+monologue, emotional memory).
+
 **0.42 — Thought scheduler: proactive `%directives` on a clock.** Лілі's autonomous acts now fire on a
 clock she keeps — *every 10 min*, *idle 15 min*, *at 08:00*, *between 08:00–22:00 every 2h*, *Mondays only*,
 or raw `cron` — via a small **in-TUI scheduler** (no daemon, no bus). A pure `due(now, last_fired, spec)`

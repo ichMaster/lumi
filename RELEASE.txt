@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 1.0.0 (2026-07-08)
+---------------------------
+Milestone — the v0 axis is complete (no code change over 0.42.2).
+- Every v0 phase (v0.1–v0.42) has shipped: the interface-independent core; three-layer memory + semantic recall (index, auto-RAG, chunking, the recall tool); the locked {reply, emotion, intensity} emotion channel with emoji rendering, daily mood, biorhythms and per-user closeness; the local face viewer with variants + themed wardrobes; the Telegram bridge; local voice (ElevenLabs) + local dictation; the sandboxed file tool (read/write/metadata/search) and the wiki, image (vision/generation/send), news, journal and web-lookup tools on the bounded tool-loop; the thought-stream with tool-using directives and the in-TUI thought scheduler; prompt caching + the lean-memory trims; and three switchable engines (Anthropic / OpenAI / Gemini) with per-operation model routing and per-provider profiles.
+- v0.43 (model roles) was moved after v1.9 in the roadmap — the v0 chapter closes at v0.42.
+- Next: v1 — personality (needs, inner life, inner monologue, emotional memory).
+
 Version 0.42.2 (2026-07-08)
 ---------------------------
 v0.42 post-release addition — shown scheduled thoughts reach the outbox (Telegram/voicer).
