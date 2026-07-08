@@ -27,6 +27,11 @@ A separate **fast tick** runs ephemeral code handlers (the seam v1's `%update_st
 fire. Graduation now uses a genuine per-fire random draw (~`LUMI_THOUGHTS_SPOKEN_RATIO`) and fires only for
 a **loud** muse (`show = true` or a `%name!` seed) — a silent row is recorded only, never shown or spoken.
 
+**0.42.2** sends shown thoughts to the outbox: a `💭` thought (`show = true` / a `%name!` seed) was
+TUI-only; with **`LUMI_SCHED_SHOW_TO_OUTBOX=on`** its clean text (no `💭`) now mirrors to the outbox as a
+Лілі message — a Telegram push / a voiced line — when the bridge or voice is active. Off by default;
+silent thoughts still never leave the TUI.
+
 Builds on **0.41 — Model profiles: per-provider tier sets (`/model-set`).** One name now moves the **whole model
 stack**: a **profile** is a provider-homogeneous set `{reply, think, mood, housekeeping}`, three ship
 authored (**anthropic / openai / gemini**), and they live in **`core/models.toml`** — THE file to edit

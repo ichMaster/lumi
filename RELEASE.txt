@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 0.42.2 (2026-07-08)
+---------------------------
+v0.42 post-release addition — shown scheduled thoughts reach the outbox (Telegram/voicer).
+- A graduated (spoken) scheduled thought already reached the outbox via the self-turn; a shown 💭 thought (show = true / a %name! seed) was TUI-only. New mirror_thought sends the clean text (no 💭) to the outbox as a Лілі message when LUMI_SCHED_SHOW_TO_OUTBOX=on and the bridge/voice is active — a Telegram push or a voiced line. Off by default; silent thoughts still never leave the TUI.
+- Docs: v0.43 (model roles) issue breakdown LUMI-170..174 + GitHub upload (#170–#174); roadmap — v0.43 moved after v1.9.
+
 Version 0.42.1 (2026-07-07)
 ---------------------------
 v0.42 post-release fix — the thought scheduler's spoken-graduation flood.
