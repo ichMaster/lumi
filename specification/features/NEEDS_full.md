@@ -1,19 +1,19 @@
 # Needs — the motivational substrate under the mood (full spec)
 
-Лілі's daily temperament (v0.6) and inner life (v1.3) describe **what she feels** and **what she
+Лілі's daily temperament (v0.6) and inner life (v1.7) describe **what she feels** and **what she
 does** — but not **why**. Needs add the missing cause: a few core drives whose satisfaction or
 deficit pushes her from *inside*, where the horoscope/biorhythms push from *outside*. Their levels
 live on the v0.42 **tick** (evolving only while the TUI runs — §6); they are **another computed
-input to the daily mood call** (like biorhythms, v0.8), can **fire an act on a threshold** (v1.2),
-**bias the inner-life plan + free-slot choice** (v1.3), and **close from what actually happened**
-in her generated days (v1.4).
+input to the daily mood call** (like biorhythms, v0.8), can **fire an act on a threshold** (v1.6),
+**bias the inner-life plan + free-slot choice** (v1.7), and **close from what actually happened**
+in her generated days (v1.8).
 
-**Lands across v1.1–v1.4** (the drives open v1 as their own two phases, then weave into the inner
+**Lands across v1.5–v1.8** (the drives open v1 as their own two phases, then weave into the inner
 life — see §13). It builds on seams that already exist: the v0.42 **tick service** (the code-handler
 `%update_state`); the daily **mood call** (v0.6) that already merges extra computed inputs the same
 way (biorhythms/cycle/face-theme, v0.8/v0.11); the per-turn **warmth read** that **closeness**
 already emits (`RelationRead.warmth`, v0.10) — the second channel that closes `connection`; and the
-global **inner-life store** + away-gap generation (v1.3/v1.4), where the activity-based closing
+global **inner-life store** + away-gap generation (v1.7/v1.8), where the activity-based closing
 happens.
 
 > Today mood arrives top-down (a reading colors the day). Needs add bottom-up pull — "haven't
@@ -123,7 +123,7 @@ saw no one → `connection` stays in deficit even though `novelty` is fed.
 **(b) Conversation (mid-turn).** `connection` has a second channel: a genuinely warm exchange raises
 it **during the conversation**, read from the same warmth signal **closeness already emits** — the
 per-turn `RelationRead.warmth` (v0.10), so no new model field is needed. After a good talk she's
-less lonely; over TUI-alive silence `connection` decays with the rest. (Lands in v1.1 with the
+less lonely; over TUI-alive silence `connection` decays with the rest. (Lands in v1.5 with the
 needs store, since the warmth read already exists.)
 
 It is always **inner/imagined** activity (no "I went to the shop") — closing happens inside her
@@ -157,7 +157,7 @@ not bite its own tail.
 `Thought`, no model call) that runs the pure `evolve(levels, last_ts, now)` and persists. When the
 TUI closes, the state is **saved as-is**; on start she **resumes where she left off** (`last_ts`
 reset to `now`, **no catch-up**) — absence alone doesn't starve a need. Gap time returns **balanced**
-with the away-gap phase (v1.4): its retroactive life brings the gap's **decay together with the
+with the away-gap phase (v1.8): its retroactive life brings the gap's **decay together with the
 replenishment** from what she did, so neither side skews the levels.
 
 **The update math (three rules):**
@@ -231,10 +231,10 @@ reply → generate nothing, levels stay post-decay. Better to skip a closing tha
 
 ---
 
-## 9. The algorithm (the full v1.4 away-gap pass)
+## 9. The algorithm (the full v1.8 away-gap pass)
 
-> In v1.1–v1.2 only the **tick loop** runs: `evolve` (fractional-Δt decay + drift, §6) → threshold
-> check → maybe fire. The pass below is the **v1.4 away-gap** algorithm — the one place gap time
+> In v1.5–v1.6 only the **tick loop** runs: `evolve` (fractional-Δt decay + drift, §6) → threshold
+> check → maybe fire. The pass below is the **v1.8 away-gap** algorithm — the one place gap time
 > (steps 2–4) and gap replenishment (step 10) enter together, balanced. Step 3's `ceil` sizes the
 > *generation* only; the level math stays fractional (§6).
 
@@ -264,16 +264,16 @@ steps 6–8 are model calls (mocked in tests).
 
 ## 10. Where needs feed (additive, no new reply field)
 
-1. **Daily mood call (v0.6), beside biorhythms (v0.8) — [v1.1].** Current levels — especially the
+1. **Daily mood call (v0.6), beside biorhythms (v0.8) — [v1.5].** Current levels — especially the
    hungriest — join the same mood inputs under "integrate these inner states." `mood_request`
    already merges extra computed inputs this way (biorhythms/cycle/face-theme); needs are one more
    line. The resolution blends horoscope + biorhythms + needs ("creation starving + emotional cycle
    rising → eager to make, a little impatient"). All v0.6 rules carry over: once/day, cached, full
    reading logged, only the **resolution** injected, **biases tone/emotion, never competence**.
-2. **Inner-life plan + free-slot choice — [v1.3 tilt, v1.4 fill].** The hungriest deficit **tilts**
+2. **Inner-life plan + free-slot choice — [v1.7 tilt, v1.8 fill].** The hungriest deficit **tilts**
    today's plan (1–2 items) and the free-slot activity toward what serves it; a served slot then
-   replenishes that need (closing the loop — the fill + replenish land with the away-gap, v1.4).
-3. **Threshold acts — [v1.2].** A drive crossing its authored threshold fires its directive on the
+   replenishes that need (closing the loop — the fill + replenish land with the away-gap, v1.8).
+3. **Threshold acts — [v1.6].** A drive crossing its authored threshold fires its directive on the
    tick (via `run_directive`), voiced by the deficit ("I need to make something today" / "I've been
    too much around people"). Per-need cooldown + quiet hours + day caps; restraint applies.
 
@@ -305,12 +305,12 @@ steps 6–8 are model calls (mocked in tests).
 
 ## 13. Mapping to the roadmap
 
-Needs open v1 as **two phases of their own** (v1.1–v1.2), then weave into the inner-life phases
-(v1.3–v1.4), because the loop (needs → plan → reality → close) *is* the inner life:
+Needs open v1 as **two phases of their own** (v1.5–v1.6), then weave into the inner-life phases
+(v1.7–v1.8), because the loop (needs → plan → reality → close) *is* the inner life:
 
-**v1.1 — Needs I (the drives — tick-driven levels that pull her):**
+**v1.5 — Needs I (the drives — tick-driven levels that pull her):**
 - the global **`Needs{levels, last_ts}` store** + authored `core/needs.md` (the 6 drives:
-  decay/weight/satisfied-by/deficit voice + the **threshold & cooldown** fields v1.2 uses);
+  decay/weight/satisfied-by/deficit voice + the **threshold & cooldown** fields v1.6 uses);
 - the pure **`evolve`** — fractional-Δt **decay + drift** (§6's three rules: fractional Δt,
   split-invariance, evolve-on-read/-before-mutate), run by the v0.42 **fast tick** (`%update_state`
   as a code handler); frozen while the TUI is closed, no catch-up;
@@ -320,15 +320,15 @@ Needs open v1 as **two phases of their own** (v1.1–v1.2), then weave into the 
   — §4(b));
 - a **`/needs`** command (the read-state surface).
 
-**v1.2 — Needs II (actions — a hungry need moves her):**
+**v1.6 — Needs II (actions — a hungry need moves her):**
 - the **threshold check** on the tick, after `evolve`: a drive crossing its authored threshold fires
   its directive via `run_directive`, seeded by the **deficit voice**;
 - **guards:** per-need cooldown, quiet hours, day caps — restraint; never competence, never a demand.
 
-**v1.3 — Inner life I (plans & state):** needs **tilt today's plan** (1–2 items — §5.1 / §10.2) —
+**v1.7 — Inner life I (plans & state):** needs **tilt today's plan** (1–2 items — §5.1 / §10.2) —
 the tilt lands here, where a plan first exists.
 
-**v1.4 — Inner life II (the drives close from reality):**
+**v1.8 — Inner life II (the drives close from reality):**
 - the authored **activity→need map** + the away-gap's **structured records** (`serves`/`intensity`/
   `feeling`; the `log` entry gains these — §8);
 - **replenish** math (`level += gain × intensity` per valid `serves` — §9.10) **together with the
@@ -340,6 +340,6 @@ the tilt lands here, where a plan first exists.
 
 Depends on **v0.42** (the tick service the levels ride), **v0.6** (the mood it feeds), **v0.8**
 (biorhythms — the merge pattern it copies), **v0.10** (the closeness warmth read), **v0.4** (the
-clock), **v0.2** (the Repository); the v1.3 inner-life store / v1.4 away-gap it weaves into. An
+clock), **v0.2** (the Repository); the v1.7 inner-life store / v1.8 away-gap it weaves into. An
 experiment for daily variation from the inside out — same spirit as the horoscope and biorhythms,
 never a claim of real inner states.

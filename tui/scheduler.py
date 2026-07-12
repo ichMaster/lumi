@@ -45,12 +45,12 @@ class TickService:
     """The fast in-TUI tick (v0.42 LUMI-168) — for **ephemeral code handlers**, not model directives.
 
     A registered handler is a **zero-arg callback** doing silent bookkeeping (**no `Thought`, no model
-    call**) — the home of the future `%update_state` (v1.1 needs / v1.3 inner-life: a split-invariant
+    call**) — the home of the future `%update_state` (v1.5 needs / v1.7 inner-life: a split-invariant
     advance-to-`now`). Fire-and-forget: a handler exception is swallowed (never breaks the UI); a backlog
     **collapses to one run** (a re-entrant tick is skipped, never queued); a missed tick is a **no-op**
     (nothing runs while the TUI is closed — the work is idempotent advance-to-`now`, so a gap is harmless).
 
-    v1.1 just calls :meth:`register` with its callback — this ships the mechanism + the seam.
+    v1.5 just calls :meth:`register` with its callback — this ships the mechanism + the seam.
     """
 
     def __init__(self) -> None:

@@ -197,3 +197,5 @@ Definition of done: from time to time Lili brings fresh material ("I read about.
 | 5. News | 3 | inflow of new material from outside |
 
 Phases 1-2 are self-sufficient: mirroring is cured by them alone. Phases 3-5 give Lili her own voice and memory. After a week of Phase 2 in production — review the set of 7 types against the debug logs: which moves succeed, which fail, and trim the list.
+
+**Roadmap placement (official):** this concept opens v1 as roadmap phases **v1.1–v1.4** (before the needs, which moved to v1.5–v1.6): **v1.1 — Conversation moves** (Phases 1+2; Phase 1 is its opening authoring task), **v1.2 — Topic base** (Phase 3), **v1.3 — Topic RAG** (Phase 4), **v1.4 — News-seeded topics** (Phase 5). The reality-anchored version of this concept (which shipped mechanisms each phase reuses — the v0.38 think-phase, the v0.40/41 housekeeping tier, the v0.16/v0.36 vector seams, the v0.25/v0.27/v0.33/v0.42 news stack) is the UA original: [ukrainian/lili-conversation-system-concept.md](ukrainian/lili-conversation-system-concept.md); the full roadmap entries (Goal/Tasks/DoD/Tests) live in [ROADMAP.md](../ROADMAP.md) §v1.1–v1.4.

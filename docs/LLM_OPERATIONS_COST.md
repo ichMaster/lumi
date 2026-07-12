@@ -56,7 +56,7 @@ and `.lumi/tool-log.jsonl` (822 tool executions) for 16–22 June.
 
 | Operation | Recommended model | Thinking | Downgrade risk | Rationale |
 |---|---|---|---|---|
-| **1. Main reply** | **Opus 4.8** (keep) | **ON** | — (downgrading = **high**) | This is the product: voice, depth, inner monologue (v1.3). The most visible downgrade. **Don't touch.** |
+| **1. Main reply** | **Opus 4.8** (keep) | **ON** | — (downgrading = **high**) | This is the product: voice, depth, inner monologue (v1.7). The most visible downgrade. **Don't touch.** |
 | **2. Tools (`tool`)** | **per-tool** (see 2.2) | inherited | **medium** | Intermediate steps cheap; the final reply step on Opus. Details in 2.2. |
 | **3. Thoughts (`think`)** | **Sonnet 4.6** | off (opt. ON for `%reflect`) | **low–medium** | Inner musings; flatten on Haiku. Sonnet holds the voice at 0.6×. |
 | **4. Session start (`session-start`)** | digests — **Haiku**; core re-flag — **Sonnet** | off | digests **low**; core **medium** (boundaries **pinned in code**) | Digests are lossy; small input. |
