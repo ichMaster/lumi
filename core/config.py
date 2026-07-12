@@ -159,6 +159,9 @@ DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 # v0.38 Inner Voice: the editable three-voice think-phase instruction (replaces REASONING_DIRECTIVE
 # when LUMI_INNER_VOICE is on). Config-referenced; off → the hardcoded directive, byte-identical.
 DEFAULT_INNER_VOICE_PATH = _REPO_ROOT / "core" / "inner_voice.md"
+# v1.1 LUMI-178: the v2 (conversation-moves) think instruction — retrospective → typed voices →
+# arbiter. Selected when LUMI_MOVES is on; the v1 file stays untouched (off → byte-identical).
+DEFAULT_INNER_VOICE_MOVES_PATH = _REPO_ROOT / "core" / "inner_voice_moves.md"
 
 # Answer styles (overlays); editable like the canon. Optional.
 DEFAULT_STYLES_PATH = _REPO_ROOT / "core" / "styles.md"
@@ -294,6 +297,8 @@ class Config:
     # v0.38 Inner Voice: load core/inner_voice.md as the think directive (off → REASONING_DIRECTIVE).
     inner_voice: bool = False
     inner_voice_path: Path = DEFAULT_INNER_VOICE_PATH
+    # v1.1: the v2 (moves) think instruction, used when `moves` is on.
+    inner_voice_moves_path: Path = DEFAULT_INNER_VOICE_MOVES_PATH
     styles_path: Path = DEFAULT_STYLES_PATH
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
@@ -527,6 +532,8 @@ def load_config(*, load_env: bool = True) -> Config:
 
     inner_voice_env = os.getenv("LUMI_INNER_VOICE_FILE")
     inner_voice_path = Path(inner_voice_env) if inner_voice_env else DEFAULT_INNER_VOICE_PATH
+    ivm_env = os.getenv("LUMI_INNER_VOICE_MOVES_FILE")
+    inner_voice_moves_path = Path(ivm_env) if ivm_env else DEFAULT_INNER_VOICE_MOVES_PATH
 
     styles_env = os.getenv("LUMI_STYLES_PATH")
     styles_path = Path(styles_env) if styles_env else DEFAULT_STYLES_PATH
@@ -640,6 +647,7 @@ def load_config(*, load_env: bool = True) -> Config:
         canon_path=canon_path,
         inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default
         inner_voice_path=inner_voice_path,
+        inner_voice_moves_path=inner_voice_moves_path,
         styles_path=styles_path,
         store_path=store_path,
         memory_window=memory_window,

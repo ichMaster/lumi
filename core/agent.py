@@ -3127,6 +3127,16 @@ def build_core(
         else:
             _core_log.warning("LUMI_INNER_VOICE on but %s missing/empty — using REASONING_DIRECTIVE",
                               cfg.inner_voice_path)
+    # v1.1 LUMI-178: with moves on, the v2 (moves) think instruction takes over — the
+    # retrospective → typed voices → arbiter format consuming {move_rules} (LUMI-177). The v1
+    # file stays untouched; a missing/empty v2 file degrades to the chain above (logged).
+    if cfg.moves:
+        moves_voice = load_inner_voice(cfg.inner_voice_moves_path)
+        if moves_voice:
+            reasoning_directive = moves_voice
+        else:
+            _core_log.warning("LUMI_MOVES on but %s missing/empty — keeping the v1 think instruction",
+                              cfg.inner_voice_moves_path)
     # v0.11 face themes: load the manifest here (the composition root), so the Core class
     # itself stays interface-independent — it only receives the theme data.
     from viewer.themes import load_themes  # local import: keep core/ free of a viewer dependency
