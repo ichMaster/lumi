@@ -152,6 +152,14 @@ not bite its own tail.
 
 ## 6. Tick-driven — her time flows with the TUI
 
+**Real ticks land here.** The v0.42 tick service shipped as an **empty seam** — a fast timer firing
+into a handler registry nothing ever populated. v1.5 registers its **first actual handlers**, starting
+with the **heartbeat**: a persisted `Heartbeat{tick_count, last_ts}` whose `beat()` advances on every
+fast tick (the `schedule.state` persistence pattern), **survives restarts** (resume the count, no
+catch-up — beats while the TUI is closed simply don't exist), logs the beat (debug per beat, an hourly
+info line — ticks become *visible*), and renders via a **`/ticks`** command (total / last beat / this
+session). The needs handler below registers **beside it** on the same beat.
+
 **Her time flows only while the TUI runs.** The levels evolve on the v0.42 **fast tick**:
 `%update_state` is a **code handler** on the tick service (not a model directive — silent, no
 `Thought`, no model call) that runs the pure `evolve(levels, last_ts, now)` and persists. When the
