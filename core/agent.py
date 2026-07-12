@@ -97,7 +97,7 @@ from core.mood import (
     split_theme,
     strip_theme,
 )
-from core.moves import validate_move
+from core.moves import arbiter_dynamics, validate_move
 from core.nudge import should_nudge
 from core.placeholders import resolve_placeholders
 from core.prompt import (
@@ -689,6 +689,9 @@ class Core:
         self._closeness_tuning = closeness_tuning or ClosenessTuning()
         # v1.1: conversation moves — the declared `move` on set_state (off → byte-identical).
         self._moves_enabled = moves_enabled
+        # v1.1 LUMI-177: this turn's dynamic arbiter lines (computed over the live window in
+        # reply(); substituted into the think instruction's {move_rules} at prompt assembly).
+        self._move_dynamics: str = ""
         # The level a fresh user (no record) sits at — derived from the configured baseline.
         self._default_level = naive_level(self._closeness_tuning.baseline)
         # Facts digest: a consolidated, compact view of the long-term facts injected instead of
@@ -1551,8 +1554,14 @@ class Core:
         # Append the reasoning directive to the canon so any pre-answer reasoning is
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         # v0.38: this is the generic REASONING_DIRECTIVE, or her authored inner_voice.md when on.
+        # v1.1 LUMI-177: with moves on, the directive's {move_rules} token resolves to this
+        # turn's dynamic arbiter lines (empty → the token disappears; failure → empty block —
+        # never blocks a turn). Off, or no token → the directive rides verbatim (byte-identical).
+        directive = self._reasoning_directive
+        if self._moves_enabled and "{move_rules}" in directive:
+            directive = resolve_placeholders(directive, {"move_rules": lambda: self._move_dynamics})
         # v0.25: when the news tool is on, add the authored "how she delivers news" line (EN→UK, cited).
-        canon = f"{self._canon}\n\n{self._reasoning_directive}"
+        canon = f"{self._canon}\n\n{directive}"
         if self._news_enabled:
             from core.news import NEWS_DIRECTIVE
 
@@ -2368,6 +2377,9 @@ class Core:
         # The verbatim tail: messages not yet folded into the digest, capped for
         # safety (in case compaction repeatedly failed).
         live = trim_history(history[compacted:], self._memory_window + self._compaction_batch)
+        # v1.1 LUMI-177: the arbiter's data-visible dynamics for this turn (pure; "" when off
+        # or nothing applies) — consumed by the {move_rules} token in the think instruction.
+        self._move_dynamics = arbiter_dynamics(live) if self._moves_enabled else ""
         turn_ts = self._clock().isoformat()  # one stamp for this turn's stored messages
         messages: list[Message] = [
             {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live

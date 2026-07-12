@@ -299,6 +299,38 @@ def test_inline_move_fallback_is_ignored_when_moves_off(tmp_path):
     assert lili.move is None and core.last_move is None  # …but never stored
 
 
+def test_move_rules_token_resolves_in_the_think_instruction(tmp_path):
+    # LUMI-177: {move_rules} in the reasoning directive → this turn's dynamic arbiter lines.
+    llm = MockLLMClient(
+        states=[
+            {"reply": "a", "emotion": "calm", "intensity": 0.5, "move": "deepen"},
+            {"reply": "b", "emotion": "calm", "intensity": 0.5, "move": "deepen"},
+            {"reply": "c", "emotion": "calm", "intensity": 0.5},
+        ]
+    )
+    core = Core(
+        llm=llm, repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="m",
+        moves_enabled=True, reasoning_directive="Правила ходу:\n{move_rules}",
+    )
+    session = core.start_session()
+    core.reply("довге розгорнуте перше повідомлення, значно довше за поріг", session)
+    core.reply("друге довге розгорнуте повідомлення, теж довше за поріг", session)
+    core.reply("третє довге розгорнуте повідомлення, знову довше за поріг", session)
+    system = core.last_prompt["system"]
+    assert "«deepen» заявлено двічі поспіль" in system  # the ban line landed in the prompt
+    assert "{move_rules}" not in system  # the token itself never leaks
+
+
+def test_move_rules_token_stays_literal_when_moves_off(tmp_path):
+    llm = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5})
+    core = Core(
+        llm=llm, repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="m",
+        reasoning_directive="Правила ходу:\n{move_rules}",  # moves off → no resolve pass at all
+    )
+    core.reply("привіт", core.start_session())
+    assert "{move_rules}" in core.last_prompt["system"]  # untouched — byte-identical off
+
+
 def test_pre_v11_message_without_move_still_loads(tmp_path):
     path = tmp_path / "old.json"
     path.write_text(
