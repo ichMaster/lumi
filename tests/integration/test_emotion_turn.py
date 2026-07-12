@@ -163,175 +163,144 @@ def test_echoed_leading_timestamp_is_stripped_from_the_reply(tmp_path):
     assert state.reply == "Ха, привіт!"  # the leaked timestamp is gone
 
 
-# --- v1.1 (LUMI-175): the additive `move` field --------------------------------------------------
+# --- v1.1: the additive `intent` field -----------------------------------------------
 
 
-def _moves_core(tmp_path, llm, path="s.json"):
+def _cs_core(tmp_path, llm, path="s.json"):
     return Core(
         llm=llm, repository=JsonRepository(tmp_path / path), canon="Ти — Лілі.", model="m",
-        moves_enabled=True,
+        intent_enabled=True,
     )
 
 
-def test_declared_move_persists_on_lili_message(tmp_path):
+def test_chosen_style_persists_on_lili_message(tmp_path):
     llm = MockLLMClient(
-        states={"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5, "move": "deepen"}
+        states={"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5,
+                "intent": "заглибити"}
     )
-    core = _moves_core(tmp_path, llm)
+    core = _cs_core(tmp_path, llm)
     session = core.start_session()
     core.reply("привіт", session)
     msgs = core._repo.load_messages(session.id)
     lili = [m for m in msgs if m.role == "lili"][-1]
     user = [m for m in msgs if m.role == "user"][-1]
-    assert lili.move == "deepen" and core.last_move == "deepen"
-    assert user.move is None  # user lines never carry a move
+    assert lili.intent == "заглибити" and core.last_intent == "заглибити"
+    assert user.intent is None  # user lines never carry a style
 
 
-def test_unknown_move_is_dropped_silently(tmp_path):
+def test_unknown_style_is_dropped_silently(tmp_path):
     llm = MockLLMClient(
-        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "move": "sonnet"}
+        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "intent": "deepen"}
     )
-    core = _moves_core(tmp_path, llm)
+    core = _cs_core(tmp_path, llm)
     session = core.start_session()
     state = core.reply("привіт", session)
     assert state.reply == "ок"  # the turn is never blocked
     lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
-    assert lili.move is None and core.last_move is None
+    assert lili.intent is None and core.last_intent is None
 
 
-def test_moves_off_never_stores_a_value_and_skips_the_instruction(tmp_path):
-    from core.prompt import MOVE_INSTRUCTION
+def test_off_never_stores_a_value_and_skips_the_instruction(tmp_path):
+    from core.prompt import INTENT_INSTRUCTION
 
     llm = MockLLMClient(
-        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "move": "deepen"}
+        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "intent": "заглибити"}
     )
-    core = _core(tmp_path, llm)  # moves_enabled defaults to False
+    core = _core(tmp_path, llm)  # intent_enabled defaults to False
     session = core.start_session()
     core.reply("привіт", session)
     lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
-    assert lili.move is None and core.last_move is None
-    assert MOVE_INSTRUCTION not in core.last_prompt["system"]
+    assert lili.intent is None and core.last_intent is None
+    assert INTENT_INSTRUCTION not in core.last_prompt["system"]
 
 
-def test_moves_on_prompt_carries_the_instruction(tmp_path):
-    from core.prompt import MOVE_INSTRUCTION
+def test_on_prompt_carries_the_instruction(tmp_path):
+    from core.prompt import INTENT_INSTRUCTION
 
     llm = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5})
-    core = _moves_core(tmp_path, llm)
+    core = _cs_core(tmp_path, llm)
     core.reply("привіт", core.start_session())
-    assert MOVE_INSTRUCTION in core.last_prompt["system"]
+    assert INTENT_INSTRUCTION in core.last_prompt["system"]
 
 
-def test_move_round_trips_across_reload(tmp_path):
+def test_style_round_trips_across_reload(tmp_path):
     path = tmp_path / "store.json"
     llm = MockLLMClient(
-        states={"reply": "Я думаю, ні.", "emotion": "serious", "intensity": 0.6, "move": "position"}
+        states={"reply": "Я думаю, ні.", "emotion": "serious", "intensity": 0.6,
+                "intent": "позиція"}
     )
     core = Core(
-        llm=llm, repository=JsonRepository(path), canon="Ти — Лілі.", model="m", moves_enabled=True
+        llm=llm, repository=JsonRepository(path), canon="Ти — Лілі.", model="m",
+        intent_enabled=True,
     )
     session = core.start_session()
     core.reply("привіт", session)
     lili = [m for m in JsonRepository(path).load_messages(session.id) if m.role == "lili"][-1]
-    assert lili.move == "position"
+    assert lili.intent == "позиція"
 
 
-def test_history_replays_the_declared_move_beside_the_message(tmp_path):
-    # LUMI-176: the next turn's history carries Лілі's line together with its declared
-    # type (from the record's field) — replay-only metadata, the stored text stays clean.
+def test_history_replays_the_style_beside_the_message(tmp_path):
+    # The next turn's history carries Лілі's line together with its chosen style (from the
+    # record's field) — replay-only metadata, the stored text stays clean.
     llm = MockLLMClient(
         states=[
-            {"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5, "move": "deepen"},
+            {"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5,
+             "intent": "заглибити"},
             {"reply": "ок", "emotion": "calm", "intensity": 0.5},
         ]
     )
-    core = _moves_core(tmp_path, llm)
+    core = _cs_core(tmp_path, llm)
     session = core.start_session()
     core.reply("привіт", session)
     core.reply("ще", session)
     lili_stored = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][0]
-    assert "<move>" not in lili_stored.text  # stored text is clean — no inline tags
-    second = llm.calls[1]["messages"]
-    assistant = next(m for m in second if m["role"] == "assistant")
-    assert assistant["content"].endswith("<move>deepen</move>")  # the declared type rides beside it
+    assert "<intent>" not in lili_stored.text  # stored text is clean — no inline tags
+    assistant = next(m for m in llm.calls[1]["messages"] if m["role"] == "assistant")
+    assert assistant["content"].endswith("<intent>заглибити</intent>")  # rides beside the message
 
 
-def test_untyped_history_replays_byte_identically(tmp_path):
-    # A record without a move (moves off / pre-v1.1) replays exactly as before — no marker.
+def test_unstyled_history_replays_byte_identically(tmp_path):
     llm = MockLLMClient(
         states=[
             {"reply": "Привіт!", "emotion": "joy", "intensity": 0.8},
             {"reply": "ок", "emotion": "calm", "intensity": 0.5},
         ]
     )
-    core = _core(tmp_path, llm)  # moves off
+    core = _core(tmp_path, llm)  # off
     session = core.start_session()
     core.reply("привіт", session)
     core.reply("ще", session)
     assistant = next(m for m in llm.calls[1]["messages"] if m["role"] == "assistant")
-    assert "<move>" not in assistant["content"]
+    assert "<intent>" not in assistant["content"]
     assert assistant["content"].endswith("Привіт! <emotion>joy 0.8</emotion>")
 
 
-def test_stray_move_marker_is_stripped_from_the_reply(tmp_path):
-    # A reply imitating the replay marker must never leak the type to the user/store.
+def test_stray_style_marker_is_stripped_from_the_reply(tmp_path):
     llm = MockLLMClient(
-        states={"reply": "Чекай, чому? <move>object</move>", "emotion": "calm", "intensity": 0.5}
+        states={"reply": "Чекай, чому? <intent>заперечити</intent>", "emotion": "calm", "intensity": 0.5}
     )
-    core = _moves_core(tmp_path, llm)
+    core = _cs_core(tmp_path, llm)
     session = core.start_session()
     state = core.reply("привіт", session)
-    assert state.reply == "Чекай, чому?"  # rendered/mirrored text carries no type
+    assert state.reply == "Чекай, чому?"  # rendered/mirrored text carries no style
     lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
-    assert "<move>" not in lili.text
-    assert lili.move == "object"  # the inline marker doubles as the fallback channel
+    assert "<intent>" not in lili.text
+    assert lili.intent == "заперечити"  # the inline marker is the fallback channel
 
 
-def test_inline_move_fallback_is_ignored_when_moves_off(tmp_path):
+def test_inline_style_fallback_is_ignored_when_off(tmp_path):
     llm = MockLLMClient(
-        states={"reply": "ок <move>deepen</move>", "emotion": "calm", "intensity": 0.5}
+        states={"reply": "ок <intent>заглибити</intent>", "emotion": "calm", "intensity": 0.5}
     )
-    core = _core(tmp_path, llm)  # moves off
+    core = _core(tmp_path, llm)  # off
     session = core.start_session()
     state = core.reply("привіт", session)
     assert state.reply == "ок"  # still stripped (never leaks)…
     lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
-    assert lili.move is None and core.last_move is None  # …but never stored
+    assert lili.intent is None and core.last_intent is None  # …never stored
 
 
-def test_move_rules_token_resolves_in_the_think_instruction(tmp_path):
-    # LUMI-177: {move_rules} in the reasoning directive → this turn's dynamic arbiter lines.
-    llm = MockLLMClient(
-        states=[
-            {"reply": "a", "emotion": "calm", "intensity": 0.5, "move": "deepen"},
-            {"reply": "b", "emotion": "calm", "intensity": 0.5, "move": "deepen"},
-            {"reply": "c", "emotion": "calm", "intensity": 0.5},
-        ]
-    )
-    core = Core(
-        llm=llm, repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="m",
-        moves_enabled=True, reasoning_directive="Правила ходу:\n{move_rules}",
-    )
-    session = core.start_session()
-    core.reply("довге розгорнуте перше повідомлення, значно довше за поріг", session)
-    core.reply("друге довге розгорнуте повідомлення, теж довше за поріг", session)
-    core.reply("третє довге розгорнуте повідомлення, знову довше за поріг", session)
-    system = core.last_prompt["system"]
-    assert "«deepen» заявлено двічі поспіль" in system  # the ban line landed in the prompt
-    assert "{move_rules}" not in system  # the token itself never leaks
-
-
-def test_move_rules_token_stays_literal_when_moves_off(tmp_path):
-    llm = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5})
-    core = Core(
-        llm=llm, repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="m",
-        reasoning_directive="Правила ходу:\n{move_rules}",  # moves off → no resolve pass at all
-    )
-    core.reply("привіт", core.start_session())
-    assert "{move_rules}" in core.last_prompt["system"]  # untouched — byte-identical off
-
-
-def test_pre_v11_message_without_move_still_loads(tmp_path):
+def test_pre_v11_message_without_style_still_loads(tmp_path):
     path = tmp_path / "old.json"
     path.write_text(
         json.dumps(
@@ -357,4 +326,4 @@ def test_pre_v11_message_without_move_still_loads(tmp_path):
         encoding="utf-8",
     )
     m = JsonRepository(path).load_messages("s1")[0]
-    assert m.text == "old" and m.move is None  # the v0.2-shim pattern: no migration needed
+    assert m.text == "old" and m.intent is None  # the v0.2-shim: no migration needed

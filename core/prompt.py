@@ -107,19 +107,17 @@ RELATION_INSTRUCTION = (
     "використання, обман). Це внутрішня оцінка — не згадуй і не коментуй її у відповіді."
 )
 
-# v1.1: the declared conversation move of Лілі's reply (feeds the retrospective). Internal.
-MOVE_INSTRUCTION = (
-    "Додатково познач ТИП ХОДУ своєї відповіді — заповни поле move інструмента set_state "
-    "одним зі значень: deepen (заглибити — конкретне питання про аспект сказаного), "
-    "position (позиція — власне твердження від першої особи, з яким можна сперечатись), "
-    "object (заперечити — незгода зі сказаним або припущеним), "
-    "develop (розвинути — наступний логічний крок з думки співрозмовника), "
-    "associate (асоціація — власний матеріал: думки, минулі розмови, теми), "
-    "example (приклад — потягнути з абстрактного в конкретне), "
-    "return (повернутись — дістати відкрите питання зі старої теми). "
-    "Обраний хід мусить справді виконуватись текстом відповіді. "
+# v1.1: the intent the arbiter chose for the reply (feeds the retrospective). Internal.
+INTENT_INSTRUCTION = (
+    "Додатково познач НАМІР репліки, який обрав арбітр цього ходу — заповни поле "
+    "intent інструмента set_state одним зі значень: заглибити (конкретне "
+    "питання про сказане), позиція (власне твердження, з яким можна сперечатись), "
+    "заперечити (незгода зі сказаним чи припущеним), розвинути (наступний крок з його "
+    "думки), асоціація (власний матеріал: думки, минулі розмови), приклад (з абстрактного "
+    "в конкретне), повернутись (до давньої недоказаної теми). "
+    "Обраний намір мусить справді виконуватись текстом відповіді. "
     "Якщо інструмент set_state недоступний цього ходу — додай натомість тег "
-    "<move>тип</move> одразу після тегу емоції. "
+    "<intent>намір</intent> одразу після тегу емоції. "
     "Це внутрішня позначка — не згадуй і не коментуй її у відповіді."
 )
 
@@ -129,12 +127,13 @@ _EMOTION_TAG_RE = re.compile(
 )
 _STRAY_EMOTION_RE = re.compile(r"</?emotion\b[^>]*>", re.IGNORECASE)
 
-# v1.1: the machine-side move marker used ONLY in replayed history (`_history_content`) —
-# never in stored text, never rendered. Stripped from replies so it can't leak if the
-# model imitates it; the captured value doubles as the fallback channel when the
-# structured tool can't be forced (extended thinking on — the emotion-tag precedent).
-_MOVE_TAG_RE = re.compile(r"<move>\s*([a-zA-Z]+)\s*</move>", re.IGNORECASE)
-_STRAY_MOVE_RE = re.compile(r"</?move\b[^>]*>", re.IGNORECASE)
+# v1.1: the machine-side conversation-style marker used ONLY in replayed history
+# (`_history_content`) — never in stored text, never rendered. A DISTINCT tag <intent> (the v0.5
+# answer-style uses <style>, so they must not collide). Stripped from replies so it can't leak if
+# the model imitates it; the captured value doubles as the fallback channel when the structured
+# tool can't be forced (extended thinking on — the emotion-tag precedent).
+_INTENT_TAG_RE = re.compile(r"<intent>\s*([^<\s]+)\s*</intent>", re.IGNORECASE)
+_STRAY_INTENT_RE = re.compile(r"</?intent\b[^>]*>", re.IGNORECASE)
 
 
 def split_emotion(text: str) -> tuple[dict | None, str]:
@@ -155,15 +154,16 @@ def split_emotion(text: str) -> tuple[dict | None, str]:
     return emo, clean
 
 
-def split_move(text: str) -> tuple[str | None, str]:
-    """Extract an inline ``<move>type</move>`` marker from a reply (v1.1).
+def split_intent(text: str) -> tuple[str | None, str]:
+    """Extract an inline ``<intent>value</intent>`` marker from a reply (v1.1).
 
     Returns ``(raw_value, clean_text)`` — the value is the *unvalidated* candidate
-    (``core.moves.validate_move`` gates it); the marker and any stray ``<move>``
-    fragments are removed so the type never shows in a rendered/mirrored reply.
+    (``core.intent.validate_intent`` gates it); the marker and any
+    stray ``<intent>`` fragments are removed so the style never shows in a rendered reply.
+    Distinct from the v0.5 answer-style ``<style>`` tag (:func:`split_style`).
     """
-    match = _MOVE_TAG_RE.search(text)
-    clean = _STRAY_MOVE_RE.sub("", _MOVE_TAG_RE.sub("", text)).strip()
+    match = _INTENT_TAG_RE.search(text)
+    clean = _STRAY_INTENT_RE.sub("", _INTENT_TAG_RE.sub("", text)).strip()
     return (match.group(1).lower() if match else None), clean
 
 
@@ -207,7 +207,7 @@ def build_system_prompt(
     style: str | None = None,
     emotion: bool = False,
     relation: bool = False,
-    moves: bool = False,
+    intent: bool = False,
     ambient: str | None = None,
     mood: str | None = None,
     closeness: str | None = None,
@@ -242,8 +242,8 @@ def build_system_prompt(
         fmt.append(EMOTION_INSTRUCTION)
     if relation:  # v0.10: the additive per-turn relational read of the user's message
         fmt.append(RELATION_INSTRUCTION)
-    if moves:  # v1.1: the declared conversation move of the reply (off → absent, byte-identical)
-        fmt.append(MOVE_INSTRUCTION)
+    if intent:  # v1.1: the arbiter's chosen style (off → absent, byte-identical)
+        fmt.append(INTENT_INSTRUCTION)
     if fmt:
         prefix.append("# Як відповідати\n\n" + "\n\n".join(fmt))
 

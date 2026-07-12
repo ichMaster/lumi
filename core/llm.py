@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
 from core.emotion import Emotion
 from core.images import images_in_messages, is_image_block
-from core.moves import MOVES
+from core.intent import INTENTS
 
 if TYPE_CHECKING:  # annotation only — build_llm reads cfg attributes, never imports config at runtime
     from core.config import Config
@@ -149,12 +149,12 @@ _GEMINI_EMOTION_SCHEMA = {
         "reply": {"type": "string"},
         "emotion": {"type": "string", "enum": [e.value for e in Emotion]},
         "intensity": {"type": "number"},
-        # v1.1: the optional declared conversation move (asked for only when LUMI_MOVES
-        # is on — the prompt instruction gates it; the core validates + gates the value).
-        "move": {"type": "string", "enum": list(MOVES)},
+        # v1.1: the optional conversation style (asked for only when the feature is on — the
+        # prompt instruction gates it; the core validates + gates the value).
+        "intent": {"type": "string", "enum": list(INTENTS)},
     },
     "required": ["reply", "emotion", "intensity"],
-    "propertyOrdering": ["reply", "emotion", "intensity", "move"],
+    "propertyOrdering": ["reply", "emotion", "intensity", "intent"],
 }
 
 # A blocked/empty candidate (e.g. a SAFETY finish) has no text — the v0.3 gate raises on an empty reply,
@@ -350,12 +350,12 @@ _EMOTION_TOOL = {
                     "manipulation": {"type": "number", "minimum": 0, "maximum": 1},
                 },
             },
-            # v1.1: the ADDITIVE declared conversation move of this reply (the relation
-            # pattern). Optional — the contract is untouched; the core validates + gates it.
-            "move": {
+            # v1.1: the ADDITIVE conversation style the arbiter chose (the relation pattern).
+            # Optional — the contract is untouched; the core validates + gates it.
+            "intent": {
                 "type": "string",
-                "enum": list(MOVES),
-                "description": "Тип ходу цієї відповіді (внутрішня позначка, v1.1).",
+                "enum": list(INTENTS),
+                "description": "Обраний арбітром стиль розмови цього ходу (внутрішня позначка, v1.1).",
             },
         },
         "required": ["reply", "emotion", "intensity"],
@@ -372,8 +372,8 @@ _JSON_STATE_INSTRUCTION = (
     '"reply" (string — Лілі\'s reply text, her words only), '
     '"emotion" (one of: ' + ", ".join(e.value for e in Emotion) + "), "
     '"intensity" (number between 0 and 1). '
-    'When the system prompt asks you to declare a conversation move, ALSO include "move" '
-    "(exactly one of: " + ", ".join(MOVES) + "). "
+    'When the system prompt asks you to declare a conversation style, ALSO include '
+    '"intent" (exactly one of: ' + ", ".join(INTENTS) + "). "
     'Example: {"reply": "...", "emotion": "calm", "intensity": 0.6}'
 )
 

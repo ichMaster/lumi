@@ -17,20 +17,20 @@ from core.repository import (
 
 
 def test_message_shape():
-    # v0.2 base + the v0.3 emotion field + the v1.1 `move` (additive, None-defaulted so
-    # pre-v1.1 stores load without migration — the v0.2 shim pattern).
+    # v0.2 base + the v0.3 emotion field + the v1.1 `intent` (additive, None-defaulted
+    # so pre-v1.1 stores load without migration — the v0.2 shim pattern).
     assert set(Message.__dataclass_fields__) == {
-        "session_id", "user_id", "role", "text", "ts", "emotion", "intensity", "move",
+        "session_id", "user_id", "role", "text", "ts", "emotion", "intensity", "intent",
     }
 
 
-def test_message_move_defaults_to_none():
-    # Additive proof: a record built without `move` (any pre-v1.1 caller/row) carries None.
+def test_message_intent_defaults_to_none():
+    # Additive proof: a record built without the field (any pre-v1.1 caller/row) carries None.
     m = Message(
         session_id="s1", user_id="owner", role="lili", text="hi",
         ts="2026-01-01T00:00:00+00:00",
     )
-    assert m.move is None
+    assert m.intent is None
 
 
 def test_day_summary_shape():

@@ -56,6 +56,7 @@ from core.deidentify import deidentify, personal_terms, topic_words
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
 from core.images import is_image_block
+from core.intent import validate_intent
 from core.llm import (
     LLMClient,
     LLMError,
@@ -97,7 +98,6 @@ from core.mood import (
     split_theme,
     strip_theme,
 )
-from core.moves import arbiter_dynamics, validate_move
 from core.nudge import should_nudge
 from core.placeholders import resolve_placeholders
 from core.prompt import (
@@ -106,7 +106,7 @@ from core.prompt import (
     load_canon,
     load_inner_voice,
     split_emotion,
-    split_move,
+    split_intent,
     split_reasoning,
     split_style,
 )
@@ -402,7 +402,7 @@ class Core:
         closeness_levels: dict[int, tuple[str, str]] | None = None,
         closeness_enabled: bool = True,
         closeness_tuning: ClosenessTuning | None = None,
-        moves_enabled: bool = False,
+        intent_enabled: bool = False,
         facts_digest_enabled: bool = False,
         facts_digest_max: int = 150,
         facts_digest_refresh: int = 20,
@@ -687,11 +687,8 @@ class Core:
         self._closeness_levels = closeness_levels or {}
         self._closeness_enabled = closeness_enabled
         self._closeness_tuning = closeness_tuning or ClosenessTuning()
-        # v1.1: conversation moves — the declared `move` on set_state (off → byte-identical).
-        self._moves_enabled = moves_enabled
-        # v1.1 LUMI-177: this turn's dynamic arbiter lines (computed over the live window in
-        # reply(); substituted into the think instruction's {move_rules} at prompt assembly).
-        self._move_dynamics: str = ""
+        # v1.1: conversation style — persist+replay the arbiter's chosen style (off → byte-identical).
+        self._intent_enabled = intent_enabled
         # The level a fresh user (no record) sits at — derived from the configured baseline.
         self._default_level = naive_level(self._closeness_tuning.baseline)
         # Facts digest: a consolidated, compact view of the long-term facts injected instead of
@@ -749,8 +746,8 @@ class Core:
         self.last_emotion: EmotionState | None = None
         # The relational read of the user's last message (v0.10; internal, feeds closeness).
         self.last_relation: RelationRead = RelationRead()
-        # v1.1: the declared conversation move of the last reply (internal; None when off/dropped).
-        self.last_move: str | None = None
+        # v1.1: the arbiter's chosen conversation style of the last reply (None when off/dropped).
+        self.last_intent: str | None = None
         # The model's visible thinking from the last turn (inline <think>, a public
         # structured summary, or a provider summary), for a client to render.
         self.last_thinking: str | None = None
@@ -1554,14 +1551,8 @@ class Core:
         # Append the reasoning directive to the canon so any pre-answer reasoning is
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         # v0.38: this is the generic REASONING_DIRECTIVE, or her authored inner_voice.md when on.
-        # v1.1 LUMI-177: with moves on, the directive's {move_rules} token resolves to this
-        # turn's dynamic arbiter lines (empty → the token disappears; failure → empty block —
-        # never blocks a turn). Off, or no token → the directive rides verbatim (byte-identical).
-        directive = self._reasoning_directive
-        if self._moves_enabled and "{move_rules}" in directive:
-            directive = resolve_placeholders(directive, {"move_rules": lambda: self._move_dynamics})
         # v0.25: when the news tool is on, add the authored "how she delivers news" line (EN→UK, cited).
-        canon = f"{self._canon}\n\n{directive}"
+        canon = f"{self._canon}\n\n{self._reasoning_directive}"
         if self._news_enabled:
             from core.news import NEWS_DIRECTIVE
 
@@ -1586,7 +1577,7 @@ class Core:
             style=self._style_directive(),
             emotion=True,
             relation=self._closeness_enabled,  # v0.10: ask for the relational read (off → skip)
-            moves=self._moves_enabled,  # v1.1: ask for the declared move (off → skip, byte-identical)
+            intent=self._intent_enabled,  # v1.1: ask for the style (off → skip)
             ambient=ambient_line(self._world, self._clock),
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
             closeness=closeness,  # the active relationship level's block (v0.10)
@@ -1771,19 +1762,20 @@ class Core:
         also re-append the ``<emotion>…</emotion>`` tag reconstructed from the
         persisted ``emotion``/``intensity`` — the stored text is clean (tag-stripped),
         so without this the model only sees tag-less past replies and drifts to stop
-        emitting the tag over a long conversation. Likewise (v1.1) a ``<move>…</move>``
-        marker reconstructed from the persisted ``move`` — the declared type rides
-        BESIDE the message as replay-only metadata (the stored text never carries it,
+        emitting the tag over a long conversation. Likewise (v1.1) a ``<intent>…</intent>``
+        marker reconstructed from the persisted ``intent`` — the chosen style
+        rides BESIDE the message as replay-only metadata (the stored text never carries it,
         no renderer ever shows it), so the retrospective can check declared-vs-done.
-        Gated on the feature: with moves OFF no marker ever replays — even for records
-        typed during an earlier on-period — so off stays byte-identical for good.
+        Gated on the feature: with it OFF no marker ever replays — even for records styled
+        during an earlier on-period — so off stays byte-identical for good.
         """
         body = m.text
         if m.role == "lili" and m.emotion:
             intensity = m.intensity if m.intensity is not None else 0.5
             body = f"{m.text} <emotion>{m.emotion} {intensity:.1f}</emotion>"
-        if self._moves_enabled and m.role == "lili" and getattr(m, "move", None):
-            body = f"{body} <move>{m.move}</move>"
+        if (self._intent_enabled and m.role == "lili"
+                and getattr(m, "intent", None)):
+            body = f"{body} <intent>{m.intent}</intent>"
         return f"[{format_stamp(m.ts)}] {body}"
 
     def _ensure_mood(self) -> None:
@@ -2376,9 +2368,6 @@ class Core:
         # The verbatim tail: messages not yet folded into the digest, capped for
         # safety (in case compaction repeatedly failed).
         live = trim_history(history[compacted:], self._memory_window + self._compaction_batch)
-        # v1.1 LUMI-177: the arbiter's data-visible dynamics for this turn (pure; "" when off
-        # or nothing applies) — consumed by the {move_rules} token in the think instruction.
-        self._move_dynamics = arbiter_dynamics(live) if self._moves_enabled else ""
         turn_ts = self._clock().isoformat()  # one stamp for this turn's stored messages
         messages: list[Message] = [
             {"role": _ROLE_TO_LLM[m.role], "content": self._history_content(m)} for m in live
@@ -2426,10 +2415,10 @@ class Core:
         else:
             structured_thinking = structured_thinking.strip()
         tag_emotion, reply_text = split_emotion(reply_text)
-        # v1.1: strip any inline <move> marker (it exists only in replayed history — a reply
-        # imitating it must never leak the type); the captured value is the fallback channel
+        # v1.1: strip any inline <intent> marker (it exists only in replayed history — a reply
+        # imitating it must never leak the style); the captured value is the fallback channel
         # when the structured tool can't be forced (the emotion-tag precedent).
-        tag_move, reply_text = split_move(reply_text)
+        tag_style_marker, reply_text = split_intent(reply_text)
         # Лілі's self-chosen answer style — record it (for the status "who") and strip it.
         tag_style, reply_text = split_style(reply_text)
         if tag_style:
@@ -2459,11 +2448,12 @@ class Core:
         self.last_emotion = state
         # v0.10: the additive relational read of the user's message (internal; feeds closeness).
         self.last_relation = validate_relation(raw.get("relation"))
-        # v1.1: the additive declared move of this reply — the structured field wins, the
+        # v1.1: the arbiter's chosen conversation style — the structured field wins, the
         # stripped inline marker is the fallback (extended-thinking case); validated against
         # the closed enum (unknown/garbled → None, silently), gated so off never stores a value.
-        self.last_move = (
-            validate_move(raw.get("move") or tag_move) if self._moves_enabled else None
+        self.last_intent = (
+            validate_intent(raw.get("intent") or tag_style_marker)
+            if self._intent_enabled else None
         )
         # Advance the per-user closeness: decay over silence + this turn's relational delta.
         if self._closeness_enabled:
@@ -2487,7 +2477,7 @@ class Core:
             ts=turn_ts,
             emotion=state.emotion.value,
             intensity=state.intensity,
-            move=self.last_move,  # v1.1: the declared move (None when off/dropped)
+            intent=self.last_intent,  # v1.1 (None when off/dropped)
         )
         self._repo.append_message(user_msg)
         self._repo.append_message(lili_msg)
@@ -3126,16 +3116,6 @@ def build_core(
         else:
             _core_log.warning("LUMI_INNER_VOICE on but %s missing/empty — using REASONING_DIRECTIVE",
                               cfg.inner_voice_path)
-    # v1.1 LUMI-178: with moves on, the v2 (moves) think instruction takes over — the
-    # retrospective → typed voices → arbiter format consuming {move_rules} (LUMI-177). The v1
-    # file stays untouched; a missing/empty v2 file degrades to the chain above (logged).
-    if cfg.moves:
-        moves_voice = load_inner_voice(cfg.inner_voice_moves_path)
-        if moves_voice:
-            reasoning_directive = moves_voice
-        else:
-            _core_log.warning("LUMI_MOVES on but %s missing/empty — keeping the v1 think instruction",
-                              cfg.inner_voice_moves_path)
     # v0.11 face themes: load the manifest here (the composition root), so the Core class
     # itself stays interface-independent — it only receives the theme data.
     from viewer.themes import load_themes  # local import: keep core/ free of a viewer dependency
@@ -3174,7 +3154,7 @@ def build_core(
         closeness_levels=load_levels(cfg.closeness_path),
         closeness_enabled=cfg.closeness,
         closeness_tuning=cfg.closeness_tuning,
-        moves_enabled=cfg.moves,
+        intent_enabled=cfg.intent,
         facts_digest_enabled=cfg.facts_digest,
         prompt_cache=cfg.prompt_cache,
         embedder=embedder,
