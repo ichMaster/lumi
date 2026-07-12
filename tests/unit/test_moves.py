@@ -30,6 +30,16 @@ def test_unknown_or_garbled_is_dropped_silently(bad):
     assert validate_move(bad) is None
 
 
+def test_json_state_instruction_names_the_move_field():
+    # JSON/schema providers (OpenAI, Gemini) obey the strict "ONLY … required keys" wording —
+    # without move named there they drop the field the MOVE_INSTRUCTION asked for.
+    from core.llm import _JSON_STATE_INSTRUCTION
+
+    assert '"move"' in _JSON_STATE_INSTRUCTION
+    for value in MOVES:
+        assert value in _JSON_STATE_INSTRUCTION
+
+
 # --- LUMI-177: arbiter_dynamics ------------------------------------------------------------
 
 _LONG = "Це доволі розгорнута відповідь, значно довша за поріг короткої реакції."

@@ -364,11 +364,16 @@ _EMOTION_TOOL = {
 
 # For JSON-mode providers (OpenAI/DeepSeek/local v0.18, MiniMax) that have no tool-call: ask for the
 # same shape as plain JSON. Appended to `system` only on the structured call; the v0.3 gate still validates.
+# v1.1: the optional `move` is named here too — without it the "ONLY … these required keys" wording
+# makes JSON/schema providers (incl. Gemini) drop the field the MOVE_INSTRUCTION asked for; harmless
+# when moves are off (the core drops the value, gated).
 _JSON_STATE_INSTRUCTION = (
     "\n\nReturn ONLY a single JSON object (no prose, no markdown fences) with these required keys: "
     '"reply" (string — Лілі\'s reply text, her words only), '
     '"emotion" (one of: ' + ", ".join(e.value for e in Emotion) + "), "
     '"intensity" (number between 0 and 1). '
+    'When the system prompt asks you to declare a conversation move, ALSO include "move" '
+    "(exactly one of: " + ", ".join(MOVES) + "). "
     'Example: {"reply": "...", "emotion": "calm", "intensity": 0.6}'
 )
 
