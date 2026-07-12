@@ -40,7 +40,7 @@ class Session:
 class Message:
     """A single turn, owned by one user. Assistant turns carry the emotion field from v0.3.
 
-    (``user_id`` added in v0.2; ``emotion``/``intensity`` in v0.3.)
+    (``user_id`` added in v0.2; ``emotion``/``intensity`` in v0.3; ``move`` in v1.1.)
     """
 
     session_id: str
@@ -52,6 +52,9 @@ class Message:
     # user turns (and on pre-v0.3 stored messages).
     emotion: str | None = None
     intensity: float | None = None
+    # v1.1: the conversation move the reply performed (one of core.moves.MOVES);
+    # None on user turns, on pre-v1.1 records, and while LUMI_MOVES is off.
+    move: str | None = None
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
@@ -67,6 +70,7 @@ def make_message(
     *,
     emotion: str | None = None,
     intensity: float | None = None,
+    move: str | None = None,
 ) -> Message:
     """Build a :class:`Message`, stamping ``ts`` now unless one is given."""
     return Message(
@@ -77,6 +81,7 @@ def make_message(
         ts=ts or now_iso(),
         emotion=emotion,
         intensity=intensity,
+        move=move,
     )
 
 

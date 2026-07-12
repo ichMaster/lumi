@@ -97,6 +97,7 @@ from core.mood import (
     split_theme,
     strip_theme,
 )
+from core.moves import validate_move
 from core.nudge import should_nudge
 from core.placeholders import resolve_placeholders
 from core.prompt import (
@@ -400,6 +401,7 @@ class Core:
         closeness_levels: dict[int, tuple[str, str]] | None = None,
         closeness_enabled: bool = True,
         closeness_tuning: ClosenessTuning | None = None,
+        moves_enabled: bool = False,
         facts_digest_enabled: bool = False,
         facts_digest_max: int = 150,
         facts_digest_refresh: int = 20,
@@ -684,6 +686,8 @@ class Core:
         self._closeness_levels = closeness_levels or {}
         self._closeness_enabled = closeness_enabled
         self._closeness_tuning = closeness_tuning or ClosenessTuning()
+        # v1.1: conversation moves — the declared `move` on set_state (off → byte-identical).
+        self._moves_enabled = moves_enabled
         # The level a fresh user (no record) sits at — derived from the configured baseline.
         self._default_level = naive_level(self._closeness_tuning.baseline)
         # Facts digest: a consolidated, compact view of the long-term facts injected instead of
@@ -741,6 +745,8 @@ class Core:
         self.last_emotion: EmotionState | None = None
         # The relational read of the user's last message (v0.10; internal, feeds closeness).
         self.last_relation: RelationRead = RelationRead()
+        # v1.1: the declared conversation move of the last reply (internal; None when off/dropped).
+        self.last_move: str | None = None
         # The model's visible thinking from the last turn (inline <think>, a public
         # structured summary, or a provider summary), for a client to render.
         self.last_thinking: str | None = None
@@ -1570,6 +1576,7 @@ class Core:
             style=self._style_directive(),
             emotion=True,
             relation=self._closeness_enabled,  # v0.10: ask for the relational read (off → skip)
+            moves=self._moves_enabled,  # v1.1: ask for the declared move (off → skip, byte-identical)
             ambient=ambient_line(self._world, self._clock),
             mood=self.mood,  # only the resolution rides in the prompt (v0.6)
             closeness=closeness,  # the active relationship level's block (v0.10)
@@ -2429,6 +2436,9 @@ class Core:
         self.last_emotion = state
         # v0.10: the additive relational read of the user's message (internal; feeds closeness).
         self.last_relation = validate_relation(raw.get("relation"))
+        # v1.1: the additive declared move of this reply — validated against the closed enum
+        # (unknown/garbled → None, silently), gated so off never stores a value.
+        self.last_move = validate_move(raw.get("move")) if self._moves_enabled else None
         # Advance the per-user closeness: decay over silence + this turn's relational delta.
         if self._closeness_enabled:
             self._repo.set_closeness(
@@ -2451,6 +2461,7 @@ class Core:
             ts=turn_ts,
             emotion=state.emotion.value,
             intensity=state.intensity,
+            move=self.last_move,  # v1.1: the declared move (None when off/dropped)
         )
         self._repo.append_message(user_msg)
         self._repo.append_message(lili_msg)
@@ -3127,6 +3138,7 @@ def build_core(
         closeness_levels=load_levels(cfg.closeness_path),
         closeness_enabled=cfg.closeness,
         closeness_tuning=cfg.closeness_tuning,
+        moves_enabled=cfg.moves,
         facts_digest_enabled=cfg.facts_digest,
         prompt_cache=cfg.prompt_cache,
         embedder=embedder,

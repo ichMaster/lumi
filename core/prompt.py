@@ -107,6 +107,20 @@ RELATION_INSTRUCTION = (
     "використання, обман). Це внутрішня оцінка — не згадуй і не коментуй її у відповіді."
 )
 
+# v1.1: the declared conversation move of Лілі's reply (feeds the retrospective). Internal.
+MOVE_INSTRUCTION = (
+    "Додатково познач ТИП ХОДУ своєї відповіді — заповни поле move інструмента set_state "
+    "одним зі значень: deepen (заглибити — конкретне питання про аспект сказаного), "
+    "position (позиція — власне твердження від першої особи, з яким можна сперечатись), "
+    "object (заперечити — незгода зі сказаним або припущеним), "
+    "develop (розвинути — наступний логічний крок з думки співрозмовника), "
+    "associate (асоціація — власний матеріал: думки, минулі розмови, теми), "
+    "example (приклад — потягнути з абстрактного в конкретне), "
+    "return (повернутись — дістати відкрите питання зі старої теми). "
+    "Обраний хід мусить справді виконуватись текстом відповіді. "
+    "Це внутрішня позначка — не згадуй і не коментуй її у відповіді."
+)
+
 # Inline emotion tag: <emotion>name</emotion> or <emotion>name 0.8</emotion>.
 _EMOTION_TAG_RE = re.compile(
     r"<emotion>\s*([a-zA-Z]+)\s*([0-9]*\.?[0-9]+)?\s*</emotion>", re.IGNORECASE
@@ -172,6 +186,7 @@ def build_system_prompt(
     style: str | None = None,
     emotion: bool = False,
     relation: bool = False,
+    moves: bool = False,
     ambient: str | None = None,
     mood: str | None = None,
     closeness: str | None = None,
@@ -206,6 +221,8 @@ def build_system_prompt(
         fmt.append(EMOTION_INSTRUCTION)
     if relation:  # v0.10: the additive per-turn relational read of the user's message
         fmt.append(RELATION_INSTRUCTION)
+    if moves:  # v1.1: the declared conversation move of the reply (off → absent, byte-identical)
+        fmt.append(MOVE_INSTRUCTION)
     if fmt:
         prefix.append("# Як відповідати\n\n" + "\n\n".join(fmt))
 

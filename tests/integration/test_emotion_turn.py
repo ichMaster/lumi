@@ -161,3 +161,105 @@ def test_echoed_leading_timestamp_is_stripped_from_the_reply(tmp_path):
     core = _core(tmp_path, llm)
     state = core.reply("привіт", core.start_session())
     assert state.reply == "Ха, привіт!"  # the leaked timestamp is gone
+
+
+# --- v1.1 (LUMI-175): the additive `move` field --------------------------------------------------
+
+
+def _moves_core(tmp_path, llm, path="s.json"):
+    return Core(
+        llm=llm, repository=JsonRepository(tmp_path / path), canon="Ти — Лілі.", model="m",
+        moves_enabled=True,
+    )
+
+
+def test_declared_move_persists_on_lili_message(tmp_path):
+    llm = MockLLMClient(
+        states={"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5, "move": "deepen"}
+    )
+    core = _moves_core(tmp_path, llm)
+    session = core.start_session()
+    core.reply("привіт", session)
+    msgs = core._repo.load_messages(session.id)
+    lili = [m for m in msgs if m.role == "lili"][-1]
+    user = [m for m in msgs if m.role == "user"][-1]
+    assert lili.move == "deepen" and core.last_move == "deepen"
+    assert user.move is None  # user lines never carry a move
+
+
+def test_unknown_move_is_dropped_silently(tmp_path):
+    llm = MockLLMClient(
+        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "move": "sonnet"}
+    )
+    core = _moves_core(tmp_path, llm)
+    session = core.start_session()
+    state = core.reply("привіт", session)
+    assert state.reply == "ок"  # the turn is never blocked
+    lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.move is None and core.last_move is None
+
+
+def test_moves_off_never_stores_a_value_and_skips_the_instruction(tmp_path):
+    from core.prompt import MOVE_INSTRUCTION
+
+    llm = MockLLMClient(
+        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "move": "deepen"}
+    )
+    core = _core(tmp_path, llm)  # moves_enabled defaults to False
+    session = core.start_session()
+    core.reply("привіт", session)
+    lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.move is None and core.last_move is None
+    assert MOVE_INSTRUCTION not in core.last_prompt["system"]
+
+
+def test_moves_on_prompt_carries_the_instruction(tmp_path):
+    from core.prompt import MOVE_INSTRUCTION
+
+    llm = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5})
+    core = _moves_core(tmp_path, llm)
+    core.reply("привіт", core.start_session())
+    assert MOVE_INSTRUCTION in core.last_prompt["system"]
+
+
+def test_move_round_trips_across_reload(tmp_path):
+    path = tmp_path / "store.json"
+    llm = MockLLMClient(
+        states={"reply": "Я думаю, ні.", "emotion": "serious", "intensity": 0.6, "move": "position"}
+    )
+    core = Core(
+        llm=llm, repository=JsonRepository(path), canon="Ти — Лілі.", model="m", moves_enabled=True
+    )
+    session = core.start_session()
+    core.reply("привіт", session)
+    lili = [m for m in JsonRepository(path).load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.move == "position"
+
+
+def test_pre_v11_message_without_move_still_loads(tmp_path):
+    path = tmp_path / "old.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sessions": {
+                    "s1": {"id": "s1", "user_id": "owner", "started_at": "2026-01-01T00:00:00+00:00"}
+                },
+                "messages": {
+                    "s1": [
+                        {
+                            "session_id": "s1",
+                            "user_id": "owner",
+                            "role": "lili",
+                            "text": "old",
+                            "ts": "2026-01-01T00:00:00+00:00",
+                            "emotion": "joy",
+                            "intensity": 0.8,
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    m = JsonRepository(path).load_messages("s1")[0]
+    assert m.text == "old" and m.move is None  # the v0.2-shim pattern: no migration needed

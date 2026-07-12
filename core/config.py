@@ -347,6 +347,7 @@ class Config:
     faces_dir: Path = DEFAULT_FACES_DIR  # v0.11 face packs + themes.md
     closeness: bool = True  # v0.10 relationship level on/off
     closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
+    moves: bool = False  # v1.1 conversation moves (the declared `move` on set_state) on/off
     facts_digest: bool = True       # consolidate long-term facts into a compact prompt digest
     facts_digest_max: int = 150     # target lines for the consolidated facts digest
     facts_core_max: int = 0         # v0.36: identity-core cap (0 → the core-flag lifecycle is off)
@@ -686,6 +687,7 @@ def load_config(*, load_env: bool = True) -> Config:
         ),
         faces_dir=Path(fd) if (fd := os.getenv("LUMI_FACES_DIR")) else DEFAULT_FACES_DIR,
         closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
+        moves=_parse_bool(os.getenv("LUMI_MOVES")),  # v1.1 conversation moves, off by default
         facts_digest=(os.getenv("LUMI_FACTS_DIGEST") or "on").strip().lower() in _TRUTHY,  # on by default
         prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
         prompt_cache_ttl="1h" if (os.getenv("LUMI_PROMPT_CACHE_TTL") or "5m").strip().lower() == "1h" else "5m",
