@@ -236,6 +236,69 @@ def test_move_round_trips_across_reload(tmp_path):
     assert lili.move == "position"
 
 
+def test_history_replays_the_declared_move_beside_the_message(tmp_path):
+    # LUMI-176: the next turn's history carries Лілі's line together with its declared
+    # type (from the record's field) — replay-only metadata, the stored text stays clean.
+    llm = MockLLMClient(
+        states=[
+            {"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5, "move": "deepen"},
+            {"reply": "ок", "emotion": "calm", "intensity": 0.5},
+        ]
+    )
+    core = _moves_core(tmp_path, llm)
+    session = core.start_session()
+    core.reply("привіт", session)
+    core.reply("ще", session)
+    lili_stored = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][0]
+    assert "<move>" not in lili_stored.text  # stored text is clean — no inline tags
+    second = llm.calls[1]["messages"]
+    assistant = next(m for m in second if m["role"] == "assistant")
+    assert assistant["content"].endswith("<move>deepen</move>")  # the declared type rides beside it
+
+
+def test_untyped_history_replays_byte_identically(tmp_path):
+    # A record without a move (moves off / pre-v1.1) replays exactly as before — no marker.
+    llm = MockLLMClient(
+        states=[
+            {"reply": "Привіт!", "emotion": "joy", "intensity": 0.8},
+            {"reply": "ок", "emotion": "calm", "intensity": 0.5},
+        ]
+    )
+    core = _core(tmp_path, llm)  # moves off
+    session = core.start_session()
+    core.reply("привіт", session)
+    core.reply("ще", session)
+    assistant = next(m for m in llm.calls[1]["messages"] if m["role"] == "assistant")
+    assert "<move>" not in assistant["content"]
+    assert assistant["content"].endswith("Привіт! <emotion>joy 0.8</emotion>")
+
+
+def test_stray_move_marker_is_stripped_from_the_reply(tmp_path):
+    # A reply imitating the replay marker must never leak the type to the user/store.
+    llm = MockLLMClient(
+        states={"reply": "Чекай, чому? <move>object</move>", "emotion": "calm", "intensity": 0.5}
+    )
+    core = _moves_core(tmp_path, llm)
+    session = core.start_session()
+    state = core.reply("привіт", session)
+    assert state.reply == "Чекай, чому?"  # rendered/mirrored text carries no type
+    lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
+    assert "<move>" not in lili.text
+    assert lili.move == "object"  # the inline marker doubles as the fallback channel
+
+
+def test_inline_move_fallback_is_ignored_when_moves_off(tmp_path):
+    llm = MockLLMClient(
+        states={"reply": "ок <move>deepen</move>", "emotion": "calm", "intensity": 0.5}
+    )
+    core = _core(tmp_path, llm)  # moves off
+    session = core.start_session()
+    state = core.reply("привіт", session)
+    assert state.reply == "ок"  # still stripped (never leaks)…
+    lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.move is None and core.last_move is None  # …but never stored
+
+
 def test_pre_v11_message_without_move_still_loads(tmp_path):
     path = tmp_path / "old.json"
     path.write_text(

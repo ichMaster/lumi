@@ -106,6 +106,7 @@ from core.prompt import (
     load_canon,
     load_inner_voice,
     split_emotion,
+    split_move,
     split_reasoning,
     split_style,
 )
@@ -1762,12 +1763,19 @@ class Core:
         also re-append the ``<emotion>…</emotion>`` tag reconstructed from the
         persisted ``emotion``/``intensity`` — the stored text is clean (tag-stripped),
         so without this the model only sees tag-less past replies and drifts to stop
-        emitting the tag over a long conversation.
+        emitting the tag over a long conversation. Likewise (v1.1) a ``<move>…</move>``
+        marker reconstructed from the persisted ``move`` — the declared type rides
+        BESIDE the message as replay-only metadata (the stored text never carries it,
+        no renderer ever shows it), so the retrospective can check declared-vs-done.
+        A record without a ``move`` (user lines, pre-v1.1 rows, moves off) replays
+        byte-identically to before.
         """
         body = m.text
         if m.role == "lili" and m.emotion:
             intensity = m.intensity if m.intensity is not None else 0.5
             body = f"{m.text} <emotion>{m.emotion} {intensity:.1f}</emotion>"
+        if m.role == "lili" and getattr(m, "move", None):
+            body = f"{body} <move>{m.move}</move>"
         return f"[{format_stamp(m.ts)}] {body}"
 
     def _ensure_mood(self) -> None:
@@ -2407,6 +2415,10 @@ class Core:
         else:
             structured_thinking = structured_thinking.strip()
         tag_emotion, reply_text = split_emotion(reply_text)
+        # v1.1: strip any inline <move> marker (it exists only in replayed history — a reply
+        # imitating it must never leak the type); the captured value is the fallback channel
+        # when the structured tool can't be forced (the emotion-tag precedent).
+        tag_move, reply_text = split_move(reply_text)
         # Лілі's self-chosen answer style — record it (for the status "who") and strip it.
         tag_style, reply_text = split_style(reply_text)
         if tag_style:
@@ -2436,9 +2448,12 @@ class Core:
         self.last_emotion = state
         # v0.10: the additive relational read of the user's message (internal; feeds closeness).
         self.last_relation = validate_relation(raw.get("relation"))
-        # v1.1: the additive declared move of this reply — validated against the closed enum
-        # (unknown/garbled → None, silently), gated so off never stores a value.
-        self.last_move = validate_move(raw.get("move")) if self._moves_enabled else None
+        # v1.1: the additive declared move of this reply — the structured field wins, the
+        # stripped inline marker is the fallback (extended-thinking case); validated against
+        # the closed enum (unknown/garbled → None, silently), gated so off never stores a value.
+        self.last_move = (
+            validate_move(raw.get("move") or tag_move) if self._moves_enabled else None
+        )
         # Advance the per-user closeness: decay over silence + this turn's relational delta.
         if self._closeness_enabled:
             self._repo.set_closeness(

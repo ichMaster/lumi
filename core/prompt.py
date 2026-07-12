@@ -127,6 +127,13 @@ _EMOTION_TAG_RE = re.compile(
 )
 _STRAY_EMOTION_RE = re.compile(r"</?emotion\b[^>]*>", re.IGNORECASE)
 
+# v1.1: the machine-side move marker used ONLY in replayed history (`_history_content`) —
+# never in stored text, never rendered. Stripped from replies so it can't leak if the
+# model imitates it; the captured value doubles as the fallback channel when the
+# structured tool can't be forced (extended thinking on — the emotion-tag precedent).
+_MOVE_TAG_RE = re.compile(r"<move>\s*([a-zA-Z]+)\s*</move>", re.IGNORECASE)
+_STRAY_MOVE_RE = re.compile(r"</?move\b[^>]*>", re.IGNORECASE)
+
 
 def split_emotion(text: str) -> tuple[dict | None, str]:
     """Extract an inline ``<emotion>name intensity</emotion>`` tag from a reply.
@@ -144,6 +151,18 @@ def split_emotion(text: str) -> tuple[dict | None, str]:
     if match.group(2):
         emo["intensity"] = float(match.group(2))
     return emo, clean
+
+
+def split_move(text: str) -> tuple[str | None, str]:
+    """Extract an inline ``<move>type</move>`` marker from a reply (v1.1).
+
+    Returns ``(raw_value, clean_text)`` — the value is the *unvalidated* candidate
+    (``core.moves.validate_move`` gates it); the marker and any stray ``<move>``
+    fragments are removed so the type never shows in a rendered/mirrored reply.
+    """
+    match = _MOVE_TAG_RE.search(text)
+    clean = _STRAY_MOVE_RE.sub("", _MOVE_TAG_RE.sub("", text)).strip()
+    return (match.group(1).lower() if match else None), clean
 
 
 def load_canon(path: str | Path) -> str:
