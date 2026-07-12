@@ -1763,8 +1763,7 @@ class Core:
         self.last_compaction = len(chunk)
         return updated
 
-    @staticmethod
-    def _history_content(m) -> str:
+    def _history_content(self, m) -> str:
         """The content to replay to the model for a stored message.
 
         Prefixed with the message's **date-time** (so Лілі perceives the rhythm of
@@ -1776,14 +1775,14 @@ class Core:
         marker reconstructed from the persisted ``move`` — the declared type rides
         BESIDE the message as replay-only metadata (the stored text never carries it,
         no renderer ever shows it), so the retrospective can check declared-vs-done.
-        A record without a ``move`` (user lines, pre-v1.1 rows, moves off) replays
-        byte-identically to before.
+        Gated on the feature: with moves OFF no marker ever replays — even for records
+        typed during an earlier on-period — so off stays byte-identical for good.
         """
         body = m.text
         if m.role == "lili" and m.emotion:
             intensity = m.intensity if m.intensity is not None else 0.5
             body = f"{m.text} <emotion>{m.emotion} {intensity:.1f}</emotion>"
-        if m.role == "lili" and getattr(m, "move", None):
+        if self._moves_enabled and m.role == "lili" and getattr(m, "move", None):
             body = f"{body} <move>{m.move}</move>"
         return f"[{format_stamp(m.ts)}] {body}"
 
