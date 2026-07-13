@@ -2415,10 +2415,11 @@ class Core:
         else:
             structured_thinking = structured_thinking.strip()
         tag_emotion, reply_text = split_emotion(reply_text)
-        # v1.1: strip any inline <intent> marker (it exists only in replayed history — a reply
-        # imitating it must never leak the style); the captured value is the fallback channel
-        # when the structured tool can't be forced (the emotion-tag precedent).
-        tag_style_marker, reply_text = split_intent(reply_text)
+        # v1.1: strip the inline <intent> marker and capture its value. The model is told to
+        # ALWAYS emit it (the emotion-tag precedent) — so this is the primary channel on
+        # providers that don't fill the optional set_state field (Gemini's responseSchema),
+        # and the reply text never carries it out to a renderer.
+        tag_intent, reply_text = split_intent(reply_text)
         # Лілі's self-chosen answer style — record it (for the status "who") and strip it.
         tag_style, reply_text = split_style(reply_text)
         if tag_style:
@@ -2448,11 +2449,11 @@ class Core:
         self.last_emotion = state
         # v0.10: the additive relational read of the user's message (internal; feeds closeness).
         self.last_relation = validate_relation(raw.get("relation"))
-        # v1.1: the arbiter's chosen conversation style — the structured field wins, the
-        # stripped inline marker is the fallback (extended-thinking case); validated against
-        # the closed enum (unknown/garbled → None, silently), gated so off never stores a value.
+        # v1.1: the arbiter's chosen intent — the structured field OR the always-emitted inline
+        # <intent> marker (whichever the provider gave); validated against the closed enum
+        # (unknown/garbled → None, silently), gated so off never stores a value.
         self.last_intent = (
-            validate_intent(raw.get("intent") or tag_style_marker)
+            validate_intent(raw.get("intent") or tag_intent)
             if self._intent_enabled else None
         )
         # Advance the per-user closeness: decay over silence + this turn's relational delta.

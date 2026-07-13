@@ -329,6 +329,22 @@ def test_pre_v11_message_without_style_still_loads(tmp_path):
     assert m.text == "old" and m.intent is None  # the v0.2-shim: no migration needed
 
 
+def test_inline_intent_tag_is_captured_when_the_field_is_absent(tmp_path):
+    # The Gemini case: the model fills reply/emotion/intensity but omits the optional
+    # `intent` schema field, emitting the intent as an inline <intent> tag instead. It must
+    # still be captured (and stripped from the reply).
+    llm = MockLLMClient(
+        states={"reply": "Розвину цю думку далі. <intent>розвинути</intent>",
+                "emotion": "calm", "intensity": 0.5}
+    )
+    core = _cs_core(tmp_path, llm)
+    session = core.start_session()
+    state = core.reply("привіт", session)
+    assert state.reply == "Розвину цю думку далі."  # tag stripped from the visible reply
+    lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.intent == "розвинути" and core.last_intent == "розвинути"
+
+
 def test_legacy_move_field_migrates_to_intent_on_load(tmp_path):
     # A store written by an earlier build (the field was named `move`) must still load —
     # the value carries over to `intent`, and unknown keys are dropped, never a TypeError.
