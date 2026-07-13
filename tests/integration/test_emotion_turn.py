@@ -327,3 +327,30 @@ def test_pre_v11_message_without_style_still_loads(tmp_path):
     )
     m = JsonRepository(path).load_messages("s1")[0]
     assert m.text == "old" and m.intent is None  # the v0.2-shim: no migration needed
+
+
+def test_legacy_move_field_migrates_to_intent_on_load(tmp_path):
+    # A store written by an earlier build (the field was named `move`) must still load —
+    # the value carries over to `intent`, and unknown keys are dropped, never a TypeError.
+    path = tmp_path / "legacy.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sessions": {
+                    "s1": {"id": "s1", "user_id": "owner", "started_at": "2026-01-01T00:00:00+00:00"}
+                },
+                "messages": {
+                    "s1": [
+                        {
+                            "session_id": "s1", "user_id": "owner", "role": "lili", "text": "hi",
+                            "ts": "2026-01-01T00:00:00+00:00", "emotion": "calm", "intensity": 0.5,
+                            "move": "deepen",  # the old field name
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    m = JsonRepository(path).load_messages("s1")[0]
+    assert m.text == "hi" and m.intent == "deepen"  # migrated, no crash

@@ -32,6 +32,10 @@ from core.repository import (
 )
 from core.user import DEFAULT_USER_ID
 
+# The Message dataclass fields — used to drop unknown keys from a legacy store on load
+# (e.g. the v1.1 `move`→`intent` rename) so an old record never fails construction.
+_MESSAGE_FIELDS = frozenset(Message.__dataclass_fields__)
+
 
 def _topk_cosine(
     query: list[float], records: list[VectorRecord], k: int
@@ -134,7 +138,13 @@ class JsonRepository:
             msgs = []
             for raw in raws:
                 raw.setdefault("user_id", DEFAULT_USER_ID)
-                msgs.append(Message(**raw))
+                # Migration: v1.1 renamed the reply's `move` field → `intent`. Carry an old
+                # value over (if `intent` isn't already set), then drop any keys the current
+                # Message no longer knows so a legacy store never fails to load.
+                if "move" in raw:
+                    raw.setdefault("intent", raw.pop("move"))
+                known = {k: v for k, v in raw.items() if k in _MESSAGE_FIELDS}
+                msgs.append(Message(**known))
             self._messages[sid] = msgs
         for uid, raws in data.get("summaries", {}).items():
             # Migration: pre-v0.9 records have no `gist` → default it to "".
