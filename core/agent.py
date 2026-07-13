@@ -2449,11 +2449,15 @@ class Core:
         self.last_emotion = state
         # v0.10: the additive relational read of the user's message (internal; feeds closeness).
         self.last_relation = validate_relation(raw.get("relation"))
-        # v1.1: the arbiter's chosen intent — the structured field OR the always-emitted inline
-        # <intent> marker (whichever the provider gave); validated against the closed enum
+        # v1.1: the arbiter's chosen intent. Sources, in order: the structured set_state field;
+        # the inline <intent> tag in the reply; or — the common case on providers that reason in
+        # a separate channel (Gemini thought parts / extended thinking) — the <intent> tag the
+        # model writes INSIDE its reasoning (the [арбітр] line), which split_reasoning already
+        # lifted out of the reply into last_thinking. Validated against the closed enum
         # (unknown/garbled → None, silently), gated so off never stores a value.
+        thinking_intent = split_intent(self.last_thinking)[0] if self.last_thinking else None
         self.last_intent = (
-            validate_intent(raw.get("intent") or tag_intent)
+            validate_intent(raw.get("intent") or tag_intent or thinking_intent)
             if self._intent_enabled else None
         )
         # Advance the per-user closeness: decay over silence + this turn's relational delta.

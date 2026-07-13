@@ -7,7 +7,7 @@ from core.intent import INTENTS, validate_intent
 
 def test_the_seven_authored_styles():
     assert INTENTS == (
-        "заглибити", "позиція", "заперечити", "розвинути", "асоціація", "приклад", "повернутись",
+        "deepen", "position", "object", "develop", "associate", "example", "return",
     )
 
 
@@ -17,7 +17,7 @@ def test_every_valid_style_passes(value):
 
 
 @pytest.mark.parametrize(
-    "bad", ["deepen", "", "ЗАГЛИБИТИ", "move", None, 7, 0.5, ["заглибити"], {"style": "заглибити"}]
+    "bad", ["заглибити", "", "DEEPEN", "move", None, 7, 0.5, ["заглибити"], {"style": "заглибити"}]
 )
 def test_unknown_or_garbled_is_dropped_silently(bad):
     assert validate_intent(bad) is None

@@ -11,17 +11,17 @@ the reply actually did what it declared.
 
 from __future__ import annotations
 
-# The closed set — the 7 conversation styles (Ukrainian, jargon-free; the same words the
-# think instruction and the retrospective use). One source of truth: the set_state schema
-# (core/llm.py) and the prompt instruction read this tuple.
+# The closed set — the 7 reply intents. English enum values (like the emotion enum), stored
+# in store.json; the Ukrainian glosses live in the think instruction. One source of truth: the
+# set_state schema (core/llm.py) and the prompt instruction read this tuple.
 INTENTS: tuple[str, ...] = (
-    "заглибити",    # конкретне питання про аспект сказаного
-    "позиція",      # власне твердження від першої особи
-    "заперечити",   # незгода зі сказаним або припущеним
-    "розвинути",    # наступний логічний крок з думки співрозмовника
-    "асоціація",    # власний матеріал (думки, минулі розмови)
-    "приклад",      # потягнути з абстрактного в конкретне
-    "повернутись",  # відкрите питання зі старої теми
+    "deepen",     # заглибити — конкретне питання про аспект сказаного
+    "position",   # позиція — власне твердження від першої особи
+    "object",     # заперечити — незгода зі сказаним або припущеним
+    "develop",    # розвинути — наступний логічний крок з думки співрозмовника
+    "associate",  # асоціація — власний матеріал (думки, минулі розмови)
+    "example",    # приклад — потягнути з абстрактного в конкретне
+    "return",     # повернутись — відкрите питання зі старої теми
 )
 
 

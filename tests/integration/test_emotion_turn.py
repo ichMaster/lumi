@@ -176,7 +176,7 @@ def _cs_core(tmp_path, llm, path="s.json"):
 def test_chosen_style_persists_on_lili_message(tmp_path):
     llm = MockLLMClient(
         states={"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5,
-                "intent": "заглибити"}
+                "intent": "deepen"}
     )
     core = _cs_core(tmp_path, llm)
     session = core.start_session()
@@ -184,13 +184,13 @@ def test_chosen_style_persists_on_lili_message(tmp_path):
     msgs = core._repo.load_messages(session.id)
     lili = [m for m in msgs if m.role == "lili"][-1]
     user = [m for m in msgs if m.role == "user"][-1]
-    assert lili.intent == "заглибити" and core.last_intent == "заглибити"
+    assert lili.intent == "deepen" and core.last_intent == "deepen"
     assert user.intent is None  # user lines never carry a style
 
 
 def test_unknown_style_is_dropped_silently(tmp_path):
     llm = MockLLMClient(
-        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "intent": "deepen"}
+        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "intent": "заглибити"}  # not the EN enum
     )
     core = _cs_core(tmp_path, llm)
     session = core.start_session()
@@ -204,7 +204,7 @@ def test_off_never_stores_a_value_and_skips_the_instruction(tmp_path):
     from core.prompt import INTENT_INSTRUCTION
 
     llm = MockLLMClient(
-        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "intent": "заглибити"}
+        states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "intent": "deepen"}
     )
     core = _core(tmp_path, llm)  # intent_enabled defaults to False
     session = core.start_session()
@@ -227,7 +227,7 @@ def test_style_round_trips_across_reload(tmp_path):
     path = tmp_path / "store.json"
     llm = MockLLMClient(
         states={"reply": "Я думаю, ні.", "emotion": "serious", "intensity": 0.6,
-                "intent": "позиція"}
+                "intent": "position"}
     )
     core = Core(
         llm=llm, repository=JsonRepository(path), canon="Ти — Лілі.", model="m",
@@ -236,7 +236,7 @@ def test_style_round_trips_across_reload(tmp_path):
     session = core.start_session()
     core.reply("привіт", session)
     lili = [m for m in JsonRepository(path).load_messages(session.id) if m.role == "lili"][-1]
-    assert lili.intent == "позиція"
+    assert lili.intent == "position"
 
 
 def test_history_replays_the_style_beside_the_message(tmp_path):
@@ -245,7 +245,7 @@ def test_history_replays_the_style_beside_the_message(tmp_path):
     llm = MockLLMClient(
         states=[
             {"reply": "А що там далі?", "emotion": "calm", "intensity": 0.5,
-             "intent": "заглибити"},
+             "intent": "deepen"},
             {"reply": "ок", "emotion": "calm", "intensity": 0.5},
         ]
     )
@@ -256,7 +256,7 @@ def test_history_replays_the_style_beside_the_message(tmp_path):
     lili_stored = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][0]
     assert "<intent>" not in lili_stored.text  # stored text is clean — no inline tags
     assistant = next(m for m in llm.calls[1]["messages"] if m["role"] == "assistant")
-    assert assistant["content"].endswith("<intent>заглибити</intent>")  # rides beside the message
+    assert assistant["content"].endswith("<intent>deepen</intent>")  # rides beside the message
 
 
 def test_unstyled_history_replays_byte_identically(tmp_path):
@@ -277,7 +277,7 @@ def test_unstyled_history_replays_byte_identically(tmp_path):
 
 def test_stray_style_marker_is_stripped_from_the_reply(tmp_path):
     llm = MockLLMClient(
-        states={"reply": "Чекай, чому? <intent>заперечити</intent>", "emotion": "calm", "intensity": 0.5}
+        states={"reply": "Чекай, чому? <intent>object</intent>", "emotion": "calm", "intensity": 0.5}
     )
     core = _cs_core(tmp_path, llm)
     session = core.start_session()
@@ -285,12 +285,12 @@ def test_stray_style_marker_is_stripped_from_the_reply(tmp_path):
     assert state.reply == "Чекай, чому?"  # rendered/mirrored text carries no style
     lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
     assert "<intent>" not in lili.text
-    assert lili.intent == "заперечити"  # the inline marker is the fallback channel
+    assert lili.intent == "object"  # the inline marker is the fallback channel
 
 
 def test_inline_style_fallback_is_ignored_when_off(tmp_path):
     llm = MockLLMClient(
-        states={"reply": "ок <intent>заглибити</intent>", "emotion": "calm", "intensity": 0.5}
+        states={"reply": "ок <intent>deepen</intent>", "emotion": "calm", "intensity": 0.5}
     )
     core = _core(tmp_path, llm)  # off
     session = core.start_session()
@@ -334,7 +334,7 @@ def test_inline_intent_tag_is_captured_when_the_field_is_absent(tmp_path):
     # `intent` schema field, emitting the intent as an inline <intent> tag instead. It must
     # still be captured (and stripped from the reply).
     llm = MockLLMClient(
-        states={"reply": "Розвину цю думку далі. <intent>розвинути</intent>",
+        states={"reply": "Розвину цю думку далі. <intent>develop</intent>",
                 "emotion": "calm", "intensity": 0.5}
     )
     core = _cs_core(tmp_path, llm)
@@ -342,7 +342,23 @@ def test_inline_intent_tag_is_captured_when_the_field_is_absent(tmp_path):
     state = core.reply("привіт", session)
     assert state.reply == "Розвину цю думку далі."  # tag stripped from the visible reply
     lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
-    assert lili.intent == "розвинути" and core.last_intent == "розвинути"
+    assert lili.intent == "develop" and core.last_intent == "develop"
+
+
+def test_intent_tag_inside_the_reasoning_is_captured(tmp_path):
+    # The Gemini/thinking case: the model writes <intent> INSIDE its <think> reasoning (the
+    # [арбітр] line), not the reply — split_reasoning lifts it into last_thinking, so the intent
+    # must be recovered from there (the reply-side tag + the optional field are both absent).
+    llm = MockLLMClient(
+        states={"reply": "Розвину цю думку. <think>[арбітр] намір: develop <intent>develop</intent></think>",
+                "emotion": "calm", "intensity": 0.5}
+    )
+    core = _cs_core(tmp_path, llm)
+    session = core.start_session()
+    state = core.reply("привіт", session)
+    assert state.reply == "Розвину цю думку."  # the think block (with the tag) is stripped
+    lili = [m for m in core._repo.load_messages(session.id) if m.role == "lili"][-1]
+    assert lili.intent == "develop" and core.last_intent == "develop"
 
 
 def test_legacy_move_field_migrates_to_intent_on_load(tmp_path):
