@@ -12,6 +12,15 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**1.1 — the intent anti-mirror engine.** Лілі stops mirroring and **leads**: before each reply the
+think-phase runs **retrospective → three voices → arbiter**. The voices (Імпульс / Тверезість /
+Стандарт) each state a position; the **arbiter** weighs them and picks the reply's **intent** — one of
+7 authored values (`deepen / position / object / develop / associate / example / return`), stored on
+her message in `store.json` and replayed as an `<intent>` marker so the retrospective checks
+declared-vs-done over the last two exchanges. The intent rides three channels (the emotion-channel
+pattern) so it lands on every engine. Authored in `core/inner_voice.md`; off (`LUMI_INTENT`) →
+byte-identical. See **[ROADMAP §v1.1](specification/ROADMAP.md)**.
+
 **1.0 — the v0 axis is complete.** Every v0 phase (v0.1–v0.42) has shipped: the interface-independent
 core with the three-layer + semantic memory (RAG, the recall tools), the locked emotion channel with
 mood / biorhythms / closeness, the local face viewer + themed wardrobes, the Telegram bridge, local

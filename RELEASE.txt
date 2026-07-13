@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 1.1.0 (2026-07-14)
+---------------------------
+v1.1 — the intent anti-mirror engine (conversation moves). Лілі stops mirroring and leads: before each reply the think-phase runs retrospective → three voices → arbiter.
+- The three voices (Імпульс / Тверезість / Стандарт) each state a position; the ARBITER weighs them (and the retrospective) and picks the reply's INTENT — one of 7 authored English values (deepen / position / object / develop / associate / example / return), stored on her message in store.json.
+- Retrospective (over the last TWO exchanges): reads each past reply's declared intent (replayed as an <intent> marker), checks declared-vs-done, and watches the pattern (same intent repeated / two terse reactions = topic fading).
+- The chosen intent rides three channels so it lands on every provider (mirrors the emotion channel): the set_state `intent` field, an inline <intent> tag in the reply, and — the Gemini/thinking case — the <intent> tag the model writes inside its reasoning.
+- Additive `intent` field on the Message (None-default → old stores load unmigrated; a legacy `move` field migrates to `intent` on load); authored think instruction in core/inner_voice.md; off (LUMI_INTENT) → byte-identical.
+
 Version 1.0.0 (2026-07-08)
 ---------------------------
 Milestone — the v0 axis is complete (no code change over 0.42.2).
