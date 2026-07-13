@@ -27,10 +27,10 @@ mood / biorhythms / closeness, the local face viewer + themed wardrobes, the Tel
 voice + dictation, the file / wiki / image / news / journal / web-lookup tools on the bounded
 tool-loop, the thought-stream + the thought scheduler, and three switchable engines
 (Anthropic / OpenAI / Gemini) with per-operation routing + profiles. The one leftover, v0.43 (model
-roles), moved after v1.13 in the roadmap. Next: **v1 — personality**, opening with the
-**conversation-development system** (v1.1–v1.4: anti-mirror conversation moves, the per-user topic
-base with open loops, topic RAG, news-seeded topics), then needs, inner life, inner monologue,
-and emotional memory (v1.5+).
+roles), moved after v1.14 in the roadmap. Next: **v1 — personality**, opening with the
+**conversation-development system** (v1.1 anti-mirror moves, then v1.3–v1.5 the topic base with open
+loops, topic RAG and news-seeded topics — with a **non-blocking input buffer** as a small TUI
+interlude at v1.2), then needs, inner life, inner monologue, and emotional memory (v1.6+).
 
 **0.42 — Thought scheduler: proactive `%directives` on a clock.** Лілі's autonomous acts now fire on a
 clock she keeps — *every 10 min*, *idle 15 min*, *at 08:00*, *between 08:00–22:00 every 2h*, *Mondays only*,

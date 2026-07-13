@@ -28,7 +28,7 @@ a **ladder** — each is useful on its own; later rungs cost more and hand her m
 
 | Directive | What she does | Tool reach | Cost / change |
 |---|---|---|---|
-| **`%note`** | Thinks as usual, then **code** appends the thought to a dated file in her sandbox. A real on-disk diary of her interior. | **None** (the model never calls a tool — code owns the write). | Smallest. No tool-loop in the think path. Reuses v0.20 `append_file`/`create_file` + the "code owns the write" pattern (needs v1.6). |
+| **`%note`** | Thinks as usual, then **code** appends the thought to a dated file in her sandbox. A real on-disk diary of her interior. | **None** (the model never calls a tool — code owns the write). | Smallest. No tool-loop in the think path. Reuses v0.20 `append_file`/`create_file` + the "code owns the write" pattern (needs v1.7). |
 | **`%review`** | **Reads** one of her own notes via the file tools, then writes a thought seeded by what she read. | **Read** (`list_files` / `find_in_file` / `read_file`). | Medium. The think call runs through the read tool-loop + a thought-shaped terminal. Read-only — no disk change. |
 | **`%explore`** | A think that may **read and write** files as it decides. | **Read + write** (the full v0.19+v0.20 set). | Largest. The full file tool-loop in the think path. Proactive (idle) firings write **while you're away**. |
 
@@ -190,7 +190,7 @@ clobber it.
   continuity, never her knowledge or willingness to help. A note is a musing she chose to keep, not a
   task list for you.
 - **Honest about nature.** A journal entry is *her inner/imaginative life written down*, never a factual
-  claim about the physical world — the v1.5 honesty rule applies verbatim.
+  claim about the physical world — the v1.6 honesty rule applies verbatim.
 - **Best-effort, never blocks.** Any file failure (tool off, I/O error, cap) degrades to "thought
   recorded in the diary, nothing written" and the turn completes — the same never-raise rule as the
   file executor and the thought engine.

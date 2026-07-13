@@ -256,7 +256,7 @@ literal.
 | `{ambient_news}` | the v0.4 startup news snapshot (topical only) | global |
 | `{section}` | the first configured news section | — |
 | `{last_image}` | the newest image in her sandbox (v0.33) | **per-user** |
-| `{plan}` · `{need}` · `{interest}` · `{hungriest_need}` · `{gap}` | `""` for now — placeholders for the **v1.5 inner life / needs** | global |
+| `{plan}` · `{need}` · `{interest}` · `{hungriest_need}` · `{gap}` | `""` for now — placeholders for the **v1.6 inner life / needs** | global |
 
 ---
 

@@ -6,7 +6,7 @@
 **no contract change**.
 
 This is the **implementable-now slice** of two larger designs:
-- the v1.7 inner monologue ([INNER_MONOLOGUE.md](INNER_MONOLOGUE.md) / [ROADMAP.md](../ROADMAP.md) §v1.7) —
+- the v1.8 inner monologue ([INNER_MONOLOGUE.md](INNER_MONOLOGUE.md) / [ROADMAP.md](../ROADMAP.md) §v1.8) —
   "Лілі thinks in her own voice"; and
 - its evolution, the three-voice torg ([ukrainian/personality/try-holosy-lili.md](ukrainian/personality/try-holosy-lili.md))
   — *Імпульс · Тверезість · Стандарт*, the target state.
@@ -30,7 +30,7 @@ Splitting the target by *what it needs*:
 | The five hard boundaries (roles-not-psyche / never-spoken / Standard-is-support / never-competence / one-reply-out) | an authored instruction only | **ships** ✅ |
 | The `feeling`-anchor check ("does this feeling have a real anchor?") | an authored instruction, anchored in the conversation + shipped states | **ships** ✅ (conversation-anchored) |
 | Mood colours the negotiation's tone | mood (v0.6/0.8) — already in the prompt | **ships** ✅ |
-| Voice **volume** shifts by needs / social-battery / self-regard | those state stores (v1.5–v1.6+) — **not built** | **deferred** (seam) |
+| Voice **volume** shifts by needs / social-battery / self-regard | those state stores (v1.6–v1.7+) — **not built** | **deferred** (seam) |
 | Тверезість checking **Автоверс** numbers | the Автоверс inner-world sim — **not built** | **deferred** (seam) |
 | The **`maturity`** axis (composure_today, three rungs as a tracked metric, growth/degradation, the two calibrators) | a whole new persisted subsystem + a self-audit signal | **deferred** (future version) |
 
@@ -121,7 +121,7 @@ pain rule) hold inside the think too.
 - **`LUMI_THINK_SHOW`** — `debug` (operator-visible, never in the reply; safe default) / `open` (surfaced as
   her inner voice — then it MUST stay in character) / `off` (hidden entirely).
 - **Logged** to the v0.3 logged tier; **never written to long-term memory** — the raw monologue is
-  ephemeral (only a later v1.8 *impression* persists).
+  ephemeral (only a later v1.9 *impression* persists).
 
 ---
 
@@ -149,7 +149,7 @@ emotion contract test passes unchanged.
 
 Marked with comments in `core/inner_voice.md` so the later layers drop in without rework:
 
-- **Voice volume from state (v1.5–v1.6+).** `creation` need → Імпульс louder; high `oversaturation` / low
+- **Voice volume from state (v1.6–v1.7+).** `creation` need → Імпульс louder; high `oversaturation` / low
   social battery → Імпульс quieter, Тверезість dominant; low `self-regard` → Імпульс quieter/more careful
   (never self-flagellation). Added as lines weighing those stores when they exist.
 - **Автоверс anchors.** Тверезість checking the inner-world hit-rate as a `feeling` anchor — when Автоверс
@@ -166,7 +166,7 @@ Marked with comments in `core/inner_voice.md` so the later layers drop in withou
 - **Shipped & required:** v0.3 (the emotion turn + logged tier), v0.6/0.8 (mood — the tone input), v0.10
   (closeness — a weighed input), the v0.37 think infra (extended thinking / Responses reasoning + the
   `<think>` parse + the Thinking box + `thinking_summary`).
-- **Not required for this version:** v1.5–v1.6 (needs + plans), Автоверс, the `maturity` subsystem — all
+- **Not required for this version:** v1.6–v1.7 (needs + plans), Автоверс, the `maturity` subsystem — all
   **additive** later, per the target.
 
 ---

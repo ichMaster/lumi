@@ -130,7 +130,7 @@ GameRecord {
   (isolation invariant — a game played with A is never recalled as B's; pinned by a contract test).
 - Updated every turn: append Лілі's chosen move and the opponent's last move as the requests arrive.
 - **On game end**, the *experience* (not the move log) may distil into one `Impression` via the existing
-  emotional-memory path (v1.8) — "a long, sharp game with you; she liked the endgame" — so the game enters
+  emotional-memory path (v1.9) — "a long, sharp game with you; she liked the endgame" — so the game enters
   her real memory as a memory, not a table. (Optional; gated like other impressions.)
 
 ### Output contract — "one number"
@@ -193,5 +193,5 @@ bridge daemons (a separate process coupled to the core only by files), **off by 
 
 **Suggested slot.** The planned `v0.19`–`v0.24` phases are already spoken for (file tool, dictation,
 Wikipedia, semantic recall III/IV), so this lands as a **new later v0.x phase (≈ `v0.25`)** — or wherever the
-maintainer prefers; it has no ordering dependency on those. Optionally composes with **v1.8** (emotional
+maintainer prefers; it has no ordering dependency on those. Optionally composes with **v1.9** (emotional
 memory — a finished game becomes one `Impression`).

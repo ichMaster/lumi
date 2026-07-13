@@ -1,7 +1,7 @@
 """Contract test: the per-user isolation invariant (LUMI-007).
 
 A record written under user A is never retrievable in user B's context. Pinned at
-the data level from v0.2 (auth-boundary enforcement comes in v1.7). ARCHITECTURE
+the data level from v0.2 (auth-boundary enforcement comes in v1.8). ARCHITECTURE
 §Identity, users, and memory scopes — "the isolation invariant (hard rule)".
 """
 

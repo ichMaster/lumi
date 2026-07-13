@@ -62,7 +62,7 @@ mechanically safe — nothing is corrupted — but each one trades something awa
   and journal tools** — and the `%`-thought-tools that ride them — **work** on GPT-5.5 / DeepSeek-V4-Pro and
   OpenAI-compatible local servers. **MiniMax** still has no tool-loop (its tools are silently ignored — a
   single plain call). If you depend on tools, stay on Anthropic or an OpenAI-compatible provider.
-- **Inner monologue / think box.** On most providers the hidden think-step (v1.7 inner monologue) is empty.
+- **Inner monologue / think box.** On most providers the hidden think-step (v1.8 inner monologue) is empty.
   **Exception:** OpenAI **reasoning models on the Responses API** (`gpt-5.5`, o-series — v0.37) return a
   **reasoning summary** that *does* populate the think-box, and `LUMI_EFFORT` tunes its depth. DeepSeek's
   reasoner reasons but doesn't surface it (Lumi uses Chat Completions there); MiniMax/local have no think box.
@@ -187,7 +187,7 @@ Restart `./lumi`.
 
 - **Reasoning models — `gpt-5.5`, the o-series** → the **Responses API**. This is the one OpenAI path where
   the **tool-loop + `LUMI_EFFORT` + a think-box all work together**: tools fire, `reasoning_effort` is
-  honored, and a **reasoning summary** populates the think-box (the same seam Opus uses — so the v1.7 inner
+  honored, and a **reasoning summary** populates the think-box (the same seam Opus uses — so the v1.8 inner
   monologue shows on GPT-5.5 too). `LUMI_EFFORT` (low/medium/high; Lumi's xhigh/max → high) tunes depth.
 - **Non-reasoning models — `gpt-4o`, `gpt-4.1`** → Chat Completions with JSON-mode structured output. The
   tool-loop works; there's no think box (these models don't reason).
