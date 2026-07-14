@@ -575,3 +575,44 @@ async def test_handle_input_line_routes_a_command_without_a_turn(tmp_path):
     async with app.run_test():
         await app._handle_input_line("/memory")
         assert not any("Привіт!" in line for line in app.transcript)  # no model turn ran
+
+
+# --- v1.2 LUMI-181: enqueue + immediate echo while busy ------------------------------------------
+
+
+async def test_submit_while_busy_enqueues_and_echoes_without_a_turn(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app._set_busy(True)  # pretend Лілі is mid-reply
+        app.query_one("#prompt", ChatInput).text = "а ще?"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert list(app._input_queue) == ["а ще?"]  # queued
+        assert any("а ще?" in line for line in app.transcript)  # echoed now
+        assert app.query_one("#prompt", ChatInput).text == ""  # box cleared
+        assert app._busy is True  # no new turn started (still the same turn)
+
+
+async def test_rapid_submits_while_busy_enqueue_in_order(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app._set_busy(True)
+        for msg in ("перше", "друге", "третє"):
+            app.query_one("#prompt", ChatInput).text = msg
+            await pilot.press("enter")
+            await pilot.pause()
+        assert list(app._input_queue) == ["перше", "друге", "третє"]  # FIFO
+
+
+async def test_queued_command_is_not_echoed_as_a_user_row(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app._set_busy(True)
+        app.query_one("#prompt", ChatInput).text = "/memory"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert list(app._input_queue) == ["/memory"]  # queued
+        assert not any("/memory" in line for line in app.transcript)  # a command shows no user row

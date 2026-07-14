@@ -546,18 +546,40 @@ class LumiApp(App[None]):
     async def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         prompt = self.query_one("#prompt", ChatInput)
 
-        # The input box is locked while Лілі replies (see _set_busy); this guard is a
-        # safety net for any submit that slips through before the lock applies — it
-        # keeps the draft (no clear, no send). v1.2 (LUMI-181) replaces this with a queue.
+        text = event.value.strip()
+        # v1.2: with the buffer on, a submit while Лілі is answering is QUEUED (not dropped) — the
+        # box is editable so you can keep typing; the drain (LUMI-182) answers each in order.
+        if self._busy and self._input_buffer:
+            prompt.text = ""
+            if text:
+                self._enqueue_input(text)
+            prompt.focus()
+            return
+        # Off (default): the box is disabled during a turn, so a stray submit is a no-op that
+        # keeps the draft (the pre-v1.2 safety net).
         if self._busy:
             return
 
-        text = event.value.strip()
         prompt.text = ""
         if not text:
             prompt.focus()
             return
         await self._handle_input_line(text)
+
+    def _enqueue_input(self, text: str) -> None:
+        """v1.2 (LUMI-181): queue a line typed while busy and **echo it now** — the full "you sent
+        X" surface (the chat row + the Telegram mirror + the send sound) happens here, once, at
+        submit; the eventual turn runs with ``already_shown`` so nothing is duplicated."""
+        self._input_queue.append(text)
+        # A command / %directive shows no user row on the live path either — echo only plain chat.
+        if not text.startswith(("/", "%")):
+            self._say(USER_LABEL, text, USER_COLOR)
+            if self._bridge:  # v0.13: your line → Telegram (mirror at submit, in order)
+                mirror_user(self._outbox_path, text)
+            if self._sound_on:
+                self._sound.send()
+        self._last_activity = self._core.clock()  # queued input still resets the idle clock
+        # (the pending-count indicator is added in LUMI-183 — it must not clobber the busy status here)
 
     async def _handle_input_line(self, text: str, *, echoed: bool = False) -> None:
         """Route one input line — a command, a %directive, or a chat turn — the single path
