@@ -616,3 +616,61 @@ async def test_queued_command_is_not_echoed_as_a_user_row(tmp_path):
         await pilot.pause()
         assert list(app._input_queue) == ["/memory"]  # queued
         assert not any("/memory" in line for line in app.transcript)  # a command shows no user row
+
+
+# --- v1.2 LUMI-182: drain — one turn per queued line, FIFO ---------------------------------------
+
+
+async def test_queued_messages_each_get_their_own_reply(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app._set_busy(True)  # pretend Лілі is mid-reply
+        for msg in ("перше", "друге"):
+            app.query_one("#prompt", ChatInput).text = msg
+            await pilot.press("enter")
+            await pilot.pause()
+        assert list(app._input_queue) == ["перше", "друге"]
+        # the current turn finishes → drain (as _run_turn's finally does)
+        app._set_busy(False)
+        app._drain_input_queue()
+        for _ in range(300):
+            await pilot.pause()
+            if not app._input_queue and not app._busy and not app._draining:
+                break
+        lili = [line for line in app.transcript if line.startswith("Лілі")]
+        assert len(lili) == 2  # one reply per queued message — NEVER merged into one
+        assert not app._input_queue  # fully drained
+
+
+async def test_queued_command_does_not_stall_the_drain(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app._input_queue.extend(["/memory", "далі"])  # a command, then a chat line
+        app._drain_input_queue()
+        for _ in range(300):
+            await pilot.pause()
+            if not app._input_queue and not app._busy and not app._draining:
+                break
+        assert not app._input_queue  # the command didn't stall the drain
+        assert any(line.startswith("Лілі") for line in app.transcript)  # the chat line got answered
+
+
+async def test_drained_chat_line_shows_no_duplicate_user_row(tmp_path):
+    # A queued line's user row was echoed on submit; the drained turn must not repeat it.
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app._set_busy(True)
+        app.query_one("#prompt", ChatInput).text = "привіт"
+        await pilot.press("enter")
+        await pilot.pause()
+        app._set_busy(False)
+        app._drain_input_queue()
+        for _ in range(300):
+            await pilot.pause()
+            if not app._input_queue and not app._busy and not app._draining:
+                break
+        user_rows = [line for line in app.transcript if "You: привіт" in line]
+        assert len(user_rows) == 1  # shown once (at submit), not again on the drained turn

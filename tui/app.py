@@ -281,6 +281,7 @@ class LumiApp(App[None]):
         # box stays editable during a turn and a submit-while-busy is FIFO-queued here (one reply each).
         self._input_buffer: bool = False
         self._input_queue: deque[str] = deque()
+        self._draining: bool = False  # a drain loop is in flight (absorbs re-entrant kicks)
         # v0.7.x send/receive sound — off by default, toggled with Ctrl+S (lazy init).
         self._sound = SoundPlayer()
         self._sound_on: bool = False
@@ -806,6 +807,29 @@ class LumiApp(App[None]):
             self._set_busy(False)  # unlock + refocus the input — your turn again
             self._render_status()
             self._render_stats()
+            self._drain_input_queue()  # v1.2: answer the next queued line (one turn each, FIFO)
+
+    def _drain_input_queue(self) -> None:
+        """v1.2 (LUMI-182): kick off the drain — answer the queued lines one turn per message, in
+        order, **never merged**. A single guarded loop handles both a chat line (its own `_run_turn`)
+        and a queued command (no turn) uniformly, so the chain never stalls on a command. Off /
+        empty / already draining → a no-op (a nested call from `_run_turn`'s finally is absorbed)."""
+        if not self._input_buffer or self._draining or not self._input_queue:
+            return
+        self.run_worker(self._drain_loop(), exclusive=False)
+
+    async def _drain_loop(self) -> None:
+        """Pop and run each queued line to completion, in FIFO order, until the queue empties. Each
+        line routes through `_handle_input_line(echoed=True)` — the user row was already shown on
+        submit (LUMI-181); a chat line runs a full turn (serialized by `_busy`), a command runs
+        inline. A line you type mid-drain is enqueued to the back and picked up here."""
+        self._draining = True
+        try:
+            while self._input_buffer and self._input_queue and not self._busy:
+                text = self._input_queue.popleft()
+                await self._handle_input_line(text, echoed=True)
+        finally:
+            self._draining = False
 
     def _maybe_nudge(self) -> None:
         """Idle-timer tick: after a long silence, run a hidden nudge so Лілі speaks first.
