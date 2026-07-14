@@ -5,6 +5,11 @@ trims → prompt caching → RAG → facts-fade). That plan shrank each memory t
 the **shape**: stop injecting the verbose tiers at all — inject a **compact index** and let Лілі **pull the
 body on demand** with the retrieval tools that have since shipped.
 
+> **Continued in [PROMPT_OPTIMIZATION_III.md](PROMPT_OPTIMIZATION_III.md)** — the 2026-07-14
+> remeasure: P1–P5 shipped and worked (system ~62.6 KB → ~29 KB); the new whales are the
+> **thought stream** (2 essay-length thoughts = ⅔ of a 5.7 KB block) and the **inner-voice think
+> instruction** (4.4 KB + the 400–600 hidden reasoning tokens it drives per turn).
+
 > **Status (2026-06-21):** proposal. The enabling tools are **all shipped** (v0.17 auto-RAG, v0.19–0.32 file
 > search, v0.31 the on-demand memory toolkit). The one unbuilt piece is the new **`recall_facts`** tool (§4).
 > Numbers below are from a real dump (`.lumi/prompt-2026-06-20-2236.md`); token counts are estimates
@@ -161,7 +166,7 @@ episodic long tail is pulled.
 layer — so facts are injected wholesale (the digest). They're the one memory tier with *no* pull path, which
 is exactly why P3 can't land without a new tool.
 
-**Proposal — `recall_facts(query, k)`** → the top-K long-term facts (and v1.11 impressions) by **meaning**.
+**Proposal — `recall_facts(query, k)`** → the top-K long-term facts (and v1.12 impressions) by **meaning**.
 It reuses everything `recall()` already has:
 - the **`Embedder` + `VectorStore`** seams (embed each `LongTermFact` alongside messages, per-user keyed);
 - the same **bounded, per-user-isolated, trusted-history** framing (a fact is her own knowledge, not

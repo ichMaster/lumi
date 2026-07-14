@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 1.2.0 (2026-07-14)
+---------------------------
+v1.2 — non-blocking input & message buffer (TUI). Keep typing and sending while Лілі answers; the model stays one turn at a time.
+- The input box stays editable during a turn (LUMI_INPUT_BUFFER; off → today's locked input, byte-identical). A message sent mid-reply shows at once and is FIFO-queued; she answers each in order — one reply per message, never merged (distinct from the v0.13 Telegram burst-consolidation). Status shows a ⋯N pending count.
+- The submitted turn now runs as a WORKER (not an inline await in the event handler) so the app stays responsive — the real fix for "typing shows nothing while she answers": a blocked message handler makes the whole Textual app unresponsive. Proactive workers (nudge/think/scheduler/inbox) gain a queue-empty guard so a proactive act never jumps ahead of pending input.
+- Pure interface change: no core touch, no contract change. LUMI-180..183.
+- Also lands planning docs for the next phases (v1.3 explicit Gemini prompt cache + LATENCY spec + PROMPT_OPTIMIZATION_III) and the roadmap renumber that follows.
+
 Version 1.1.0 (2026-07-14)
 ---------------------------
 v1.1 — the intent anti-mirror engine (conversation moves). Лілі stops mirroring and leads: before each reply the think-phase runs retrospective → three voices → arbiter.

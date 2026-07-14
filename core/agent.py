@@ -1468,11 +1468,11 @@ class Core:
             "ambient_news": ambient_news,
             "world": lambda: ambient_line(self._world, self._clock) or "",
             "last_image": last_image,
-            "interest": lambda: "",        # v1.6 inner life
-            "hungriest_need": lambda: "",   # v1.6 needs
+            "interest": lambda: "",        # v1.7 inner life
+            "hungriest_need": lambda: "",   # v1.7 needs
             "section": section,
             "weekday": weekday,
-            "gap": lambda: "",              # v1.6 away-gap
+            "gap": lambda: "",              # v1.7 away-gap
         }
 
     def _system_prompt(

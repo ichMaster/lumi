@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**1.2 — non-blocking input & message buffer (TUI).** Keep typing and sending while Лілі answers. The
+input box stays editable during a turn (`LUMI_INPUT_BUFFER`; off → today's locked input,
+byte-identical); a message sent mid-reply shows at once and is **FIFO-queued** (status shows `⋯N`),
+and she answers each **in order, one reply per message — never merged**. The submitted turn runs as a
+**worker** (not an inline `await`) so the app stays responsive — the fix for "typing shows nothing
+while she answers"; proactive acts never jump ahead of pending input. Pure interface change — no
+`core` touch. See **[ROADMAP §v1.2](specification/ROADMAP.md)**.
+
 **1.1 — the intent anti-mirror engine.** Лілі stops mirroring and **leads**: before each reply the
 think-phase runs **retrospective → three voices → arbiter**. The voices (Імпульс / Тверезість /
 Стандарт) each state a position; the **arbiter** weighs them and picks the reply's **intent** — one of
@@ -27,10 +35,10 @@ mood / biorhythms / closeness, the local face viewer + themed wardrobes, the Tel
 voice + dictation, the file / wiki / image / news / journal / web-lookup tools on the bounded
 tool-loop, the thought-stream + the thought scheduler, and three switchable engines
 (Anthropic / OpenAI / Gemini) with per-operation routing + profiles. The one leftover, v0.43 (model
-roles), moved after v1.14 in the roadmap. Next: **v1 — personality**, opening with the
-**conversation-development system** (v1.1 anti-mirror moves, then v1.3–v1.5 the topic base with open
+roles), moved after v1.15 in the roadmap. Next: **v1 — personality**, opening with the
+**conversation-development system** (v1.1 anti-mirror moves, then v1.4–v1.6 the topic base with open
 loops, topic RAG and news-seeded topics — with a **non-blocking input buffer** as a small TUI
-interlude at v1.2), then needs, inner life, inner monologue, and emotional memory (v1.6+).
+interlude at v1.2), then needs, inner life, inner monologue, and emotional memory (v1.7+).
 
 **0.42 — Thought scheduler: proactive `%directives` on a clock.** Лілі's autonomous acts now fire on a
 clock she keeps — *every 10 min*, *idle 15 min*, *at 08:00*, *between 08:00–22:00 every 2h*, *Mondays only*,

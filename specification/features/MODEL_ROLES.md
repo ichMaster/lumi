@@ -25,7 +25,7 @@ with **stickiness**, so a register holds through its moment instead of flapping.
 The register is about **what this turn needs**, not about cost alone. Three rules keep it honest:
 
 1. **Routing reads the user's message — never her state.** Her mood/needs color *how* she speaks
-   (v0.6/v1.6); they must never decide *which brain* answers — that would make her competence
+   (v0.6/v1.7); they must never decide *which brain* answers — that would make her competence
    mood-dependent (the hard never-competence rule).
 2. **Escalation is invisible help, not a mode.** She doesn't announce "switching to thinking mode";
    the register shows only in the status bar and `/roles`. One Лілі, three depths.

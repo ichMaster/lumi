@@ -7,7 +7,7 @@ and the structured-output **parse** (``parse_thought``). The Core wires the seed
 the emotion, and records a ``Thought`` (see ``core.agent.Core.think``).
 
 ``%think`` (everyday musing) and ``%wonder`` (curiosity) ship in v0.12; ``%dream`` / ``%reflect`` /
-``%recall`` are the **same engine** retrofitted by later phases (v1.7 / v1.9 / v0.16).
+``%recall`` are the **same engine** retrofitted by later phases (v1.8 / v1.10 / v0.16).
 """
 
 from __future__ import annotations
