@@ -24,6 +24,7 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
@@ -375,6 +376,8 @@ class LumiApp(App[None]):
         if self._dictation:
             self._listen_flag_path = cfg.listen_flag_path
             set_listen_flag(self._listen_flag_path, False)  # start not-listening (the TUI owns the flag)
+        if self._input_buffer:  # v1.2: keep the input focused + repainting while a turn runs, so
+            self.set_interval(0.1, self._keep_input_live)  # your typing shows even under the reply's load
 
     async def _refresh_world(self) -> None:
         """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
@@ -816,6 +819,21 @@ class LumiApp(App[None]):
             self._render_status()
             self._render_stats()
             self._drain_input_queue()  # v1.2: answer the next queued line (one turn each, FIFO)
+
+    def _keep_input_live(self) -> None:
+        """v1.2: while a turn is in flight (buffer on), keep the input **focused and repainting** —
+        a busy reply thread contends for the main thread, so without a nudge a real terminal may not
+        flush the typed characters. Re-focus if focus was stolen; force a repaint each tick. A no-op
+        when idle (nothing running to starve the render)."""
+        if not self._busy:
+            return
+        try:
+            prompt = self.query_one("#prompt", ChatInput)
+        except NoMatches:
+            return
+        if not prompt.has_focus:
+            prompt.focus()
+        prompt.refresh()
 
     def _drain_input_queue(self) -> None:
         """v1.2 (LUMI-182): kick off the drain — answer the queued lines one turn per message, in
