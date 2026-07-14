@@ -4,7 +4,7 @@ A thin client: it imports ``core`` and renders. On submit it calls
 ``core.reply(...)`` **off the UI thread** (``asyncio.to_thread``) so the UI never
 freezes during the model call, and a failed call surfaces as a readable line
 rather than crashing the loop. No model/SDK or storage logic lives here — in
-v1.6 this is refactored into a server client calling the same contract.
+v2.1 this is refactored into a server client calling the same contract.
 """
 
 from __future__ import annotations
@@ -356,7 +356,7 @@ class LumiApp(App[None]):
             for entry in self._scheduler.catch_up(now, catchup_h=cfg.sched_catchup_h):
                 self.run_worker(self._run_scheduled([entry]), exclusive=False)  # startup catch-up
             self.set_interval(max(1.0, cfg.sched_tick_ms / 1000), self._sched_tick)
-            # The fast tick service (LUMI-168): ephemeral code handlers (v1.6 registers %update_state).
+            # The fast tick service (LUMI-168): ephemeral code handlers (v1.7 registers %update_state).
             self._tick_service = TickService()
             self.set_interval(max(1.0, cfg.sched_tick_fast_ms / 1000), self._tick_service.tick)
         # v0.13 bridge: the TUI consumes the inbox FIFO (Telegram → file) on a fast poll, and
@@ -569,7 +569,11 @@ class LumiApp(App[None]):
         if not text:
             prompt.focus()
             return
-        await self._handle_input_line(text)
+        # v1.2: run the turn as a WORKER so this submit handler returns immediately. An inline
+        # `await` here would hold the app's message pump for the whole reply — blocking the
+        # dispatch of your subsequent keystrokes, so typing wouldn't show while she answers.
+        # Off (no buffer) the box is disabled anyway, so a worker vs inline is behavior-identical.
+        self.run_worker(self._handle_input_line(text), exclusive=False)
 
     def _enqueue_input(self, text: str) -> None:
         """v1.2 (LUMI-181): queue a line typed while busy and **echo it now** — the full "you sent
@@ -918,7 +922,7 @@ class LumiApp(App[None]):
 
     def register_tick(self, name: str, handler) -> None:
         """Register an ephemeral **code handler** on the fast tick service (v0.42 LUMI-168) — a zero-arg
-        callback (no `Thought`, no model call). The seam v1.6 uses for `%update_state`; a no-op if the
+        callback (no `Thought`, no model call). The seam v1.7 uses for `%update_state`; a no-op if the
         scheduler (and thus the tick service) is off."""
         if self._tick_service is not None:
             self._tick_service.register(name, handler)

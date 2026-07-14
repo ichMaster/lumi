@@ -750,3 +750,36 @@ async def test_input_holds_focus_during_a_turn_with_buffer(tmp_path):
                 await pilot.pause()
                 if not app._busy:
                     break
+
+
+async def test_typing_shows_while_a_submitted_turn_runs(tmp_path):
+    # The real regression: a submitted turn must run as a worker so the app's message pump keeps
+    # dispatching keystrokes — an inline `await` in on_chat_input_submitted would freeze typing.
+    import threading
+
+    release = threading.Event()
+
+    def slow(system, messages, model):
+        release.wait(3)
+        return "ok"
+
+    app = LumiApp(_core(tmp_path, MockLLMClient(slow)))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app.query_one("#prompt", ChatInput).text = "привіт"
+        await pilot.press("enter")  # submit via the real path
+        for _ in range(80):
+            await pilot.pause()
+            if app._busy:
+                break
+        try:
+            await pilot.press("щ", "е")  # type while the reply is blocked
+            await pilot.pause()
+            # the pump dispatched the keys → the box updates (was frozen with an inline await)
+            assert app.query_one("#prompt", ChatInput).text == "ще"
+        finally:
+            release.set()
+            for _ in range(80):
+                await pilot.pause()
+                if not app._busy:
+                    break
