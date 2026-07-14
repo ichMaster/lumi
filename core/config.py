@@ -340,6 +340,9 @@ class Config:
     thoughts_quiet_hours: tuple[int, int] | None = None  # the v0.12 proactive-think's (independent)
     # v0.7.x TUI send/receive sound — off by default; toggled at runtime (Ctrl+S).
     sound: bool = False
+    # v1.2 non-blocking input & message buffer (TUI) — off by default. On: the input box stays
+    # editable during a turn; a submit-while-busy is queued (FIFO) + echoed, one reply per message.
+    input_buffer: bool = False
     emoji_path: Path = DEFAULT_EMOJI_PATH
     # v0.6 mood of the day — on by default.
     mood: bool = True
@@ -666,6 +669,7 @@ def load_config(*, load_env: bool = True) -> Config:
         news_cap=int(news_cap_env) if news_cap_env else 3,
         idle_nudge=_parse_bool(os.getenv("LUMI_IDLE_NUDGE")),
         sound=_parse_bool(os.getenv("LUMI_SOUND")),
+        input_buffer=_parse_bool(os.getenv("LUMI_INPUT_BUFFER")),  # v1.2, off by default
         idle_seconds=int(idle_seconds_env) if idle_seconds_env else 240,
         nudge_path=Path(nudge_path_env) if nudge_path_env else DEFAULT_NUDGE_PATH,
         think_seeds_path=Path(ts) if (ts := os.getenv("LUMI_THINK_SEEDS_PATH")) else DEFAULT_THINK_SEEDS_PATH,

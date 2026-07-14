@@ -541,3 +541,37 @@ async def test_ctrl_s_toggles_sound_and_shows_in_status(tmp_path):
         await pilot.press("ctrl+s")
         assert app._sound_on is False
         assert "sound:off" in app._status_text()
+
+
+# --- v1.2 LUMI-180: decouple the input widget from the busy mutex --------------------------------
+
+
+async def test_input_buffer_keeps_the_widget_editable_during_a_turn(tmp_path):
+    # With the buffer on, _busy stays the model mutex but the input box is NOT disabled.
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test():
+        app._input_buffer = True
+        app._set_busy(True)
+        assert app._busy is True
+        assert app.query_one("#prompt", ChatInput).disabled is False  # editable while busy
+        app._set_busy(False)
+
+
+async def test_without_buffer_the_widget_locks_during_a_turn(tmp_path):
+    # Off (default) → today's behavior: the box is disabled for the turn, re-enabled after.
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test():
+        app._input_buffer = False
+        app._set_busy(True)
+        assert app.query_one("#prompt", ChatInput).disabled is True  # locked
+        app._set_busy(False)
+        assert app.query_one("#prompt", ChatInput).disabled is False
+
+
+async def test_handle_input_line_routes_a_command_without_a_turn(tmp_path):
+    # The extracted dispatch handles commands exactly as the live submit did — no model turn
+    # (the mock reply never appears; the command just shows its own output).
+    app = LumiApp(_core(tmp_path, MockLLMClient("Привіт!")))
+    async with app.run_test():
+        await app._handle_input_line("/memory")
+        assert not any("Привіт!" in line for line in app.transcript)  # no model turn ran

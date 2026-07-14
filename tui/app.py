@@ -14,6 +14,7 @@ import logging
 import random
 import shutil
 import subprocess
+from collections import deque
 from pathlib import Path
 
 from rich.console import RenderableType
@@ -272,9 +273,14 @@ class LumiApp(App[None]):
         self._mouse_selection: bool = False
         # Connection state for the status line (False after a failed turn).
         self._connected: bool = True
-        # True while a turn (or session save) is in flight — the input box is locked
-        # (disabled) until it's your turn again. Toggled via _set_busy.
+        # True while a turn (or session save) is in flight — the SINGLE-TURN MUTEX shared by the
+        # keyboard + every proactive worker (they'd race the session/store otherwise). Toggled via
+        # _set_busy; it also locks the input box UNLESS the v1.2 buffer is on. Toggled via _set_busy.
         self._busy: bool = False
+        # v1.2 non-blocking input buffer (configured in on_mount; off by default). When on, the input
+        # box stays editable during a turn and a submit-while-busy is FIFO-queued here (one reply each).
+        self._input_buffer: bool = False
+        self._input_queue: deque[str] = deque()
         # v0.7.x send/receive sound — off by default, toggled with Ctrl+S (lazy init).
         self._sound = SoundPlayer()
         self._sound_on: bool = False
@@ -313,6 +319,7 @@ class LumiApp(App[None]):
         self._nudge_enabled = cfg.idle_nudge
         self._idle_seconds = cfg.idle_seconds
         self._quiet_hours = cfg.quiet_hours
+        self._input_buffer = cfg.input_buffer  # v1.2: keep the input editable + queue while busy
         self._image_enabled = cfg.image  # v0.22: /image shares a picture for her to see + describe
         self._vision_max = cfg.vision_max
         self._web_lookup_enabled = cfg.web_lookup  # v0.27: /web fires a live web lookup
@@ -541,7 +548,7 @@ class LumiApp(App[None]):
 
         # The input box is locked while Лілі replies (see _set_busy); this guard is a
         # safety net for any submit that slips through before the lock applies — it
-        # keeps the draft (no clear, no send).
+        # keeps the draft (no clear, no send). v1.2 (LUMI-181) replaces this with a queue.
         if self._busy:
             return
 
@@ -550,6 +557,13 @@ class LumiApp(App[None]):
         if not text:
             prompt.focus()
             return
+        await self._handle_input_line(text)
+
+    async def _handle_input_line(self, text: str, *, echoed: bool = False) -> None:
+        """Route one input line — a command, a %directive, or a chat turn — the single path
+        shared by the live submit and the v1.2 queue drain. ``echoed`` (a queued line whose user
+        row was already shown, LUMI-181) suppresses the duplicate row on the turn."""
+        prompt = self.query_one("#prompt", ChatInput)
 
         # Commands — handled here, not sent to the model or persisted as a turn.
         if text == "/memory":
@@ -644,7 +658,8 @@ class LumiApp(App[None]):
             self._render_status()  # not a fired directive → reset; falls through to chat
 
         self._last_activity = self._core.clock()  # real input resets the idle timer
-        await self._run_turn(text, mirror_input=True)  # keyboard turn → also mirror your line to Telegram
+        # keyboard turn → also mirror your line to Telegram; a queued line's user row is already shown.
+        await self._run_turn(text, mirror_input=True, already_shown=echoed)
 
     def action_toggle_sound(self) -> None:
         """Toggle the send/receive sound (Ctrl+S). Turning it on probes the audio device."""
@@ -677,11 +692,14 @@ class LumiApp(App[None]):
         self._render_status()
 
     def _set_busy(self, busy: bool) -> None:
-        """Toggle the working state and **lock the input box** while Лілі replies — the
-        box is disabled until it's your turn, then re-enabled and refocused."""
+        """Toggle the single-turn mutex. Normally this also **locks the input box** while Лілі
+        replies (disabled until it's your turn); with the v1.2 input buffer on, the box stays
+        editable (a submit-while-busy is queued instead) — so `_busy` is only the model mutex.
+        The box is refocused when the turn ends either way."""
         self._busy = busy
         prompt = self.query_one("#prompt", ChatInput)
-        prompt.disabled = busy
+        if not self._input_buffer:
+            prompt.disabled = busy  # off → today's behavior: the box is locked during a turn
         if not busy:
             prompt.focus()
 
@@ -714,14 +732,16 @@ class LumiApp(App[None]):
     async def _run_turn(
         self, text: str, *, hidden: bool = False, mirror_input: bool = False,
         images: list[dict] | None = None, display_text: str | None = None,
+        already_shown: bool = False,
     ) -> None:
         """Run one model turn. A ``hidden`` turn (the idle nudge) suppresses the user
         line entirely — only Лілі's reply is shown — so she appears to speak first.
         ``mirror_input`` (keyboard turns only) also sends your typed line to Telegram.
         ``images`` (v0.22) attaches shared image blocks to the turn; ``display_text`` overrides the
-        shown user line (e.g. an image marker)."""
+        shown user line (e.g. an image marker). ``already_shown`` (v1.2 queued line) skips the user
+        row — it was echoed on submit — while still mirroring to Telegram."""
         self._set_busy(True)
-        if not hidden:
+        if not hidden and not already_shown:
             self._say(USER_LABEL, display_text or text, USER_COLOR)
             if mirror_input and self._bridge:  # v0.13: your keyboard line → Telegram (not echoed inbox lines)
                 mirror_user(self._outbox_path, text)
