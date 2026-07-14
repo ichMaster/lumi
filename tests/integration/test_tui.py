@@ -268,6 +268,7 @@ async def test_prompt_command_shows_last_turn_prompt(tmp_path):
 async def test_input_is_locked_while_busy(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
     async with app.run_test() as pilot:
+        app._input_buffer = False  # this test pins the classic locked-input mode (v1.2 buffer off)
         prompt = app.query_one("#prompt", ChatInput)
         assert prompt.disabled is False  # your turn → unlocked
 
@@ -674,3 +675,44 @@ async def test_drained_chat_line_shows_no_duplicate_user_row(tmp_path):
                 break
         user_rows = [line for line in app.transcript if "You: привіт" in line]
         assert len(user_rows) == 1  # shown once (at submit), not again on the drained turn
+
+
+# --- v1.2 LUMI-183: proactive guards, pending-count surfacing, off-pin ---------------------------
+
+
+async def test_status_shows_the_pending_count(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test():
+        app._input_queue.extend(["a", "b"])
+        assert "⋯2" in app._status_text()
+        app._input_queue.clear()
+        assert "⋯" not in app._status_text()
+
+
+async def test_proactive_nudge_is_skipped_while_the_queue_is_nonempty(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("opener")))
+    async with app.run_test() as pilot:
+        app._nudge_enabled = True
+        app._nudges = ["Гей, ти тут?"]
+        app._input_queue.append("щось у черзі")  # pending input
+        app._maybe_nudge()  # a proactive tick while messages wait
+        await pilot.pause()
+        # nothing fired — the nudge did not cut ahead of the queue
+        assert not any("opener" in line or "Гей" in line for line in app.transcript)
+
+
+async def test_off_the_queue_is_never_used_and_submit_while_busy_drops(tmp_path):
+    # The off-pin: with the buffer off, the box locks during a turn and a stray submit is dropped
+    # (no queue, no echo, no pending marker) — byte-identical to pre-v1.2.
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))
+    async with app.run_test() as pilot:
+        app._input_buffer = False
+        app._set_busy(True)
+        assert app.query_one("#prompt", ChatInput).disabled is True  # locked
+        app.query_one("#prompt", ChatInput).text = "поки зайнято"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert list(app._input_queue) == []  # no queue used
+        assert not any("поки зайнято" in line for line in app.transcript)  # not echoed
+        assert "⋯" not in app._status_text()  # no pending marker
+        app._set_busy(False)

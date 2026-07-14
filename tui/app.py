@@ -504,7 +504,8 @@ class LumiApp(App[None]):
         style_part = f" · style: {self._core.style}"  # always show (incl. 'normal')
         emo = self._core.last_emotion
         emo_part = f" · {emo.emotion.value} {emo.intensity:.1f}" if emo else ""
-        meta = f"{model}{think}{snd}{style_part}{emo_part}"
+        pending = f" · ⋯{len(self._input_queue)}" if self._input_queue else ""  # v1.2 queued lines
+        meta = f"{model}{think}{snd}{style_part}{emo_part}{pending}"
         if busy:
             return f"status: [yellow]{busy}[/] · {meta}"
         if not self._connected:
@@ -837,7 +838,8 @@ class LumiApp(App[None]):
         Off by default; gated on enablement, not-busy, an open session, and quiet
         hours; rate-limited to one nudge per idle gap (resets the activity stamp).
         """
-        if not self._nudge_enabled or self._busy or self._session is None or not self._nudges:
+        if (not self._nudge_enabled or self._busy or self._input_queue
+                or self._session is None or not self._nudges):
             return
         now = self._core.clock()
         # Due on the later of real-input idle AND the nudge's own last fire — never writes
@@ -855,7 +857,7 @@ class LumiApp(App[None]):
         other fire, when ``nudges.md`` has ``%``-seeds — about a seed from that menu (A). The core
         ``tick_think`` gates on the idle interval / per-session cap / quiet hours; most thoughts are
         **silent** (recorded only), a fraction **graduate to spoken** and she speaks first."""
-        if self._busy or self._session is None or self._think_busy:
+        if self._busy or self._input_queue or self._session is None or self._think_busy:
             return
         self._think_n += 1
         kind, topic = "think", None
@@ -900,7 +902,8 @@ class LumiApp(App[None]):
         """Scheduler tick (v0.42): fire every schedule entry that's `due()` now, **in-process** via
         `run_directive`. Serialized (`_sched_busy`) so acts don't overlap on the model; skipped while a
         chat turn is busy. `due_now` stamps last-fired only for the entries it returns."""
-        if self._scheduler is None or self._busy or self._session is None or self._sched_busy:
+        if (self._scheduler is None or self._busy or self._input_queue
+                or self._session is None or self._sched_busy):
             return
         now = self._core.clock()
         entries = self._scheduler.due_now(now, last_input=self._last_activity)
@@ -978,7 +981,8 @@ class LumiApp(App[None]):
     def _poll_inbox(self) -> None:
         """Inbox tick (v0.13/v0.26): drain the `inbox` FIFO (Telegram → file, or dictation → file) on idle
         and run each line as a turn. Gated on bridge **or** dictation, not-busy, a session, no overlap."""
-        if not (self._bridge or self._dictation) or self._busy or self._session is None or self._inbox_busy:
+        if (not (self._bridge or self._dictation) or self._busy or self._input_queue
+                or self._session is None or self._inbox_busy):
             return
         self.run_worker(self._drain_inbox(), exclusive=False)
 
