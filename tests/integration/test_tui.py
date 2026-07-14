@@ -716,3 +716,37 @@ async def test_off_the_queue_is_never_used_and_submit_while_busy_drops(tmp_path)
         assert not any("поки зайнято" in line for line in app.transcript)  # not echoed
         assert "⋯" not in app._status_text()  # no pending marker
         app._set_busy(False)
+
+
+# --- v1.2 fix: the input holds focus through a turn (so typing shows) ----------------------------
+
+
+async def test_input_holds_focus_during_a_turn_with_buffer(tmp_path):
+    import threading
+
+    release = threading.Event()
+
+    def slow(system, messages, model):
+        release.wait(3)  # block the reply so we can inspect focus mid-turn
+        return "ok"
+
+    app = LumiApp(_core(tmp_path, MockLLMClient(slow)))
+    async with app.run_test() as pilot:
+        app._input_buffer = True
+        app.run_worker(app._run_turn("привіт", mirror_input=True), exclusive=False)
+        for _ in range(80):  # let the turn start (busy True, reply blocked in the thread)
+            await pilot.pause()
+            if app._busy:
+                break
+        try:
+            box = app.query_one("#prompt", ChatInput)
+            assert box.has_focus  # focus returned to the input → keystrokes land in the box
+            await pilot.press("т", "е", "с", "т")
+            await pilot.pause()
+            assert box.text == "тест"  # typing shows while she answers
+        finally:
+            release.set()  # let the blocked reply finish before the screen tears down
+            for _ in range(80):
+                await pilot.pause()
+                if not app._busy:
+                    break

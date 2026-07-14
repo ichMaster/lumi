@@ -724,7 +724,10 @@ class LumiApp(App[None]):
         prompt = self.query_one("#prompt", ChatInput)
         if not self._input_buffer:
             prompt.disabled = busy  # off → today's behavior: the box is locked during a turn
-        if not busy:
+        # Keep the input focused: always with the v1.2 buffer (so you can type through a turn —
+        # otherwise starting a turn can leave the box unfocused and keystrokes go nowhere), and on
+        # turn-end otherwise (your turn again).
+        if self._input_buffer or not busy:
             prompt.focus()
 
     async def _image_command(self, text: str) -> None:
@@ -772,6 +775,10 @@ class LumiApp(App[None]):
             if self._sound_on:
                 self._sound.send()  # your message went out (never on a hidden nudge)
         self._render_status(busy=STATUS_BUSY)  # live tech status: working, not frozen
+        # v1.2: with the buffer on, return focus to the input AFTER the user-row render (writing to
+        # the history log can steal it) so you can type through the model wait below.
+        if self._input_buffer:
+            self.query_one("#prompt", ChatInput).focus()
         try:
             assert self._session is not None
             state = await asyncio.to_thread(self._core.reply, text, self._session, images=images)
