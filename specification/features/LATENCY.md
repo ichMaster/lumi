@@ -241,6 +241,8 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse th
   incrementally, and the voicer speaks it sentence-by-sentence (`LUMI_STREAM` / `LUMI_VOICE_SENTENCES`,
   both off by default; emotion validated at completion). **Felt latency ~2–3 s.** This runs first: the
   MODEL CALL is now ~83% of the turn, so streaming is the lever that actually attacks the felt wait.
+  **OpenAI/DeepSeek + the Responses API get real SSE in v1.9** (they emit once until then); MiniMax stays
+  blocking-emit.
 - **v1.5 · the durable POST fix (S1 + S2).** The async post-turn queue **and** the incremental store
   behind `Repository` (append-only / SQLite, O(1) persist), shipped **together**: S1 alone is a
   band-aid (crash-loss window + the store-growth time bomb — persist is O(history) today); with S2 the
