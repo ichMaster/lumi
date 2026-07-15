@@ -752,6 +752,73 @@ async def test_input_holds_focus_during_a_turn_with_buffer(tmp_path):
                     break
 
 
+# --- v1.4 LUMI-189: TUI incremental render -------------------------------------------------------
+
+
+def _core_stream(tmp_path, llm):
+    return Core(
+        llm=llm,
+        repository=JsonRepository(tmp_path / "store.json"),
+        canon="Ти — Лілі.",
+        model="m",
+        stream=True,
+    )
+
+
+async def test_grow_stream_reply_updates_live_and_buffer(tmp_path):
+    # The delta handler accumulates into _stream_buf and shows the growing line in #live.
+    app = LumiApp(_core_stream(tmp_path, MockLLMClient("привіт")))
+    async with app.run_test():
+        app._grow_stream_reply("Прив")
+        app._grow_stream_reply("іт, друже")
+        assert app._stream_buf == "Привіт, друже"
+        shown = str(app.query_one("#live", Static).render())
+        assert "Привіт, друже" in shown
+        assert LILI_LABEL in shown  # the growing line is labelled
+
+
+async def test_grow_stream_think_updates_the_box(tmp_path):
+    app = LumiApp(_core_stream(tmp_path, MockLLMClient("ок")))
+    async with app.run_test():
+        app._grow_stream_think("зважую ")
+        app._grow_stream_think("слова")
+        assert app._stream_think_buf == "зважую слова"
+
+
+async def test_streamed_turn_renders_final_reply_and_hides_live(tmp_path):
+    # A streamed turn shows the reply incrementally, then commits the final line to history and hides #live.
+    llm = MockLLMClient(states={"reply": "Привіт, як ти?", "emotion": "joy", "intensity": 0.7},
+                        stream_chunk=3)
+    app = LumiApp(_core_stream(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert any("Привіт, як ти?" in line and line.startswith("Лілі") for line in app.transcript)
+        assert app.query_one("#live", Static).display is False   # live area cleared at completion
+        assert app._stream_buf == ""
+
+
+async def test_streaming_off_never_shows_the_live_area(tmp_path):
+    # Off-pin: default core (stream off) → the blocking render; #live is never displayed.
+    app = LumiApp(_core(tmp_path, MockLLMClient("добре")))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert app.query_one("#live", Static).display is False
+        assert any("добре" in line and line.startswith("Лілі") for line in app.transcript)
+
+
+async def test_streamed_think_routes_to_box_not_chat(tmp_path):
+    # <think> in the streamed reply goes to the Thinking box; the chat shows only the prose.
+    llm = MockLLMClient(states={"reply": "<think>міркую тихо</think>Готово, друже", "emotion": "calm",
+                                "intensity": 0.5})
+    app = LumiApp(_core_stream(tmp_path, llm))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert app._thinking_shown == "міркую тихо"
+        joined = "\n".join(app.transcript)
+        assert "Готово, друже" in joined
+        assert "міркую тихо" not in joined and "<think>" not in joined
+
+
 async def test_typing_shows_while_a_submitted_turn_runs(tmp_path):
     # The real regression: a submitted turn must run as a worker so the app's message pump keeps
     # dispatching keystrokes — an inline `await` in on_chat_input_submitted would freeze typing.

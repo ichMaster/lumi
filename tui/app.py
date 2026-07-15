@@ -219,6 +219,15 @@ class LumiApp(App[None]):
         color: $text-muted;
         background: $panel;
     }
+
+    /* v1.4 (LUMI-189): the live streaming reply grows here in place, then commits to #history at
+       completion. Hidden unless a streamed turn is in flight (toggled via .display). */
+    #live {
+        display: none;
+        height: auto;
+        padding: 0 1;
+        margin: 0 1;
+    }
     """
 
     def __init__(self, core: Core, session: Session | None = None) -> None:
@@ -229,6 +238,10 @@ class LumiApp(App[None]):
         self.transcript: list[str] = []
         # Лілі's most recent reply, for one-key copy.
         self._last_reply: str | None = None
+        # v1.4 (LUMI-189): accumulators for the in-place streamed reply / reasoning (grown in #live and
+        # the Thinking box during a streamed turn, then cleared when the final render commits to history).
+        self._stream_buf: str = ""
+        self._stream_think_buf: str = ""
         # What's currently in the Thinking box (last turn's reasoning, or None).
         self._thinking_shown: str | None = None
         # The v0.3 emotion renderer — the "logged" tier (IEmotionRenderer).
@@ -297,6 +310,7 @@ class LumiApp(App[None]):
             thinking.border_subtitle = "Лілі's reasoning — last turn only"
             yield thinking
             yield RichLog(id="history", wrap=True, markup=False)
+            yield Static(id="live")  # v1.4 (LUMI-189): the growing streamed reply (hidden until streaming)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
             prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /model-set /biorhythm /closeness /recall /web /journal /new /prompt /latency /memory /forget"
@@ -767,6 +781,51 @@ class LumiApp(App[None]):
         self._last_activity = self._core.clock()
         await self._run_turn(message, images=[block], mirror_input=True, display_text=f"🖼 {path} — {message}")
 
+    async def _reply_streamed(self, text: str, images: list[dict] | None):
+        """v1.4 (LUMI-189): run the turn with streaming — the reply's prose grows in the ``#live`` area
+        (deltas marshalled from the reply thread to the UI thread via ``call_from_thread``), reasoning
+        routes to the Thinking box. ``#live`` is cleared at completion so the final render commits to
+        ``#history`` exactly as the blocking path (emotion/face resolved once, on the completed reply)."""
+        self._stream_buf = ""
+        self._stream_think_buf = ""
+        live = self.query_one("#live", Static)
+        live.display = True
+        live.update(Text(f"{LILI_LABEL} ", style=f"bold {LILI_COLOR}"))
+        show_think = getattr(self._core, "think_show", "debug") != "off"
+
+        def _on_delta(chunk: str) -> None:
+            self.call_from_thread(self._grow_stream_reply, chunk)
+
+        def _on_think(chunk: str) -> None:
+            if show_think:
+                self.call_from_thread(self._grow_stream_think, chunk)
+
+        try:
+            return await asyncio.to_thread(
+                self._core.reply, text, self._session, images=images,
+                on_delta=_on_delta, on_think_delta=_on_think,
+            )
+        finally:
+            live.display = False
+            live.update("")
+            self._stream_buf = ""
+            self._stream_think_buf = ""
+
+    def _grow_stream_reply(self, chunk: str) -> None:
+        """Append a streamed prose delta to the live reply line (UI thread; called via call_from_thread)."""
+        self._stream_buf += chunk
+        line = Text()
+        line.append(f"{LILI_LABEL} ", style=f"bold {LILI_COLOR}")
+        line.append(self._stream_buf, style=LILI_COLOR)
+        self.query_one("#live", Static).update(line)
+
+    def _grow_stream_think(self, chunk: str) -> None:
+        """Append a streamed reasoning delta to the Thinking box (replaced by the final at completion)."""
+        self._stream_think_buf += chunk
+        box = self.query_one("#thinking", RichLog)
+        box.clear()
+        box.write(Text(self._stream_think_buf, style=f"italic {THINKING_COLOR}"))
+
     async def _run_turn(
         self, text: str, *, hidden: bool = False, mirror_input: bool = False,
         images: list[dict] | None = None, display_text: str | None = None,
@@ -792,7 +851,10 @@ class LumiApp(App[None]):
             self.query_one("#prompt", ChatInput).focus()
         try:
             assert self._session is not None
-            state = await asyncio.to_thread(self._core.reply, text, self._session, images=images)
+            if getattr(self._core, "stream_enabled", False) and not hidden:
+                state = await self._reply_streamed(text, images)  # v1.4 (LUMI-189): grow in #live
+            else:
+                state = await asyncio.to_thread(self._core.reply, text, self._session, images=images)
             self._connected = True
             self._last_reply = state.reply
             # Route the validated state through the renderer (logs the field) — the
