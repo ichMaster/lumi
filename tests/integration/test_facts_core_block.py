@@ -1,8 +1,9 @@
-"""v0.36 LUMI-143 — shrink the facts block to the curated identity-core.
+"""v0.36 LUMI-143 — the facts block is the curated identity-core.
 
-With `LUMI_FACTS_CORE_ONLY` on, the prompt injects only the `core=true` facts (replacing the digest —
-and the session-start re-flag replaces the digest *call*, cost-neutral); the episodic tail moves to
-`recall(scope=facts)`. Off → the Phase-0 digest/raw facts, byte-identical. Model + embedder mocked."""
+`LUMI_FACTS` is the master switch: on → the `## Про Віталія` section injects the `core=true` facts
+(capped by `LUMI_FACTS_CORE_MAX`); off → no static facts section at all. The core is curated by the
+offline /review-facts skill (there is no in-app re-rank, and no digest/raw fallback). The episodic
+tail (non-core facts) stays reachable via `recall(scope=facts)`. Model + embedder mocked."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -17,14 +18,14 @@ from state.local_store import JsonRepository
 NOW = datetime(2026, 6, 12, 12, 0, tzinfo=UTC)
 
 
-def _core(tmp_path, *, core_only=False, core_max=0, embedder=None, recall=False, recall_scope="messages"):
+def _core(tmp_path, *, enabled=True, core_max=0, embedder=None, recall=False, recall_scope="messages"):
     return Core(
         llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
         canon="C", model="m", user_id="owner", clock=fixed_clock(NOW),
         mood_enabled=False, biorhythms_enabled=False, cycle_enabled=False,
         closeness_enabled=False, thoughts_enabled=False,
         embedder=embedder, recall_enabled=recall, embed_model="m@x",
-        recall_tool_enabled=recall, facts_core_only=core_only, facts_core_max=core_max,
+        recall_tool_enabled=recall, facts_enabled=enabled, facts_core_max=core_max,
         recall_scope=recall_scope,
     )
 
@@ -37,52 +38,56 @@ def _prompt(core, session):
     return "".join(core._system_prompt(session))
 
 
-def test_core_only_injects_only_core_facts(tmp_path):
-    core = _core(tmp_path, core_only=True)
+def test_facts_on_injects_only_core_facts(tmp_path):
+    core = _core(tmp_path, enabled=True)
     core._repo.add_fact(_fact("Звати Олег", core=True))
     core._repo.add_fact(_fact("Якось згадав дрібницю", core=False))
     prompt = _prompt(core, core.start_session())
-    assert "Звати Олег" in prompt                 # the identity-core is injected
+    assert "## Про Віталія" in prompt              # the section renders
+    assert "Звати Олег" in prompt                  # the identity-core is injected
     assert "Якось згадав дрібницю" not in prompt   # the non-core tail is not
 
 
-def test_core_only_caps_prompt_to_core_max(tmp_path):
-    # All facts flagged core (as a heavily-pinned set would be), but CORE_MAX=2 → only 2 reach the prompt.
-    core = _core(tmp_path, core_only=True, core_max=2)
+def test_facts_caps_to_core_max(tmp_path):
+    # All facts flagged core (a heavily-pinned set), but CORE_MAX=2 → only 2 reach the prompt.
+    core = _core(tmp_path, enabled=True, core_max=2)
     for i in range(5):
-        core._repo.add_fact(_fact(f"домовленість номер {i}", core=True))  # all core (would all pin)
+        core._repo.add_fact(_fact(f"домовленість номер {i}", core=True))
     prompt = _prompt(core, core.start_session())
-    injected = sum(1 for i in range(5) if f"домовленість номер {i}" in prompt)
-    assert injected == 2  # hard-capped to CORE_MAX, not all 5
+    assert sum(1 for i in range(5) if f"домовленість номер {i}" in prompt) == 2  # hard-capped, not all 5
 
 
 def test_core_max_zero_injects_all_core_facts(tmp_path):
-    # CORE_MAX=0 (cap off) keeps the old behaviour: every core fact is injected.
-    core = _core(tmp_path, core_only=True, core_max=0)
+    # CORE_MAX=0 (cap off) → every core fact is injected.
+    core = _core(tmp_path, enabled=True, core_max=0)
     for i in range(4):
         core._repo.add_fact(_fact(f"межа {i}", core=True))
     prompt = _prompt(core, core.start_session())
     assert all(f"межа {i}" in prompt for i in range(4))
 
 
-def test_core_only_off_injects_all_facts_unchanged(tmp_path):
-    core = _core(tmp_path, core_only=False)
+def test_facts_off_no_static_section(tmp_path):
+    # LUMI_FACTS=off → the ## Про Віталія section is skipped entirely, even with core facts present.
+    core = _core(tmp_path, enabled=False)
     core._repo.add_fact(_fact("Звати Олег", core=True))
     core._repo.add_fact(_fact("Любить мандарини", core=False))
     prompt = _prompt(core, core.start_session())
-    assert "Звати Олег" in prompt and "Любить мандарини" in prompt   # both (off → raw facts)
+    assert "## Про Віталія" not in prompt
+    assert "Звати Олег" not in prompt
 
 
-def test_core_only_falls_back_when_no_core_facts(tmp_path):
-    # core_only on but nothing flagged yet → fall back to raw (never an empty facts block).
-    core = _core(tmp_path, core_only=True)
+def test_facts_on_no_core_facts_no_section(tmp_path):
+    # On, but nothing flagged core → the section is empty (no digest/raw fallback anymore).
+    core = _core(tmp_path, enabled=True)
     core._repo.add_fact(_fact("Любить мандарини", core=False))
-    assert "Любить мандарини" in _prompt(core, core.start_session())
+    prompt = _prompt(core, core.start_session())
+    assert "## Про Віталія" not in prompt          # no core → no section
+    assert "Любить мандарини" not in prompt        # non-core is never in the static block
 
 
-def test_reconstruction_dropped_tail_reachable_via_recall_facts(tmp_path):
-    # A non-core fact is dropped from the prompt but stays findable via recall(scope=facts).
-    core = _core(tmp_path, core_only=True, embedder=MockEmbedder(), recall=True)
+def test_non_core_tail_reachable_via_recall_facts(tmp_path):
+    # A non-core fact is absent from the prompt but stays findable via recall(scope=facts).
+    core = _core(tmp_path, enabled=True, embedder=MockEmbedder(), recall=True)
     core._repo.add_fact(_fact("Звати Олег", core=True))
     core._repo.add_fact(_fact("Любить мандарини взимку", core=False))
     core.backfill_facts()
@@ -90,24 +95,6 @@ def test_reconstruction_dropped_tail_reachable_via_recall_facts(tmp_path):
     assert "Звати Олег" in prompt and "мандарини" not in prompt      # tail not in the prompt
     hits = core.recall("мандарини", scope="facts")
     assert any("мандарини" in r.text for _, r in hits)              # ...but reachable on demand
-
-
-def test_core_only_skips_the_digest_call(tmp_path):
-    # core_only replaces _ensure_facts_digest (cost-neutral with the session-start re-flag).
-    core = _core(tmp_path, core_only=True)
-    calls = {"n": 0}
-    core._ensure_facts_digest = lambda: calls.__setitem__("n", calls["n"] + 1)  # type: ignore[method-assign]
-    s = core.start_session()
-    core.reply("привіт", s)
-    assert calls["n"] == 0                                          # digest never called when core_only on
-
-
-def test_core_only_off_still_calls_the_digest(tmp_path):
-    core = _core(tmp_path, core_only=False)
-    calls = {"n": 0}
-    core._ensure_facts_digest = lambda: calls.__setitem__("n", calls["n"] + 1)  # type: ignore[method-assign]
-    core.reply("привіт", core.start_session())
-    assert calls["n"] == 1                                          # unchanged when core_only off
 
 
 def test_recall_tool_default_scope_from_config(tmp_path):

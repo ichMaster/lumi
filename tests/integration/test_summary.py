@@ -195,6 +195,28 @@ def test_three_date_based_tiers_injection(tmp_path):
     assert sysp.index("Останні тижні") < sysp.index("Останні дні") < sysp.index("Останні розмови")
 
 
+def test_date_window_zero_switches_the_section_off(tmp_path):
+    # LUMI_SESSION_DAYS / DAY_DAYS / WEEK_DAYS = 0 (or less) → that section is skipped entirely,
+    # even with matching summaries in the store.
+    from core.repository import DaySummary, WeekSummary
+
+    repo = JsonRepository(tmp_path / "s.json")
+    repo.add_summary(_ss("r0", "СЕСІЯ-ДЕТАЛЬ", "гіст", "2026-06-07T10:00:00+00:00"))
+    repo.set_day_summary(DaySummary("owner", "2026-06-08", "ДЕНЬ-ДАЙДЖЕСТ", 1, "2026-06-08T23:00:00+00:00"))
+    repo.set_week_summary(WeekSummary("owner", "2026-06-08", "ТИЖДЕНЬ-ДАЙДЖЕСТ", 1, "t"))
+
+    core = Core(
+        llm=MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
+        repository=repo, canon="C", model="m",
+        clock=fixed_clock(datetime(2026, 6, 8, 12, 0, tzinfo=UTC)), mood_enabled=False,
+        session_days=0, day_days=0, week_days=0,
+    )
+    sysp, _ = core._system_prompt(core.start_session())
+    assert "## Останні розмови" not in sysp and "СЕСІЯ-ДЕТАЛЬ" not in sysp
+    assert "## Останні дні" not in sysp and "ДЕНЬ-ДАЙДЖЕСТ" not in sysp
+    assert "## Останні тижні" not in sysp and "ТИЖДЕНЬ-ДАЙДЖЕСТ" not in sysp
+
+
 def test_no_tiers_when_no_summaries(tmp_path):
     repo = JsonRepository(tmp_path / "s.json")
     core = Core(

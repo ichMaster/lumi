@@ -25,7 +25,7 @@ def test_restart_rehydrates_summary_and_facts_into_the_prompt(tmp_path):
         scripted(
             turn="Радо знайомлюся.",
             summary="Перша розмова: знайомство, говорили про каву.",
-            facts="Любить каву",
+            facts="[C] Любить каву",  # [C] → core: the static ## Про Віталія block is core-only now
         )
     )
     core1 = Core(llm=llm1, repository=JsonRepository(path), canon="Ти — Лілі.", model="m")

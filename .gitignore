@@ -150,6 +150,7 @@ activemq-data/
 # Environments
 .env
 .env_back*
+.env_bak*
 .env.bak*
 .env.*.bak
 .envrc

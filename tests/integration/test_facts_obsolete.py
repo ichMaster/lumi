@@ -17,7 +17,7 @@ from state.local_store import JsonRepository
 NOW = datetime(2026, 6, 12, 12, 0, tzinfo=UTC)
 
 
-def _core(tmp_path, *, core_only=False, facts_rag=False):
+def _core(tmp_path, *, facts_rag=False):
     return Core(
         llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
         canon="C", model="m", user_id="owner", clock=fixed_clock(NOW),
@@ -25,7 +25,7 @@ def _core(tmp_path, *, core_only=False, facts_rag=False):
         closeness_enabled=False, thoughts_enabled=False,
         embedder=MockEmbedder(), recall_enabled=True, embed_model="m@x",
         recall_tool_enabled=True, rag_enabled=True, rag_floor=0.0,
-        facts_core_only=core_only, facts_core_max=0, facts_rag=facts_rag,
+        facts_enabled=True, facts_core_max=0, facts_rag=facts_rag,
     )
 
 
@@ -49,19 +49,11 @@ def test_obsolete_excluded_from_auto_fact_rag(tmp_path):
 
 
 def test_obsolete_excluded_from_core_block(tmp_path):
-    core = _core(tmp_path, core_only=True)
+    core = _core(tmp_path)
     core._repo.add_fact(_fact("Звати Олег", core=True))
     core._repo.add_fact(_fact("Старий факт", core=True, obsolete=True))  # core BUT obsolete
     prompt = "".join(core._system_prompt(core.start_session()))
     assert "Звати Олег" in prompt and "Старий факт" not in prompt
-
-
-def test_obsolete_excluded_from_digest_path(tmp_path):
-    core = _core(tmp_path, core_only=False)
-    core._repo.add_fact(_fact("Звати Олег"))
-    core._repo.add_fact(_fact("Застарілий факт", obsolete=True))
-    prompt = "".join(core._system_prompt(core.start_session()))
-    assert "Звати Олег" in prompt and "Застарілий факт" not in prompt
 
 
 def test_non_obsolete_facts_unaffected(tmp_path):
