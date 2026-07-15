@@ -48,16 +48,15 @@
 # %think! {thoughts}
 # %wonder! поцікався як Віталік зараз
 
-%think {thoughts}
+%wonder {thoughts}
 %think подумай над мантрою Om Hari Om і тим, як форма розчиняється в матеріалі, як органоїди чи Лін
 %think {recent}
 %wonder як зараз Віталік і про що він мовчить
-%think {recent}
+%wonder {recent}
 %think подумай про тишу між двома тіками цього годинника
 %think {recent}
-%brief
-%think {recent}
-%think подумай над мантрою Om So Hum і рівним диханням
+%wonder {recent}
+%wonder подумай над мантрою Om So Hum і рівним диханням
 %think {thoughts}
 
 # mixed mode

@@ -6,7 +6,7 @@ from core.agent import Core
 from core.clock import fixed_clock
 from core.llm import MockLLMClient, ResponseStats
 from core.repository import make_message
-from core.thoughts import REGISTRY, THINK, WONDER, parse_thought, thought_request
+from core.thoughts import REGISTRY, THINK, WONDER, parse_thought, thought_request, truncate_thought
 from state.local_store import JsonRepository
 
 _DAY = fixed_clock(datetime(2026, 6, 9, 14, 30, tzinfo=UTC))
@@ -63,6 +63,20 @@ def test_parse_thought_strips_tag_and_defaults():
     assert parse_thought("ЕМОЦІЯ: joy") is None  # only the tag → nothing
 
 
+def test_truncate_thought_pure():
+    # disabled (<=0) or already within the cap → returned unchanged
+    assert truncate_thought("будь-що", 0) == "будь-що"
+    assert truncate_thought("коротко", 100) == "коротко"
+    assert truncate_thought("abc", 3) == "abc"  # len == cap → fits
+    # overshoot → clipped to the cap, marked with «…», never longer than the cap
+    long = "одна думка два три чотири пʼять шість сім вісім девʼять десять"
+    out = truncate_thought(long, 20)
+    assert len(out) <= 20 and out.endswith("…")
+    assert long.startswith(out[:-1])  # the kept part is a genuine prefix
+    # a single unbroken word still clips hard (no word boundary to snap to)
+    assert truncate_thought("я" * 100, 10) == "я" * 9 + "…"
+
+
 # --- the engine records into the diary ------------------------------------
 def test_think_records_a_structured_thought(tmp_path):
     core = _core(tmp_path, MockLLMClient("ще зранку кручу той бридж\nЕМОЦІЯ: thoughtful"))
@@ -78,6 +92,33 @@ def test_wonder_records_kind_wonder(tmp_path):
     core = _core(tmp_path, MockLLMClient("а що, якби небо було ще тихішим\nЕМОЦІЯ: surprise"))
     t = core.think("wonder")
     assert t is not None and t.kind == "wonder" and t.emotion == "surprise"
+
+
+def _core_capped(tmp_path, llm, max_chars):
+    return Core(
+        llm=llm, repository=JsonRepository(tmp_path / "s.json"),
+        canon="C", model="m", clock=_DAY, mood_enabled=False, thoughts_enabled=True,
+        thought_max_chars=max_chars,
+    )
+
+
+def test_long_thought_is_truncated(tmp_path):
+    # the model overshoots the "1–2 sentence" template → the hard cap clips the recorded thought
+    verbose = "думка " * 40 + "\nЕМОЦІЯ: calm"
+    core = _core_capped(tmp_path, MockLLMClient(verbose), max_chars=40)
+    t = core.think("think", rng_seed=1)
+    assert t is not None
+    assert len(t.text) <= 40 and t.text.endswith("…")  # clipped + marked
+    assert t.emotion == "calm"  # the trailing tag is still parsed, not swallowed by the clip
+
+
+def test_prompt_freeform_thought_is_not_truncated(tmp_path):
+    # %prompt is freeform (the topic IS the instruction) — its length follows the task, cap exempt
+    verbose = "розгорнутий аналіз: " + "речення. " * 40 + "\nЕМОЦІЯ: thoughtful"
+    core = _core_capped(tmp_path, MockLLMClient(verbose), max_chars=40)
+    t = core.think("prompt", topic="зроби детальний аналіз", user_topic=True)
+    assert t is not None
+    assert len(t.text) > 40 and not t.text.endswith("…")  # full length preserved
 
 
 def test_unknown_emotion_clamps_to_calm(tmp_path):

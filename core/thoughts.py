@@ -21,6 +21,12 @@ from dataclasses import dataclass
 THOUGHTS_WINDOW_H = 24
 THOUGHTS_MAX_LINES = 12
 
+# A hard per-thought LENGTH cap (characters) applied AFTER generation: if the model overshoots the
+# "1–2 sentence" template it is clipped (this is a truncation backstop, not a prompt instruction).
+# 0 = disabled (byte-identical). The FREEFORM directive (%prompt) is exempt — its length follows the
+# task (see the caller). Config-overridable via LUMI_THOUGHT_MAX_CHARS. See THOUGHT_STREAM.md.
+THOUGHT_MAX_CHARS = 0
+
 # The proactive nudge: how long idle before a %think, a per-session cap (restraint), and the
 # fraction of thinks that graduate to a spoken turn (the rest stay silent).
 THOUGHTS_INTERVAL_S = 600
@@ -300,6 +306,30 @@ def parse_thought(raw: str) -> tuple[str, str] | None:
     if not text:
         return None
     return text, emotion
+
+
+_ELLIPSIS = "…"
+
+
+def truncate_thought(text: str, max_chars: int) -> str:
+    """Hard-cap a generated thought's text to ``max_chars`` characters (v0.12).
+
+    Returns ``text`` unchanged when ``max_chars`` <= 0 or the text already fits. Otherwise clips it,
+    snapping back to a nearby word boundary when one isn't too far, and marks the cut with «…». The
+    «…» is counted inside the budget, so the result never exceeds ``max_chars``. The trailing emotion
+    tag is already stripped upstream (:func:`parse_thought`), so only the thought prose is measured.
+    """
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    budget = max_chars - len(_ELLIPSIS)
+    if budget <= 0:  # a cap tighter than the marker itself → just the marker, clipped
+        return _ELLIPSIS[:max_chars]
+    cut = text[:budget].rstrip()
+    space = cut.rfind(" ")
+    if space >= budget * 0.6:  # prefer a word boundary, but only when it isn't too far back
+        cut = cut[:space].rstrip()
+    cut = cut.rstrip(" ,.;:—-")  # no dangling separator before the ellipsis
+    return f"{cut}{_ELLIPSIS}"
 
 
 @dataclass(frozen=True)
