@@ -865,6 +865,8 @@ Also a **tick service** in the TUI — a **fast** in-TUI timer for **lightweight
 
 ### v1.3 — Explicit Gemini prompt cache (TTL 1h): warm prefill across pauses
 
+> **Probe verdict (LUMI-184): PENDING a manual paid run** — `cachedContents` support + the `cache+systemInstruction` constraint on `gemini-3.1-pro-preview` are unit-covered against a mock but not yet confirmed live. Run `scripts/gemini_probe.py --cache` before relying on the explicit cache in production.
+
 **Goal:** on the Gemini engine the prompt cache stops being best-effort — the stable prefix (the
 v0.15 cacheable head, ~12 K tok measured) is held in an **explicit server-side `cachedContent`**
 with a **chosen TTL (1 h)**, so the first reply **after a pause** starts from a warm prefill instead

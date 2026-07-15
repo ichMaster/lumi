@@ -152,3 +152,27 @@ Guardrails, inherited from II §8 plus one new:
   — confirm in `.lumi/cache-report.md`, not just raw size.
 - Every step behind config, reversible, A/B'd by diffing a fresh `/prompt` dump (run it **after at
   least one turn** — a fresh session dumps empty).
+
+---
+
+## v1.3 — Explicit Gemini prompt cache: measured before/after (PENDING operator run)
+
+The v1.3 phase (LUMI-184..187) makes the Gemini prompt cache **explicit** so a reply after a pause
+stays warm. The before/after is measured from `.lumi/cache-report.md` once the flag is exercised —
+`LUMI-185` added `latency_ms` to every cache-log record and `LUMI-187` a **Continuity** table
+(post-gap reply turns with their `cache read` and latency).
+
+**Method (operator, paid — a few turns):**
+1. `LUMI_GEMINI_EXPLICIT_CACHE=off`, `LUMI_PROMPT_CACHE_TTL=1h` — chat, pause > 20 min, reply again.
+2. `LUMI_GEMINI_EXPLICIT_CACHE=on` — repeat.
+3. Compare the **Continuity** rows: OFF a post-gap turn shows low `cache read` (cold re-read) and a
+   higher `latency`; ON it should show `cache read` ≈ the cached prefix and lower TTFT.
+
+| Scenario | Post-gap `cache read` | Post-gap latency |
+|---|--:|--:|
+| OFF (implicit) | _pending_ | _pending_ |
+| ON (explicit)  | _pending_ | _pending_ |
+
+Run `GEMINI_API_KEY=… uv run python scripts/gemini_probe.py --cache gemini-3.1-pro-preview` first to
+confirm `cachedContents` support + the `cache+systemInstruction` constraint on the active model, then
+fill the table from two `.lumi/cache-report.md` snapshots.

@@ -1848,8 +1848,9 @@ class GeminiClient:
         """The cachedContent name to reference this call — reusing the handle while (model, prefix
         fingerprint) match, else (re)creating one (and deleting the old). ``None`` when the feature is
         off, there is no prefix, or any cache-API call fails (→ the caller runs the implicit path).
-        Sets ``last_cache_event`` for the observability layer (LUMI-187)."""
-        self.last_cache_event = None
+        Sets ``last_cache_event`` for the observability layer (LUMI-187) — sticky across the tool-loop
+        rounds (reset per turn at the ``reply``/``reply_structured`` entry, only *set* on a real event
+        so a create on round 1 survives the reuse rounds after it)."""
         if not self._explicit_cache or not cache_prefix:
             return None
         fp = hashlib.sha256(cache_prefix.encode("utf-8")).hexdigest()[:16]
@@ -1948,6 +1949,7 @@ class GeminiClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> str:
+        self.last_cache_event = None  # v1.3: reset per turn; _cache_ref only sets it on a real event
         if tools and tool_executor is not None:  # v0.39 LUMI-153 think-path tool-loop (text terminal)
             return self._loop(system, messages, model, tools, tool_executor, max_steps,
                               structured=False, cache_prefix=cache_prefix)
@@ -1965,6 +1967,7 @@ class GeminiClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
+        self.last_cache_event = None  # v1.3: reset per turn; _cache_ref only sets it on a real event
         if tools and tool_executor is not None:  # v0.39 LUMI-153 function-calling loop
             return self._loop(system, messages, model, tools, tool_executor, max_steps,
                               structured=True, cache_prefix=cache_prefix)

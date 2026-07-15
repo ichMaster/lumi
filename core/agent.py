@@ -1667,15 +1667,18 @@ class Core:
         calls (each tagged ``tool`` or ``reply`` by the loop); other channels log one event. Never raises."""
         if not self._cache_monitor or self._cache_log_path is None:
             return
+        # v1.3 LUMI-187: the Gemini explicit-cache lifecycle of THIS turn (created/recreated/fallback),
+        # attached to the first record of the turn only (not repeated per round).
+        mgmt = getattr(self._llm, "last_cache_event", None) or ""
         rounds = getattr(self._llm, "last_round_log", None)
         if kind == "reply" and rounds:
-            for round_kind, rstats in rounds:
+            for i, (round_kind, rstats) in enumerate(rounds):
                 if rstats is not None:
-                    self._log_one_cache_event(round_kind, rstats)
+                    self._log_one_cache_event(round_kind, rstats, cache_event=mgmt if i == 0 else "")
         else:
-            self._log_one_cache_event(kind, stats)
+            self._log_one_cache_event(kind, stats, cache_event=mgmt)
 
-    def _log_one_cache_event(self, kind: str, stats: ResponseStats) -> None:
+    def _log_one_cache_event(self, kind: str, stats: ResponseStats, *, cache_event: str = "") -> None:
         """Append one model call's cache behaviour + classify the write. Never raises."""
         try:
             from core import cache_log
@@ -1702,6 +1705,7 @@ class Core:
                 gap_s=gap_s, cause=cause, session_id=self._active_session_id,
                 changed_section=changed_section if cause == "moved" else "",
                 latency_ms=stats.latency_ms,  # v1.3 LUMI-185: per-call wall-clock (already measured)
+                cache_event=cache_event,       # v1.3 LUMI-187: the explicit-cache lifecycle of this turn
             ))
         except Exception:  # noqa: BLE001 — monitoring must never break a turn
             _usage_log.warning("cache event log failed", exc_info=True)

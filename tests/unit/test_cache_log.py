@@ -270,3 +270,32 @@ def test_report_renders_when_no_record_carries_latency():
     md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
     reply_row = next(line for line in md.splitlines() if line.startswith("| reply"))
     assert reply_row.rstrip().endswith("— |")
+
+
+# --- v1.3 LUMI-187: explicit-cache observability + continuity report -----------------------------
+
+
+def test_cache_event_round_trips():
+    p_events = [CacheEvent("t", "reply", 12000, 0, 5, 5, None, "none", cache_event="created")]
+    md = render_cache_report(p_events, generated_at="2026-07-15", ttl="1h")
+    assert "## Explicit cache (Gemini)" in md
+    assert "**created**: 1" in md
+
+
+def test_continuity_table_lists_post_gap_warm_turns():
+    events = [
+        CacheEvent("2026-07-15T10:00", "reply", 12000, 0, 5, 5, None, "none", cache_event="created", latency_ms=2000),
+        # a reply after a 20-min gap that STAYED warm (cache_read ≈ prefix) — the continuity proof
+        CacheEvent("2026-07-15T10:20", "reply", 12000, 0, 5, 5, 1200.0, "evicted", latency_ms=2100),
+    ]
+    md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
+    assert "Continuity" in md
+    row = next(line for line in md.splitlines() if "2026-07-15T10:20" in line)
+    assert "20m" in row and "12,000" in row and "2.1s" in row
+
+
+def test_report_has_no_explicit_cache_section_when_feature_never_ran():
+    # off / non-Gemini → no cache_event on any record → the section is absent (unchanged report)
+    events = [CacheEvent("t", "reply", 100, 0, 5, 5, None, "none")]
+    md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
+    assert "Explicit cache (Gemini)" not in md

@@ -86,10 +86,11 @@ class CacheEvent:
     session_id: str = "" # the session this call belongs to (for the per-session breakdown; "" = legacy)
     changed_section: str = ""  # for a `moved` write: which prefix section(s) changed (canon/memory/mood)
     latency_ms: int | None = None  # v1.3 LUMI-185: wall-clock of the call (None on legacy records)
+    cache_event: str = ""  # v1.3 LUMI-187: explicit-cache lifecycle (created/recreated:…/fallback:…)
 
 
 _FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause", "model",
-           "session_id", "changed_section", "latency_ms")
+           "session_id", "changed_section", "latency_ms", "cache_event")
 
 
 def append_event(path: str | Path, event: CacheEvent) -> None:
@@ -156,6 +157,35 @@ def _ratio(read: int, write: int) -> str:
 
 def _fmt(n: int) -> str:
     return f"{n:,}"
+
+
+def _explicit_cache_report(events: list[CacheEvent], gap_min: int = 5) -> list[str]:
+    """v1.3 LUMI-187: the Gemini explicit-cache section — lifecycle counts + a **continuity** table
+    (post-gap turns and whether they stayed warm: `cache_read` ≈ prefix + `latency_ms`). Empty when
+    the feature never ran (no `cache_event` in the log), so an off/non-Gemini report is unchanged."""
+    mgmt = [e for e in events if e.cache_event]
+    if not mgmt:
+        return []
+    created = sum(1 for e in mgmt if e.cache_event == "created")
+    recreated = sum(1 for e in mgmt if e.cache_event.startswith("recreated"))
+    fallbacks = sum(1 for e in mgmt if e.cache_event.startswith("fallback"))
+    out = [
+        "## Explicit cache (Gemini)\n",
+        f"- **created**: {created} · **recreated**: {recreated} · **fallback → implicit**: {fallbacks}\n",
+        "\nContinuity — reply turns after a > "
+        f"{gap_min}-min gap (did the cache stay warm? `cache read` should ≈ the cached prefix):\n",
+        "| When | Gap | Cache read | Latency |\n|---|--:|--:|--:|",
+    ]
+    gap_s = gap_min * 60
+    post_gap = [e for e in events if e.kind == "reply" and (e.gap_s or 0) > gap_s]
+    for e in post_gap[-12:]:  # the most recent dozen
+        out.append(
+            f"| {e.ts} | {e.gap_s / 60:.0f}m | {_fmt(e.cache_read)} | {_lat(e.latency_ms)} |"
+        )
+    if not post_gap:
+        out.append("| _(no post-gap reply turns yet)_ |  |  |  |")
+    out.append("")
+    return out
 
 
 def _median(xs: list[int]) -> int | None:
@@ -343,6 +373,8 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
         f"- **moved** (the prefix actually changed): {causes['moved']}\n"
         f"- **evicted** (prefix identical, cache dropped early — nothing to fix): {causes['evicted']}\n"
     )
+
+    out.extend(_explicit_cache_report(events))
 
     out.append("## By activity — tokens\n")
     out.append("> Operation columns are **token counts**. **Read:Write** = cache read:write ratio; "
