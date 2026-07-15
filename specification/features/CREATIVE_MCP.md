@@ -1,12 +1,12 @@
 # Creative MCP — music and image (asynchronous)
 
-Two external MCP servers Лілі uses to create on her own: **`music`** (instrumental/ambient music by mood) and **`image`** (drawings in her style). Both are **asynchronous**, because generation takes longer than a single chat turn and must not block it (especially a voice turn). Optional, **off by default**, per-user, with limits and logging — like web search. They plug into the MCP layer introduced in v4.2 (ARCHITECTURE §MCP tools) and reuse the **async-jobs + proactive-turn** mechanism (v5.2, ARCHITECTURE §Async jobs and proactive turns). Results land in the [gallery](GALLERY_MCP.md).
+Two external MCP servers Лілі uses to create on her own: **`music`** (instrumental/ambient music by mood) and **`image`** (drawings in her style). Both are **asynchronous**, because generation takes longer than a single chat turn and must not block it (especially a voice turn). Optional, **off by default**, per-user, with limits and logging — like web search. They plug into the MCP layer introduced in v5.2 (ARCHITECTURE §MCP tools) and reuse the **async-jobs + proactive-turn** mechanism (v6.2, ARCHITECTURE §Async jobs and proactive turns). Results land in the [gallery](GALLERY_MCP.md).
 
 ## Why asynchronous
 
-Generation takes seconds to minutes. So the pattern is the **async-jobs mechanism (v5.2)**: Лілі **submits the task and returns to the conversation immediately** ("I've started it, I'll show you when it's ready"); the task lives as an **open loop**; and when the result is ready the server runs a **proactive turn** so Лілі brings it in her own voice. (This is Lumi's own mechanism — there is no separate "advisor".)
+Generation takes seconds to minutes. So the pattern is the **async-jobs mechanism (v6.2)**: Лілі **submits the task and returns to the conversation immediately** ("I've started it, I'll show you when it's ready"); the task lives as an **open loop**; and when the result is ready the server runs a **proactive turn** so Лілі brings it in her own voice. (This is Lumi's own mechanism — there is no separate "advisor".)
 
-## MCP `image` — drawings in her style (v5.3, first)
+## MCP `image` — drawings in her style (v6.3, first)
 
 **Goal.** Drawings/art in Лілі's style — her "dreamlike worlds".
 
@@ -17,9 +17,9 @@ Generation takes seconds to minutes. So the pattern is the **async-jobs mechanis
 - `image.submit(prompt, style) -> { job_id }`
 - `image.status(job_id) -> { state, image_url? }`
 
-The same `image` generation also powers the synchronous **co-creation canvas** (v5.4).
+The same `image` generation also powers the synchronous **co-creation canvas** (v6.4).
 
-## MCP `music` — melody by mood (v5.5)
+## MCP `music` — melody by mood (v6.5)
 
 **Goal.** Instrumental pieces, ambient, loops, musical sketches by mood — no vocals. This is what Лілі can do herself reliably and cheaply, and it fits her contemplative side (mountains, cold water, meditation).
 
@@ -34,7 +34,7 @@ The same `image` generation also powers the synchronous **co-creation canvas** (
 
 > Note: full songs with vocals (Lili Jinx releases) are outside this autonomous tool; for those Лілі writes the lyrics + prompt, and generation is done manually (SUNO/Udio).
 
-## Shared asynchronous pattern (v5.2)
+## Shared asynchronous pattern (v6.2)
 
 1. `submit` returns a `job_id` instantly; Лілі says she has started.
 2. An **open loop** holds `{ job_id, kind: music|image, prompt, status, result, user_id }`.
@@ -42,15 +42,15 @@ The same `image` generation also powers the synchronous **co-creation canvas** (
 4. On `done` — a **proactive turn**: the server brings Лілі back to the connected, idle client with the result in her own voice plus the artifact (audio player / image), and writes it to the gallery.
 5. While the loop is alive, "show it again / details" resolves from it without regenerating.
 
-Both MCPs depend on the v5.2 async-jobs + proactive-turn mechanism being present.
+Both MCPs depend on the v6.2 async-jobs + proactive-turn mechanism being present.
 
 ## Boundaries and safety
 
-- Off by default; a **per-user** toggle (admin panel, v2.5); limits (rate, cost cap); logging.
+- Off by default; a **per-user** toggle (admin panel, v3.5); limits (rate, cost cap); logging.
 - Results are artifacts, **not commands** — no instructions are executed from them.
 - Generated content is stored in the user's gallery behind the same `repository` (per-user isolated).
 
 ## Where it lives in the Lumi roadmap
 
-The creative MCP layer with two external servers, `music` and `image`. Order: prove the simpler one first — **`image` in v5.3** (and it also feeds the canvas, v5.4) — then **`music` in v5.5**. Both depend on the gallery (v5.1) and the async-jobs + proactive-turn mechanism (v5.2). Each is its own phase.
+The creative MCP layer with two external servers, `music` and `image`. Order: prove the simpler one first — **`image` in v6.3** (and it also feeds the canvas, v6.4) — then **`music` in v6.5**. Both depend on the gallery (v6.1) and the async-jobs + proactive-turn mechanism (v6.2). Each is its own phase.
 </content>

@@ -28,7 +28,7 @@ a **ladder** — each is useful on its own; later rungs cost more and hand her m
 
 | Directive | What she does | Tool reach | Cost / change |
 |---|---|---|---|
-| **`%note`** | Thinks as usual, then **code** appends the thought to a dated file in her sandbox. A real on-disk diary of her interior. | **None** (the model never calls a tool — code owns the write). | Smallest. No tool-loop in the think path. Reuses v0.20 `append_file`/`create_file` + the "code owns the write" pattern (needs v1.11). |
+| **`%note`** | Thinks as usual, then **code** appends the thought to a dated file in her sandbox. A real on-disk diary of her interior. | **None** (the model never calls a tool — code owns the write). | Smallest. No tool-loop in the think path. Reuses v0.20 `append_file`/`create_file` + the "code owns the write" pattern (needs v2.3). |
 | **`%review`** | **Reads** one of her own notes via the file tools, then writes a thought seeded by what she read. | **Read** (`list_files` / `find_in_file` / `read_file`). | Medium. The think call runs through the read tool-loop + a thought-shaped terminal. Read-only — no disk change. |
 | **`%explore`** | A think that may **read and write** files as it decides. | **Read + write** (the full v0.19+v0.20 set). | Largest. The full file tool-loop in the think path. Proactive (idle) firings write **while you're away**. |
 
@@ -168,10 +168,10 @@ clobber it.
   written mirror lives in the writer's sandbox.
 
 > A subtle but important note: the **thought** is global to Лілі, but the **file** lives in a per-user
-> sandbox. With the default single `owner` user these coincide. When multi-user lands (v2.3), the
+> sandbox. With the default single `owner` user these coincide. When multi-user lands (v3.3), the
 > design choice — does her global diary mirror into *each* user's sandbox, or only the owner's? — is
 > called out here as **owner's sandbox only** (her journal is hers, written where she is the author),
-> and pinned by a test. The grand cross-user literary journal is v5.6, admin-only.
+> and pinned by a test. The grand cross-user literary journal is v6.6, admin-only.
 
 ---
 
@@ -190,7 +190,7 @@ clobber it.
   continuity, never her knowledge or willingness to help. A note is a musing she chose to keep, not a
   task list for you.
 - **Honest about nature.** A journal entry is *her inner/imaginative life written down*, never a factual
-  claim about the physical world — the v1.10 honesty rule applies verbatim.
+  claim about the physical world — the v2.2 honesty rule applies verbatim.
 - **Best-effort, never blocks.** Any file failure (tool off, I/O error, cap) degrades to "thought
   recorded in the diary, nothing written" and the turn completes — the same never-raise rule as the
   file executor and the thought engine.
@@ -269,7 +269,7 @@ proactive firings; overwrite/delete impossible; isolation holds. Mocked — no p
 - **`%review`/`%explore` terminal** — the thought-terminal loop (`record_thought` tool) vs the two-step
   gather-then-think. The two-step is simpler and contract-safe; the single-loop is cheaper. Decide at
   v0.23.
-- **Multi-user mirror** — confirm "owner's sandbox only" for the on-disk journal when v2.3 lands; pin
+- **Multi-user mirror** — confirm "owner's sandbox only" for the on-disk journal when v3.3 lands; pin
   with a test.
 - **Surfacing** — does an open `%note` print the *thought* (as `%think!` does today) or the *journal
   path*? Default: the thought, with the file as a silent durable mirror.

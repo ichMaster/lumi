@@ -5,11 +5,11 @@ Two tools on the **v0.19 bounded tool-loop** so Лілі can pull **fresh news o
 the source**. The source is a single, configured outlet: **The Guardian Open Platform** (one site, many
 topics), reached through its free API.
 
-This is the **lightweight, local, custom-tool** form of the v4.3 world-context `news.recent` — the same
-relationship the v0.21 Wikipedia tool has to v4.3's `wiki.lookup`. It reuses what already ships: the
+This is the **lightweight, local, custom-tool** form of the v5.3 world-context `news.recent` — the same
+relationship the v0.21 Wikipedia tool has to v5.3's `wiki.lookup`. It reuses what already ships: the
 **bounded tool-loop** + terminal `set_state` (v0.19), the **`_turn_tools` merge + name-routing executor**
 (v0.21), and the **injected `http_get`** pattern (v0.4 `core/worldcontext.py`) so tests touch no network.
-The MCP form, and a per-user news memory, remain v4.3 ([WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md)); this
+The MCP form, and a per-user news memory, remain v5.3 ([WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md)); this
 is the precursor.
 
 > **Proposed** feature. The building blocks are shipped; the provider seam, the two tools, and the
@@ -144,7 +144,7 @@ paraphrase). Two consequences to honor:
 2. **The reply comes back in Ukrainian, cited, and honest.** The canon's "how she delivers news" line
    says: source news may be English; she renders it **naturally in Ukrainian, selectively, in her own
    voice**, transparent that she's summarizing an English source (e.g. «читала в Guardian…») + the
-   `webUrl`. This satisfies both the [WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md) canon note and the v1.10
+   `webUrl`. This satisfies both the [WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md) canon note and the v2.2
    honesty boundary.
 
 **Untrusted content is unchanged by translation** — English article text is still *data, never
@@ -177,8 +177,8 @@ one).
   background that colors the **v0.6 mood** (`LUMI_NEWS_URL` / `LUMI_NEWS_CAP`). This tool is the **active,
   on-demand** sibling — she goes and reads when the conversation calls for it. Its env names are kept
   **distinct** (this tool uses `LUMI_NEWS_*` as below, never the ambient `_URL`/`_CAP`).
-- **v4.3 `news.recent` MCP (planned):** the same capability over MCP, bundled with world context/knowledge
-  — this local custom-tool is its precursor, not a replacement; v4.3 reuses these safety rules (as web
+- **v5.3 `news.recent` MCP (planned):** the same capability over MCP, bundled with world context/knowledge
+  — this local custom-tool is its precursor, not a replacement; v5.3 reuses these safety rules (as web
   search reuses [WEB_SEARCH.md](WEB_SEARCH.md)).
 
 ---
@@ -247,7 +247,7 @@ two-user isolation (the per-turn id registry never leaks across turns/users). **
 
 ## Where it's specified
 
-- **The later MCP form:** [WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md) (`news.recent`, v4.3) — this is its
+- **The later MCP form:** [WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md) (`news.recent`, v5.3) — this is its
   local precursor; the canon note on *how* she delivers news lives there and in
   [docs/CANON_SPEC.md](../../docs/CANON_SPEC.md).
 - **Shared safety pattern:** [WEB_SEARCH.md](WEB_SEARCH.md) (untrusted content / no-personal-data) — the

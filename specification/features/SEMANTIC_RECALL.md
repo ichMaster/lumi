@@ -17,7 +17,7 @@ retrieved by meaning** — explicitly (`/recall`) and automatically (RAG in the 
 |---|---|---|
 | session window | recent turns, verbatim | only recent |
 | short memory (v0.9) | compressed recent + last 5 days | lossy |
-| long-term: facts + impressions (v1.13) | durable understanding | not verbatim, not exhaustive |
+| long-term: facts + impressions (v2.5) | durable understanding | not verbatim, not exhaustive |
 | **semantic recall (v0.16–v0.17)** | **every message embedded → searched by meaning** | **exact recall of anything, anytime** |
 
 It **complements**, never replaces, the others: the summary/impression layers give the *voice and
@@ -58,7 +58,7 @@ Each turn: embed the incoming message → **top-K** over this user's vectors →
 - **Graceful + non-blocking:** error/empty → no block; never blocks or delays a turn (best-effort,
   like ambient context).
 - **Trusted history.** The recalled text is *your/her own* past words — **trusted**, unlike
-  untrusted web content (v4.2). It grounds the reply but never overrides her voice, the emotion
+  untrusted web content (v5.2). It grounds the reply but never overrides her voice, the emotion
   contract, or her competence.
 
 ## The hard contract — per-user isolation
@@ -67,7 +67,7 @@ The vector store is keyed by `user_id`, and **retrieval (both `/recall` and the 
 only over the requesting user's vectors**. User A's messages can **never** surface in user B's
 context — the same isolation invariant as the rest of memory (ARCHITECTURE §Identity, users, and
 memory scopes), pinned by a contract test. Only de-identified `SharedMemoryItem`s cross users, via
-the v3.3 pipeline — never raw embedded messages.
+the v4.3 pipeline — never raw embedded messages.
 
 ## Privacy
 
@@ -84,6 +84,6 @@ A local embedding model (fastembed / sentence-transformers, multilingual), `nump
 ## Mapping to the roadmap
 
 **v0.16 + v0.17 — Semantic recall**, pulled ahead of the inner-life and emotional-memory layers
-(v1.10–v1.14) — the exact-recall complement to those lossy layers, built first because its only
+(v2.2–v2.6) — the exact-recall complement to those lossy layers, built first because its only
 dependency already exists. Depends on **v0.2** (messages + the Repository).
 Per-user, isolated; local-by-default and private.

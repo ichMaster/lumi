@@ -192,7 +192,7 @@ spoken acknowledgment** ("хм, дай подумаю…") TTS'd immediately whe
 register, while the deep call runs — honest, in-character, and it buys the register its 10–30 s
 without dead air. **Effort:** 1–2 weeks. **Risk: MEDIUM-HIGH** — barge-in/VAD tuning, echo
 (headphones first), paid streaming APIs (**mock STT/TTS/LLM streams in tests**, no paid CI).
-Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v3.2/v3.4 reuse the same adapters).
+Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse the same adapters).
 
 ### S7 — Small fry (do opportunistically, after S0 proves them)
 - **RAG pre-work:** if S0 shows the e5-large query embed + cosine over the 450 MB JSONL costs

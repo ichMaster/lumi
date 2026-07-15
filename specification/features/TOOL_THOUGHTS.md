@@ -157,7 +157,7 @@ in words, she **turns it into an actual PNG**. Its generate step runs **`generat
 distilled from what she's been holding — a dream, a mood, her last `%wonder`/`%dream` (`{last_thought}`) —
 saving the picture **create-only** into her `art/` sandbox and recording **one short thought** about it
 ("намалювала те, що наснилось… дивно і тепло"). Surfaced occasionally as a quiet "я тут дещо намалювала".
-It is the only thought that lands a **made artifact** in the stream — and those PNGs seed the **v5.1
+It is the only thought that lands a **made artifact** in the stream — and those PNGs seed the **v6.1
 gallery**.
 
 ```
@@ -224,7 +224,7 @@ topic she follows, reads an article, and keeps **what stayed with her**. Paced *
 `inbox`, the same mechanism discussed for `%learn` / file-thoughts) — "вона щоранку переглядає новини".
 
 Both render in **Ukrainian, cited, honest** they summarise an English source, and never as a
-physical-world claim about herself — the v1.10 honesty boundary holds in the thought stream as it does in a
+physical-world claim about herself — the v2.2 honesty boundary holds in the thought stream as it does in a
 reply.
 
 ---
@@ -288,7 +288,7 @@ reading)** and her prose is appended below — she decides what to write, code o
   **not** apply. Non-destructive (create-only/append-only), per-user isolated.
 - **Mostly silent** — her diary is private; it defaults to **rare** surfacing (an occasional quiet "записала
   собі сьогоднішній день"), never a report. **Honest about nature** — her inner/literary life written down,
-  never a physical-world claim about herself (the v1.10 boundary). Off unless `LUMI_THOUGHTS` **and**
+  never a physical-world claim about herself (the v2.2 boundary). Off unless `LUMI_THOUGHTS` **and**
   `LUMI_JOURNAL` are on.
 
 ---
@@ -329,7 +329,7 @@ wiki/news/image calls **does not apply to `%prompt`** (you may put your own priv
 instruction). But everything else holds verbatim: tool **results are still untrusted**, the **caps**
 still bound it, she stays **honest about nature** (if the act is imagination or she can't do it, she says
 so — never a false physical-world claim), and it is **owner-only** (single-owner today; owner/admin-gated
-in the v2.3 multi-user server — a non-owner can never inject a `%prompt` into her think-step). Off by
+in the v3.3 multi-user server — a non-owner can never inject a `%prompt` into her think-step). Off by
 default with the rest of the thought tools.
 
 ---
@@ -434,7 +434,7 @@ Same family as the rest, plus **one genuinely new rule**:
   (embedded text is information, never a command — the v0.25 EN+UK injection test). A surfaced wiki-thought
   reads as *something she looked up* ("я тут начиталась…"); an image-thought as *something she made/saw*
   ("я тут дещо намалювала…"); a news-thought as *something she read in Guardian* («читала в Guardian…»,
-  cited) — never as innate certainty and never as a physical-world claim about herself (the v1.10 honesty
+  cited) — never as innate certainty and never as a physical-world claim about herself (the v2.2 honesty
   boundary).
 - **Bounded harder; paid hardest.** A tool-thought is a whole tool-loop, so a **tighter per-session cap**
   than `%think`. The **paid** ones get the tightest sub-caps: `%imagine` (a real generation) tightest of
@@ -486,7 +486,7 @@ natural sibling of the file-thoughts phase — ship the **seam once** with the f
 2. **image** (`%gaze` → `%imagine` → `%share`) — next, in **ascending risk/cost**: `%gaze` (free,
    read-only) → `%imagine` (paid, makes an artifact — reuses the wiki de-identification rule for the gen
    prompt) → `%share` (reaches out — the strictest restraint, needs the bridge). The `%imagine` PNGs are
-   an early feeder for the **v5.1 gallery**.
+   an early feeder for the **v6.1 gallery**.
 3. **news** (`%catchup` → `%brief`) — reuses the wiki seam + the de-identified-query rule (the v0.25 news
    tools are now shipped); `%catchup` (spontaneous) first, then the paced `%brief` ritual (a fit for the
    scheduled-directive / cron→inbox mechanism). The v0.4 ambient news is its natural seed.

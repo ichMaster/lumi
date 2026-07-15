@@ -10,11 +10,11 @@ what she writes is [`.lumi/journal/owner/2026-06-17.md`](../../.lumi/journal/own
 the day's **mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast** (the v0.6 reading) — so the
 metadata is honest and consistent with `/mood` and `/biorhythm`, never something the model can fabricate.
 
-> This is a **redesign**. The journal is no longer a v5.6 admin-only gallery artifact written by a separate
+> This is a **redesign**. The journal is no longer a v6.6 admin-only gallery artifact written by a separate
 > end-of-session gate — it is a **local, per-user tool** on the shipped v0.19 bounded tool-loop, reusing
 > the `safe_path` guard + the mood/biorhythm seams, writing to its **own dedicated root** (outside the file
 > sandbox). The grand admin-panel / gallery / cross-session
-> literary form survives as a **later evolution** (see [§Relationship to the v5.6 evolution](#relationship-to-the-v56-evolution)).
+> literary form survives as a **later evolution** (see [§Relationship to the v6.6 evolution](#relationship-to-the-v56-evolution)).
 
 ---
 
@@ -225,18 +225,18 @@ Reuses the `safe_path` guard and the v0.6 mood / v0.8 biorhythm config, but writ
 
 ---
 
-## Relationship to the v5.6 evolution
+## Relationship to the v6.6 evolution
 
-This local tool is the **foundation**; the grand form remains a **later evolution** (v5):
+This local tool is the **foundation**; the grand form remains a **later evolution** (v6):
 
-- **v5.1 gallery** can ingest these per-user `journal/<date>.md` files as `text` artifacts with an
+- **v6.1 gallery** can ingest these per-user `journal/<date>.md` files as `text` artifacts with an
   **admin-only** access level — the journal becoming part of the one creative store.
-- **v5.3 image** can attach an optional **mood drawing** to a day's entry, stored beside it in the gallery.
-- **v2.5 admin panel** adds **admin-only reading** of the journal across sessions (her truly private inner
-  life, never shown to users) — the original v5.6 promise, now built **on top of** the shipped local tool
+- **v6.3 image** can attach an optional **mood drawing** to a day's entry, stored beside it in the gallery.
+- **v3.5 admin panel** adds **admin-only reading** of the journal across sessions (her truly private inner
+  life, never shown to users) — the original v6.6 promise, now built **on top of** the shipped local tool
   rather than from scratch.
 
-So nothing in the v5 vision is lost; it is re-rooted on a tool that works **today**, per-user and local,
+So nothing in the v6 vision is lost; it is re-rooted on a tool that works **today**, per-user and local,
 instead of waiting for the whole server + creative layer.
 
 ---
@@ -249,4 +249,4 @@ composes the metadata header from the v0.6 mood + v0.8 biorhythms + v0.4 clock a
 v0.19/v0.20 file sandbox — **all shipped**. Per-user, isolated, non-destructive; off by default → behaves
 exactly like today. Depends on **v0.6** (mood/resolution + reading), **v0.8** (biorhythms), **v0.19/v0.20**
 (the file tool-loop + non-destructive writes), **v0.4** (the clock). The grander admin-panel / gallery /
-mood-drawing literary form is the **v5.6 evolution** above.
+mood-drawing literary form is the **v6.6 evolution** above.

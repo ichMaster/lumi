@@ -6,13 +6,13 @@ Two new capabilities on the **v0.19 bounded tool-loop**, so Лілі can work wi
   it** in chat.
 - **Generation** — she **makes** a PNG from a text prompt, saved to her sandbox and shown.
 
-This is the **lightweight, local, custom-tool** form of the v5 creative layer — the same relationship
-the v0.21 Wikipedia tool has to the v4.3 MCP knowledge layer. It reuses what already ships: the
+This is the **lightweight, local, custom-tool** form of the v6 creative layer — the same relationship
+the v0.21 Wikipedia tool has to the v5.3 MCP knowledge layer. It reuses what already ships: the
 **Gemini image** model (`gemini-2.5-flash-image`, your `GEMINI_API_KEY`) for generation, the model's
 **multimodal input** (Anthropic vision) for seeing, the **file sandbox** (v0.19/0.20) for storage, and
 the **viewer** (v0.7) + **Telegram photo** (v0.13) for display. The MCP/async/proactive-turn form — a
 per-user gallery, music, co-creation canvas — remains [GALLERY_MCP.md](GALLERY_MCP.md) /
-[CREATIVE_MCP.md](CREATIVE_MCP.md) at v5; this is the precursor.
+[CREATIVE_MCP.md](CREATIVE_MCP.md) at v6; this is the precursor.
 
 > **Vision (v0.22) + generation (v0.23) are shipped.** The remaining piece is **`send_image`** (v0.24 —
 > send a sandbox picture to Telegram). What follows kept its original framing; the building blocks, the tools, the generation seam, and the vision
@@ -217,16 +217,16 @@ outbox + `send_photo`).
   a sandbox-relative path in your message?). Proposed: a `/image <path>` (or `%see`) that attaches it.
 - **Provider** — Gemini for generation (reuses your key). OpenAI/Stability behind `LUMI_IMAGE_PROVIDER`
   later.
-- **Relationship to v5** — this stays the **local custom-tool** form; the per-user **gallery**, async
-  generation with **proactive turns**, and the **canvas** remain v5 (GALLERY/CREATIVE MCP). The
-  generated PNGs in the sandbox are the seed the v5.1 gallery later indexes.
+- **Relationship to v6** — this stays the **local custom-tool** form; the per-user **gallery**, async
+  generation with **proactive turns**, and the **canvas** remain v6 (GALLERY/CREATIVE MCP). The
+  generated PNGs in the sandbox are the seed the v6.1 gallery later indexes.
 
 ---
 
 ## Where it's specified
 
-- **The later MCP form:** [GALLERY_MCP.md](GALLERY_MCP.md) (gallery + vision, v5.1),
-  [CREATIVE_MCP.md](CREATIVE_MCP.md) (async image/music + proactive turns, v5.3/5.5).
+- **The later MCP form:** [GALLERY_MCP.md](GALLERY_MCP.md) (gallery + vision, v6.1),
+  [CREATIVE_MCP.md](CREATIVE_MCP.md) (async image/music + proactive turns, v6.3/5.5).
 - **Shared safety pattern:** [WEB_SEARCH.md](WEB_SEARCH.md) (untrusted content / no-personal-data).
 - **Reused infra:** the v0.19 tool-loop ([FILE_TOOL.md](FILE_TOOL.md)), the v0.7 viewer
   ([EMOTION_VIEWER.md](EMOTION_VIEWER.md)), the v0.13 Telegram photo ([TELEGRAM.md](TELEGRAM.md)).

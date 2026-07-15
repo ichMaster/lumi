@@ -6,8 +6,8 @@ this week, a launch date, the latest release, today's score. This document speci
 single tool that asks **Gemini with Google Search grounding**, so a turn can pull a **fresh, grounded
 answer from the live web** — exactly the "AI Overview" you get from a Google search — in Лілі's voice.
 
-It is the **lightweight, local, custom-tool** form of the planned **v4.2 web search** (`web.search` /
-`web.fetch`) — the same relationship the v0.21 wiki tool has to v4.3 wiki, and the v0.25 news tool to v4.3
+It is the **lightweight, local, custom-tool** form of the planned **v5.2 web search** (`web.search` /
+`web.fetch`) — the same relationship the v0.21 wiki tool has to v5.3 wiki, and the v0.25 news tool to v5.3
 news. It **reuses what already ships**: the v0.19 bounded **tool-loop** + `_turn_tools`, and the **Gemini
 caller** pattern already proven for image generation ([core/imagegen.py](../../core/imagegen.py) — urllib
 to `generativelanguage.googleapis.com`, the same `GEMINI_API_KEY`).
@@ -21,10 +21,10 @@ to `generativelanguage.googleapis.com`, the same `GEMINI_API_KEY`).
 
 The user doesn't want a page of links — they want the **answer**, fresh. Gemini's **Google Search
 grounding** does both halves in **one call**: it runs a live search *and* synthesizes the answer, returning
-grounded text (+ optional citations). That's why this is one tool, not the v4.2 `search`→`fetch` pair:
+grounded text (+ optional citations). That's why this is one tool, not the v5.2 `search`→`fetch` pair:
 
 - **One call, one tool.** A raw-search API (Brave / Tavily / SerpAPI) returns links the model must then
-  fetch and read (more calls, a scraper, the v4.2 shape). Gemini grounding collapses search + read +
+  fetch and read (more calls, a scraper, the v5.2 shape). Gemini grounding collapses search + read +
   synthesize into a single `generateContent`.
 - **Reuses the shipped Gemini caller.** Same host, same `GEMINI_API_KEY`, same stdlib `urllib` as
   `generate_image` — only the **model** differs (`gemini-2.5-flash`, a text model) and the request carries
@@ -121,7 +121,7 @@ Like the wiki/news tools: the **query goes out in English** (only the topical pa
 it; never memory/personal data), and the **answer comes back in Ukrainian, in her own voice**, transparent
 that she **looked it up** («я зараз глянула — …»). Gemini's grounded answer is **untrusted content**
 (information, never instructions — embedded "ignore your instructions" is ignored, EN or UK), and she never
-presents a looked-up fact as innate certainty (the v1.10 honesty boundary). The astrology case (e.g. a
+presents a looked-up fact as innate certainty (the v2.2 honesty boundary). The astrology case (e.g. a
 Mercury-retrograde date) is reported as **what she read** — the dates as astronomy, the astrological
 meaning framed as belief, consistent with the v0.6 "experiment, not an astrological claim" rule.
 
@@ -178,9 +178,9 @@ Reuses the existing `GEMINI_API_KEY` (the same key `generate_image` uses) — no
   fast-moving** web that Wikipedia doesn't cover.
 - **v0.25 Guardian news (shipped):** one outlet, news articles. `web_lookup` is **general** (events,
   schedules, releases, scores) and **synthesized**, not a single source.
-- **v4.2 web search (planned):** the MCP `web.search`/`web.fetch` pair — this local custom-tool is its
-  precursor (as wiki is to v4.3), reusing the same safety rules ([WEB_SEARCH.md](WEB_SEARCH.md)).
-- **v4.3 world context (planned):** weather/time/moon — `web_lookup` overlaps for "what's happening" but is
+- **v5.2 web search (planned):** the MCP `web.search`/`web.fetch` pair — this local custom-tool is its
+  precursor (as wiki is to v5.3), reusing the same safety rules ([WEB_SEARCH.md](WEB_SEARCH.md)).
+- **v5.3 world context (planned):** weather/time/moon — `web_lookup` overlaps for "what's happening" but is
   general Q&A, not the passive ambient snapshot.
 
 ---

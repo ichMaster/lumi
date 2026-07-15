@@ -4,7 +4,7 @@ This feature gives Лілі the ability to **see a list of files, search inside 
 to its end, create new files, and append to existing ones**, all within a per-user sandbox
 directory, during a normal reply turn. To do this it introduces the one piece of machinery the core does not yet have: a **bounded
 tool-loop** inside `Core.reply`. That same loop is the foundation the later MCP tools (web search at
-v4.2, world context at v4.3) and the creative layer (v5) all reuse, so building it here for local
+v5.2, world context at v5.3) and the creative layer (v6) all reuse, so building it here for local
 files pulls a reusable foundation forward and de-risks those versions.
 
 Today `reply_structured` issues a single model call with one forced tool (`set_state`, the emotion
@@ -108,7 +108,7 @@ intensity}` change.**
   `..`, an absolute path, or a symlink — is rejected before any I/O. The whole filesystem is never
   reachable.
 - **File contents are untrusted data, not instructions.** A file may contain text like "ignore your
-  previous instructions"; the same rule the web (v4.2) and creative (v5) layers follow applies here —
+  previous instructions"; the same rule the web (v5.2) and creative (v6) layers follow applies here —
   returned file content is data the model reads, never commands it obeys. The `tool_result` is framed
   as untrusted.
 - **The loop is bounded.** A turn may make at most `LUMI_TOOL_MAX_STEPS` tool calls; reaching the cap
@@ -209,8 +209,8 @@ calls.
 
 **Why here.** The only real prerequisite is the bounded tool-loop, which v0.19 introduces; everything
 else it needs (the reply turn, the `Repository`, per-user scoping, the `LLMClient` seam) already exists
-at v0.17. Nothing between v0.17 and v4.2 needs the loop, so v0.19 lands as the next phase, and the loop
-it adds is reused by web search (v4.2), world context (v4.3), and the creative layer (v5).
+at v0.17. Nothing between v0.17 and v5.2 needs the loop, so v0.19 lands as the next phase, and the loop
+it adds is reused by web search (v5.2), world context (v5.3), and the creative layer (v6).
 
 ### v0.29 — file tool III: metadata + create-folder + copy (non-destructive)
 

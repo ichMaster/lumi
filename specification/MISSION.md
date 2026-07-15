@@ -10,7 +10,7 @@ A deliberately simple project where we build the "soul" first and the "face" lat
 
 ## For whom
 
-A private project for myself and a close circle. In v0 it is just me, local in the terminal; from v2 a few trusted people can connect as clients (multi-user in v2.3, a web client in v2.4) — added by hand (allowlist / invite), never by open public sign-up. This is not a mass-market product or a public service.
+A private project for myself and a close circle. In v0 it is just me, local in the terminal; from v3 a few trusted people can connect as clients (multi-user in v3.3, a web client in v3.4) — added by hand (allowlist / invite), never by open public sign-up. This is not a mass-market product or a public service.
 
 ## Principles
 
@@ -20,40 +20,40 @@ A private project for myself and a close circle. In v0 it is just me, local in t
 - **Emotion is part of the reply.** The model returns its own state as a separate field, rather than us guessing it after the fact.
 - **The emotion channel is cross-cutting.** We define once how Лілі reports her state; after that we only change how it is shown: emoji → image → animation.
 - **Mood is an experiment.** Лілі has a daily mood of the day — a horoscope-derived temperament (core, from v0.6) that colors her tone and which emotions she leans toward, **never her competence or willingness to help**. Astrology is used only as a generative method for daily variation, not as a claim about reality.
-- **Лілі creates as herself.** From v5 she makes her own drawings and music, draws with you on a shared canvas, and keeps a private literary journal — her own expression in her style and voice, on her own initiative. The creative layer is off by default, per-user; your shared files are untrusted; her journal is her private inner life (admin-only).
+- **Лілі creates as herself.** From v6 she makes her own drawings and music, draws with you on a shared canvas, and keeps a private literary journal — her own expression in her style and voice, on her own initiative. The creative layer is off by default, per-user; your shared files are untrusted; her journal is her private inner life (admin-only).
 - **One model to start, more later.** Лілі runs on **Claude Haiku (Anthropic)** from v0.1 — the only model to begin with; **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) become switchable in config from v0.18. The core depends on a thin `LLMClient` seam, never a concrete SDK.
 - **One Лілі, many relationships.** Лілі is one being (one canon, one evolving self), but each person's history and facts are private to that relationship. Her shared self may carry de-identified experience between people; no one's private memory ever crosses to another. The core is user-aware from v0 (one default user) so going multi-user is additive, not a rewrite.
-- **Closed by default.** From v2.3 the service is multi-user and closed: access is an allowlist, registration is admin-managed, and an unauthenticated request never reaches Лілі.
-- **Local and private.** In v0 the app runs locally — memory, the TUI, the face, the voicer — with **no server**; the server arrives only in v2. The model (Claude Haiku, Anthropic) and the voice (ElevenLabs) are cloud APIs (keys in `.env`): private by design (your data, local memory, no public service), but not offline.
+- **Closed by default.** From v3.3 the service is multi-user and closed: access is an allowlist, registration is admin-managed, and an unauthenticated request never reaches Лілі.
+- **Local and private.** In v0 the app runs locally — memory, the TUI, the face, the voicer — with **no server**; the server arrives only in v3. The model (Claude Haiku, Anthropic) and the voice (ElevenLabs) are cloud APIs (keys in `.env`): private by design (your data, local memory, no public service), but not offline.
 
 ## Non-goals
 
 - Not the heavy cognitive architecture of earlier projects (no planner-facets, no scores).
 - No hardware (that is Pyramid) and no virtual world (that is AI Town) — Lumi is purely about text, emotion, voice, a face, and shared creation (art, music, journal) in chat.
-- No open public sign-up in any planned version; multi-user (v2.3) stays a closed, admin-managed allowlist for a close circle.
+- No open public sign-up in any planned version; multi-user (v3.3) stays a closed, admin-managed allowlist for a close circle.
 
 ## Glossary
 
 - **Canon** — the stable core of Лілі's character (biography, values, voice); shared by all users.
-- **Server & clients** — from v2.1 a server wraps the core and serves thin clients: the TUI (in-process in v0, a client from v2.1) and a CLI management utility (v2.1), then a web client (v2.4). The core's logic never lives in a client.
+- **Server & clients** — from v3.1 a server wraps the core and serves thin clients: the TUI (in-process in v0, a client from v3.1) and a CLI management utility (v3.1), then a web client (v3.4). The core's logic never lives in a client.
 - **Emotion field** — the structured state the model returns together with a reply (emotion + intensity).
-- **Emotion viewer** — a local desktop window (v0.7) showing a portrait of Лілі for her current emotion, from a `faces/` asset pack — the local-stage image face before the web (v3.1). See [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md).
+- **Emotion viewer** — a local desktop window (v0.7) showing a portrait of Лілі for her current emotion, from a `faces/` asset pack — the local-stage image face before the web (v4.1). See [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md).
 - **Temperament (mood of the day)** — Лілі's daily mood: horoscope-derived dials (energy, warmth, playfulness, talkativeness) computed once per day and injected into the system prompt to color her tone and emotions, never her competence. Core, from v0.6 (see [ARCHITECTURE.md](ARCHITECTURE.md) §Mood and temperament).
-- **User** — a person with a private relationship with Лілі. In v0–v2.1 a single default `owner`; real accounts arrive in v2.3.
+- **User** — a person with a private relationship with Лілі. In v0–v3.1 a single default `owner`; real accounts arrive in v3.3.
 - **Relationship memory** — one user's session history, short summaries, and long-term facts. Private, scoped per user, never crosses to another.
-- **Shared experience** — Лілі's evolving self: de-identified knowledge and reflections she carries across all relationships (v3.3).
-- **Cross-pollination** — the gated, de-identified promotion of shareable knowledge from one relationship into Лілі's shared experience, opt-in per user (v3.3).
+- **Shared experience** — Лілі's evolving self: de-identified knowledge and reflections she carries across all relationships (v4.3).
+- **Cross-pollination** — the gated, de-identified promotion of shareable knowledge from one relationship into Лілі's shared experience, opt-in per user (v4.3).
 - **Short memory** — concise summaries of the last few sessions (per user), so Лілі remembers the thread between meetings.
 - **Long-term memory** — durable facts about a user that persist across that user's sessions.
-- **Admin panel** — the v2.5 admin-only web surface for managing users, access, consent, memory, and config.
-- **Voice output** — synthesis of the reply's voice via ElevenLabs: a **local voicer** console app first (v0.14, see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), then server-side in the web (v3.2). Same TTS adapter.
-- **Dictation** — Ukrainian voice input (STT): a **local dictator** console app first (v0.21, the mirror of the voicer — see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), then server-side in the web (v3.4). Same STT adapter.
-- **MCP** — Model Context Protocol; the mechanism by which Лілі reaches an external tool. Web search (v4.2) is the first MCP service, world context & knowledge (v4.3) the next; the layer is extensible (e.g. the proposed creative servers in [CREATIVE_MCP.md](features/CREATIVE_MCP.md)).
-- **Web search** — an optional, off-by-default MCP tool letting Лілі look things up on the open internet within strict bounds (see [WEB_SEARCH.md](features/WEB_SEARCH.md)). v4.2.
-- **World context** — optional, off-by-default, passive MCP tools (weather, time, holidays, moon, wiki, news) that give Лілі an ambient sense of the day and structured facts; the ambient sources feed her v0.6 mood (alongside the horoscope), coloring tone, never competence (see [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md)). v4.3.
-- **Vision** — Anthropic multimodal input: Лілі sees images you share (a photo, the canvas) as part of her reply context. v5.1.
-- **Gallery** — a shared, per-user artifact store (Лілі's drawings/tracks/journal + your files); internal, behind `repository`, isolated per user (see [GALLERY_MCP.md](features/GALLERY_MCP.md)). v5.1.
-- **Proactive turn** — a turn the server starts on its own when an async job (a drawing/track) is ready, so Лілі brings the result in her voice (ARCHITECTURE §Async jobs and proactive turns). v5.2.
-- **Creative MCP** — external generators Лілі drives herself: `image` (drawings) and `music` (ElevenLabs Music, instrumental), asynchronous (see [CREATIVE_MCP.md](features/CREATIVE_MCP.md)). v5.3 / v5.5.
-- **Co-creation canvas** — turn-based joint drawing where Лілі and you paint over a shared image (see [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md)). v5.4.
-- **Journal** — Лілі's private literary journal of her inner life, admin-only (see [JOURNAL.md](features/JOURNAL.md)). v5.6.
+- **Admin panel** — the v3.5 admin-only web surface for managing users, access, consent, memory, and config.
+- **Voice output** — synthesis of the reply's voice via ElevenLabs: a **local voicer** console app first (v0.14, see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), then server-side in the web (v4.2). Same TTS adapter.
+- **Dictation** — Ukrainian voice input (STT): a **local dictator** console app first (v0.21, the mirror of the voicer — see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), then server-side in the web (v4.4). Same STT adapter.
+- **MCP** — Model Context Protocol; the mechanism by which Лілі reaches an external tool. Web search (v5.2) is the first MCP service, world context & knowledge (v5.3) the next; the layer is extensible (e.g. the proposed creative servers in [CREATIVE_MCP.md](features/CREATIVE_MCP.md)).
+- **Web search** — an optional, off-by-default MCP tool letting Лілі look things up on the open internet within strict bounds (see [WEB_SEARCH.md](features/WEB_SEARCH.md)). v5.2.
+- **World context** — optional, off-by-default, passive MCP tools (weather, time, holidays, moon, wiki, news) that give Лілі an ambient sense of the day and structured facts; the ambient sources feed her v0.6 mood (alongside the horoscope), coloring tone, never competence (see [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md)). v5.3.
+- **Vision** — Anthropic multimodal input: Лілі sees images you share (a photo, the canvas) as part of her reply context. v6.1.
+- **Gallery** — a shared, per-user artifact store (Лілі's drawings/tracks/journal + your files); internal, behind `repository`, isolated per user (see [GALLERY_MCP.md](features/GALLERY_MCP.md)). v6.1.
+- **Proactive turn** — a turn the server starts on its own when an async job (a drawing/track) is ready, so Лілі brings the result in her voice (ARCHITECTURE §Async jobs and proactive turns). v6.2.
+- **Creative MCP** — external generators Лілі drives herself: `image` (drawings) and `music` (ElevenLabs Music, instrumental), asynchronous (see [CREATIVE_MCP.md](features/CREATIVE_MCP.md)). v6.3 / v6.5.
+- **Co-creation canvas** — turn-based joint drawing where Лілі and you paint over a shared image (see [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md)). v6.4.
+- **Journal** — Лілі's private literary journal of her inner life, admin-only (see [JOURNAL.md](features/JOURNAL.md)). v6.6.

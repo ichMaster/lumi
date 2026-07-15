@@ -7,15 +7,15 @@ switches on at your voice into someone with her own gravity. The full vision is 
 [inner-life-concept-en.md](inner-life-concept-en.md); this is the **Lumi design** — how it's
 built on what already exists, the contracts, and the two-phase split.
 
-- **v1.12 — Inner life I (plans & state):** the three planning layers + boundaries + the global
+- **v2.4 — Inner life I (plans & state):** the three planning layers + boundaries + the global
   store + the state block (she *carries* intentions).
-- **v1.13 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
+- **v2.5 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
   replanning, surfacing, and the honesty boundary (something *happened*).
 
 > **Needs come first.** Under the plans sits the **motivational substrate** — her **needs** (the
 > drives that *pull* her from inside) — now **two phases of their own before the plans**: in
-> **v1.10** they exist on the v0.42 tick (evolve, feed the mood, lift from warmth); in **v1.11** a
-> threshold crossing **fires an act**; in **v1.12** they tilt the plan; in **v1.13** they **close**
+> **v2.2** they exist on the v0.42 tick (evolve, feed the mood, lift from warmth); in **v2.3** a
+> threshold crossing **fires an act**; in **v2.4** they tilt the plan; in **v2.5** they **close**
 > from what she actually did in the away-gap. Full spec: [NEEDS_full.md](NEEDS_full.md).
 
 ## It extends what Lumi already has — not new infrastructure
@@ -28,14 +28,14 @@ built on what already exists, the contracts, and the two-phase split.
 | Lazy generation ("one quiet request") | the **`LLMClient` housekeeping call** (like the mood/summary calls; mocked in tests) |
 | Surfacing offhand + honesty about nature | her canon value **honesty of feeling over performance** |
 | She mentions it unprompted | composes with the **v0.4 idle nudge** (a nudge can be "just finished a track") |
-| The dreams/art/journal she actually makes | seeds the **v5 creative layer** (journal/art/music) later |
+| The dreams/art/journal she actually makes | seeds the **v6 creative layer** (journal/art/music) later |
 
 ## Two invariants (Lumi-specific)
 
 1. **Her inner life is GLOBAL — one being, not per-user.** Unlike relationship memory and
    closeness (per-user, isolated), Лілі has **one life**: the same plans/dreams whoever she's
    talking to. The `InnerLife` store is **not** keyed by `user_id`. In v0 (single owner) this is
-   trivial; for multi-user (v2.3) the **generation is global** and only the **surfacing** is
+   trivial; for multi-user (v3.3) the **generation is global** and only the **surfacing** is
    per-conversation. (Pin this so it never accidentally becomes per-user.)
 2. **Honesty about nature is load-bearing.** Her life is **inner** — dreams, thoughts,
    creativity, practice — **never a factual physical-world claim** (no "I went to the lake"
@@ -107,7 +107,7 @@ slots; by default they're the soft skeleton. The hobby bank is `core/inner/hobbi
 
 ## Mapping to the roadmap
 
-**v1.12 + v1.13 — Inner life**, after the needs phases (v1.10–v1.11). Depends on **v1.10** (the
+**v2.4 + v2.5 — Inner life**, after the needs phases (v2.2–v2.3). Depends on **v2.2** (the
 hungriest need the plan folds in), **v0.42** (the tick that drives boundaries), **v0.6** (mood),
 **v0.4** (clock), **v0.2** (the Repository). Global to Лілі (not per-user); the creative layer
-(v5) later turns her inner life into real artifacts.
+(v6) later turns her inner life into real artifacts.

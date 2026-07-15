@@ -71,14 +71,14 @@ Three properties, simpler than v0.13's:
    (`LUMI_SCHED_TICK_FAST_MS`) runs **ephemeral code handlers** like **`%update_state`** (a registered
    callback, **not** a model directive — silent: no `Thought`, no model call) — fire-and-forget,
    never persisted, **a no-op if missed** (the work is a split-invariant advance-to-`now`; her time
-   flows only while the TUI runs — state saved on close, resumed on start, v1.10). So the v0.4 nudge + the v0.12 `%think` idle trigger **fold in** as
+   flows only while the TUI runs — state saved on close, resumed on start, v2.2). So the v0.4 nudge + the v0.12 `%think` idle trigger **fold in** as
    `idle:` entries — one clock, one place to tune, idle *and* wall-clock together.
 
 **Why not a separate always-on scheduler?** It would have to either (a) run while the TUI is down — but it
 can't *execute* anything then (the brain is the TUI), so it would only pile stale entries on disk — or (b)
 own state itself, which rebuilds the heavy thing (process lifecycle, cron↔core consistency, crash
-recovery). A genuinely always-on scheduler belongs at **v2 (the server)**, where the brain *is* always-on;
-there the same `due()` + `run_directive` + the v1.10/v1.12 `update(state, now)` simply move into the server loop,
+recovery). A genuinely always-on scheduler belongs at **v3 (the server)**, where the brain *is* always-on;
+there the same `due()` + `run_directive` + the v2.2/v2.4 `update(state, now)` simply move into the server loop,
 unchanged.
 
 ---
@@ -183,7 +183,7 @@ delete the in-app timer once the queue path is proven. One clock at the end, not
 - **No core change / single brain (v0.13).** The scheduler only writes the queue; the TUI runs everything
   through the existing `run_directive`. The core never learns the scheduler exists.
 - **Single-owner.** The scheduler is the **owner's** (like the bridge) — one schedule, one relationship.
-  Multi-user / per-user schedules are the **v2.3 server** era. The `Thought` store stays **global to
+  Multi-user / per-user schedules are the **v3.3 server** era. The `Thought` store stays **global to
   Лілі**; surfacing stays **per-conversation**.
 - **The schedule is trusted config; tool results are not.** The owner authors `schedule.toml` (trusted),
   but a fired directive that calls a tool **still obeys every tool-thought rule** — de-identified query,

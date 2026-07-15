@@ -70,7 +70,7 @@ Four independent pieces around the core, coupled by a few files: the TUI, the di
 - **Toggle, not hold** — more reliable for the terminal; hold-to-talk is left for the desktop stage.
 - **Dedup** — `id` (a counter), as in the voicer, so lines aren't doubled.
 - **STT errors** — if recognition is empty/low-confidence, write nothing to `inbox` (better silent than garbage); the TUI may optionally show "didn't catch that".
-- **Language** — Ukrainian; the provider is configurable (Deepgram Nova-3 uk / Whisper / ElevenLabs Scribe), via the same STT adapter the web dictation (v3.4) uses.
+- **Language** — Ukrainian; the provider is configurable (Deepgram Nova-3 uk / Whisper / ElevenLabs Scribe), via the same STT adapter the web dictation (v4.4) uses.
 - **Locality** — recording is local; the internet is needed only for a cloud STT call, or run **offline with local Whisper**.
 - **Overall toggle** — enable/disable dictation by running/stopping the process or a flag in its config.
 
@@ -82,5 +82,5 @@ Four independent pieces around the core, coupled by a few files: the TUI, the di
 
 ## Where it lives in the Lumi roadmap
 
-**v0.26 — Local dictation (STT)** — the STT mirror of the v0.14 voicer: voice *in* to mirror voice *out*, locally, no server. Stack — a simple console Python app + microphone capture + the shared `/voice` STT adapter. Depends on: v0.1 (the core consumes user turns) and v0.14 (the local-process + shared-file pattern). The web sibling is **v3.4** (both use the same STT adapter).
+**v0.26 — Local dictation (STT)** — the STT mirror of the v0.14 voicer: voice *in* to mirror voice *out*, locally, no server. Stack — a simple console Python app + microphone capture + the shared `/voice` STT adapter. Depends on: v0.1 (the core consumes user turns) and v0.14 (the local-process + shared-file pattern). The web sibling is **v4.4** (both use the same STT adapter).
 </content>

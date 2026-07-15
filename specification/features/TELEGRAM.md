@@ -76,19 +76,19 @@ that originated here* — a keyboard line and her reply — and the echo is solv
 > On your phone you see: a Telegram message you sent (Telegram's own bubble) → Лілі's reply; and for a
 > terminal turn, `💻 your line` → Лілі's reply. Both surfaces mirror both sides, once each.
 
-## Scope: single-owner now, multi-user at v2.3
+## Scope: single-owner now, multi-user at v3.3
 
 v0.13 is the **personal** bot: the Telegram user **is the owner** — the same `user_id`, the same
 relationship (memory, closeness, the global thought-stream), and **one ongoing session**. Because the
 TUI is the single brain over the local JSON store, the assumption is **one active interface at a time**
 (you use the bot *or* the TUI; running both at once is the two-writer case). **Multiple users, parallel
-isolated sessions, real auth, and concurrency** are the **v2.3 server** step — not pulled into v0.
+isolated sessions, real auth, and concurrency** are the **v3.3 server** step — not pulled into v0.
 
 ## The one constraint
 
 The **TUI must be running** for Telegram to get answers (it's the brain). With the TUI down, daemon 1
 keeps buffering into `inbox.jsonl` and daemon 2 idles; replies flow when the TUI is back. A truly
-**always-on, standalone** Telegram Лілі (the core running headless without the TUI) is the **v2.1
+**always-on, standalone** Telegram Лілі (the core running headless without the TUI) is the **v3.1
 server**. So the laptop version: run the TUI + the two daemons; she's reachable on the phone while the
 laptop is on.
 
@@ -126,6 +126,6 @@ Telegram id) · `LUMI_TELEGRAM_FLUSH_S` (inbound buffer flush, default 2) · `LU
 
 **v0.13 — Telegram bot**, right after the thought-stream (v0.12) whose proactive push it carries, and
 before the inner-life phases. A **bridge** (TUI brain + file bus + two daemons), single-owner; the
-multi-user, always-on **server** incarnation is v2.1 (server) + v2.3 (accounts/auth). Depends on
+multi-user, always-on **server** incarnation is v3.1 (server) + v3.3 (accounts/auth). Depends on
 **v0.2** (user-scoped core + Repository), **v0.3** (the emotion channel), **v0.12** (proactive
 thoughts → push).

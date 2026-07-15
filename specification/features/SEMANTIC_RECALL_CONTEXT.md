@@ -85,7 +85,7 @@ retrieval is a fallback for very long-range hits where the surrounding turns are
 
 Context expansion handles the **local** thread around a hit. The **global** arc is still carried by
 the lossy layers that sit beside the RAG block: the week/day/session digests give "what's been going
-on," the impressions layer (v1.13) gives the felt understanding. Together: RAG = the exact moment
+on," the impressions layer (v2.5) gives the felt understanding. Together: RAG = the exact moment
 with its immediate surroundings; digests = the arc it sits in. Neither alone; both in the same tail.
 
 ## Contract & isolation

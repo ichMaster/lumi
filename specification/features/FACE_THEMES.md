@@ -7,7 +7,7 @@ of the day**). It lands as **v0.11**.
 
 > Both features are **renderer + mood-side**. The model still emits only `{reply, emotion,
 > intensity}` (EMOTION.md §3) — the v0.3 contract is untouched. They reuse the v0.7 signal +
-> `calm` fallback and the v0.6 mood. The web portrait (v3.1) can reuse the same packs.
+> `calm` fallback and the v0.6 mood. The web portrait (v4.1) can reuse the same packs.
 
 ## Essence
 
@@ -89,4 +89,4 @@ renderer + mood-side.
 
 **v0.11 — Face variants & mood themes**, right after the v0.7 viewer: variety + a wardrobe that
 follows her mood. **Depends on v0.7** (the viewer + the signal) and **v0.6** (the mood). The web
-portrait (v3.1) reuses the same packs.
+portrait (v4.1) reuses the same packs.
