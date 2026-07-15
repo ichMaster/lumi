@@ -235,3 +235,38 @@ def test_core_logs_nothing_when_monitor_off(tmp_path):
     core._llm.last_stats = ResponseStats(model="m", latency_ms=5, cache_write_tokens=22000)
     core._accumulate_stats(turn=True, kind="reply")
     assert not (tmp_path / "cache-log.jsonl").exists()
+
+
+# --- v1.3 LUMI-185: latency_ms on the record + report median column ------------------------------
+
+
+def test_latency_ms_round_trips_and_legacy_records_default_none(tmp_path):
+    p = tmp_path / "c.jsonl"
+    append_event(p, CacheEvent("t1", "reply", 100, 0, 10, 5, 12.0, "none", latency_ms=2300))
+    # a legacy line without the field must still load (latency_ms → None)
+    p.open("a", encoding="utf-8").write(
+        '{"ts":"t2","kind":"reply","cache_read":0,"cache_write":0,"input":1,"output":1,'
+        '"gap_s":null,"cause":"none"}\n'
+    )
+    evs = load_events(p)
+    assert evs[0].latency_ms == 2300 and evs[1].latency_ms is None
+
+
+def test_report_shows_per_channel_median_latency():
+    events = [
+        CacheEvent("t", "reply", 20000, 0, 100, 50, 12.0, "none", latency_ms=1000),
+        CacheEvent("t", "reply", 20000, 0, 100, 50, 12.0, "none", latency_ms=3000),
+        CacheEvent("t", "reply", 20000, 0, 100, 50, 12.0, "none", latency_ms=5000),
+    ]
+    md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
+    assert "Median latency" in md
+    reply_row = next(line for line in md.splitlines() if line.startswith("| reply"))
+    assert "3.0s" in reply_row  # median of 1000/3000/5000 ms
+
+
+def test_report_renders_when_no_record_carries_latency():
+    # backward-compat: all-legacy events → the column shows '—', never crashes
+    events = [CacheEvent("t", "reply", 100, 0, 10, 5, 12.0, "none")]
+    md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
+    reply_row = next(line for line in md.splitlines() if line.startswith("| reply"))
+    assert reply_row.rstrip().endswith("— |")

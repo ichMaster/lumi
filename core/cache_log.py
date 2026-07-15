@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 # Cache TTL → seconds, for the "expired" threshold.
@@ -85,10 +85,11 @@ class CacheEvent:
     model: str = ""      # the model for this call (for the per-activity cost)
     session_id: str = "" # the session this call belongs to (for the per-session breakdown; "" = legacy)
     changed_section: str = ""  # for a `moved` write: which prefix section(s) changed (canon/memory/mood)
+    latency_ms: int | None = None  # v1.3 LUMI-185: wall-clock of the call (None on legacy records)
 
 
 _FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause", "model",
-           "session_id", "changed_section")
+           "session_id", "changed_section", "latency_ms")
 
 
 def append_event(path: str | Path, event: CacheEvent) -> None:
@@ -126,15 +127,25 @@ class _ChannelAgg:
     expired: int = 0
     moved: int = 0
     evicted: int = 0
+    latencies: list[int] = field(default_factory=list)  # v1.3: for the median-latency column
 
     def add(self, e: CacheEvent) -> None:
         self.calls += 1
         self.cache_read += e.cache_read
         self.cache_write += e.cache_write
+        if e.latency_ms is not None:  # legacy records (no field) are simply skipped
+            self.latencies.append(e.latency_ms)
         if e.cause != "none":
             self.writes += 1
             if hasattr(self, e.cause):
                 setattr(self, e.cause, getattr(self, e.cause) + 1)
+
+    @property
+    def median_latency_ms(self) -> int | None:
+        if not self.latencies:
+            return None
+        s = sorted(self.latencies)
+        return s[len(s) // 2]
 
 
 def _ratio(read: int, write: int) -> str:
@@ -145,6 +156,20 @@ def _ratio(read: int, write: int) -> str:
 
 def _fmt(n: int) -> str:
     return f"{n:,}"
+
+
+def _median(xs: list[int]) -> int | None:
+    if not xs:
+        return None
+    s = sorted(xs)
+    return s[len(s) // 2]
+
+
+def _lat(ms: int | None) -> str:
+    """A latency cell: seconds when ≥1 s, else ms; '—' when no records carried the field (legacy)."""
+    if ms is None:
+        return "—"
+    return f"{ms / 1000:.1f}s" if ms >= 1000 else f"{ms}ms"
 
 
 def _usd(x: float) -> str:
@@ -292,19 +317,23 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
 
     out.append("## By channel (cache behaviour)\n")
     out.append(
-        "| Channel | Calls | Cache read | Cache write | Read:Write | Writes (first / expired / moved / evicted) |\n"
-        "|---|--:|--:|--:|--:|--:|"
+        "| Channel | Calls | Cache read | Cache write | Read:Write | Writes (first / expired / moved / evicted) | Median latency |\n"
+        "|---|--:|--:|--:|--:|--:|--:|"
     )
+    all_lat: list[int] = []
     for kind in sorted(by_kind, key=lambda k: -by_kind[k].cache_write):
         a = by_kind[kind]
+        all_lat.extend(a.latencies)
         out.append(
             f"| {kind} | {a.calls} | {_fmt(a.cache_read)} | {_fmt(a.cache_write)} | "
-            f"{_ratio(a.cache_read, a.cache_write)} | {a.writes} ({a.first} / {a.expired} / {a.moved} / {a.evicted}) |"
+            f"{_ratio(a.cache_read, a.cache_write)} | {a.writes} ({a.first} / {a.expired} / {a.moved} / {a.evicted}) | "
+            f"{_lat(a.median_latency_ms)} |"
         )
     out.append(
         f"| **TOTAL** | {total.calls} | {_fmt(total.cache_read)} | {_fmt(total.cache_write)} | "
         f"{_ratio(total.cache_read, total.cache_write)} | "
-        f"{total.writes} ({total.first} / {total.expired} / {total.moved} / {total.evicted}) |\n"
+        f"{total.writes} ({total.first} / {total.expired} / {total.moved} / {total.evicted}) | "
+        f"{_lat(_median(all_lat))} |\n"
     )
 
     out.append("## Writes by cause\n")

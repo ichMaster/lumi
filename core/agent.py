@@ -1701,6 +1701,7 @@ class Core:
                 input=stats.input_tokens or 0, output=stats.output_tokens or 0,
                 gap_s=gap_s, cause=cause, session_id=self._active_session_id,
                 changed_section=changed_section if cause == "moved" else "",
+                latency_ms=stats.latency_ms,  # v1.3 LUMI-185: per-call wall-clock (already measured)
             ))
         except Exception:  # noqa: BLE001 — monitoring must never break a turn
             _usage_log.warning("cache event log failed", exc_info=True)
