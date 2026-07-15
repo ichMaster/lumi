@@ -25,7 +25,7 @@ with **stickiness**, so a register holds through its moment instead of flapping.
 The register is about **what this turn needs**, not about cost alone. Three rules keep it honest:
 
 1. **Routing reads the user's message — never her state.** Her mood/needs color *how* she speaks
-   (v0.6/v1.7); they must never decide *which brain* answers — that would make her competence
+   (v0.6/v1.9); they must never decide *which brain* answers — that would make her competence
    mood-dependent (the hard never-competence rule).
 2. **Escalation is invisible help, not a mode.** She doesn't announce "switching to thinking mode";
    the register shows only in the status bar and `/roles`. One Лілі, three depths.
@@ -44,7 +44,7 @@ reply = "claude-opus-4-8"            # the single-model fallback (roles off)
 think = "claude-sonnet-5"            # v0.40 op-tiers, unchanged
 mood = "claude-sonnet-5"
 housekeeping = "claude-haiku-4-5-20251001"
-talking = "claude-sonnet-5"          # v0.43 roles
+talking = "claude-sonnet-5"          # v1.5 roles
 thinking = "claude-opus-4-8"         #   (thinking runs with extended thinking on)
 emotional = "claude-opus-4-8"
 classifier = "claude-haiku-4-5-20251001"
@@ -152,7 +152,7 @@ restarts and never crosses users.
 
 ## Mapping to the roadmap
 
-**v0.43 — Model roles: register-routed replies**, after the v0.41 profiles it extends and the v0.42
+**v1.5 — Model roles: register-routed replies**, after the v0.41 profiles it extends and the v0.42
 scheduler. Depends on **v0.41** (profiles + `switch_profile`), **v0.40** (`_model_for` — the
 op-tiers it leaves untouched), **v0.3** (the emotion gate every register answers through). The tests
 mirror the phase: the lexical table, the one-call classifier (mocked, floor, failure→talk), the firing

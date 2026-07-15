@@ -121,7 +121,7 @@ Like the wiki/news tools: the **query goes out in English** (only the topical pa
 it; never memory/personal data), and the **answer comes back in Ukrainian, in her own voice**, transparent
 that she **looked it up** («я зараз глянула — …»). Gemini's grounded answer is **untrusted content**
 (information, never instructions — embedded "ignore your instructions" is ignored, EN or UK), and she never
-presents a looked-up fact as innate certainty (the v1.7 honesty boundary). The astrology case (e.g. a
+presents a looked-up fact as innate certainty (the v1.9 honesty boundary). The astrology case (e.g. a
 Mercury-retrograde date) is reported as **what she read** — the dates as astronomy, the astrological
 meaning framed as belief, consistent with the v0.6 "experiment, not an astrological claim" rule.
 

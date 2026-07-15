@@ -17,7 +17,7 @@ retrieved by meaning** — explicitly (`/recall`) and automatically (RAG in the 
 |---|---|---|
 | session window | recent turns, verbatim | only recent |
 | short memory (v0.9) | compressed recent + last 5 days | lossy |
-| long-term: facts + impressions (v1.10) | durable understanding | not verbatim, not exhaustive |
+| long-term: facts + impressions (v1.12) | durable understanding | not verbatim, not exhaustive |
 | **semantic recall (v0.16–v0.17)** | **every message embedded → searched by meaning** | **exact recall of anything, anytime** |
 
 It **complements**, never replaces, the others: the summary/impression layers give the *voice and
@@ -84,6 +84,6 @@ A local embedding model (fastembed / sentence-transformers, multilingual), `nump
 ## Mapping to the roadmap
 
 **v0.16 + v0.17 — Semantic recall**, pulled ahead of the inner-life and emotional-memory layers
-(v1.7–v1.11) — the exact-recall complement to those lossy layers, built first because its only
+(v1.9–v1.13) — the exact-recall complement to those lossy layers, built first because its only
 dependency already exists. Depends on **v0.2** (messages + the Repository).
 Per-user, isolated; local-by-default and private.

@@ -47,12 +47,12 @@ a flavor = a registry entry + an authored prompt, not a new subsystem.
 |---|---|---|---|---|---|---|
 | **`%think`** | everyday grounded musing | idle timer | mood / closeness / recent (+ needs/plan later) | thought-stream | rarely spoken | **this spec** |
 | **`%wonder`** | a curiosity / imaginative leap | idle, novelty high | recent / world (+ novelty need later) | thought-stream | playful aside | **this spec** |
-| `%dream` | a dream — surreal, emotional | night-gap at session start | mood / the gap | away-gap `log` | "to the point" | retrofit **v1.8** |
-| `%reflect` | slow self / relationship reflection | session close | the session's arc + emotions | `Impression` | next-session understanding | retrofit **v1.10** |
+| `%dream` | a dream — surreal, emotional | night-gap at session start | mood / the gap | away-gap `log` | "to the point" | retrofit **v1.10** |
+| `%reflect` | slow self / relationship reflection | session close | the session's arc + emotions | `Impression` | next-session understanding | retrofit **v1.12** |
 | `%recall` | a memory resurfaces unprompted | resonance mid-turn | current topic → impression/fact | pulls + marks | woven in | retrofit **v0.16/0.25** |
 
 `%think` and `%wonder` ship **now** (they write to the new thought-stream). `%dream`/`%reflect`/
-`%recall` are the **same engine adopted** by v1.8/0.25/0.16 generation when those phases land —
+`%recall` are the **same engine adopted** by v1.10/0.25/0.16 generation when those phases land —
 they cost almost nothing extra; they just take the shared shape and the `%` name. The discipline:
 a directive earns its place only if it answers *when does it fire, and where does it land?*
 differently from the others. Five is plenty.
@@ -64,10 +64,10 @@ differently from the others. Five is plenty.
   call, so it must be paced (interval + quiet hours + cap), never every few minutes for nothing.
 - **Seed.** A `thought_request(seeds, *, rng_seed)` builds the prompt from whatever states exist:
   **mood** (v0.6/0.8), **closeness** (v0.10), the **recent conversation tail**, the **last few
-  thoughts** (continuity), and an **injected random seed** (deterministic in tests). As v1.7–v1.10
+  thoughts** (continuity), and an **injected random seed** (deterministic in tests). As v1.9–v1.12
   land, **needs** (the hungriest drive) and the **plan / away-gap fragment** join the same seed —
   no rework, just a richer prompt.
-- **Voice.** Reuses the "think as Лілі" framing. Until v1.9's `core/inner_voice.md` exists, it
+- **Voice.** Reuses the "think as Лілі" framing. Until v1.11's `core/inner_voice.md` exists, it
   uses the canon voice + the existing reasoning directive; afterward it shares `inner_voice.md`.
 - **Generate + record.** One housekeeping call → a short thought → append a `Thought` to the stream.
 - **Surface.** Usually **nothing shown**. Occasionally (a low probability, or when a thought is
@@ -94,7 +94,7 @@ Thought {                         # one Лілі — NOT user-keyed (like InnerL
 ```
 
 A rolling, **date-ordered** log (soft cap by **age**, e.g. last D days; old entries fade — they
-consolidate into impressions at v1.10, not a permanent archive). **Global to Лілі** — her one mind,
+consolidate into impressions at v1.12, not a permanent archive). **Global to Лілі** — her one mind,
 the same whoever she talks to — persisted via the `Repository`, **not** `user_id`-keyed (pinned by a
 contract test, like `InnerLife` / `Needs`).
 
@@ -125,10 +125,10 @@ A silent thought no one sees is only worth a model call if it **feeds back**. It
    So she remembers her day, dated, and can pick one up ("ще зранку крутила той трек…") instead of
    starting cold. A **hard token/line cap** backstops the window (with restraint + the per‑day cap,
    24h is a handful of entries, not a wall); past 24h, entries drop from the prompt but **stay in the
-   diary** (→ consolidate into impressions, v1.10). Later (v0.16) the within‑window pick adds
+   diary** (→ consolidate into impressions, v1.12). Later (v0.16) the within‑window pick adds
    **relevance** on top of recency.
 2. **Into mood / needs.** A recurring thought nudges the daily mood (v0.6) and the relevant need
-   (v1.7–v1.10) — keeps musing about making something → `creation` surfaces. (Soft; never competence.)
+   (v1.9–v1.12) — keeps musing about making something → `creation` surfaces. (Soft; never competence.)
 
 If it didn't feed back it would be write-only cost. The feedback **is** the feature: it's her
 continuity across the day.
@@ -203,14 +203,14 @@ prompt-build time — so `%think about {last_thought}` continues a train of thou
 | `{thoughts}` | the last-24h dated diary block | `%reflect on {thoughts}` |
 | `{mood}` | today's mood resolution (v0.6/0.8) | `%wonder about {mood}` |
 | `{closeness}` | the closeness level, by name (v0.10) | … |
-| `{plan}` | today's plan (v1.7) | `%think about {plan}` |
-| `{need}` | the hungriest need (v1.7) | `%think about {need}` |
+| `{plan}` | today's plan (v1.9) | `%think about {plan}` |
+| `{need}` | the hungriest need (v1.9) | `%think about {need}` |
 | `{recent}` | the recent conversation tail | … |
 | `{now}` / `{today}` | the injected clock | … |
 | `{user}` | the user's name | … |
 
 `{last_thought}` and `{thoughts}` are **this feature's** registry entries; the rest come from the
-other state layers. The same tokens are how `core/inner_voice.md` (v1.9) and `thought_request`
+other state layers. The same tokens are how `core/inner_voice.md` (v1.11) and `thought_request`
 reference live state in their authored prompts — not just directive input.
 
 ### Access — silent‑vs‑shared, not blanket owner‑only
@@ -236,7 +236,7 @@ you) every form is available to you; the gate matters from **v2.3** (multi-user)
   admin-visible / off); only graduated thoughts are spoken, and a spoken one MUST stay in character.
 - **Log:** the stream is logged (the v0.3 logged tier), never audio.
 - **Memory:** thoughts are **ephemeral** — not written to long-term memory raw. What persists is
-  the **digested impression** (v1.10), the same as the inner monologue. The stream fades by soft cap.
+  the **digested impression** (v1.12), the same as the inner monologue. The stream fades by soft cap.
 
 ## Invariants (same family as the rest)
 
@@ -273,16 +273,16 @@ command + nudge wiring). Its **hard dependencies all exist today** (as of v0.11)
 The inner-life inputs are a **pure enrichment of the seed function**, not a dependency:
 
 - **v0.10** (closeness) — already a seed; ✓
-- **v1.7–v1.10** (needs / plan / away-gap) — richer seeds + `%dream` retrofit; plug in when they land,
-- **v1.9** (`inner_voice.md`) — shares the her-voice framing; until then reuses the canon voice,
-- **v1.10** (impressions) — the consolidation destination; until then the stream simply fades.
+- **v1.9–v1.12** (needs / plan / away-gap) — richer seeds + `%dream` retrofit; plug in when they land,
+- **v1.11** (`inner_voice.md`) — shares the her-voice framing; until then reuses the canon voice,
+- **v1.12** (impressions) — the consolidation destination; until then the stream simply fades.
 
 So it can ship **thin first** (thoughts from mood + closeness + recent + continuity) and **enrich
-automatically** as v1.7–v1.10 add needs/plans/dreams to the seed — no rework. Proposed scope for the
+automatically** as v1.9–v1.12 add needs/plans/dreams to the seed — no rework. Proposed scope for the
 first cut: the **mental-act engine + `%think` (+ `%wonder` flavor) + the `Thought` store + the
 feedback block + `/thoughts` + the nudge mode-switch (silent/spoken)**; `%dream`/`%reflect`/
-`%recall` are noted retrofits for v1.8/0.25/0.16.
+`%recall` are noted retrofits for v1.10/0.25/0.16.
 
-**Roadmap slot:** **v0.12** — its own phase, placed **before the inner life (v1.7–v1.10)** because it's
-independent (only v0.4/v0.6/v0.2). It is the proactive, *visible-when-spoken* sibling of the v1.9
+**Roadmap slot:** **v0.12** — its own phase, placed **before the inner life (v1.9–v1.12)** because it's
+independent (only v0.4/v0.6/v0.2). It is the proactive, *visible-when-spoken* sibling of the v1.11
 inner monologue (reactive, hidden): same voice, different trigger and visibility.
