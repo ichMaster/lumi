@@ -8,7 +8,35 @@ from __future__ import annotations
 
 from state import fifo
 from tui.bridge import drain_inbox, drain_inbox_records, set_listen_flag
-from voice.dictator import read_flag
+from voice.dictator import read_flag, resolve_input_device
+
+# --- resolve_input_device (LUMI_STT_DEVICE → a sounddevice index) ----------------------------------
+_DEVICES = [
+    {"name": "AirPods Pro", "max_input_channels": 1},        # 0
+    {"name": "MacBook Pro Microphone", "max_input_channels": 1},  # 1
+    {"name": "Some Speakers", "max_input_channels": 0},      # 2 (output only)
+]
+
+
+def test_resolve_device_empty_spec_is_default():
+    assert resolve_input_device("", _DEVICES) is None
+
+
+def test_resolve_device_by_name_substring():
+    assert resolve_input_device("MacBook Pro Microphone", _DEVICES) == 1
+    assert resolve_input_device("macbook", _DEVICES) == 1  # case-insensitive
+
+
+def test_resolve_device_by_index():
+    assert resolve_input_device("1", _DEVICES) == 1
+
+
+def test_resolve_device_index_without_input_channels_is_none():
+    assert resolve_input_device("2", _DEVICES) is None  # output-only device rejected
+
+
+def test_resolve_device_no_match_is_none():
+    assert resolve_input_device("Bluetooth Blender", _DEVICES) is None
 
 
 # --- set_listen_flag (the TUI is the sole writer; the dictator reads it) ---------------------------

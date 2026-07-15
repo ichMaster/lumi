@@ -2,7 +2,50 @@
 
 from pathlib import Path
 
-from core.config import DEFAULT_MEMORY_WINDOW, DEFAULT_MODEL, Config, load_config
+import pytest
+
+from core.config import DEFAULT_MEMORY_WINDOW, DEFAULT_MODEL, Config, _parse_duration_s, load_config
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("5h", 18000), ("1h", 3600), ("30m", 1800), ("300s", 300),
+        ("300", 300), ("0.5h", 1800), (None, None), ("", None), ("nonsense", None),
+    ],
+)
+def test_parse_duration_s(raw, expected):
+    assert _parse_duration_s(raw) == expected
+
+
+def test_gemini_cache_ttl_override(monkeypatch):
+    monkeypatch.setenv("LUMI_GEMINI_CACHE_TTL", "5h")
+    assert load_config(load_env=False).gemini_cache_ttl_s == 18000
+
+
+def test_gemini_cache_ttl_unset_is_none(monkeypatch):
+    monkeypatch.delenv("LUMI_GEMINI_CACHE_TTL", raising=False)
+    assert load_config(load_env=False).gemini_cache_ttl_s is None
+
+
+def test_reasoning_defaults_on(monkeypatch):
+    monkeypatch.delenv("LUMI_REASONING", raising=False)
+    assert load_config(load_env=False).reasoning is True  # on by default → unchanged behaviour
+
+
+def test_reasoning_env_off(monkeypatch):
+    monkeypatch.setenv("LUMI_REASONING", "off")
+    assert load_config(load_env=False).reasoning is False
+
+
+def test_stt_device_default_empty(monkeypatch):
+    monkeypatch.delenv("LUMI_STT_DEVICE", raising=False)
+    assert load_config(load_env=False).stt_device == ""
+
+
+def test_stt_device_env(monkeypatch):
+    monkeypatch.setenv("LUMI_STT_DEVICE", "MacBook Pro Microphone")
+    assert load_config(load_env=False).stt_device == "MacBook Pro Microphone"
 
 
 def test_defaults_without_env(monkeypatch):

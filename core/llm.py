@@ -165,6 +165,13 @@ _GEMINI_BLOCKED_STATE = {"reply": "…", "emotion": "calm", "intensity": 0.3}
 # v0.39 LUMI-154: Lumi effort tiers → a Gemini ``thinkingBudget`` (tokens; -1 = dynamic/unbounded). Omitted
 # when effort is unset (the model's default budget). ``includeThoughts`` surfaces the reasoning → the box.
 _GEMINI_THINKING_BUDGET = {"low": 1024, "medium": 4096, "high": 8192, "xhigh": 16384, "max": -1}
+
+
+def _gemini_can_disable_thinking(model: str | None) -> bool:
+    """True for models that accept ``thinkingBudget: 0`` — the 2.5/2.0 **flash** family. Reasoning models
+    (2.5-pro, 3.x-pro) mandate thinking and reject budget 0 with an HTTP 400, so LUMI_REASONING=off must
+    NOT send it to them (it degrades to "thinking on but unsurfaced" instead of crashing the turn)."""
+    return bool(model) and "flash" in model.lower()
 # Gemini counts thinking tokens toward ``maxOutputTokens`` — so a deep think can consume the whole budget
 # and leave no room for the answer (empty candidate, finishReason MAX_TOKENS). We reserve ``max_tokens`` for
 # the reply *on top of* the thinking budget; for a dynamic/unset budget (-1 or no effort) we add this default
@@ -1727,10 +1734,12 @@ class GeminiClient:
         max_tokens: int = 1024,
         effort: str | None = None,
         thinking: bool = False,
+        thinking_off: bool = False,
         retries: int = 2,
         backoff: float = 0.5,
         explicit_cache: bool = False,
         cache_ttl: str = "5m",
+        cache_ttl_s: int | None = None,
         _transport: Callable[[str, dict, dict], dict] | None = None,
         _cache_transport: Callable[[str, str, dict, dict | None], dict] | None = None,
     ) -> None:
@@ -1742,6 +1751,11 @@ class GeminiClient:
         # v0.39 LUMI-154: when on, request includeThoughts → the reasoning surfaces in the think-box (the
         # v0.38 inner-voice seam). Also read by the status bar (Core.thinking) as `_thinking`.
         self._thinking = thinking
+        # LUMI_REASONING=off: force thinkingBudget=0 on every Gemini call (2.5-flash / -lite think by default;
+        # omitting thinkingConfig ≠ off). Wins over `thinking`. NOTE: reasoning models like 3.1-pro may reject
+        # budget 0 — only enable this flag on a profile whose Gemini tiers support disabling thinking.
+        self._thinking_off = thinking_off
+        self._thinking_off_warned = False  # one-shot "can't disable on a reasoning model" log
         self._retries = retries
         self._backoff = backoff
         self._transport = _transport
@@ -1752,6 +1766,8 @@ class GeminiClient:
         # recreated on change, best-effort delete of the stale object, degrade to implicit on any failure.
         self._explicit_cache = explicit_cache
         self._cache_ttl = cache_ttl
+        # v1.3: an explicit seconds override (Gemini takes any duration, e.g. 5h); None → the 5m/1h from cache_ttl.
+        self._cache_ttl_s = cache_ttl_s
         self._cache_transport = _cache_transport
         self._cache_handle: dict | None = None  # {name, model, fingerprint}
         self._cache_fallback_logged = False      # log "→ implicit" once per session, not per turn
@@ -1768,9 +1784,22 @@ class GeminiClient:
         with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — fixed Gemini host
             return json.loads(resp.read())
 
-    def _thinking_config(self) -> dict | None:
+    def _thinking_config(self, model: str | None = None) -> dict | None:
         """``thinkingConfig`` when thinking is on — ``includeThoughts`` (surface the reasoning) + a budget
-        from ``effort`` (omitted when unset → the model's default). ``None`` when thinking is off."""
+        from ``effort`` (omitted when unset → the model's default). ``None`` when thinking is off.
+        With ``thinking_off`` (LUMI_REASONING=off) it forces ``thinkingBudget: 0`` — an *explicit* disable
+        (a thinking model like 2.5-flash keeps thinking if the config is merely omitted) — but ONLY for
+        models that accept budget 0 (the flash family); a reasoning model (pro / 3.x) can't be disabled,
+        so it degrades to ``None`` (thinking on, unsurfaced) rather than a 400."""
+        if self._thinking_off:
+            if _gemini_can_disable_thinking(model):
+                return {"thinkingBudget": 0}  # explicit off (no includeThoughts)
+            if not self._thinking_off_warned:  # can't disable on a reasoning model — warn once, don't crash
+                _log.warning("LUMI_REASONING=off but %s can't disable thinking (rejects budget 0) — "
+                             "native thinking stays on, unsurfaced. Use a 2.5-flash/-lite tier to turn it off.",
+                             model)
+                self._thinking_off_warned = True
+            return None
         if not self._thinking:
             return None
         cfg: dict = {"includeThoughts": True}
@@ -1780,14 +1809,19 @@ class GeminiClient:
                 cfg["thinkingBudget"] = budget
         return cfg
 
-    def _generation_config(self, *, structured: bool) -> dict:
-        tc = self._thinking_config()
+    def _generation_config(self, *, structured: bool, model: str | None = None) -> dict:
+        tc = self._thinking_config(model)
         # Reserve max_tokens for the ANSWER on top of the thinking budget — Gemini counts thinking against
         # maxOutputTokens, so without this a deep think starves the reply to empty (see _GEMINI_THINKING_HEADROOM).
         out = self._max_tokens
         if tc is not None:
             budget = tc.get("thinkingBudget")
-            out += budget if isinstance(budget, int) and budget > 0 else _GEMINI_THINKING_HEADROOM
+            if isinstance(budget, int) and budget == 0:
+                pass  # thinking explicitly disabled → no headroom to reserve
+            elif isinstance(budget, int) and budget > 0:
+                out += budget
+            else:  # thinking on with a dynamic/unbounded budget → reserve headroom so the reply isn't starved
+                out += _GEMINI_THINKING_HEADROOM
         cfg: dict = {"maxOutputTokens": out}
         if structured:
             cfg["responseMimeType"] = "application/json"
@@ -1802,7 +1836,7 @@ class GeminiClient:
         body = {
             "systemInstruction": {"parts": [{"text": sys_text}]},
             "contents": _gemini_contents(messages),
-            "generationConfig": self._generation_config(structured=structured),
+            "generationConfig": self._generation_config(structured=structured, model=model),
             "safetySettings": _GEMINI_SAFETY,
         }
         return self._cache_wrap(body, sys_text, cache_prefix, model)
@@ -1825,7 +1859,7 @@ class GeminiClient:
     def _cache_create(self, model: str, cache_prefix: str) -> str:
         """Create a cachedContent carrying the stable prefix as its ``systemInstruction`` + TTL from
         config. Returns the resource name (``cachedContents/…``)."""
-        ttl_s = 3600 if self._cache_ttl == "1h" else 300
+        ttl_s = self._cache_ttl_s if self._cache_ttl_s else (3600 if self._cache_ttl == "1h" else 300)
         body = {
             "model": model if model.startswith("models/") else f"models/{model}",
             "systemInstruction": {"parts": [{"text": cache_prefix}]},
@@ -2026,7 +2060,7 @@ class GeminiClient:
             else:
                 sys_text = system
             gen: dict = {"maxOutputTokens": self._max_tokens}
-            tc = self._thinking_config()
+            tc = self._thinking_config(model)
             if tc:  # LUMI-154 — surface the reasoning across the loop rounds too
                 gen["thinkingConfig"] = tc
             body: dict = {
@@ -2318,7 +2352,9 @@ def build_llm(cfg: Config) -> LLMClient:
             raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
         return GeminiClient(
             cfg.gemini_api_key, max_tokens=cfg.max_tokens, effort=cfg.effort, thinking=cfg.thinking,
+            thinking_off=not cfg.reasoning,  # LUMI_REASONING=off → thinkingBudget 0
             explicit_cache=cfg.gemini_explicit_cache, cache_ttl=cfg.prompt_cache_ttl,
+            cache_ttl_s=cfg.gemini_cache_ttl_s,
         )
     raise LLMError(
         f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "

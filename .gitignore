@@ -149,6 +149,9 @@ activemq-data/
 
 # Environments
 .env
+.env_back*
+.env.bak*
+.env.*.bak
 .envrc
 .venv
 env/
@@ -236,3 +239,6 @@ viewer/faces/*.png
 
 # v0.11 face-generation scratch area: 1K Gemini sources, reviewed then placed (never committed)
 viewer/faces/raw/
+
+# Local canon backups (never tracked)
+core/canon/*_bak*

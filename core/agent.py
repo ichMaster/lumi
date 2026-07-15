@@ -134,6 +134,7 @@ from core.thoughts import (
     REGISTRY,
     THOUGHT_FULL_HEADER,
     THOUGHT_FULL_HEADER_FREEFORM,
+    THOUGHT_MAX_CHARS,
     THOUGHTS_CAP,
     THOUGHTS_INTERVAL_S,
     THOUGHTS_MAX_LINES,
@@ -147,6 +148,7 @@ from core.thoughts import (
     thought_request,
     thought_tool_hint,
     thoughts_diary_block,
+    truncate_thought,
 )
 from core.user import DEFAULT_USER_ID
 from core.worldcontext import WorldContext, ambient_line
@@ -448,6 +450,7 @@ class Core:
         thoughts_enabled: bool = True,
         thoughts_window_h: int = THOUGHTS_WINDOW_H,
         thoughts_max_lines: int = THOUGHTS_MAX_LINES,
+        thought_max_chars: int = THOUGHT_MAX_CHARS,
         thoughts_interval_s: int = THOUGHTS_INTERVAL_S,
         thoughts_cap: int = THOUGHTS_CAP,
         thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO,
@@ -572,6 +575,7 @@ class Core:
         self._thoughts_enabled = thoughts_enabled
         self._thoughts_window_h = thoughts_window_h
         self._thoughts_max_lines = thoughts_max_lines
+        self._thought_max_chars = thought_max_chars  # v0.12 hard per-thought length cap (%prompt exempt)
         # v0.12 proactive nudge: idle interval, a per-session cap, and the spoken fraction.
         self._thoughts_interval_s = thoughts_interval_s
         self._thoughts_cap = thoughts_cap
@@ -1157,6 +1161,8 @@ class Core:
         if parsed is None:
             return None  # empty / malformed → record nothing (never corrupt the stream)
         text, emo = parsed
+        if not directive.freeform:  # hard length cap; %prompt (freeform) runs as long as the task needs
+            text = truncate_thought(text, self._thought_max_chars)
         emotion = emo if emo in _EMOTION_VALUES else DEFAULT_EMOTION.value
         thought = make_thought(
             when=self._clock().strftime("%Y-%m-%dT%H:%M"),
@@ -1521,7 +1527,9 @@ class Core:
         core_facts = [f.fact for f in raw_facts if f.core and not f.obsolete]  # the curated identity-core
         if self._facts_core_only and core_facts:
             # v0.36: inject ONLY the identity-core; the episodic tail is reachable via recall(scope=facts).
-            facts = core_facts
+            # Pins stay flagged core in the store (never demoted), but the PROMPT is hard-capped to
+            # LUMI_FACTS_CORE_MAX facts so a set that's almost all pinned can't blow the section up.
+            facts = core_facts[: self._facts_core_max] if self._facts_core_max > 0 else core_facts
         else:
             digest = self._repo.get_facts_digest(self._user_id) if self._facts_digest_enabled else None
             if digest is not None:
@@ -1552,7 +1560,7 @@ class Core:
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         # v0.38: this is the generic REASONING_DIRECTIVE, or her authored inner_voice.md when on.
         # v0.25: when the news tool is on, add the authored "how she delivers news" line (EN→UK, cited).
-        canon = f"{self._canon}\n\n{self._reasoning_directive}"
+        canon = f"{self._canon}\n\n{self._reasoning_directive}" if self._reasoning_directive else self._canon
         if self._news_enabled:
             from core.news import NEWS_DIRECTIVE
 
@@ -3119,7 +3127,9 @@ def build_core(
     # v0.38 Inner Voice: load the authored think instruction when on; a missing/empty file degrades to
     # the generic REASONING_DIRECTIVE (logged, never a crash). Off → the directive, byte-identical.
     reasoning_directive = REASONING_DIRECTIVE
-    if cfg.inner_voice:
+    if not cfg.reasoning:
+        reasoning_directive = ""  # LUMI_REASONING=off → no directive at all (Gemini budget=0 handled in the client)
+    elif cfg.inner_voice:
         voice = load_inner_voice(cfg.inner_voice_path)
         if voice:
             reasoning_directive = voice
@@ -3213,6 +3223,7 @@ def build_core(
         thoughts_enabled=cfg.thoughts,
         thoughts_window_h=cfg.thoughts_window_h,
         thoughts_max_lines=cfg.thoughts_max_lines,
+        thought_max_chars=cfg.thought_max_chars,
         thoughts_interval_s=cfg.thoughts_interval_s,
         thoughts_cap=cfg.thoughts_cap,
         thoughts_spoken_ratio=cfg.thoughts_spoken_ratio,

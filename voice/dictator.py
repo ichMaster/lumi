@@ -23,6 +23,25 @@ MIN_CHARS = 1
 _ON_VALUES = {"on", "1", "true", "yes"}
 
 
+def resolve_input_device(spec: str, devices: list[dict]) -> int | None:
+    """Resolve ``LUMI_STT_DEVICE`` to a sounddevice input-device index. ``spec`` is an index (``"4"``)
+    or a case-insensitive name substring (``"MacBook Pro Microphone"``). ``""``/no match → ``None``
+    (the system default input). Only devices with an input channel are considered for a name match."""
+    spec = (spec or "").strip()
+    if not spec:
+        return None
+    if spec.isdigit():
+        i = int(spec)
+        if 0 <= i < len(devices) and devices[i].get("max_input_channels", 0) > 0:
+            return i
+        return None
+    low = spec.lower()
+    for i, d in enumerate(devices):
+        if d.get("max_input_channels", 0) > 0 and low in d.get("name", "").lower():
+            return i
+    return None
+
+
 def read_flag(path: str | Path) -> bool:
     """The ``listen.flag`` state — ``True`` when listening. A missing/unreadable flag → ``False`` (off)."""
     p = Path(path)
@@ -96,6 +115,10 @@ def run() -> None:  # pragma: no cover - mic capture + STT glue (no audio/paid C
     import sounddevice as sd  # lazy: a separate process records; the TUI never captures audio
 
     samplerate = 16_000
+    device = resolve_input_device(cfg.stt_device, list(sd.query_devices()))
+    if cfg.stt_device and device is None:
+        log.warning("LUMI_STT_DEVICE=%r matched no input device — using the system default", cfg.stt_device)
+    log.info("input device: %s", sd.query_devices(device)["name"] if device is not None else "(system default)")
     recording: list = []
     was_on = False
     stream = None
@@ -105,7 +128,7 @@ def run() -> None:  # pragma: no cover - mic capture + STT glue (no audio/paid C
             if on and not was_on:  # off → on: start recording
                 recording = []
                 stream = sd.InputStream(
-                    samplerate=samplerate, channels=1, dtype="int16",
+                    samplerate=samplerate, channels=1, dtype="int16", device=device,
                     callback=lambda indata, *_, _rec=recording: _rec.append(bytes(indata)),
                 )
                 stream.start()

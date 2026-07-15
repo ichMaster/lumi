@@ -208,6 +208,24 @@ def test_create_body_carries_ttl_and_prefix():
     assert seen["body"]["systemInstruction"]["parts"][0]["text"] == PREFIX
 
 
+def test_seconds_override_wins_over_the_5m_1h_ttl():
+    # cache_ttl_s (e.g. 5h = 18000s) overrides the coarse 5m/1h cache_ttl in the create body
+    gen = _Transport(_resp(_VALID))
+    seen = {}
+
+    def cap(method, url, headers, body):
+        if method == "POST":
+            seen["body"] = body
+            return {"name": "cachedContents/x", "usageMetadata": {"totalTokenCount": 9}}
+        return {}
+
+    c = GeminiClient("k", explicit_cache=True, cache_ttl="1h", cache_ttl_s=18000,
+                     _transport=gen, _cache_transport=cap)
+    c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "gemini-3.1-pro-preview",
+                       cache_prefix=PREFIX)
+    assert seen["body"]["ttl"] == "18000s"  # 5h override, not 3600s
+
+
 def test_same_prefix_reuses_the_handle_no_second_create():
     c, gen, cache = _cache_client()
     for _ in range(3):
@@ -291,3 +309,74 @@ def test_tool_less_reply_still_references_the_cache():
     c, gen, cache = _cache_client()
     c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "m", cache_prefix=PREFIX)
     assert cache.creates == 1 and "cachedContent" in gen.bodies[-1]
+
+
+# --- LUMI_REASONING=off: explicit thinkingBudget=0 (2.5-flash/lite think by default) ---------------
+def test_reasoning_off_sends_thinking_budget_zero():
+    t = _Transport(_resp(_VALID))
+    c = GeminiClient("k", thinking_off=True, _transport=t)
+    c.reply_structured("SYS", [{"role": "user", "content": "hi"}], "gemini-2.5-flash")
+    tc = t.bodies[-1]["generationConfig"]["thinkingConfig"]
+    assert tc == {"thinkingBudget": 0}          # explicit disable
+    assert "includeThoughts" not in tc          # no reasoning surfaced
+
+
+def test_reasoning_off_does_not_inflate_max_output_tokens():
+    # budget 0 must NOT reserve the thinking headroom (that's only for a dynamic/positive budget)
+    t = _Transport(_resp(_VALID))
+    c = GeminiClient("k", thinking_off=True, max_tokens=8192, _transport=t)
+    c.reply_structured("SYS", [{"role": "user", "content": "hi"}], "gemini-2.5-flash")
+    assert t.bodies[-1]["generationConfig"]["maxOutputTokens"] == 8192
+
+
+def test_reasoning_off_budget_zero_on_the_tool_loop_rounds_too():
+    # With tools on, the reply runs the loop; every round must still carry thinkingBudget=0
+    def tool_exec(name, args):
+        return "tool result"
+
+    class _LoopTransport:
+        def __init__(self):
+            self.bodies = []
+            self.step = 0
+
+        def __call__(self, url, headers, body):
+            self.bodies.append(body)
+            self.step += 1
+            if self.step == 1:
+                return {"candidates": [{"content": {"parts": [
+                    {"functionCall": {"name": "find_in_file", "args": {}}}]}}]}
+            return _resp(_VALID)
+
+    lt = _LoopTransport()
+    c = GeminiClient("k", thinking_off=True, _transport=lt)
+    c.reply_structured("SYS", [{"role": "user", "content": "hi"}], "gemini-2.5-flash-lite",
+                       tools=[{"name": "find_in_file", "description": "", "input_schema": {}}],
+                       tool_executor=tool_exec, max_steps=3)
+    assert lt.bodies  # loop ran
+    assert all(b["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0} for b in lt.bodies)
+
+
+def test_thinking_off_wins_over_thinking_on():
+    # both flags set → off wins (no includeThoughts, budget 0)
+    t = _Transport(_resp(_VALID))
+    c = GeminiClient("k", thinking=True, thinking_off=True, effort="high", _transport=t)
+    c.reply_structured("SYS", [{"role": "user", "content": "hi"}], "gemini-2.5-flash")
+    assert t.bodies[-1]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+
+
+def test_reasoning_off_skips_budget_zero_on_a_pro_model():
+    # 3.1-pro (a mandatory-thinking model) rejects budget 0 → we must NOT send thinkingConfig at all
+    # (degrade to "thinking on, unsurfaced" instead of a 400).
+    t = _Transport(_resp(_VALID))
+    c = GeminiClient("k", thinking_off=True, _transport=t)
+    c.reply_structured("SYS", [{"role": "user", "content": "hi"}], "gemini-3.1-pro-preview")
+    assert "thinkingConfig" not in t.bodies[-1]["generationConfig"]
+
+
+def test_reasoning_off_defaults_off_no_thinking_config():
+    # DEFAULT (flag off) → NO thinkingConfig injected: behaviour is byte-identical to before.
+    # thinking_off only fires when explicitly enabled — never disables thinking on its own.
+    t = _Transport(_resp(_VALID))
+    c = GeminiClient("k", _transport=t)  # thinking_off defaults False, thinking defaults False
+    c.reply_structured("SYS", [{"role": "user", "content": "hi"}], "gemini-2.5-flash")
+    assert "thinkingConfig" not in t.bodies[-1]["generationConfig"]

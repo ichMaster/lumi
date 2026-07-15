@@ -31,6 +31,7 @@ from core.memory import (
     WEEK_DAYS,
 )
 from core.thoughts import (
+    THOUGHT_MAX_CHARS,
     THOUGHTS_CAP,
     THOUGHTS_INTERVAL_S,
     THOUGHTS_MAX_LINES,
@@ -263,6 +264,22 @@ def _parse_bool(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _TRUTHY
 
 
+def _parse_duration_s(value: str | None) -> int | None:
+    """Parse a duration into whole seconds: ``5h`` / ``30m`` / ``300s`` / a bare number (seconds).
+    ``None``/blank/invalid → ``None`` (the caller falls back to its own default)."""
+    if not value:
+        return None
+    s = value.strip().lower()
+    try:
+        if s.endswith("h"):
+            return int(float(s[:-1]) * 3600)
+        if s.endswith("m"):
+            return int(float(s[:-1]) * 60)
+        return int(float(s[:-1] if s.endswith("s") else s))
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True)
 class Config:
     """Resolved runtime configuration.
@@ -312,6 +329,10 @@ class Config:
     max_tokens: int = DEFAULT_MAX_TOKENS
     thinking: bool = DEFAULT_THINKING
     effort: str | None = DEFAULT_EFFORT
+    # Pre-answer reasoning. ON (default) → unchanged. OFF → drop the reasoning directive from the prompt
+    # AND, on Gemini, send thinkingConfig.thinkingBudget=0 (2.5-flash/lite think by default; omitting the
+    # config ≠ off). Distinct from LUMI_THINKING (which only surfaces the native thought summary).
+    reasoning: bool = True
     # v0.38 Inner Voice: how the think monologue is surfaced — debug (operator-visible box, default) /
     # open (surfaced as her inner voice) / off (hidden). It is logged (never persisted to long-term memory).
     think_show: str = "debug"
@@ -360,6 +381,7 @@ class Config:
     prompt_cache: bool = True       # v0.15: mark the stable prompt prefix as a cache breakpoint
     prompt_cache_ttl: str = "5m"    # cache lifetime: 5m (default) or 1h (keeps it warm across thinks)
     gemini_explicit_cache: bool = False  # v1.3: explicit cachedContents on Gemini (TTL from prompt_cache_ttl)
+    gemini_cache_ttl_s: int | None = None  # v1.3: explicit-cache lifetime override in seconds (Gemini takes any duration; None → prompt_cache_ttl's 5m/1h)
     usage_report: bool = True       # write per-session token usage + cost report to .lumi/ on session close
     cache_monitor: bool = False     # log each model call's cache behaviour → .lumi/cache-report.md (per channel)
     # v0.19 local file tool (read-only half) — off by default; sandboxed, untrusted, bounded.
@@ -449,6 +471,7 @@ class Config:
     thoughts: bool = True  # v0.12 thought-stream on/off
     thoughts_window_h: int = THOUGHTS_WINDOW_H  # v0.12 prompt feedback window (hours)
     thoughts_max_lines: int = THOUGHTS_MAX_LINES  # v0.12 max thought lines injected into the prompt
+    thought_max_chars: int = THOUGHT_MAX_CHARS  # v0.12 hard per-thought length cap (0 = off; %prompt exempt)
     thoughts_interval_s: int = THOUGHTS_INTERVAL_S  # v0.12 idle before a proactive %think
     thoughts_cap: int = THOUGHTS_CAP  # v0.12 proactive thinks per session
     thoughts_spoken_ratio: float = THOUGHTS_SPOKEN_RATIO  # v0.12 fraction that graduate to spoken
@@ -489,6 +512,8 @@ class Config:
     stt_provider: str = "deepgram"  # deepgram / elevenlabs (Scribe) / whisper (offline)
     stt_model: str = ""  # override the STT model ("" → the provider default, e.g. deepgram nova-3)
     stt_lang: str = "uk"  # recognition language
+    stt_device: str = ""  # mic for the dictator: a device index ("4") or a name substring ("MacBook Pro
+    #                       Microphone"); "" → the system default input (e.g. AirPods — often unreliable)
     listen_flag_path: Path = DEFAULT_LISTEN_FLAG  # the on/off signal the TUI writes, the dictator reads
     deepgram_api_key: str = ""  # cloud STT key (secret — never logged); Whisper needs none
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
@@ -579,6 +604,7 @@ def load_config(*, load_env: bool = True) -> Config:
     max_tokens = int(max_tokens_env) if max_tokens_env else DEFAULT_MAX_TOKENS
 
     thinking = _parse_bool(os.getenv("LUMI_THINKING"))
+    reasoning = (os.getenv("LUMI_REASONING") or "on").strip().lower() in _TRUTHY  # on by default
 
     effort_env = os.getenv("LUMI_EFFORT")
     effort = effort_env.strip().lower() if effort_env and effort_env.strip() else DEFAULT_EFFORT
@@ -660,6 +686,7 @@ def load_config(*, load_env: bool = True) -> Config:
         memory_index=memory_index,
         max_tokens=max_tokens,
         thinking=thinking,
+        reasoning=reasoning,
         effort=effort,
         think_show=think_show,
         location=os.getenv("LUMI_LOCATION") or None,
@@ -698,6 +725,7 @@ def load_config(*, load_env: bool = True) -> Config:
         prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
         prompt_cache_ttl="1h" if (os.getenv("LUMI_PROMPT_CACHE_TTL") or "5m").strip().lower() == "1h" else "5m",
         gemini_explicit_cache=_parse_bool(os.getenv("LUMI_GEMINI_EXPLICIT_CACHE")),  # v1.3, off by default
+        gemini_cache_ttl_s=_parse_duration_s(os.getenv("LUMI_GEMINI_CACHE_TTL")),  # v1.3, e.g. "5h"; None → prompt_cache_ttl
         usage_report=(os.getenv("LUMI_USAGE_REPORT") or "on").strip().lower() in _TRUTHY,  # on by default
         cache_monitor=(os.getenv("LUMI_CACHE_MONITOR") or "off").strip().lower() in _TRUTHY,  # off by default
         file_tool=(os.getenv("LUMI_FILE_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
@@ -781,6 +809,7 @@ def load_config(*, load_env: bool = True) -> Config:
         thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
         thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
         thoughts_max_lines=int(os.getenv("LUMI_THOUGHTS_MAX_LINES") or THOUGHTS_MAX_LINES),
+        thought_max_chars=int(os.getenv("LUMI_THOUGHT_MAX_CHARS") or THOUGHT_MAX_CHARS),
         thoughts_interval_s=int(os.getenv("LUMI_THOUGHTS_INTERVAL_S") or THOUGHTS_INTERVAL_S),
         thoughts_cap=int(os.getenv("LUMI_THOUGHTS_CAP") or THOUGHTS_CAP),
         thoughts_spoken_ratio=float(os.getenv("LUMI_THOUGHTS_SPOKEN_RATIO") or THOUGHTS_SPOKEN_RATIO),
@@ -815,6 +844,7 @@ def load_config(*, load_env: bool = True) -> Config:
         stt_provider=(os.getenv("LUMI_STT_PROVIDER") or "deepgram").strip().lower(),
         stt_model=(os.getenv("LUMI_STT_MODEL") or "").strip(),
         stt_lang=(os.getenv("LUMI_STT_LANG") or "uk").strip(),
+        stt_device=(os.getenv("LUMI_STT_DEVICE") or "").strip(),
         listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else DEFAULT_LISTEN_FLAG,
         deepgram_api_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),
         closeness_tuning=closeness_tuning,

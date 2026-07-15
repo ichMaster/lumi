@@ -17,14 +17,14 @@ from state.local_store import JsonRepository
 NOW = datetime(2026, 6, 12, 12, 0, tzinfo=UTC)
 
 
-def _core(tmp_path, *, core_only=False, embedder=None, recall=False, recall_scope="messages"):
+def _core(tmp_path, *, core_only=False, core_max=0, embedder=None, recall=False, recall_scope="messages"):
     return Core(
         llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"),
         canon="C", model="m", user_id="owner", clock=fixed_clock(NOW),
         mood_enabled=False, biorhythms_enabled=False, cycle_enabled=False,
         closeness_enabled=False, thoughts_enabled=False,
         embedder=embedder, recall_enabled=recall, embed_model="m@x",
-        recall_tool_enabled=recall, facts_core_only=core_only, facts_core_max=0,
+        recall_tool_enabled=recall, facts_core_only=core_only, facts_core_max=core_max,
         recall_scope=recall_scope,
     )
 
@@ -44,6 +44,25 @@ def test_core_only_injects_only_core_facts(tmp_path):
     prompt = _prompt(core, core.start_session())
     assert "Звати Олег" in prompt                 # the identity-core is injected
     assert "Якось згадав дрібницю" not in prompt   # the non-core tail is not
+
+
+def test_core_only_caps_prompt_to_core_max(tmp_path):
+    # All facts flagged core (as a heavily-pinned set would be), but CORE_MAX=2 → only 2 reach the prompt.
+    core = _core(tmp_path, core_only=True, core_max=2)
+    for i in range(5):
+        core._repo.add_fact(_fact(f"домовленість номер {i}", core=True))  # all core (would all pin)
+    prompt = _prompt(core, core.start_session())
+    injected = sum(1 for i in range(5) if f"домовленість номер {i}" in prompt)
+    assert injected == 2  # hard-capped to CORE_MAX, not all 5
+
+
+def test_core_max_zero_injects_all_core_facts(tmp_path):
+    # CORE_MAX=0 (cap off) keeps the old behaviour: every core fact is injected.
+    core = _core(tmp_path, core_only=True, core_max=0)
+    for i in range(4):
+        core._repo.add_fact(_fact(f"межа {i}", core=True))
+    prompt = _prompt(core, core.start_session())
+    assert all(f"межа {i}" in prompt for i in range(4))
 
 
 def test_core_only_off_injects_all_facts_unchanged(tmp_path):
