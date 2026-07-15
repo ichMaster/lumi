@@ -12,6 +12,7 @@ v0.1 ``reply(...)`` returns plain text; v0.3 will return a validated
 from __future__ import annotations
 
 import ast
+import hashlib
 import html
 import json
 import logging
@@ -1717,6 +1718,8 @@ class GeminiClient:
     _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     _RETRYABLE_NAMES = {"HTTPError", "URLError", "TimeoutError"}
 
+    _CACHE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/cachedContents"
+
     def __init__(
         self,
         api_key: str | None,
@@ -1726,7 +1729,10 @@ class GeminiClient:
         thinking: bool = False,
         retries: int = 2,
         backoff: float = 0.5,
+        explicit_cache: bool = False,
+        cache_ttl: str = "5m",
         _transport: Callable[[str, dict, dict], dict] | None = None,
+        _cache_transport: Callable[[str, str, dict, dict | None], dict] | None = None,
     ) -> None:
         if not api_key and _transport is None:
             raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
@@ -1742,6 +1748,14 @@ class GeminiClient:
         self.last_thinking: str | None = None
         self.last_stats: ResponseStats | None = None
         self.last_round_log: list[tuple[str, ResponseStats]] = []
+        # v1.3 LUMI-186: explicit cachedContents lifecycle. One handle per (model, prefix-fingerprint);
+        # recreated on change, best-effort delete of the stale object, degrade to implicit on any failure.
+        self._explicit_cache = explicit_cache
+        self._cache_ttl = cache_ttl
+        self._cache_transport = _cache_transport
+        self._cache_handle: dict | None = None  # {name, model, fingerprint}
+        self._cache_fallback_logged = False      # log "→ implicit" once per session, not per turn
+        self.last_cache_event: str | None = None  # "created"/"recreated:<cause>"/"fallback:<cause>" (LUMI-187)
 
     def _post(self, model: str, body: dict) -> dict:
         url = self._ENDPOINT.format(model=model) + f"?key={self._key}"
@@ -1782,17 +1796,103 @@ class GeminiClient:
             cfg["thinkingConfig"] = tc
         return cfg
 
-    def _body(self, system: str, messages: list[Message], *, structured: bool) -> dict:
+    def _body(self, system: str, messages: list[Message], *, structured: bool,
+              model: str | None = None, cache_prefix: str | None = None) -> dict:
         sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
-        return {
+        body = {
             "systemInstruction": {"parts": [{"text": sys_text}]},
             "contents": _gemini_contents(messages),
             "generationConfig": self._generation_config(structured=structured),
             "safetySettings": _GEMINI_SAFETY,
         }
+        return self._cache_wrap(body, sys_text, cache_prefix, model)
 
-    def _create(self, system: str, messages: list[Message], model: str, *, structured: bool) -> dict:
-        body = self._body(system, messages, structured=structured)
+    # --- v1.3 LUMI-186: explicit cachedContents lifecycle ----------------------------------------
+    def _cache_api(self, method: str, url: str, body: dict | None) -> dict:
+        """One cachedContents REST call (create/patch/delete). Uses the injected ``_cache_transport``
+        (tests) or stdlib ``urllib``. Raises on HTTP/network error — the caller degrades to implicit."""
+        headers = {"Content-Type": "application/json"}
+        if self._cache_transport is not None:
+            return self._cache_transport(method, url, headers, body)
+        import urllib.request  # stdlib HTTP path; imported only when actually calling out
+
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method, headers=headers)
+        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 — fixed Gemini host
+            raw = resp.read()
+            return json.loads(raw) if raw else {}
+
+    def _cache_create(self, model: str, cache_prefix: str) -> str:
+        """Create a cachedContent carrying the stable prefix as its ``systemInstruction`` + TTL from
+        config. Returns the resource name (``cachedContents/…``)."""
+        ttl_s = 3600 if self._cache_ttl == "1h" else 300
+        body = {
+            "model": model if model.startswith("models/") else f"models/{model}",
+            "systemInstruction": {"parts": [{"text": cache_prefix}]},
+            "ttl": f"{ttl_s}s",
+        }
+        resp = self._cache_api("POST", f"{self._CACHE_ENDPOINT}?key={self._key}", body)
+        name = resp.get("name")
+        if not name:
+            raise LLMError(f"cachedContents.create returned no name: {resp}")
+        return name
+
+    def _cache_delete(self, name: str) -> None:
+        """Best-effort delete of a stale cache; swallow any error (the TTL reaps it anyway)."""
+        try:
+            self._cache_api("DELETE", f"{self._CACHE_ENDPOINT}/{name.split('/')[-1]}?key={self._key}", None)
+        except Exception:  # noqa: BLE001 — a failed cleanup must never affect the turn
+            pass
+
+    def _cache_ref(self, model: str, cache_prefix: str | None) -> str | None:
+        """The cachedContent name to reference this call — reusing the handle while (model, prefix
+        fingerprint) match, else (re)creating one (and deleting the old). ``None`` when the feature is
+        off, there is no prefix, or any cache-API call fails (→ the caller runs the implicit path).
+        Sets ``last_cache_event`` for the observability layer (LUMI-187)."""
+        self.last_cache_event = None
+        if not self._explicit_cache or not cache_prefix:
+            return None
+        fp = hashlib.sha256(cache_prefix.encode("utf-8")).hexdigest()[:16]
+        h = self._cache_handle
+        if h and h["model"] == model and h["fingerprint"] == fp:
+            return h["name"]  # warm — reuse
+        cause = "model" if (h and h["model"] != model) else "prefix"
+        try:
+            name = self._cache_create(model, cache_prefix)
+        except Exception:  # noqa: BLE001 — any failure degrades to implicit, never a failed turn
+            self._cache_handle = None
+            self.last_cache_event = "fallback:create-error"
+            if not self._cache_fallback_logged:
+                _log.warning("Gemini explicit cache unavailable → implicit prompt caching")
+                self._cache_fallback_logged = True
+            return None
+        if h:
+            self._cache_delete(h["name"])  # best-effort delete of the stale object
+        self._cache_handle = {"name": name, "model": model, "fingerprint": fp}
+        self.last_cache_event = f"recreated:{cause}" if h else "created"
+        self._cache_fallback_logged = False  # a healthy create re-arms the one-shot fallback log
+        return name
+
+    def _cache_wrap(self, body: dict, sys_text: str, cache_prefix: str | None,
+                    model: str | None) -> dict:
+        """If explicit caching applies, rewrite ``body`` to REFERENCE the cache (``cachedContent``)
+        and move the volatile tail — everything after the cached prefix — into a leading ``contents``
+        block, dropping the request's own ``systemInstruction`` (the LUMI-184 constraint: a request
+        can't carry both). Off / no ref → ``body`` unchanged (byte-identical to today)."""
+        ref = self._cache_ref(model, cache_prefix)
+        if ref is None:
+            return body
+        tail = sys_text[len(cache_prefix):] if sys_text.startswith(cache_prefix) else sys_text
+        wrapped = dict(body)
+        wrapped.pop("systemInstruction", None)
+        wrapped["cachedContent"] = ref
+        lead = [{"role": "user", "parts": [{"text": tail}]}] if tail.strip() else []
+        wrapped["contents"] = lead + list(body.get("contents", []))
+        return wrapped
+
+    def _create(self, system: str, messages: list[Message], model: str, *, structured: bool,
+                cache_prefix: str | None = None) -> dict:
+        body = self._body(system, messages, structured=structured, model=model, cache_prefix=cache_prefix)
         started = time.monotonic()
         resp = self._run(lambda: self._post(model, body))
         self._capture(resp, model, int((time.monotonic() - started) * 1000))
@@ -1849,8 +1949,10 @@ class GeminiClient:
         max_steps: int = 8,
     ) -> str:
         if tools and tool_executor is not None:  # v0.39 LUMI-153 think-path tool-loop (text terminal)
-            return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=False)
-        return _sanitize_reply(self._text_of(self._create(system, messages, model, structured=False)))
+            return self._loop(system, messages, model, tools, tool_executor, max_steps,
+                              structured=False, cache_prefix=cache_prefix)
+        return _sanitize_reply(self._text_of(
+            self._create(system, messages, model, structured=False, cache_prefix=cache_prefix)))
 
     def reply_structured(
         self,
@@ -1864,8 +1966,9 @@ class GeminiClient:
         max_steps: int = 8,
     ) -> dict:
         if tools and tool_executor is not None:  # v0.39 LUMI-153 function-calling loop
-            return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=True)
-        text = self._text_of(self._create(system, messages, model, structured=True))
+            return self._loop(system, messages, model, tools, tool_executor, max_steps,
+                              structured=True, cache_prefix=cache_prefix)
+        text = self._text_of(self._create(system, messages, model, structured=True, cache_prefix=cache_prefix))
         if not text:  # blocked/empty candidate → a graceful calm placeholder (the gate needs a reply)
             return dict(_GEMINI_BLOCKED_STATE)
         return _clean_state(parse_emotion_json(text))
@@ -1896,6 +1999,7 @@ class GeminiClient:
     def _loop(
         self, system: str, messages: list[Message], model: str,
         tools: list[dict], tool_executor: Callable[[str, dict], str | dict], max_steps: int, *, structured: bool,
+        cache_prefix: str | None = None,
     ) -> object:
         """Bounded Gemini function-calling loop. Intermediate rounds offer tools and **no** ``responseSchema``
         (the schema-vs-tools split); the forced final round drops tools (and, structured, sets the schema).
@@ -1927,6 +2031,9 @@ class GeminiClient:
                     gen["responseSchema"] = _GEMINI_EMOTION_SCHEMA
             else:  # intermediate → offer tools, NO responseSchema (the schema-vs-tools split)
                 body["tools"] = gtools
+            # v1.3 LUMI-186: reference the explicit cache (tail → leading contents) when it applies;
+            # the running `contents` list stays clean (the wrap builds a fresh list). Off → unchanged.
+            body = self._cache_wrap(body, sys_text, cache_prefix, model)
             started = time.monotonic()
             resp = self._run_create(model, body)
             latency = int((time.monotonic() - started) * 1000)
@@ -2203,6 +2310,7 @@ def build_llm(cfg: Config) -> LLMClient:
             raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
         return GeminiClient(
             cfg.gemini_api_key, max_tokens=cfg.max_tokens, effort=cfg.effort, thinking=cfg.thinking,
+            explicit_cache=cfg.gemini_explicit_cache, cache_ttl=cfg.prompt_cache_ttl,
         )
     raise LLMError(
         f"Unknown LLM provider {provider!r}. Set LUMI_PROVIDER to one of: "

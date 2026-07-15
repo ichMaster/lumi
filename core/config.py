@@ -359,6 +359,7 @@ class Config:
     recall_scope: str = "messages"  # v0.36: default scope the recall tool searches when omitted
     prompt_cache: bool = True       # v0.15: mark the stable prompt prefix as a cache breakpoint
     prompt_cache_ttl: str = "5m"    # cache lifetime: 5m (default) or 1h (keeps it warm across thinks)
+    gemini_explicit_cache: bool = False  # v1.3: explicit cachedContents on Gemini (TTL from prompt_cache_ttl)
     usage_report: bool = True       # write per-session token usage + cost report to .lumi/ on session close
     cache_monitor: bool = False     # log each model call's cache behaviour → .lumi/cache-report.md (per channel)
     # v0.19 local file tool (read-only half) — off by default; sandboxed, untrusted, bounded.
@@ -696,6 +697,7 @@ def load_config(*, load_env: bool = True) -> Config:
         facts_digest=(os.getenv("LUMI_FACTS_DIGEST") or "on").strip().lower() in _TRUTHY,  # on by default
         prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
         prompt_cache_ttl="1h" if (os.getenv("LUMI_PROMPT_CACHE_TTL") or "5m").strip().lower() == "1h" else "5m",
+        gemini_explicit_cache=_parse_bool(os.getenv("LUMI_GEMINI_EXPLICIT_CACHE")),  # v1.3, off by default
         usage_report=(os.getenv("LUMI_USAGE_REPORT") or "on").strip().lower() in _TRUTHY,  # on by default
         cache_monitor=(os.getenv("LUMI_CACHE_MONITOR") or "off").strip().lower() in _TRUTHY,  # off by default
         file_tool=(os.getenv("LUMI_FILE_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default

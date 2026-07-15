@@ -133,3 +133,121 @@ def test_build_llm_builds_gemini_and_checks_key():
 
 def test_default_gemini_alias_present():
     assert DEFAULT_MODEL_ALIASES["gemini"] == ("gemini", "gemini-3.1-pro-preview")
+
+
+# --- v1.3 LUMI-186: explicit cachedContents lifecycle (no paid calls) ----------------------------
+
+
+class _CacheTransport:
+    """Records cachedContents create/delete/patch calls; POST returns a fresh cache name."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []  # (method, url)
+        self.n = 0
+        self.fail_create = False
+
+    def __call__(self, method, url, headers, body):
+        self.calls.append((method, url))
+        if method == "POST":
+            if self.fail_create:
+                raise RuntimeError("cachedContents.create 400")
+            self.n += 1
+            return {"name": f"cachedContents/c{self.n}", "usageMetadata": {"totalTokenCount": 12000}}
+        return {}  # DELETE / PATCH
+
+    @property
+    def creates(self) -> int:
+        return sum(1 for m, _ in self.calls if m == "POST")
+
+    @property
+    def deletes(self) -> int:
+        return sum(1 for m, _ in self.calls if m == "DELETE")
+
+
+def _cache_client(ttl="1h"):
+    gen = _Transport(_resp(_VALID))
+    cache = _CacheTransport()
+    c = GeminiClient("k", explicit_cache=True, cache_ttl=ttl, _transport=gen, _cache_transport=cache)
+    return c, gen, cache
+
+
+PREFIX = "СТАБІЛЬНИЙ ПРЕФІКС канону + памʼяті."
+
+
+def test_first_flagged_call_creates_cache_and_references_it_without_system_instruction():
+    c, gen, cache = _cache_client(ttl="1h")
+    full = PREFIX + "\n# волатильний хвіст цього ходу"
+    c.reply_structured(full, [{"role": "user", "content": "привіт"}], "gemini-3.1-pro-preview",
+                       cache_prefix=PREFIX)
+    # a cache was created with the 1h TTL and the prefix as its system
+    assert cache.creates == 1
+    # the generate body references the cache, carries NO systemInstruction, and leads with the tail
+    body = gen.bodies[-1]
+    assert body["cachedContent"] == "cachedContents/c1"
+    assert "systemInstruction" not in body
+    assert body["contents"][0]["parts"][0]["text"].startswith("\n# волатильний хвіст")
+    assert c.last_cache_event == "created"
+
+
+def test_create_body_carries_ttl_and_prefix():
+    c, gen, cache = _cache_client(ttl="1h")
+    # inspect the create call body by using a capturing cache transport
+    seen = {}
+
+    def cap(method, url, headers, body):
+        if method == "POST":
+            seen["body"] = body
+            return {"name": "cachedContents/x", "usageMetadata": {"totalTokenCount": 9}}
+        return {}
+
+    c._cache_transport = cap
+    c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "gemini-3.1-pro-preview",
+                       cache_prefix=PREFIX)
+    assert seen["body"]["ttl"] == "3600s"  # 1h
+    assert seen["body"]["model"] == "models/gemini-3.1-pro-preview"
+    assert seen["body"]["systemInstruction"]["parts"][0]["text"] == PREFIX
+
+
+def test_same_prefix_reuses_the_handle_no_second_create():
+    c, gen, cache = _cache_client()
+    for _ in range(3):
+        c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "m", cache_prefix=PREFIX)
+    assert cache.creates == 1  # created once, reused thereafter
+
+
+def test_prefix_change_recreates_once_and_deletes_the_stale():
+    c, gen, cache = _cache_client()
+    c.reply_structured(PREFIX + "a", [{"role": "user", "content": "hi"}], "m", cache_prefix=PREFIX)
+    c.reply_structured("NEW PREFIX b", [{"role": "user", "content": "hi"}], "m", cache_prefix="NEW PREFIX")
+    assert cache.creates == 2 and cache.deletes == 1  # one recreate + best-effort delete of the old
+    assert c.last_cache_event == "recreated:prefix"
+
+
+def test_model_switch_recreates():
+    c, gen, cache = _cache_client()
+    c.reply_structured(PREFIX + "t", [{"role": "user", "content": "hi"}], "gemini-3.1-pro-preview",
+                       cache_prefix=PREFIX)
+    c.reply_structured(PREFIX + "t", [{"role": "user", "content": "hi"}], "gemini-2.5-flash",
+                       cache_prefix=PREFIX)
+    assert cache.creates == 2 and c.last_cache_event == "recreated:model"
+
+
+def test_cache_api_failure_degrades_to_implicit_and_the_turn_succeeds():
+    c, gen, cache = _cache_client()
+    cache.fail_create = True
+    state = c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "m", cache_prefix=PREFIX)
+    body = gen.bodies[-1]
+    assert "cachedContent" not in body  # fell back to implicit…
+    assert "systemInstruction" in body   # …the full system rides as usual
+    assert state["reply"] == "привіт"    # the turn still produced a reply
+    assert c.last_cache_event == "fallback:create-error"
+
+
+def test_off_is_byte_identical_no_cache_api_call():
+    gen = _Transport(_resp(_VALID))
+    cache = _CacheTransport()
+    c = GeminiClient("k", explicit_cache=False, _transport=gen, _cache_transport=cache)
+    c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "m", cache_prefix=PREFIX)
+    assert cache.calls == []  # the caches API is never touched
+    body = gen.bodies[-1]
+    assert "cachedContent" not in body and "systemInstruction" in body  # today's payload shape
