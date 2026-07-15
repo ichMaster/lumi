@@ -1,9 +1,9 @@
-"""v0.36 LUMI-142 — the `core` (identity-core) flag + its lifecycle.
+"""v0.36 LUMI-142 — the `core` (identity-core) flag.
 
-`LongTermFact.core` is curated three ways: a one-off **backfill** (first run → pick from all facts),
-an **initial guess at extraction** (the `[C]` marker on a new fact), and a **session-start re-flag**
-that re-ranks the `core=true` pool to `LUMI_FACTS_CORE_MAX` with **boundaries pinned**. The re-flag's
-input is the small core pool (not all facts). Model mocked — no paid calls."""
+`LongTermFact.core` is set by the `[C]` marker at extraction (an initial guess) and, authoritatively,
+by the offline **/review-facts** skill (Opus). There is **no in-app session-start re-rank** — a weak
+housekeeping model was silently collapsing curated pins, so that logic was removed; the skill is the
+sole reranker. The core facts (up to `LUMI_FACTS_CORE_MAX`) are injected into `## Про Віталія`. Model mocked."""
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -37,57 +37,22 @@ def test_extraction_marks_core_from_the_marker(tmp_path):
     assert flags == {"Звати Олег": True, "Любить піцу": False}
 
 
-def test_session_start_reflag_caps_and_pins_boundary(tmp_path):
-    # > N core facts incl. a boundary → cap to the model's top-N, but the boundary is PINNED.
-    core = _core(tmp_path, reply="Любить каву\nМає кота", core_max=2)
-    for t in ("Любить каву", "Має кота", "Полюбляє джаз",
-              "Ми домовились ніколи не дзвонити після 22:00"):
+def test_session_start_never_touches_core_flags(tmp_path):
+    # No in-app re-rank: a curated core (even one that exceeds the cap) is left EXACTLY as the skill set
+    # it — a weak model call can never demote a pin. Also: no model call at session start for the core.
+    called = {"n": 0}
+
+    def watch(system, messages, model):
+        called["n"] += 1
+        return "Любить каву"
+
+    core = _core(tmp_path, reply=watch, core_max=2)
+    for t in ("Любить каву", "Має кота", "Полюбляє джаз", "Слухає джаз"):  # 4 core > cap 2
         core._repo.add_fact(_fact(t, core=True))
     core.start_session()
     cores = {f.fact for f in core._repo.facts("owner") if f.core}
-    assert "Ми домовились ніколи не дзвонити після 22:00" in cores  # boundary pinned (kept past the cap)
-    assert "Полюбляє джаз" not in cores                            # dropped — not in the model's top-2
-    assert {"Любить каву", "Має кота"} <= cores                    # the model's chosen survive
-
-
-def test_reflag_input_is_only_the_core_pool(tmp_path):
-    # The re-flag sends ONLY core=true facts to the model — not the whole (large) facts list.
-    captured = {}
-
-    def chooser(system, messages, model):
-        captured["content"] = messages[-1]["content"]
-        return "Любить каву"
-
-    core = _core(tmp_path, reply=chooser, core_max=3)
-    core._repo.add_fact(_fact("Любить каву", core=True))
-    core._repo.add_fact(_fact("Випадковий дрібний факт", core=False))
-    core.start_session()
-    assert "Любить каву" in captured["content"]
-    assert "Випадковий дрібний факт" not in captured["content"]   # non-core never sent
-
-
-def test_backfill_first_run_selects_from_all_facts(tmp_path):
-    # Nothing flagged yet → the pool is ALL facts (the one-off backfill that seeds the core).
-    captured = {}
-
-    def chooser(system, messages, model):
-        captured["content"] = messages[-1]["content"]
-        return "Звати Олег"
-
-    core = _core(tmp_path, reply=chooser, core_max=1)
-    core._repo.add_fact(_fact("Звати Олег"))
-    core._repo.add_fact(_fact("Любить піцу"))
-    core.start_session()
-    assert "Звати Олег" in captured["content"] and "Любить піцу" in captured["content"]  # all sent
-    assert {f.fact for f in core._repo.facts("owner") if f.core} == {"Звати Олег"}
-
-
-def test_reflag_off_when_cap_zero(tmp_path):
-    core = _core(tmp_path, reply="x", core_max=0)
-    core._repo.add_fact(_fact("Любить каву", core=True))
-    core.start_session()
-    assert core._llm.calls == []                                  # no model call when the cap is 0
-    assert [f.core for f in core._repo.facts("owner")] == [True]  # flags untouched
+    assert cores == {"Любить каву", "Має кота", "Полюбляє джаз", "Слухає джаз"}  # untouched
+    assert not hasattr(core, "_ensure_core_flags")  # the method is gone
 
 
 def test_core_flag_persists_across_reload(tmp_path):
@@ -96,12 +61,3 @@ def test_core_flag_persists_across_reload(tmp_path):
     repo.add_fact(_fact("Любить піцу", core=False))
     reloaded = JsonRepository(tmp_path / "store.json")
     assert {f.fact: f.core for f in reloaded.facts("owner")} == {"Звати Олег": True, "Любить піцу": False}
-
-
-def test_reflag_is_per_user_isolated(tmp_path):
-    # owner's re-flag never touches another user's facts.
-    core = _core(tmp_path, reply="Любить каву", core_max=1)
-    core._repo.add_fact(_fact("Любить каву", core=True, user="owner"))
-    core._repo.add_fact(_fact("Любить чай", core=True, user="stranger"))
-    core.start_session()
-    assert any(f.core for f in core._repo.facts("stranger"))      # stranger's flag untouched

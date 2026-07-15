@@ -1,27 +1,35 @@
 ---
 name: review-facts
-description: Review the whole long-term facts DB on demand and mark stale/duplicate/irrelevant facts obsolete (propose → human review → apply). Non-destructive; never auto-obsoletes a core fact.
+description: Review the whole long-term facts DB on demand — mark stale/duplicate/irrelevant facts obsolete AND rerank the identity-core (select the top-N durable facts as core=true). Propose → human review → apply. Non-destructive; runs offline on Opus. This skill is the SOLE reranker of the identity-core (there is no in-app re-rank).
 ---
 
-# Skill: Review Facts (hygiene)
+# Skill: Review Facts (hygiene + identity-core rerank)
 
-Review **all** of a user's long-term facts and mark the **obsolete** ones — duplicates, outdated
-(superseded by a newer fact), and irrelevant/ephemeral — so they stop reaching the prompt while staying
-in the store for audit. This is the **propose → human review → apply** flow for the v0.36 `obsolete`
-flag (LUMI-145). It runs offline on **Opus** (this agent), not the app's model.
+Two jobs over a user's long-term facts, both offline on **Opus** (this agent), not the app's weak
+housekeeping model:
 
-A fact marked `"obsolete": true` is filtered out of **every** fact path: the core static block, the auto
-fact-RAG (`# Релевантні факти`), and `recall(scope=facts)`. It is **kept** in the store (non-destructive,
-reversible — set the flag back to `false` to restore).
+1. **Hygiene** — mark the **obsolete** ones (duplicates, outdated, irrelevant/ephemeral) so they stop
+   reaching the prompt while staying in the store for audit (the v0.36 `obsolete` flag, LUMI-145).
+2. **Rerank the identity-core** — select the **top-N durable, relevant** facts and set `core: true` on
+   exactly those (unpinning the rest). This skill is the **sole reranker of the identity-core** — the
+   old in-app session-start re-rank (a cheap model that under-returned and silently collapsed a curated
+   core) has been **removed**, so nothing in the app ever re-touches what this skill chooses.
+
+Both are **propose → human review → apply**. A fact marked `"obsolete": true` is filtered out of **every**
+fact path (core block, auto fact-RAG `# Релевантні факти`, `recall(scope=facts)`); a `core: true` fact is
+injected into `## Факти` (up to `LUMI_FACTS_CORE_MAX`). Everything is **kept** in the store and reversible
+(flip the flag back).
 
 ## Usage
 
 ```
-/review-facts [user_id] [--store <path>] [--apply]
+/review-facts [user_id] [--store <path>] [--pin N] [--apply]
 ```
 
 - `user_id` — whose facts to review (default `owner`).
 - `--store` — path to the store (default `.lumi/store.json`).
+- `--pin N` — also **rerank the identity-core**: pick the top-`N` durable facts and set them `core: true`
+  (unpin the rest). Omit to do hygiene only. Pair with `LUMI_FACTS_CORE_MAX=N` so all N show.
 - `--apply` — skip the dry-run and apply after showing the proposal (still requires explicit confirmation).
 
 ## Hard rules
@@ -36,6 +44,12 @@ reversible — set the flag back to `false` to restore).
 - **Per-user.** Only touch `facts[user_id]`; never another user's facts.
 - **Propose first.** Always show the full proposal with reasons and get explicit confirmation before writing
   (even with `--apply`).
+- **Rerank rules (`--pin N`):** pick **verbatim** existing fact texts (so they match on write); prefer the
+  **clearest** phrasing of each distinct topic; **never pin an impression** (Лілі's own musing —
+  `сприйняття …:` / `ставлення до себе:` / her lyrical self-quotes — those are the v1.14 impressions
+  layer, not facts about the user); set `core: true` on exactly the chosen N and `core: false` on every
+  other live fact (no stray pins). The skill's pin set is the **source of truth** — that's why the in-app
+  re-rank must be off.
 
 ## Steps
 
@@ -70,28 +84,44 @@ Build three lists:
    auto-applied).
 3. **Kept** — just the count (don't dump them).
 
+### 3b. Rerank the identity-core (`--pin N` only)
+
+Over the **live, durable** facts (exclude obsolete + the impressions bucket), select the **top-`N` most
+important, distinct** facts about the user — the identity-core. Cover the spread, don't stack near-dupes:
+**biographical** (name, birth data, location, work, family), **the ongoing project / relationship**,
+**stable tastes & interests**, **communication style**, and **standing agreements / boundaries**. Pick
+the **clearest verbatim** fact for each topic. Bias to genuinely durable, self-descriptive facts; skip
+ephemeral state and skip impressions (per the rerank rules above).
+
+Build the **Propose pins** list — the `N` chosen fact texts (verbatim), grouped by category. Note which
+currently-`core` facts fall **out** of the new set (they'll be unpinned).
+
 ### 4. Show the proposal + confirm
 
-Print the **Propose obsolete** list (fact — bucket — reason) and the **Core — needs your call** list.
-Show counts: `N proposed obsolete, M core-flagged for review, K kept`. Ask:
-**"Apply these N obsolete marks? (the core-flagged ones are left for you to decide)"** — wait for an
-explicit yes.
+Print the **Propose obsolete** list (fact — bucket — reason) and the **Core — needs your call** list, and
+(with `--pin N`) the **Propose pins** list. Show counts: `N proposed obsolete, P pins, M core-flagged for
+review, K kept`. Ask:
+**"Apply — obsolete N, pin P? (the core-flagged ones are left for you to decide)"** — wait for an explicit
+yes.
 
 ### 5. Apply (only on confirmation)
 
-For each confirmed fact, set `"obsolete": true` on the matching entry in `facts[user_id]` (match by exact
-`fact` text; if duplicate texts exist, match all). Leave every other field unchanged. Do **not** touch
-`core: true` facts. Write `store.json` back with the same shape (`json.dump(..., ensure_ascii=False,
-indent=2)`), atomically if possible (write a temp file, then replace).
+Load the store fresh, then in `facts[user_id]` (match by exact `fact` text; match all if duplicate texts):
+- **Obsolete:** set `"obsolete": true` on each confirmed candidate (and `"core": false` — obsolete is never
+  core). Leave every other field unchanged.
+- **Pins (`--pin N`):** set `"core": true` on each of the `P` chosen (and `"obsolete": false`); set
+  `"core": false` on every **other** live fact, so the core set is **exactly** the chosen `P` (no stray
+  pins survive). A pin is never also obsoleted.
 
-For the **Core — needs your call** list: if the user explicitly approves a specific core fact, set its
-`obsolete` (its `core` stays as-is). Otherwise leave it.
+Write `store.json` back with the same shape (`json.dump(..., ensure_ascii=False, indent=2)`), **atomically**
+(temp file, then `os.replace`). For the **Core — needs your call** list: only if the user explicitly
+approves a specific fact, set its `obsolete`.
 
 ### 6. Report
 
-Print a summary: backup path, counts (obsolete applied, core left for review, kept), and a one-line
-reminder that it's reversible (set `obsolete` back to `false`) and that the next session start will re-rank
-the core over the now-cleaner pool.
+Print a summary: backup path, counts (obsolete applied, **pins set**, core left for review, kept), and a
+reversibility reminder (flip `obsolete`/`core` back). The app has no in-app re-rank, so the pin set is
+safe across restarts — nothing re-touches it. Remind to set `LUMI_FACTS_CORE_MAX ≥ N` so all pins show.
 
 ## Notes
 

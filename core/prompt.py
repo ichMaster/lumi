@@ -223,7 +223,7 @@ def build_system_prompt(
 
     - **Stable prefix** (cacheable — byte-identical within a session): the canon (persona) as
       prose, then `# Як відповідати` (emotion + relational read), `# Памʼять про цю людину`
-      (the date-based memory layers coarse→fine + `## Факти`), and `# Настрій дня` (locked per local
+      (the date-based memory layers coarse→fine + `## Про Віталія`), and `# Настрій дня` (locked per local
       day). The in-session digest is **not** here — it changes on compaction (see the tail), so
       keeping it off the prefix means a compaction never re-writes the static head.
     - **Per-turn tail** (recomputed each turn → never cached): `# Раніше в цій розмові` (the
@@ -259,7 +259,7 @@ def build_system_prompt(
     if summaries:
         mem.append("## Останні розмови (детально)\n" + "\n".join(f"- {s}" for s in summaries))
     if facts:
-        mem.append("## Факти\n" + "\n".join(f"- {f}" for f in facts))
+        mem.append("## Про Віталія\n" + "\n".join(f"- {f}" for f in facts))
     if mem:
         prefix.append("# Памʼять про цю людину\n\n" + "\n\n".join(mem))
 

@@ -76,12 +76,10 @@ from core.memory import (
     WEEK_DAYS,
     clamp_rows,
     compaction_plan,
-    core_select_request,
     day_summary_request,
     digest_request,
     facts_digest_request,
     facts_request,
-    is_pinned_fact,
     parse_facts,
     parse_facts_with_core,
     parse_summary,
@@ -1076,7 +1074,6 @@ class Core:
         self.last_style = None
         self._think_count = 0  # v0.12: the proactive-think cap is per session
         self._write_face_signal(DEFAULT_EMOTION.value, DEFAULT_INTENSITY)  # calm before the first turn
-        self._ensure_core_flags()  # v0.36: re-rank the identity-core once per session (off when cap=0)
         session = self._repo.create_session(self._user_id)
         self._active_session_id = session.id  # stamp cache events with this session
         return session
@@ -1873,35 +1870,6 @@ class Core:
                 )
         except Exception:  # noqa: BLE001 — degrade to raw facts; never break a turn
             pass
-
-    def _ensure_core_flags(self) -> None:
-        """Session-start re-flag of the **identity-core** (v0.36).
-
-        Re-ranks the ``core=true`` pool to ``LUMI_FACTS_CORE_MAX`` (boundaries / standing agreements
-        **pinned** — kept past the cap) and writes the flag back. On the **first run** (nothing flagged
-        yet) the pool is **all** facts — the one-off backfill that seeds the core. Off when the cap is 0;
-        one housekeeping call over the **small core pool** (cost-neutral with the digest it replaces in
-        LUMI-143). Best-effort: a model failure leaves the flags as-is, never blocks. Per-user; idempotent.
-        """
-        if self._facts_core_max <= 0:
-            return
-        all_facts = [f for f in self._repo.facts(self._user_id) if not f.obsolete]  # v0.36: skip stale
-        if not all_facts:
-            return
-        pool = [f for f in all_facts if f.core] or all_facts  # first run → backfill over all facts
-        pool_texts = {f.fact for f in pool}
-        pinned = {f.fact for f in pool if is_pinned_fact(f.fact)}
-        try:
-            system, msgs = core_select_request([f.fact for f in pool], self._facts_core_max)
-            chosen = parse_facts(self._housekeeping_reply(system, msgs, kind="session-start").strip())
-        except Exception:  # noqa: BLE001 — leave the flags as-is; never break a session
-            return
-        ranked = [c for c in chosen if c in pool_texts]            # the model's ranking, pool-only
-        keep = set(ranked[: self._facts_core_max]) | pinned       # cap the chosen; pins are extra
-        for f in pool:
-            want = f.fact in keep
-            if f.core != want:
-                self._repo.set_fact_core(self._user_id, f.fact, want)
 
     def _turn_tools(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
         """Assemble this turn's bounded-loop tools + a **name-routing** executor — the v0.19/v0.20 file
