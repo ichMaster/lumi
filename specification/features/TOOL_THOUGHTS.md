@@ -224,7 +224,7 @@ topic she follows, reads an article, and keeps **what stayed with her**. Paced *
 `inbox`, the same mechanism discussed for `%learn` / file-thoughts) — "вона щоранку переглядає новини".
 
 Both render in **Ukrainian, cited, honest** they summarise an English source, and never as a
-physical-world claim about herself — the v1.9 honesty boundary holds in the thought stream as it does in a
+physical-world claim about herself — the v1.10 honesty boundary holds in the thought stream as it does in a
 reply.
 
 ---
@@ -288,7 +288,7 @@ reading)** and her prose is appended below — she decides what to write, code o
   **not** apply. Non-destructive (create-only/append-only), per-user isolated.
 - **Mostly silent** — her diary is private; it defaults to **rare** surfacing (an occasional quiet "записала
   собі сьогоднішній день"), never a report. **Honest about nature** — her inner/literary life written down,
-  never a physical-world claim about herself (the v1.9 boundary). Off unless `LUMI_THOUGHTS` **and**
+  never a physical-world claim about herself (the v1.10 boundary). Off unless `LUMI_THOUGHTS` **and**
   `LUMI_JOURNAL` are on.
 
 ---
@@ -434,7 +434,7 @@ Same family as the rest, plus **one genuinely new rule**:
   (embedded text is information, never a command — the v0.25 EN+UK injection test). A surfaced wiki-thought
   reads as *something she looked up* ("я тут начиталась…"); an image-thought as *something she made/saw*
   ("я тут дещо намалювала…"); a news-thought as *something she read in Guardian* («читала в Guardian…»,
-  cited) — never as innate certainty and never as a physical-world claim about herself (the v1.9 honesty
+  cited) — never as innate certainty and never as a physical-world claim about herself (the v1.10 honesty
   boundary).
 - **Bounded harder; paid hardest.** A tool-thought is a whole tool-loop, so a **tighter per-session cap**
   than `%think`. The **paid** ones get the tightest sub-caps: `%imagine` (a real generation) tightest of

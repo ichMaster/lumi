@@ -7,15 +7,15 @@ switches on at your voice into someone with her own gravity. The full vision is 
 [inner-life-concept-en.md](inner-life-concept-en.md); this is the **Lumi design** — how it's
 built on what already exists, the contracts, and the two-phase split.
 
-- **v1.11 — Inner life I (plans & state):** the three planning layers + boundaries + the global
+- **v1.12 — Inner life I (plans & state):** the three planning layers + boundaries + the global
   store + the state block (she *carries* intentions).
-- **v1.12 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
+- **v1.13 — Inner life II (away-gap):** the gap-fill (activities/memories/dreams), mood
   replanning, surfacing, and the honesty boundary (something *happened*).
 
 > **Needs come first.** Under the plans sits the **motivational substrate** — her **needs** (the
 > drives that *pull* her from inside) — now **two phases of their own before the plans**: in
-> **v1.9** they exist on the v0.42 tick (evolve, feed the mood, lift from warmth); in **v1.10** a
-> threshold crossing **fires an act**; in **v1.11** they tilt the plan; in **v1.12** they **close**
+> **v1.10** they exist on the v0.42 tick (evolve, feed the mood, lift from warmth); in **v1.11** a
+> threshold crossing **fires an act**; in **v1.12** they tilt the plan; in **v1.13** they **close**
 > from what she actually did in the away-gap. Full spec: [NEEDS_full.md](NEEDS_full.md).
 
 ## It extends what Lumi already has — not new infrastructure
@@ -107,7 +107,7 @@ slots; by default they're the soft skeleton. The hobby bank is `core/inner/hobbi
 
 ## Mapping to the roadmap
 
-**v1.11 + v1.12 — Inner life**, after the needs phases (v1.9–v1.10). Depends on **v1.9** (the
+**v1.12 + v1.13 — Inner life**, after the needs phases (v1.10–v1.11). Depends on **v1.10** (the
 hungriest need the plan folds in), **v0.42** (the tick that drives boundaries), **v0.6** (mood),
 **v0.4** (clock), **v0.2** (the Repository). Global to Лілі (not per-user); the creative layer
 (v5) later turns her inner life into real artifacts.

@@ -144,7 +144,7 @@ paraphrase). Two consequences to honor:
 2. **The reply comes back in Ukrainian, cited, and honest.** The canon's "how she delivers news" line
    says: source news may be English; she renders it **naturally in Ukrainian, selectively, in her own
    voice**, transparent that she's summarizing an English source (e.g. «читала в Guardian…») + the
-   `webUrl`. This satisfies both the [WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md) canon note and the v1.9
+   `webUrl`. This satisfies both the [WORLD_CONTEXT_MCP.md](WORLD_CONTEXT_MCP.md) canon note and the v1.10
    honesty boundary.
 
 **Untrusted content is unchanged by translation** — English article text is still *data, never

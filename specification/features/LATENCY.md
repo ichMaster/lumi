@@ -8,7 +8,7 @@ reasoning stays, but becomes a *chosen register*, not the tax on every "прив
 > (Gemini 3.1 Pro Preview, prompt cache on, RAG on, inner voice + intent on) — from
 > `.lumi/outbox.jsonl` turn pairs, `.lumi/cache-log.jsonl`, and `.lumi/lumi.log` of 2026-07-13/14.
 > The prompt-size side continues [docs/PROMPT_OPTIMIZATION.md](../../docs/PROMPT_OPTIMIZATION.md) /
-> [II](../../docs/PROMPT_OPTIMIZATION_II.md); the model-side composes with the proposed **v1.5
+> [II](../../docs/PROMPT_OPTIMIZATION_II.md); the model-side composes with the proposed **v1.6
 > [MODEL_ROLES](MODEL_ROLES.md)** registers. This doc is the **latency umbrella**: it reviews where
 > the seconds go and evaluates the levers.
 
@@ -139,7 +139,7 @@ stream only their final round; tag filtering must never leak a half-tag; malform
 
 ### S4 — Register-routed thinking: fast by default, deep when it matters · **−3–7 s on casual turns**
 This is the "sometimes she can think longer" ask, and it is **already designed** as
-**[v1.5 MODEL_ROLES](MODEL_ROLES.md)** (talking / thinking / emotional). What this doc adds is
+**[v1.6 MODEL_ROLES](MODEL_ROLES.md)** (talking / thinking / emotional). What this doc adds is
 the *latency* framing and the interim knobs:
 
 - **The hidden think phase is a latency tax on every turn.** The v1.1 inner-voice
@@ -155,11 +155,11 @@ the *latency* framing and the interim knobs:
   gpt-5.5-mini — [core/models.toml](../../core/models.toml) already names them), emotional/thinking
   = the frontier reply model. Fast tiers also cut TTFT and 5–25× the cost.
 - **Interim, zero-code, today:** `LUMI_EFFORT=low` + a trimmed `inner_voice.md` retrospective —
-  banks a chunk of the saving while v1.5 is built.
+  banks a chunk of the saving while v1.6 is built.
 
 **Saving:** on casual turns the model call drops ~6–10 s → **~1.5–3 s** (short think + fast tier +
-short reply). **Effort:** rides v1.5 (~2–3 days) + an authoring pass. **Risk: MEDIUM** — register
-misroute on a loaded message (v1.5's stickiness + "unsure → escalate" design addresses exactly
+short reply). **Effort:** rides v1.6 (~2–3 days) + an authoring pass. **Risk: MEDIUM** — register
+misroute on a loaded message (v1.6's stickiness + "unsure → escalate" design addresses exactly
 this; the lexical stage keeps short messages cheap). **Invariant: routing reads the message, never
 her mood — and never competence.**
 
@@ -213,7 +213,7 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v3.2/v3.4 reuse th
 | S1 | async POST | **−4.5–6.5 s** | ~1 day | low-med (crash window) | — |
 | S2 | incremental store | makes S1 structural; O(1) persist | 1–2 days | low | Repository seam (exists) |
 | S3 | streaming | perceived −7–8 s; wall for voice | 2–3 days | medium | LLMClient seam |
-| S4 | registers (v1.5) | **−3–7 s** model-side | 2–3 days + authoring | medium | v0.41 profiles ✅, v1.5 |
+| S4 | registers (v1.6) | **−3–7 s** model-side | 2–3 days + authoring | medium | v0.41 profiles ✅, v1.6 |
 | S5 | prompt P1–P5 | ~−0.5–1 s (big on cost) | per PO-II | per PO-II | — |
 | S6 | live voice | first audio ~2–2.5 s | 1–2 wks | med-high | **S3 + S4**, /voice adapters ✅ |
 | S7 | RAG/compaction/retries | −0.3–1.5 s | small each | low | S0 numbers |
@@ -223,28 +223,35 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v3.2/v3.4 reuse th
 | after | full reply | first visible / audible |
 |---|--:|--:|
 | today | 14.5 s | 14.5 s |
-| + S1 (+S0) | ~8–10 s | ~8–10 s |
+| + S1 + S2 (+S0) | ~8–10 s | ~8–10 s |
 | + S4 interim (effort=low + short inner voice) | ~5–7 s | ~5–7 s |
 | + S3 streaming | ~5–7 s | **~2–3 s** |
-| + S2 + S4 full (v1.5) | **~2.5–4 s** | ~1.5–2 s |
+| + S4 full (v1.6) | **~2.5–4 s** | ~1.5–2 s |
 | + S6 | — | **first audio ~2–2.5 s** |
 
 ---
 
-## 4. Suggested phasing (roadmap slots — the owner numbers them)
+## 4. Phasing (roadmap slots)
 
-1. **LAT-1 · quick wins (S0 + S1 + S4-interim + S7-compaction)** — instrumentation, the async
-   post-turn queue, `LUMI_EFFORT=low`, the trimmed talking-tier `inner_voice.md`. Days of work,
-   no contract change, **14.5 s → ~6–8 s**. Fits a small `v1.2.x`-adjacent infra phase (it is
-   TUI-feel work, like v1.2 itself).
-2. **LAT-2 · plumbing (S2 + S3)** — the incremental store behind `Repository`; streaming behind
-   `LLMClient` (Anthropic first, then Gemini/OpenAI). **Felt latency ~2–3 s.** An infra phase
-   inserted like v1.3 (the explicit Gemini cache — the same insert-and-shift precedent).
-3. **LAT-3 · registers = v1.5** — the [MODEL_ROLES](MODEL_ROLES.md) phase as drafted, with
-   latency as its driving DoD metric (casual turn ≤ 4 s full).
-4. **LAT-4 · live voice mode (S6)** — new phase beside the voice family; hard-gated on LAT-2/3.
-   DoD: median stop-speaking → first-audio ≤ 2.5 s over 20 live turns; barge-in works; thinking
-   register produces the spoken acknowledgment, not silence.
+- **S0 · instrument now (not a version).** The per-stage `pre_ms`/`llm_ms`/`post_ms` timing + a
+  `/latency` read-out ships as an **immediate fix**, ahead of everything, so each lever gets a
+  before/after number. (A few hours, no risk.)
+- **v1.4 · the durable POST fix (S1 + S2).** The async post-turn queue **and** the incremental store
+  behind `Repository` (append-only / SQLite, O(1) persist), shipped **together**: S1 alone is a
+  band-aid (crash-loss window + the store-growth time bomb — persist is O(history) today); with S2 the
+  POST fix is **complete and durable**. No contract change, **14.5 s → ~6–8 s felt.**
+- **v1.5 · streaming (S3).** Streaming behind `LLMClient` (Anthropic first, then Gemini/OpenAI).
+  **Felt latency ~2–3 s.**
+- **v1.6 · registers = the [MODEL_ROLES](MODEL_ROLES.md) phase (S4, incl. S4-interim) = LAT-3.**
+  Register-routed thinking with latency as the driving DoD (casual turn ≤ 4 s full). **S4-interim**
+  folds in here: `LUMI_EFFORT=low` for the talking register + the trimmed talking-tier `inner_voice.md`
+  (the short inner voice the fast register uses).
+- **S7 · optional for now** — the RAG/compaction/retry fixes are small, low-risk levers taken
+  opportunistically (e.g. compaction off the turn rides naturally with the v1.4 queue); not a phase
+  of their own.
+- **LAT-4 · live voice mode (S6) — on hold.** A later phase beside the voice family; hard-gated on
+  v1.5 + v1.6. DoD (when taken up): median stop-speaking → first-audio ≤ 2.5 s over 20 live turns;
+  barge-in works; the thinking register produces a spoken acknowledgment, not silence.
 
 ---
 
@@ -258,7 +265,7 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v3.2/v3.4 reuse th
 - **Speed never trades competence or persona.** The registers route *depth of deliberation*, not
   who she is; the full canon + boundaries ride every prompt on every tier (the
   PROMPT_OPTIMIZATION-II hard line). A fast turn is still **her**.
-- **She may always take the slow path** — a loaded message escalates (v1.5), and in voice she
+- **She may always take the slow path** — a loaded message escalates (v1.6), and in voice she
   *says* she's thinking. Fast is the default, not a cage.
 - **Off by default, mocked in tests** — `LUMI_LIVE_VOICE`, streaming behind a flag until proven;
   no paid APIs in CI (mock streams for LLM/STT/TTS); each phase A/B-able and reversible.
