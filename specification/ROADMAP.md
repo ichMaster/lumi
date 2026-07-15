@@ -865,7 +865,7 @@ Also a **tick service** in the TUI — a **fast** in-TUI timer for **lightweight
 
 ### v1.3 — Explicit Gemini prompt cache (TTL 1h): warm prefill across pauses
 
-> **Probe verdict (LUMI-184): PENDING a manual paid run** — `cachedContents` support + the `cache+systemInstruction` constraint on `gemini-3.1-pro-preview` are unit-covered against a mock but not yet confirmed live. Run `scripts/gemini_probe.py --cache` before relying on the explicit cache in production.
+> **Probe verdict (LUMI-184, ran 2026-07-15):** `cachedContents` is **supported** on `gemini-3.1-pro-preview` (create + hit confirmed, ~16 K tok). The constraint is broader than assumed — a cached-content request may not set `system_instruction`, **`tools`, or `tool_config`** (HTTP 400). So explicit caching applies to **tool-less replies only**; the tool-loop's rounds (which carry tools) stay implicit. Full tool-path caching (tools baked into the cachedContent) is a follow-up.
 
 **Goal:** on the Gemini engine the prompt cache stops being best-effort — the stable prefix (the
 v0.15 cacheable head, ~12 K tok measured) is held in an **explicit server-side `cachedContent`**

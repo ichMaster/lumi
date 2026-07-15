@@ -1878,8 +1878,13 @@ class GeminiClient:
                     model: str | None) -> dict:
         """If explicit caching applies, rewrite ``body`` to REFERENCE the cache (``cachedContent``)
         and move the volatile tail — everything after the cached prefix — into a leading ``contents``
-        block, dropping the request's own ``systemInstruction`` (the LUMI-184 constraint: a request
-        can't carry both). Off / no ref → ``body`` unchanged (byte-identical to today)."""
+        block, dropping the request's own ``systemInstruction``. Gemini forbids a cached-content
+        request from ALSO setting ``systemInstruction``, ``tools``, or ``tool_config`` (verified by the
+        LUMI-184 live probe: HTTP 400) — so a request that carries ``tools`` (the tool-loop's
+        intermediate rounds) is left on the **implicit** path; the tool-less single call and the forced
+        final round still reference the cache. Off / no ref → ``body`` unchanged (byte-identical)."""
+        if body.get("tools") or body.get("toolConfig") or body.get("tool_config"):
+            return body  # a cached-content request can't carry tools → implicit for this round
         ref = self._cache_ref(model, cache_prefix)
         if ref is None:
             return body

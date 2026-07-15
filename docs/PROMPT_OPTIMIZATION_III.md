@@ -176,3 +176,11 @@ stays warm. The before/after is measured from `.lumi/cache-report.md` once the f
 Run `GEMINI_API_KEY=… uv run python scripts/gemini_probe.py --cache gemini-3.1-pro-preview` first to
 confirm `cachedContents` support + the `cache+systemInstruction` constraint on the active model, then
 fill the table from two `.lumi/cache-report.md` snapshots.
+
+**Probe verdict (2026-07-15, `gemini-3.1-pro-preview`):** `cachedContents` create + hit confirmed
+(~16 K tok). The constraint is broader than assumed — a cached-content request may not set
+`system_instruction`, **`tools`, or `tool_config`** (HTTP 400). Consequence: explicit caching applies
+to **tool-less replies only**; the tool-loop rounds (all carry tools) stay implicit. With every tool
+on, most turns are tool-loops, so the explicit-cache win is currently limited to simple turns. Full
+tool-path caching would bake `tools` into the cachedContent (a follow-up — it collides with the loop's
+force-final-answer step, which drops tools).

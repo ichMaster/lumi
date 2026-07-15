@@ -251,3 +251,43 @@ def test_off_is_byte_identical_no_cache_api_call():
     assert cache.calls == []  # the caches API is never touched
     body = gen.bodies[-1]
     assert "cachedContent" not in body and "systemInstruction" in body  # today's payload shape
+
+
+def test_tool_loop_rounds_never_reference_the_cache():
+    # LUMI-184 probe finding: a cached-content request can't carry tools/tool_config (HTTP 400) —
+    # and the tool-loop's rounds all carry `tools`, so the whole tool turn stays on the IMPLICIT
+    # path (avoiding the 400). Explicit caching applies only to tool-less replies (below).
+    c, gen, cache = _cache_client()
+
+    def tool_exec(name, args):
+        return "tool result"
+
+    class _LoopTransport:
+        def __init__(self):
+            self.bodies = []
+            self.step = 0
+
+        def __call__(self, url, headers, body):
+            self.bodies.append(body)
+            self.step += 1
+            if self.step == 1:  # round 1 → one tool call, then round 2 answers
+                return {"candidates": [{"content": {"parts": [
+                    {"functionCall": {"name": "find_in_file", "args": {}}}]}}]}
+            return _resp(_VALID)
+
+    lt = _LoopTransport()
+    c._transport = lt
+    c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "m",
+                       cache_prefix=PREFIX,
+                       tools=[{"name": "find_in_file", "description": "", "input_schema": {}}],
+                       tool_executor=tool_exec, max_steps=3)
+    # every round carried tools → NO round set cachedContent (no 400), and no cache was created
+    assert all("cachedContent" not in b for b in lt.bodies)
+    assert cache.creates == 0
+
+
+def test_tool_less_reply_still_references_the_cache():
+    # The single-call (no-tools) path is where explicit caching applies.
+    c, gen, cache = _cache_client()
+    c.reply_structured(PREFIX + "tail", [{"role": "user", "content": "hi"}], "m", cache_prefix=PREFIX)
+    assert cache.creates == 1 and "cachedContent" in gen.bodies[-1]
