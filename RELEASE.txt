@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 1.3.1 (2026-07-15)
+---------------------------
+- Latency S0: per-stage PRE/MODEL/POST turn timing on the cache-log, a /latency read-out, and a "Turn latency (S0)" section (accumulated + per-session) in the cache report.
+- Facts: LUMI_FACTS master switch (off → no static facts section); the date-window flags (LUMI_SESSION_DAYS / DAY_DAYS / WEEK_DAYS) now treat 0 as off.
+- Roadmap (docs): split v1 → Voice Interface (v1) + Personality (v2), cascade v2–v5 → v3–v6; then swap v1.4 ↔ v1.5 so streaming ships before the POST fix (measured turns show the MODEL CALL is ~83% of latency).
+
 Version 1.3.0 (2026-07-15)
 ---------------------------
 v1.3 — explicit Gemini prompt cache: the stable prompt prefix (canon + memory + facts + mood) is stored as a cachedContents object and referenced every reply, so a post-pause turn stays warm instead of a cold re-read (LUMI_GEMINI_EXPLICIT_CACHE; off → byte-identical; Gemini only).
