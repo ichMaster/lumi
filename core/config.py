@@ -510,6 +510,10 @@ class Config:
     # On EVERY start, skip the replies missed while the voicer was off (speak only new ones).
     # Off (default) = resume — voice the backlog that piled up while it was stopped.
     voice_skip_missed: bool = False
+    # v1.4 (LUMI-190): the voicer speaks each reply sentence-by-sentence (lower time-to-first-audio).
+    # Off (default) → one synth+play per whole reply, byte-identical to before. The outbox record is
+    # unchanged either way (Telegram unaffected).
+    voice_sentences: bool = False
     # v0.26 local dictation (STT) — the mirror of the voicer: mic → inbox. Off by default.
     dictation: bool = False  # the TUI drains inbox + shows the listen toggle (like bridge); the dictator runs
     stt_provider: str = "deepgram"  # deepgram / elevenlabs (Scribe) / whisper (offline)
@@ -843,6 +847,8 @@ def load_config(*, load_env: bool = True) -> Config:
         voice_id=(os.getenv("LUMI_VOICE_ID") or "").strip(),
         voice_model=(os.getenv("LUMI_VOICE_MODEL") or "eleven_multilingual_v2").strip(),
         voice_skip_missed=(os.getenv("LUMI_VOICE_SKIP_MISSED") or "off").strip().lower() in _TRUTHY,
+        voice_sentences=(os.getenv("LUMI_VOICE_SENTENCES") or "off").strip().lower() in _TRUTHY,  # v1.4
+
         dictation=(os.getenv("LUMI_DICTATION") or "off").strip().lower() in _TRUTHY,  # v0.26, off by default
         stt_provider=(os.getenv("LUMI_STT_PROVIDER") or "deepgram").strip().lower(),
         stt_model=(os.getenv("LUMI_STT_MODEL") or "").strip(),

@@ -101,6 +101,56 @@ def test_synth_failure_retries_but_playback_failure_does_not(tmp_path):
     assert voice_pending(outbox, spoken, MockTTS(), lambda a: None) == 1  # recovers, voices "a"
 
 
+# --- v1.4 LUMI-190: sentence-chunked voicing ------------------------------------------------------
+
+
+def test_sentences_mode_speaks_each_sentence_in_order(tmp_path):
+    outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
+    fifo.append(outbox, "Привіт. Як справи?", kind="lili", emotion="joy")
+    tts, played = MockTTS(), []
+
+    assert voice_pending(outbox, spoken, tts, played.append, sentences=True) == 1  # one reply voiced
+    assert tts.calls == [("Привіт.", "joy"), ("Як справи?", "joy")]                # per sentence, same emotion
+    assert played == [b"AUDIO:" + "Привіт.".encode(), b"AUDIO:" + "Як справи?".encode()]  # in order
+    assert fifo.load_pointer(spoken) == 1                                          # advanced past the record
+    assert fifo.read_since(outbox, 0)[0]["text"] == "Привіт. Як справи?"           # outbox record UNCHANGED
+
+
+def test_sentences_off_synthesizes_the_whole_reply(tmp_path):
+    # Off-pin (default): one synth+play of the whole reply — byte-identical to before.
+    outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
+    fifo.append(outbox, "Привіт. Як справи?", kind="lili", emotion="calm")
+    tts = MockTTS()
+    assert voice_pending(outbox, spoken, tts, lambda a: None) == 1                 # default sentences=False
+    assert tts.calls == [("Привіт. Як справи?", "calm")]                           # ONE synth, the whole reply
+
+
+def test_sentences_mode_synth_failure_retries_the_whole_record(tmp_path):
+    outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
+    fifo.append(outbox, "Перше. Друге.", kind="lili")
+
+    class FlakyTTS:
+        def __init__(self):
+            self.fail_on, self.calls = "Друге.", []
+
+        def synth(self, text, *, emotion=None):
+            self.calls.append(text)
+            if text == self.fail_on:
+                raise RuntimeError("boom")
+            return b"ok"
+
+    tts, played = FlakyTTS(), []
+    assert voice_pending(outbox, spoken, tts, played.append, sentences=True) == 0  # record not completed
+    assert fifo.load_pointer(spoken) == 0                                          # pointer left → retry
+    assert tts.calls == ["Перше.", "Друге."]                                       # 1st ok, 2nd failed
+    assert played == [b"ok"]                                                       # 1st sentence was spoken
+
+    tts.fail_on = None                                                             # retry: the record replays
+    assert voice_pending(outbox, spoken, tts, played.append, sentences=True) == 1
+    assert fifo.load_pointer(spoken) == 1
+    assert tts.calls == ["Перше.", "Друге.", "Перше.", "Друге."]                   # retried from the 1st sentence
+
+
 def test_resume_after_restart(tmp_path):
     outbox, spoken = tmp_path / "outbox.jsonl", tmp_path / "outbox.spoken"
     fifo.append(outbox, "a", kind="lili")

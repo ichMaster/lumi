@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from state import fifo
+from voice.sentences import split_sentences
 from voice.tts import TTS
 
 
@@ -35,8 +36,9 @@ def skip_to_tail(outbox_path: str | Path, spoken_path: str | Path, *, always: bo
     return last
 
 
-def voice_pending(outbox_path: str | Path, spoken_path: str | Path, tts: TTS, play, *, log=None) -> int:
-    """Voice the unspoken ``kind="lili"`` replies, ascending, **one at a time**; return the count.
+def voice_pending(outbox_path: str | Path, spoken_path: str | Path, tts: TTS, play, *,
+                  sentences: bool = False, log=None) -> int:
+    """Voice the unspoken ``kind="lili"`` replies, ascending, **one at a time**; return the count voiced.
 
     ``kind="user"`` records are skipped (the pointer still advances past them). The two failure modes
     differ on purpose:
@@ -45,22 +47,36 @@ def voice_pending(outbox_path: str | Path, spoken_path: str | Path, tts: TTS, pl
       retries next loop — nothing lost or repeated;
     - **playback failure** (after a successful synth) → **log and advance** — the audio was already
       synthesized, so re-synthesizing would burn TTS credits on a stuck speaker; skip it instead.
+
+    v1.4 (LUMI-190): with ``sentences=True`` the reply is split into whole sentences and synth+played one
+    at a time (lower time-to-first-audio); off → one synth+play per whole record, **byte-identical to
+    before**. The outbox record is unchanged either way (single writer, FIFO — Telegram unaffected). A
+    synth failure mid-record leaves the pointer, so the record retries from its first sentence.
     """
     voiced = 0
     for rec in fifo.read_since(outbox_path, fifo.load_pointer(spoken_path)):
         if rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
-            try:
-                audio = tts.synth(rec["text"], emotion=rec.get("emotion"))
-            except Exception as exc:  # noqa: BLE001 — synth (network) failed → retry: leave the pointer, stop
-                if log is not None:
-                    log.warning("synth failed for id=%s (retrying): %s", rec.get("id"), exc)
-                break
-            try:
-                play(audio)
+            chunks = split_sentences(rec["text"]) if sentences else [rec["text"]]
+            spoke_any, synth_failed = False, False
+            for chunk in chunks:
+                try:
+                    audio = tts.synth(chunk, emotion=rec.get("emotion"))
+                except Exception as exc:  # noqa: BLE001 — synth (network) failed → retry: leave the pointer, stop
+                    if log is not None:
+                        log.warning("synth failed for id=%s (retrying): %s", rec.get("id"), exc)
+                    synth_failed = True
+                    break
+                try:
+                    play(audio)
+                    spoke_any = True
+                except Exception as exc:  # noqa: BLE001 — playback failed AFTER synth → skip this chunk
+                    if log is not None:
+                        log.error("playback failed for id=%s (skipping, not re-synthesizing): %s",
+                                  rec.get("id"), exc)
+            if synth_failed:
+                break  # stop without advancing → the whole record retries next loop
+            if spoke_any:
                 voiced += 1
-            except Exception as exc:  # noqa: BLE001 — playback failed AFTER synth → skip (do NOT re-synthesize)
-                if log is not None:
-                    log.error("playback failed for id=%s (skipping, not re-synthesizing): %s", rec.get("id"), exc)
         fifo.save_pointer(spoken_path, rec["id"])  # advance past this record (voiced / user / play-failed)
     return voiced
 
@@ -126,7 +142,8 @@ def run() -> None:  # pragma: no cover - cloud TTS + local playback glue (no pai
     )
     while True:
         try:
-            n = voice_pending(cfg.outbox_path, spoken, tts, play_audio, log=log)
+            n = voice_pending(cfg.outbox_path, spoken, tts, play_audio,
+                              sentences=cfg.voice_sentences, log=log)
             if n:
                 log.info("voiced %d reply(ies)", n)
         except Exception as exc:  # noqa: BLE001 — a transient error must not kill the voicer
