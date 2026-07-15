@@ -236,21 +236,22 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse th
 - **S0 · instrument now (not a version).** The per-stage `pre_ms`/`llm_ms`/`post_ms` timing + a
   `/latency` read-out ships as an **immediate fix**, ahead of everything, so each lever gets a
   before/after number. (A few hours, no risk.)
-- **v1.4 · the durable POST fix (S1 + S2).** The async post-turn queue **and** the incremental store
+- **v1.4 · streaming (S3).** Streaming behind `LLMClient` (Anthropic first, then Gemini/OpenAI).
+  **Felt latency ~2–3 s.** This runs first: the MODEL CALL is now ~83% of the turn, so streaming is the
+  lever that actually attacks the felt wait.
+- **v1.5 · the durable POST fix (S1 + S2).** The async post-turn queue **and** the incremental store
   behind `Repository` (append-only / SQLite, O(1) persist), shipped **together**: S1 alone is a
   band-aid (crash-loss window + the store-growth time bomb — persist is O(history) today); with S2 the
   POST fix is **complete and durable**. No contract change, **14.5 s → ~6–8 s felt.**
-- **v1.5 · streaming (S3).** Streaming behind `LLMClient` (Anthropic first, then Gemini/OpenAI).
-  **Felt latency ~2–3 s.**
 - **v1.6 · registers = the [MODEL_ROLES](MODEL_ROLES.md) phase (S4, incl. S4-interim) = LAT-3.**
   Register-routed thinking with latency as the driving DoD (casual turn ≤ 4 s full). **S4-interim**
   folds in here: `LUMI_EFFORT=low` for the talking register + the trimmed talking-tier `inner_voice.md`
   (the short inner voice the fast register uses).
 - **S7 · optional for now** — the RAG/compaction/retry fixes are small, low-risk levers taken
-  opportunistically (e.g. compaction off the turn rides naturally with the v1.4 queue); not a phase
+  opportunistically (e.g. compaction off the turn rides naturally with the v1.5 queue); not a phase
   of their own.
 - **LAT-4 · live voice mode (S6) — on hold.** A later phase beside the voice family; hard-gated on
-  v1.5 + v1.6. DoD (when taken up): median stop-speaking → first-audio ≤ 2.5 s over 20 live turns;
+  v1.4 + v1.6. DoD (when taken up): median stop-speaking → first-audio ≤ 2.5 s over 20 live turns;
   barge-in works; the thinking register produces a spoken acknowledgment, not silence.
 
 ---
