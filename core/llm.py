@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 from core.emotion import Emotion
 from core.images import images_in_messages, is_image_block
 from core.intent import INTENTS
+from core.streaming import decode_json_string_value
 
 if TYPE_CHECKING:  # annotation only — build_llm reads cfg attributes, never imports config at runtime
     from core.config import Config
@@ -525,6 +526,39 @@ class LLMClient(Protocol):
         """
         ...
 
+    def reply_structured_stream(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        on_delta: Callable[[str], None],
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> dict:
+        """v1.4 (LUMI-188) — the **streaming** twin of :meth:`reply_structured`.
+
+        Streams the reply's **prose** to ``on_delta`` (raw reply-field text as it arrives — the caller
+        applies the ``<think>``/tag filter) and returns the **same** ``{reply, emotion, intensity}`` dict
+        at completion (so ``emotion``/``intensity`` are resolved and validated on the full result — the
+        v0.3 contract is unchanged). Backends stream the **terminal answer round only**; a tool turn's
+        intermediate rounds and **any** streaming failure degrade to the blocking path (the whole reply
+        emitted once via ``on_delta``). Non-streaming providers inherit that blocking-emit behaviour.
+        """
+        ...
+
+
+def _emit_blocking(result: dict, on_delta: Callable[[str], None] | None) -> dict:
+    """The fallback / non-streaming path: emit an already-computed reply as a single ``on_delta`` (the
+    caller's tag filter still routes any ``<think>`` and hides inline tags). Returns ``result`` unchanged."""
+    if on_delta is not None:
+        reply = str(result.get("reply") or "")
+        if reply:
+            on_delta(reply)
+    return result
+
 
 def _call_with_retries(
     fn: Callable[[], _T],
@@ -745,6 +779,68 @@ class AnthropicClient:
             return {"reply": self._text_of(resp)}
 
         return self._run(_once, "Claude structured call failed")
+
+    def reply_structured_stream(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        on_delta: Callable[[str], None],
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> dict:
+        """v1.4 (LUMI-188): stream the ``set_state`` tool's ``reply`` field via ``input_json_delta``.
+
+        Only the tool-less single call streams; a **tool turn** runs the blocking loop then emits once
+        (its intermediate rounds are tool calls, not prose). **Any** streaming error degrades to the
+        blocking :meth:`reply_structured` — the turn never dies."""
+        if tools and tool_executor is not None:  # intermediate rounds aren't prose → blocking, emit once
+            return _emit_blocking(
+                self._tool_loop(system, messages, model, cache_prefix, tools, tool_executor, max_steps),
+                on_delta,
+            )
+        try:
+            return self._stream_single(system, messages, model, cache_prefix, on_delta)
+        except Exception:  # noqa: BLE001 — a streaming glitch must fall back, never fail the turn
+            _log.warning("Claude streaming failed → blocking reply", exc_info=True)
+            return _emit_blocking(
+                self.reply_structured(system, messages, model, cache_prefix), on_delta
+            )
+
+    def _stream_single(
+        self, system: str, messages: list[Message], model: str,
+        cache_prefix: str | None, on_delta: Callable[[str], None],
+    ) -> dict:
+        """One streamed structured call: accumulate the ``set_state`` input JSON, emit the growing
+        ``reply`` field, then resolve the authoritative state from the final assembled message."""
+        kwargs = self._base_kwargs(system, messages, model, cache_prefix)
+        kwargs["tools"] = [_EMOTION_TOOL]
+        kwargs["tool_choice"] = (
+            {"type": "auto"} if self._thinking else {"type": "tool", "name": _EMOTION_TOOL["name"]}
+        )
+        started = time.monotonic()
+        acc_json, emitted = "", 0
+        with self._client.messages.stream(**kwargs) as stream:
+            for event in stream:
+                if getattr(event, "type", None) != "content_block_delta":
+                    continue
+                delta = getattr(event, "delta", None)
+                if getattr(delta, "type", None) == "input_json_delta":
+                    acc_json += getattr(delta, "partial_json", "") or ""
+                    full = decode_json_string_value(acc_json, "reply")
+                    if len(full) > emitted:
+                        on_delta(full[emitted:])
+                        emitted = len(full)
+            final = stream.get_final_message()
+        self._capture(final, model, int((time.monotonic() - started) * 1000))
+        self.last_round_log = [("reply", self.last_stats)]
+        state = self._tool_input(final, _EMOTION_TOOL["name"])
+        if state is not None:
+            return state
+        return {"reply": self._text_of(final)}  # no tool call → text; the gate fills emotion=calm
 
     def _round_stats(self, resp: object, model: str, latency_ms: int) -> ResponseStats:
         """A ResponseStats for ONE round (no accumulation) — for the per-round cache log."""
@@ -1094,6 +1190,17 @@ class OpenAICompatibleClient:
         # No tools → the unchanged single JSON call (byte-identical to before).
         return parse_emotion_json(self._content(self._create(system, messages, model, structured=True)))
 
+    def reply_structured_stream(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None, *,
+        on_delta: Callable[[str], None], tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None, max_steps: int = 8,
+    ) -> dict:
+        """v1.4: no SSE seam here yet — compute the blocking reply and emit it once (ROADMAP: Anthropic /
+        Gemini stream first). ``LUMI_STREAM`` on with this provider still works, just not token-by-token."""
+        return _emit_blocking(self.reply_structured(
+            system, messages, model, cache_prefix,
+            tools=tools, tool_executor=tool_executor, max_steps=max_steps), on_delta)
+
     # --- v0.37 OpenAI function-calling tool-loop (port of AnthropicClient._tool_loop) ----------------
     @staticmethod
     def _to_openai_tools(tools: list[dict]) -> list[dict]:
@@ -1384,6 +1491,16 @@ class OpenAIResponsesClient:
             return self._loop(system, messages, model, tools, tool_executor, max_steps, structured=True)
         answer, _ = self._single(system, messages, model, structured=True)
         return parse_emotion_json(answer)
+
+    def reply_structured_stream(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None, *,
+        on_delta: Callable[[str], None], tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None, max_steps: int = 8,
+    ) -> dict:
+        """v1.4: blocking-emit (no SSE seam for the Responses API yet)."""
+        return _emit_blocking(self.reply_structured(
+            system, messages, model, cache_prefix,
+            tools=tools, tool_executor=tool_executor, max_steps=max_steps), on_delta)
 
     @staticmethod
     def _to_responses_tools(tools: list[dict]) -> list[dict]:
@@ -1695,6 +1812,16 @@ class MiniMaxClient:
         # The v0.19 tool-loop is Anthropic-only; this backend ignores the tool args (single call).
         return parse_emotion_json(self._content(self._create(system, messages, model, structured=True)))
 
+    def reply_structured_stream(
+        self, system: str, messages: list[Message], model: str, cache_prefix: str | None = None, *,
+        on_delta: Callable[[str], None], tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None, max_steps: int = 8,
+    ) -> dict:
+        """v1.4: blocking-emit (no SSE seam for MiniMax yet)."""
+        return _emit_blocking(self.reply_structured(
+            system, messages, model, cache_prefix,
+            tools=tools, tool_executor=tool_executor, max_steps=max_steps), on_delta)
+
     def _run(self, fn: Callable[[], _T]) -> _T:
         try:
             return _call_with_retries(
@@ -1723,6 +1850,7 @@ class GeminiClient:
     """
 
     _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    _STREAM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
     _RETRYABLE_NAMES = {"HTTPError", "URLError", "TimeoutError"}
 
     _CACHE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/cachedContents"
@@ -1742,8 +1870,9 @@ class GeminiClient:
         cache_ttl_s: int | None = None,
         _transport: Callable[[str, dict, dict], dict] | None = None,
         _cache_transport: Callable[[str, str, dict, dict | None], dict] | None = None,
+        _stream_transport: Callable[[str, dict, dict], object] | None = None,
     ) -> None:
-        if not api_key and _transport is None:
+        if not api_key and _transport is None and _stream_transport is None:
             raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
         self._key = api_key or ""
         self._max_tokens = max_tokens
@@ -1759,6 +1888,7 @@ class GeminiClient:
         self._retries = retries
         self._backoff = backoff
         self._transport = _transport
+        self._stream_transport = _stream_transport  # v1.4: injectable SSE iterator for tests (no network)
         self.last_thinking: str | None = None
         self.last_stats: ResponseStats | None = None
         self.last_round_log: list[tuple[str, ResponseStats]] = []
@@ -2015,6 +2145,91 @@ class GeminiClient:
             return dict(_GEMINI_BLOCKED_STATE)
         return _clean_state(parse_emotion_json(text))
 
+    def reply_structured_stream(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        on_delta: Callable[[str], None],
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> dict:
+        """v1.4 (LUMI-188): stream ``streamGenerateContent`` (SSE), decoding the growing ``reply`` field
+        out of the accumulating ``responseSchema`` JSON. Tool turns run the blocking loop then emit once;
+        any streaming error degrades to the blocking :meth:`reply_structured`."""
+        self.last_cache_event = None
+        if tools and tool_executor is not None:
+            return _emit_blocking(
+                self._loop(system, messages, model, tools, tool_executor, max_steps,
+                           structured=True, cache_prefix=cache_prefix),
+                on_delta,
+            )
+        try:
+            return self._stream_single(system, messages, model, cache_prefix, on_delta)
+        except Exception:  # noqa: BLE001 — degrade to blocking, never a failed turn
+            _log.warning("Gemini streaming failed → blocking reply", exc_info=True)
+            return _emit_blocking(
+                self.reply_structured(system, messages, model, cache_prefix), on_delta
+            )
+
+    def _post_stream(self, model: str, body: dict) -> object:
+        """Yield partial ``GenerateContentResponse`` dicts from the SSE stream. Uses the injected
+        ``_stream_transport`` (tests) or stdlib ``urllib`` reading ``data:`` lines (``alt=sse``)."""
+        headers = {"Content-Type": "application/json"}
+        if self._stream_transport is not None:
+            return self._stream_transport(self._STREAM_ENDPOINT.format(model=model), headers, body)
+        return self._sse_lines(model, body, headers)
+
+    def _sse_lines(self, model: str, body: dict, headers: dict) -> object:
+        import urllib.request  # stdlib SSE path; imported only when actually calling out
+
+        url = self._STREAM_ENDPOINT.format(model=model) + f"?alt=sse&key={self._key}"
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
+        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — fixed Gemini host
+            for raw in resp:
+                line = raw.decode("utf-8").strip()
+                if line.startswith("data:"):
+                    payload = line[5:].strip()
+                    if payload and payload != "[DONE]":
+                        yield json.loads(payload)
+
+    def _stream_single(
+        self, system: str, messages: list[Message], model: str,
+        cache_prefix: str | None, on_delta: Callable[[str], None],
+    ) -> dict:
+        """One streamed structured call: concatenate the answer-text fragments (thought parts routed to
+        the think-box), emit the growing ``reply`` field, then parse the assembled JSON at completion."""
+        body = self._body(system, messages, structured=True, model=model, cache_prefix=cache_prefix)
+        started = time.monotonic()
+        acc, emitted, think = "", 0, ""
+        usage: dict = {}
+        for chunk in self._post_stream(model, body):
+            if not isinstance(chunk, dict):
+                continue
+            if chunk.get("usageMetadata"):
+                usage = chunk["usageMetadata"]
+            for p in self._parts_of(chunk):
+                if not (isinstance(p, dict) and p.get("text")):
+                    continue
+                if p.get("thought"):
+                    think += p["text"]
+                else:
+                    acc += p["text"]
+            full = decode_json_string_value(acc, "reply")
+            if len(full) > emitted:
+                on_delta(full[emitted:])
+                emitted = len(full)
+        synthetic = {"candidates": [{"content": {"parts": [{"text": acc}]}}], "usageMetadata": usage}
+        self._capture(synthetic, model, int((time.monotonic() - started) * 1000))
+        self.last_thinking = think.strip() or None  # _capture saw no thought parts in the synthetic resp
+        self.last_round_log = [("reply", self.last_stats)]
+        if not acc.strip():
+            return dict(_GEMINI_BLOCKED_STATE)
+        return _clean_state(parse_emotion_json(acc))
+
     # --- v0.39 LUMI-153 Gemini function-calling tool-loop ---------------------------------------------
     @staticmethod
     def _to_gemini_tools(tools: list[dict]) -> list[dict]:
@@ -2184,7 +2399,9 @@ class MockLLMClient:
         thinking: str | None = None,
         states: dict | list[dict] | Callable[[str, list[Message], str], dict] | None = None,
         tool_script: list[tuple[str, dict]] | None = None,
+        stream_chunk: int = 8,
     ) -> None:
+        self._stream_chunk = max(1, stream_chunk)  # v1.4: reply-field chunk size for reply_structured_stream
         self._fn: Callable[[str, list[Message], str], str] | None = None
         self._queue: list[str] | None = None
         self._default = "Привіт. Я Лілі."
@@ -2294,6 +2511,31 @@ class MockLLMClient:
             return dict(self._state_default)
         # No canned state → derive a valid one from the text reply.
         return {"reply": self._pick_text(system, messages, model), "emotion": "calm", "intensity": 0.5}
+
+    def reply_structured_stream(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        on_delta: Callable[[str], None],
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> dict:
+        """v1.4 (LUMI-188): run the (blocking) structured turn — including any scripted tool rounds, so
+        only the **terminal** round streams — then emit its raw ``reply`` in small chunks via ``on_delta``
+        (assembling back to exactly ``result["reply"]``)."""
+        result = self.reply_structured(
+            system, messages, model, cache_prefix,
+            tools=tools, tool_executor=tool_executor, max_steps=max_steps,
+        )
+        reply = str(result.get("reply") or "")
+        step = self._stream_chunk
+        for i in range(0, len(reply), step):
+            on_delta(reply[i:i + step])
+        return result
 
 
 # --- the provider factory (v0.18) ----------------------------------------------------------------

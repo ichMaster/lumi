@@ -38,6 +38,16 @@ def test_reasoning_env_off(monkeypatch):
     assert load_config(load_env=False).reasoning is False
 
 
+def test_stream_defaults_off(monkeypatch):
+    monkeypatch.delenv("LUMI_STREAM", raising=False)
+    assert load_config(load_env=False).stream is False  # v1.4: off by default → blocking, byte-identical
+
+
+def test_stream_env_on(monkeypatch):
+    monkeypatch.setenv("LUMI_STREAM", "on")
+    assert load_config(load_env=False).stream is True
+
+
 def test_stt_device_default_empty(monkeypatch):
     monkeypatch.delenv("LUMI_STT_DEVICE", raising=False)
     assert load_config(load_env=False).stt_device == ""

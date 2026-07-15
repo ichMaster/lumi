@@ -333,6 +333,10 @@ class Config:
     # AND, on Gemini, send thinkingConfig.thinkingBudget=0 (2.5-flash/lite think by default; omitting the
     # config ≠ off). Distinct from LUMI_THINKING (which only surfaces the native thought summary).
     reasoning: bool = True
+    # v1.4 (LUMI-188): stream the reply's prose as it generates (TUI renders incrementally; the voicer
+    # speaks sentence-by-sentence). OFF (default) → today's blocking turn, byte-identical. Anthropic/Gemini
+    # stream token-by-token; other providers emit the whole reply once. Emotion is validated at completion.
+    stream: bool = False
     # v0.38 Inner Voice: how the think monologue is surfaced — debug (operator-visible box, default) /
     # open (surfaced as her inner voice) / off (hidden). It is logged (never persisted to long-term memory).
     think_show: str = "debug"
@@ -604,6 +608,7 @@ def load_config(*, load_env: bool = True) -> Config:
 
     thinking = _parse_bool(os.getenv("LUMI_THINKING"))
     reasoning = (os.getenv("LUMI_REASONING") or "on").strip().lower() in _TRUTHY  # on by default
+    stream = (os.getenv("LUMI_STREAM") or "off").strip().lower() in _TRUTHY  # v1.4 (LUMI-188), off by default
 
     effort_env = os.getenv("LUMI_EFFORT")
     effort = effort_env.strip().lower() if effort_env and effort_env.strip() else DEFAULT_EFFORT
@@ -686,6 +691,7 @@ def load_config(*, load_env: bool = True) -> Config:
         max_tokens=max_tokens,
         thinking=thinking,
         reasoning=reasoning,
+        stream=stream,
         effort=effort,
         think_show=think_show,
         location=os.getenv("LUMI_LOCATION") or None,

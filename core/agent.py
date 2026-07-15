@@ -126,6 +126,7 @@ from core.repository import (
     now_iso,
     vector_msg_id,
 )
+from core.streaming import StreamTagFilter
 from core.styles import load_meta_descriptions, load_meta_styles, load_styles
 from core.thoughts import (
     REGISTRY,
@@ -383,6 +384,7 @@ class Core:
         model_housekeeping: str = "",  # v0.40: route session-start/-close/compaction (unset → model)
         reasoning_directive: str = REASONING_DIRECTIVE,  # v0.38: the think-phase instruction (inner_voice → here)
         think_show: str = "debug",  # v0.38: monologue surfacing — debug / open / off (logged, never persisted)
+        stream: bool = False,  # v1.4 (LUMI-188): stream the reply prose via reply()'s on_delta when set
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
@@ -522,6 +524,7 @@ class Core:
         # v0.38 Inner Voice: the think-phase instruction appended to the canon — the generic
         # REASONING_DIRECTIVE by default, or the authored core/inner_voice.md when LUMI_INNER_VOICE is on.
         self._reasoning_directive = reasoning_directive
+        self._stream = stream  # v1.4: reply() streams prose to on_delta when this is on
         # v0.38: how the monologue is surfaced (debug/open/off); validated, default debug.
         self._think_show = think_show if think_show in ("debug", "open", "off") else "debug"
         self._model = model
@@ -799,6 +802,12 @@ class Core:
             f"Unknown model '{token}'. Try an alias ({known}), a full model id "
             "(claude-*/gpt-*/gemini-*/deepseek-*), or provider:model."
         )
+
+    @property
+    def stream_enabled(self) -> bool:
+        """v1.4 (LUMI-188): whether reply() streams prose to ``on_delta`` (``LUMI_STREAM``). The TUI reads
+        this to decide whether to render incrementally."""
+        return self._stream
 
     def switch_model(self, provider: str, model: str) -> None:
         """Swap the active engine at runtime — rebuild the :class:`LLMClient` from the (already-loaded)
@@ -2298,7 +2307,48 @@ class Core:
         except Exception:  # noqa: BLE001 — tracing must never break a turn
             _usage_log.warning("tool log failed", exc_info=True)
 
-    def reply(self, user_text: str, session: Session, *, images: list[dict] | None = None) -> EmotionState:
+    def _reply_streamed(
+        self,
+        system: str,
+        messages: list[Message],
+        cache_prefix: str | None,
+        tools: list[dict] | None,
+        tool_executor: Callable[[str, dict], str] | None,
+        on_delta: Callable[[str], None],
+        on_think_delta: Callable[[str], None] | None,
+    ) -> dict:
+        """v1.4 (LUMI-188): drive ``reply_structured_stream`` with a :class:`StreamTagFilter` wrapping the
+        deltas — showing prose, routing ``<think>`` to ``on_think_delta``, hiding inline tags, never
+        leaking a half-tag. Returns the **same** raw structured dict as ``reply_structured`` (the emotion
+        is resolved/validated on the completed result — the contract is unchanged)."""
+        filt = StreamTagFilter()
+        think_seen = 0
+
+        def _on_delta(chunk: str) -> None:
+            nonlocal think_seen
+            shown = filt.feed(chunk)
+            if shown:
+                on_delta(shown)
+            if on_think_delta is not None and len(filt.think) > think_seen:
+                on_think_delta(filt.think[think_seen:])
+                think_seen = len(filt.think)
+
+        raw = self._llm.reply_structured_stream(
+            system=system, messages=messages, model=self._model, cache_prefix=cache_prefix,
+            on_delta=_on_delta, tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
+        )
+        tail = filt.flush()
+        if tail:
+            on_delta(tail)
+        if on_think_delta is not None and len(filt.think) > think_seen:
+            on_think_delta(filt.think[think_seen:])
+        return raw
+
+    def reply(
+        self, user_text: str, session: Session, *, images: list[dict] | None = None,
+        on_delta: Callable[[str], None] | None = None,
+        on_think_delta: Callable[[str], None] | None = None,
+    ) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
         Compacts older-than-window messages into the session digest (in batches),
@@ -2309,6 +2359,12 @@ class Core:
         ``images`` (v0.22) — provider-neutral image blocks (``core.images.image_block``) you shared this
         turn; attached to the user message (so she **sees** them) only when ``LUMI_IMAGE`` is on, capped
         at ``LUMI_VISION_MAX``. They are ephemeral — the turn's text is persisted, the image is not.
+
+        ``on_delta`` / ``on_think_delta`` (v1.4, LUMI-188) — when streaming is on (``LUMI_STREAM``) and
+        ``on_delta`` is given, the reply's prose is streamed to it incrementally (``<think>`` reasoning
+        routed to ``on_think_delta``, inline tags hidden — never a half-tag). The returned
+        :class:`EmotionState` is unchanged: ``{reply, emotion, intensity}`` is resolved and validated on
+        the **completed** stream (the contract is untouched). Off / no callback → today's blocking turn.
         """
         self._active_session_id = session.id  # stamp this turn's cache events with the session
         _t0 = time.monotonic()  # S0 (LATENCY): per-stage turn timing — PRE → MODEL CALL → POST
@@ -2350,11 +2406,16 @@ class Core:
         tools, tool_executor = self._turn_tools()
         _pre_ms = int((time.monotonic() - _t0) * 1000)  # S0: PRE — RAG embed+search, compaction, prompt build
         _t_llm = time.monotonic()
-        raw = self._llm.reply_structured(
-            system=system, messages=messages, model=self._model,
-            cache_prefix=cache_prefix if self._prompt_cache else None,  # v0.15 cache breakpoint
-            tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
-        )
+        _cache_bp = cache_prefix if self._prompt_cache else None  # v0.15 cache breakpoint
+        if self._stream and on_delta is not None:  # v1.4 (LUMI-188): stream the prose, filter tags live
+            raw = self._reply_streamed(
+                system, messages, _cache_bp, tools, tool_executor, on_delta, on_think_delta
+            )
+        else:
+            raw = self._llm.reply_structured(
+                system=system, messages=messages, model=self._model, cache_prefix=_cache_bp,
+                tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
+            )
         _llm_ms = int((time.monotonic() - _t_llm) * 1000)  # S0: MODEL CALL (all tool-loop rounds)
         _t_post = time.monotonic()
         # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of
@@ -3116,6 +3177,7 @@ def build_core(
         canon=canon,
         reasoning_directive=reasoning_directive,
         think_show=cfg.think_show,
+        stream=cfg.stream,  # v1.4 (LUMI-188)
         model=cfg.model,
         provider=cfg.provider,
         llm_factory=_llm_factory,
