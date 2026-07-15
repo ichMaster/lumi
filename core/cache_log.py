@@ -87,10 +87,14 @@ class CacheEvent:
     changed_section: str = ""  # for a `moved` write: which prefix section(s) changed (canon/memory/mood)
     latency_ms: int | None = None  # v1.3 LUMI-185: wall-clock of the call (None on legacy records)
     cache_event: str = ""  # v1.3 LUMI-187: explicit-cache lifecycle (created/recreated:…/fallback:…)
+    # S0 (LATENCY): per-stage turn timing on the reply record (None elsewhere / on legacy records).
+    pre_ms: int | None = None      # local work before the model call (RAG embed+search, compaction)
+    post_ms: int | None = None     # local work after the model call (persist + embed on the critical path)
+    think_chars: int | None = None  # size of the hidden reasoning (the think phase) this turn
 
 
 _FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause", "model",
-           "session_id", "changed_section", "latency_ms", "cache_event")
+           "session_id", "changed_section", "latency_ms", "cache_event", "pre_ms", "post_ms", "think_chars")
 
 
 def append_event(path: str | Path, event: CacheEvent) -> None:
@@ -200,6 +204,47 @@ def _lat(ms: int | None) -> str:
     if ms is None:
         return "—"
     return f"{ms / 1000:.1f}s" if ms >= 1000 else f"{ms}ms"
+
+
+def _latency_stage_report(
+    events: list[CacheEvent], *, heading: str = "## Turn latency (S0)", note: bool = True
+) -> list[str]:
+    """The S0 per-stage turn-latency split (LATENCY S0): median PRE (RAG embed+search, compaction) /
+    MODEL CALL / POST (persist + embed on the critical path) over the reply turns that carried the fields.
+    Empty when no record has them (feature off / legacy log) so the caller just omits the block. Reused
+    for the accumulated section (``## `` heading + note) and the per-session sub-block (bold label, no note)."""
+    # The S0 fields ride only the turn's first reply record — one row per turn.
+    pre = [e.pre_ms for e in events if e.pre_ms is not None]
+    model = [e.latency_ms for e in events if e.pre_ms is not None and e.latency_ms is not None]
+    post = [e.post_ms for e in events if e.post_ms is not None]
+    think = [e.think_chars for e in events if e.think_chars is not None]
+    if not pre and not post:
+        return []
+    mp, mm, mpo = _median(pre) or 0, _median(model) or 0, _median(post) or 0
+    total = mp + mm + mpo  # sum-of-medians → the stage shares add to 100%
+
+    def _row(label: str, ms: int) -> str:
+        share = f"{(ms / total * 100):.0f}%" if total else "—"
+        return f"| {label} | {_lat(ms)} | {share} |"
+
+    out = [heading + "\n"]
+    if note:
+        out.append(
+            "> Median wall-clock per reply turn: **PRE** (RAG embed+search, compaction) / **MODEL CALL** / "
+            "**POST** (persist + embed on the critical path). POST is the v1.4 (S1+S2) target.\n"
+        )
+    out += [
+        "| stage | median | share |\n|---|--:|--:|",
+        _row("PRE (RAG + compaction)", mp),
+        _row("MODEL CALL", mm),
+        _row("POST (persist + embed)", mpo),
+        f"| **total** | {_lat(total)} | |",
+    ]
+    if think:
+        out.append(f"\n_median think: {_fmt(_median(think) or 0)} chars over {len(pre)} turns._\n")
+    else:
+        out.append("")
+    return out
 
 
 def _usd(x: float) -> str:
@@ -366,6 +411,8 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
         f"{_lat(_median(all_lat))} |\n"
     )
 
+    out.extend(_latency_stage_report(events))
+
     out.append("## Writes by cause\n")
     out.append(
         f"- **first**-of-channel: {causes['first']}\n"
@@ -406,6 +453,13 @@ def render_cache_report(events: list[CacheEvent], *, generated_at: str, ttl: str
         out.append("**Cost**\n")
         out.extend(_cost_table(s["by_act"], sess_total))
         out.append("")
+        lat = _latency_stage_report(
+            [e for e in events if (e.session_id or "(legacy)") == sid],
+            heading="**Latency (S0)**", note=False,
+        )
+        if lat:
+            out.extend(lat)
+            out.append("")
 
     return "\n".join(out) + "\n"
 

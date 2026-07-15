@@ -299,7 +299,7 @@ class LumiApp(App[None]):
             yield RichLog(id="history", wrap=True, markup=False)
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /model-set /biorhythm /closeness /recall /web /journal /new /prompt /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /model-set /biorhythm /closeness /recall /web /journal /new /prompt /latency /memory /forget"
             yield prompt
         yield Footer()
 
@@ -607,6 +607,10 @@ class LumiApp(App[None]):
             return
         if text == "/prompt":
             self._show_prompt()
+            prompt.focus()
+            return
+        if text == "/latency":
+            self._show_latency()
             prompt.focus()
             return
         if text == "/style" or text.startswith("/style "):
@@ -1369,6 +1373,28 @@ class LumiApp(App[None]):
         parts += [f"{m['role']}: {m['content']}" for m in p["messages"]]
         body = "\n".join(parts)
         self._emit(body, Text(body, style=THINKING_COLOR))  # dim, like a meta block
+
+    def _show_latency(self) -> None:
+        """Show the last turn's per-stage timing + rolling medians — `/latency` (S0)."""
+        s = self._core.latency_summary() if hasattr(self._core, "latency_summary") else None
+        if not s:
+            msg = "No latency yet — make a turn first."
+            self._emit(msg, Text(msg, style=SYSTEM_COLOR))
+            return
+        last, med, n = s["last"], s["median"], s["n"]
+
+        def _s(ms: int) -> str:
+            return f"{ms / 1000:.1f}s"
+
+        lines = [
+            "── turn latency (S0) ──",
+            f"last turn: PRE {_s(last['pre_ms'])} · MODEL {_s(last['llm_ms'])} · "
+            f"POST {_s(last['post_ms'])}  =  {_s(last['total_ms'])}  (think {last['think_chars']} chars)",
+            f"median /{n} turns: PRE {_s(med['pre_ms'])} · MODEL {_s(med['llm_ms'])} · "
+            f"POST {_s(med['post_ms'])}  =  {_s(med['total_ms'])}",
+        ]
+        body = "\n".join(lines)
+        self._emit(body, Text(body, style=THINKING_COLOR))
 
     # --- clipboard actions ----------------------------------------------
     def _copy(self, text: str) -> None:

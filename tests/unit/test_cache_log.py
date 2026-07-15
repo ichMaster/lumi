@@ -54,6 +54,17 @@ def test_event_ledger_roundtrip(tmp_path):
     assert load_events(tmp_path / "missing.jsonl") == []
 
 
+def test_s0_stage_timing_fields_roundtrip(tmp_path):
+    # S0: pre_ms / post_ms / think_chars persist on the record; absent (None) on a legacy record.
+    p = tmp_path / "c.jsonl"
+    append_event(p, CacheEvent("t1", "reply", 100, 0, 10, 5, 12.0, "none",
+                               latency_ms=6200, pre_ms=1500, post_ms=5300, think_chars=1800))
+    append_event(p, CacheEvent("t2", "tool", 0, 0, 5, 3, None, "first"))  # no timing
+    a, b = load_events(p)
+    assert (a.pre_ms, a.post_ms, a.think_chars) == (1500, 5300, 1800)
+    assert (b.pre_ms, b.post_ms, b.think_chars) == (None, None, None)
+
+
 def test_render_groups_by_channel_and_cause():
     events = [
         CacheEvent("t", "reply", 20000, 0, 100, 50, 12.0, "none"),
@@ -270,6 +281,49 @@ def test_report_renders_when_no_record_carries_latency():
     md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
     reply_row = next(line for line in md.splitlines() if line.startswith("| reply"))
     assert reply_row.rstrip().endswith("— |")
+
+
+def test_report_has_turn_latency_stage_section():
+    # S0: the per-stage PRE / MODEL CALL / POST split, with think, when records carry the fields.
+    events = [
+        CacheEvent("t", "reply", 20000, 0, 100, 50, 12.0, "none",
+                   latency_ms=6000, pre_ms=1000, post_ms=5000, think_chars=1800),
+        CacheEvent("t", "reply", 20000, 0, 100, 50, 12.0, "none",
+                   latency_ms=7000, pre_ms=2000, post_ms=4000, think_chars=2000),
+        CacheEvent("t", "reply", 20000, 0, 100, 50, 12.0, "none",
+                   latency_ms=8000, pre_ms=3000, post_ms=3000, think_chars=2200),
+    ]
+    md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
+    assert "## Turn latency (S0)" in md
+    pre_row = next(line for line in md.splitlines() if line.startswith("| PRE"))
+    assert "2.0s" in pre_row                      # median PRE of 1000/2000/3000 ms
+    total_row = next(line for line in md.splitlines() if line.startswith("| **total**"))
+    assert "13.0s" in total_row                   # 2000 + 7000 + 4000 ms (sum of stage medians)
+    assert "median think:" in md
+
+
+def test_report_omits_turn_latency_section_without_stage_fields():
+    # off / legacy: no record carries pre/post → the section is simply absent (never crashes).
+    events = [CacheEvent("t", "reply", 100, 0, 10, 5, 12.0, "none", latency_ms=2000)]
+    md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
+    assert "## Turn latency (S0)" not in md
+
+
+def test_report_has_per_session_turn_latency():
+    # S0: each session's own PRE/MODEL/POST split appears under its per-session block, with its own median.
+    events = [
+        CacheEvent("2026-07-15T08:00:00", "reply", 20000, 0, 100, 50, 12.0, "none", "m", "sess-aaaa1111",
+                   latency_ms=6000, pre_ms=1000, post_ms=5000, think_chars=1800),
+        CacheEvent("2026-07-15T09:00:00", "reply", 20000, 0, 100, 50, 12.0, "none", "m", "sess-bbbb2222",
+                   latency_ms=9000, pre_ms=3000, post_ms=2000, think_chars=900),
+    ]
+    md = render_cache_report(events, generated_at="2026-07-15", ttl="1h")
+    assert md.count("## Turn latency (S0)") == 1          # one accumulated section
+    assert md.count("**Latency (S0)**") == 2             # plus one per session
+    # The block under session bbbb2222 carries its own PRE median (3.0s), not the accumulated one.
+    tail = md.split("### Session `sess-bbb", 1)[1]
+    pre_row = next(line for line in tail.splitlines() if line.startswith("| PRE"))
+    assert "3.0s" in pre_row
 
 
 # --- v1.3 LUMI-187: explicit-cache observability + continuity report -----------------------------

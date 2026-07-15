@@ -103,3 +103,26 @@ def test_build_core_wires_from_config_with_injected_llm_and_repo(tmp_path):
 
     canon_head = load_canon(cfg.canon_path).strip()[:40]
     assert any(canon_head in c["system"] for c in llm.calls)
+
+
+def test_reply_records_per_stage_timing(tmp_path):
+    # S0 (LATENCY): a turn populates last_turn_timing with the PRE / MODEL / POST split.
+    core, _ = _core_with(tmp_path, MockLLMClient("ок"))
+    core.reply("привіт", core.start_session())
+    t = core.last_turn_timing
+    assert set(t) == {"pre_ms", "llm_ms", "post_ms", "think_chars", "total_ms"}
+    assert all(isinstance(t[k], int) and t[k] >= 0 for k in ("pre_ms", "llm_ms", "post_ms", "think_chars"))
+    assert t["total_ms"] == t["pre_ms"] + t["llm_ms"] + t["post_ms"]  # the split sums to the total
+
+
+def test_latency_summary_last_and_median(tmp_path):
+    # /latency reads latency_summary(): None before any turn, then last + median over the window.
+    core, _ = _core_with(tmp_path, MockLLMClient("ок"))
+    assert core.latency_summary() is None                       # nothing yet
+    s = core.start_session()
+    core.reply("а", s)
+    core.reply("б", s)
+    summ = core.latency_summary()
+    assert summ["n"] == 2                                        # two turns in the rolling window
+    assert summ["last"] == core.last_turn_timing
+    assert set(summ["median"]) == {"pre_ms", "llm_ms", "post_ms", "total_ms"}

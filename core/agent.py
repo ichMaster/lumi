@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
+from collections import deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -745,6 +747,9 @@ class Core:
         # Stats for the last reply + running totals, for the TUI status line.
         self.last_stats: ResponseStats | None = None
         self.totals = UsageTotals()
+        # S0 (LATENCY): per-stage turn timing — the last turn + a rolling window for /latency medians.
+        self.last_turn_timing: dict | None = None  # {pre_ms, llm_ms, post_ms, think_chars, total_ms}
+        self._turn_timings: deque = deque(maxlen=200)
         # The exact prompt sent on the last turn, for inspection ({system, messages}).
         self.last_prompt: dict | None = None
         # How many messages the last turn folded into the session digest (0 if none).
@@ -1634,7 +1639,7 @@ class Core:
             if prev_thinking:
                 llm._thinking = prev_thinking
 
-    def _accumulate_stats(self, *, turn: bool, kind: str = "reply") -> None:
+    def _accumulate_stats(self, *, turn: bool, kind: str = "reply", log_cache: bool = True) -> None:
         """Fold the LLM's most-recent call into the running totals + ``last_stats``.
 
         Called after **every** model call — user replies (``turn=True``, ``kind="reply"``) and
@@ -1652,11 +1657,13 @@ class Core:
         if turn:
             self.totals.turns += 1
             self.totals.latency_ms += stats.latency_ms
-        self._log_cache_event(kind, stats)  # per-call cache monitor (best-effort)
+        if log_cache:
+            self._log_cache_event(kind, stats)  # per-call cache monitor (best-effort)
 
-    def _log_cache_event(self, kind: str, stats: ResponseStats) -> None:
+    def _log_cache_event(self, kind: str, stats: ResponseStats, *, timing: dict | None = None) -> None:
         """Append the call(s) of this turn to the cache log. A reply turn is split into its **per-round**
-        calls (each tagged ``tool`` or ``reply`` by the loop); other channels log one event. Never raises."""
+        calls (each tagged ``tool`` or ``reply`` by the loop); other channels log one event. ``timing``
+        (S0) rides on the **first** record only. Never raises."""
         if not self._cache_monitor or self._cache_log_path is None:
             return
         # v1.3 LUMI-187: the Gemini explicit-cache lifecycle of THIS turn (created/recreated/fallback),
@@ -1666,11 +1673,14 @@ class Core:
         if kind == "reply" and rounds:
             for i, (round_kind, rstats) in enumerate(rounds):
                 if rstats is not None:
-                    self._log_one_cache_event(round_kind, rstats, cache_event=mgmt if i == 0 else "")
+                    self._log_one_cache_event(round_kind, rstats,
+                                              cache_event=mgmt if i == 0 else "",
+                                              timing=timing if i == 0 else None)
         else:
-            self._log_one_cache_event(kind, stats, cache_event=mgmt)
+            self._log_one_cache_event(kind, stats, cache_event=mgmt, timing=timing)
 
-    def _log_one_cache_event(self, kind: str, stats: ResponseStats, *, cache_event: str = "") -> None:
+    def _log_one_cache_event(self, kind: str, stats: ResponseStats, *, cache_event: str = "",
+                             timing: dict | None = None) -> None:
         """Append one model call's cache behaviour + classify the write. Never raises."""
         try:
             from core import cache_log
@@ -1698,6 +1708,9 @@ class Core:
                 changed_section=changed_section if cause == "moved" else "",
                 latency_ms=stats.latency_ms,  # v1.3 LUMI-185: per-call wall-clock (already measured)
                 cache_event=cache_event,       # v1.3 LUMI-187: the explicit-cache lifecycle of this turn
+                # S0 (LATENCY): the per-stage split, on the turn's first record only.
+                pre_ms=(timing or {}).get("pre_ms"), post_ms=(timing or {}).get("post_ms"),
+                think_chars=(timing or {}).get("think_chars"),
             ))
         except Exception:  # noqa: BLE001 — monitoring must never break a turn
             _usage_log.warning("cache event log failed", exc_info=True)
@@ -2298,6 +2311,7 @@ class Core:
         at ``LUMI_VISION_MAX``. They are ephemeral — the turn's text is persisted, the image is not.
         """
         self._active_session_id = session.id  # stamp this turn's cache events with the session
+        _t0 = time.monotonic()  # S0 (LATENCY): per-stage turn timing — PRE → MODEL CALL → POST
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
         self.ensure_day_summaries()  # refresh the day digests the prompt will inject (date-based recall)
         self.ensure_week_summaries()  # refresh the week digests (date-based recall)
@@ -2334,11 +2348,15 @@ class Core:
         # v0.19/v0.21: when the file tool and/or the wiki tool is on, run the turn as a bounded
         # tool-loop (file sandbox + Wikipedia), with a name-routing executor.
         tools, tool_executor = self._turn_tools()
+        _pre_ms = int((time.monotonic() - _t0) * 1000)  # S0: PRE — RAG embed+search, compaction, prompt build
+        _t_llm = time.monotonic()
         raw = self._llm.reply_structured(
             system=system, messages=messages, model=self._model,
             cache_prefix=cache_prefix if self._prompt_cache else None,  # v0.15 cache breakpoint
             tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
         )
+        _llm_ms = int((time.monotonic() - _t_llm) * 1000)  # S0: MODEL CALL (all tool-loop rounds)
+        _t_post = time.monotonic()
         # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of
         # the reply field; the clean text is shown/stored. Precedence: the model's tagged
         # inline reasoning, then the provider's **native** summarized thinking (Opus extended
@@ -2369,7 +2387,8 @@ class Core:
         # v0.38: the monologue's logged tier — ephemeral, never persisted to long-term memory. Off → silent.
         if self.last_thinking and self._think_show != "off":
             _think_log.info("think: %s", self.last_thinking)
-        self._accumulate_stats(turn=True)  # the reply turn (+ any housekeeping above already folded in)
+        # S0: fold the stats/totals now, but DEFER the cache-log record to turn-end so it carries post_ms.
+        self._accumulate_stats(turn=True, log_cache=False)
 
         # Merge emotion sources: the structured tool wins when present; otherwise the
         # inline <emotion> tag (the reliable path when the tool can't be forced —
@@ -2427,7 +2446,31 @@ class Core:
         self._repo.append_message(lili_msg)
         # v0.16: index both new messages for semantic recall (best-effort, after the reply is built).
         self._index_messages([user_msg, lili_msg])
+        # S0: close out the per-stage timing (POST = all local work after the model call) + log the turn.
+        post_ms = int((time.monotonic() - _t_post) * 1000)
+        self.last_turn_timing = {
+            "pre_ms": _pre_ms, "llm_ms": _llm_ms, "post_ms": post_ms,
+            "think_chars": len(self.last_thinking or ""), "total_ms": _pre_ms + _llm_ms + post_ms,
+        }
+        self._turn_timings.append(self.last_turn_timing)
+        if self.last_stats is not None:
+            self._log_cache_event("reply", self.last_stats, timing=self.last_turn_timing)
         return state
+
+    def latency_summary(self) -> dict | None:
+        """S0 (LATENCY): the last turn's per-stage split + medians over the rolling window (for the
+        `/latency` read-out). ``None`` until a turn has run. Stages: PRE (RAG/compaction) → MODEL CALL →
+        POST (persist+embed on the critical path). ``think_chars`` sizes the hidden reasoning."""
+        if self.last_turn_timing is None:
+            return None
+        def _median(key: str) -> int:
+            vals = sorted(t[key] for t in self._turn_timings)
+            return vals[len(vals) // 2] if vals else 0
+        return {
+            "last": dict(self.last_turn_timing),
+            "n": len(self._turn_timings),
+            "median": {k: _median(k) for k in ("pre_ms", "llm_ms", "post_ms", "total_ms")},
+        }
 
     def end_session(self, session: Session) -> ShortSummary | None:
         """Close a session: mark it ended, write a short summary, accumulate facts.
