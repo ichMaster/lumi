@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 1.3.0 (2026-07-15)
+---------------------------
+v1.3 — explicit Gemini prompt cache: the stable prompt prefix (canon + memory + facts + mood) is stored as a cachedContents object and referenced every reply, so a post-pause turn stays warm instead of a cold re-read (LUMI_GEMINI_EXPLICIT_CACHE; off → byte-identical; Gemini only).
+- LUMI-184..187: the explicit cachedContents lifecycle in GeminiClient (create / reference / reuse / delete), a live probe (scripts/gemini_probe.py --cache), latency_ms on every cache-log record + a median column, and the explicit-cache observability/continuity report.
+- Probe verdict (gemini-3.1-pro-preview): a cached-content request can't also set system_instruction / tools / tool_config (HTTP 400) → the tool-loop's rounds stay implicit; explicit caching applies to tool-less replies + the forced final round.
+- LUMI_GEMINI_CACHE_TTL: any cache lifetime (5h / 30m / 300s), independent of Claude's 5m/1h prompt-cache TTL.
+- LUMI_REASONING=off: fully disable pre-answer reasoning — drops the reasoning directive AND sends Gemini thinkingConfig.thinkingBudget=0 (model-aware: skips pro/3.x models that reject budget 0). Off → byte-identical.
+- LUMI_STT_DEVICE: pin the dictator's mic (device index or name substring), independent of the macOS default input.
+- Facts identity-core: the ## Про Віталія block (renamed from ## Факти) is capped by LUMI_FACTS_CORE_MAX and curated ONLY by the offline /review-facts skill (Opus) — the weak in-app session-start re-rank was removed (it silently collapsed a curated pin set); the skill gains a --pin N ranking capability.
+- Roadmap: v1.4 streaming replies (TUI + sentence-chunked voicer) added; model roles moved v0.43 → v1.5; v1.5–v1.16 renumbered → v1.6–v1.17.
+
 Version 1.2.0 (2026-07-14)
 ---------------------------
 v1.2 — non-blocking input & message buffer (TUI). Keep typing and sending while Лілі answers; the model stays one turn at a time.
