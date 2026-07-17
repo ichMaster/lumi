@@ -794,14 +794,27 @@ class AnthropicClient:
     ) -> dict:
         """v1.4 (LUMI-188): stream the ``set_state`` tool's ``reply`` field via ``input_json_delta``.
 
-        Only the tool-less single call streams; a **tool turn** runs the blocking loop then emits once
-        (its intermediate rounds are tool calls, not prose). **Any** streaming error degrades to the
-        blocking :meth:`reply_structured` — the turn never dies."""
-        if tools and tool_executor is not None:  # intermediate rounds aren't prose → blocking, emit once
-            return _emit_blocking(
-                self._tool_loop(system, messages, model, cache_prefix, tools, tool_executor, max_steps),
-                on_delta,
-            )
+        A **tool turn also streams** (v1.10): the loop runs its rounds, a tool round shows nothing (a
+        tool's args aren't prose), and the terminal ``set_state`` round streams the reply. The tool-less
+        single call streams directly. **Any** streaming error degrades to the blocking path — the turn
+        never dies. (Note: with extended **thinking on**, Opus writes the reply only after all its
+        reasoning, so the first reply token — and TTFT — still lands near the end; streaming shows a gap
+        on fast, non-thinking turns.)"""
+        if tools and tool_executor is not None:
+            if self._step_model:  # v0.40 cheap-tier digging isn't wired into the streaming loop → blocking
+                return _emit_blocking(
+                    self._tool_loop(system, messages, model, cache_prefix, tools, tool_executor, max_steps),
+                    on_delta,
+                )
+            try:
+                return self._tool_loop_stream(system, messages, model, cache_prefix, tools,
+                                              tool_executor, max_steps, on_delta)
+            except Exception:  # noqa: BLE001 — degrade to the blocking loop, never a failed turn
+                _log.warning("Claude tool-loop streaming failed → blocking loop", exc_info=True)
+                return _emit_blocking(
+                    self._tool_loop(system, messages, model, cache_prefix, tools, tool_executor, max_steps),
+                    on_delta,
+                )
         try:
             return self._stream_single(system, messages, model, cache_prefix, on_delta)
         except Exception:  # noqa: BLE001 — a streaming glitch must fall back, never fail the turn
@@ -939,6 +952,90 @@ class AnthropicClient:
             return {"reply": ""}  # safety net — the forced final round returns above
         except self._anthropic.APIError as exc:
             raise LLMError(f"Claude tool-loop call failed: {exc}") from exc
+
+    def _tool_loop_stream(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None,
+        tools: list[dict],
+        tool_executor: Callable[[str, dict], str | dict],
+        max_steps: int,
+        on_delta: Callable[[str], None],
+    ) -> dict:
+        """v1.10 — the **streaming** bounded tool-loop (mirror of :meth:`_tool_loop`).
+
+        Each round streams via ``messages.stream``. A **tool round** executes its calls and loops —
+        nothing is shown (a tool's args aren't prose; only the ``set_state`` block's input is streamed).
+        The terminal **``set_state`` round streams the ``reply`` field** via ``input_json_delta``. All
+        rounds use ``model`` (the v0.40 step-routing dig is left to the blocking path); any error degrades
+        to the blocking :meth:`_tool_loop` (handled by the caller)."""
+        all_tools = [_EMOTION_TOOL, *tools]
+        convo: list = list(messages)
+        acc = {"input": 0, "output": 0, "cr": 0, "cw": 0, "latency": 0, "think": []}
+        self.last_round_log = []
+        for step in range(max_steps + 1):
+            final = step >= max_steps
+            kwargs = self._base_kwargs(system, convo, model, cache_prefix)
+            kwargs["tools"] = all_tools
+            if final:  # force set_state so the turn always terminates (incompatible with thinking)
+                kwargs["tool_choice"] = {"type": "tool", "name": _EMOTION_TOOL["name"]}
+                kwargs.pop("thinking", None)
+            else:
+                kwargs["tool_choice"] = {"type": "auto"}
+            started = time.monotonic()
+            acc_json, emitted, in_state = "", 0, False
+            with self._client.messages.stream(**kwargs) as stream:
+                for event in stream:
+                    et = getattr(event, "type", None)
+                    if et == "content_block_start":
+                        cb = getattr(event, "content_block", None)
+                        in_state = (getattr(cb, "type", None) == "tool_use"
+                                    and getattr(cb, "name", None) == _EMOTION_TOOL["name"])
+                        if in_state:
+                            acc_json, emitted = "", 0
+                    elif et == "content_block_stop":
+                        in_state = False
+                    elif et == "content_block_delta" and in_state:
+                        delta = getattr(event, "delta", None)
+                        if getattr(delta, "type", None) == "input_json_delta":
+                            acc_json += getattr(delta, "partial_json", "") or ""
+                            full = decode_json_string_value(acc_json, "reply")
+                            if len(full) > emitted:
+                                on_delta(full[emitted:])
+                                emitted = len(full)
+                resp = stream.get_final_message()
+            latency = int((time.monotonic() - started) * 1000)
+            self._accumulate(resp, acc, latency)
+            rstats = self._round_stats(resp, model, latency)
+            state = self._tool_input(resp, _EMOTION_TOOL["name"])
+            tool_uses = [b for b in getattr(resp, "content", [])
+                         if getattr(b, "type", None) == "tool_use"
+                         and getattr(b, "name", None) != _EMOTION_TOOL["name"]]
+            if state is not None:  # terminal — the answer round (reply already streamed)
+                self.last_round_log.append(("reply", rstats))
+                self._finalize_loop(acc, model)
+                return state
+            if not tool_uses:  # no tool, no set_state → the text is the answer
+                self.last_round_log.append(("reply", rstats))
+                self._finalize_loop(acc, model)
+                return {"reply": self._text_of(resp)}
+            self.last_round_log.append(("tool", rstats))
+            convo.append({"role": "assistant", "content": resp.content})
+            results = []
+            for tu in tool_uses:
+                raw = tool_executor(getattr(tu, "name", ""), dict(getattr(tu, "input", {}) or {}))
+                if is_image_block(raw):
+                    content: object = [{"type": "text", "text": _UNTRUSTED_PREFIX.strip()}, raw]
+                elif is_trusted_text(raw):  # v0.31 recall: her own recollection, not untrusted data
+                    content = _RECOLLECTION_PREFIX + str(raw.get("text", ""))
+                else:
+                    content = _UNTRUSTED_PREFIX + str(raw)
+                results.append({"type": "tool_result", "tool_use_id": getattr(tu, "id", None), "content": content})
+            convo.append({"role": "user", "content": results})
+        self._finalize_loop(acc, model)
+        return {"reply": ""}
 
     def _text_tool_loop(
         self,
@@ -2157,16 +2254,22 @@ class GeminiClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
-        """v1.4 (LUMI-188): stream ``streamGenerateContent`` (SSE), decoding the growing ``reply`` field
-        out of the accumulating ``responseSchema`` JSON. Tool turns run the blocking loop then emit once;
-        any streaming error degrades to the blocking :meth:`reply_structured`."""
+        """v1.4: stream ``streamGenerateContent`` (SSE), decoding the growing ``reply`` field out of the
+        accumulating ``responseSchema`` JSON. **Tool turns also stream** (v1.10): the loop runs its rounds,
+        a tool-call round shows nothing (a function call isn't prose), and the **answer round streams** the
+        reply. Any streaming error degrades to the blocking path — the turn never dies."""
         self.last_cache_event = None
         if tools and tool_executor is not None:
-            return _emit_blocking(
-                self._loop(system, messages, model, tools, tool_executor, max_steps,
-                           structured=True, cache_prefix=cache_prefix),
-                on_delta,
-            )
+            try:
+                return self._loop_stream(system, messages, model, tools, tool_executor, max_steps,
+                                         on_delta, cache_prefix)
+            except Exception:  # noqa: BLE001 — degrade to the blocking loop, never a failed turn
+                _log.warning("Gemini tool-loop streaming failed → blocking loop", exc_info=True)
+                return _emit_blocking(
+                    self._loop(system, messages, model, tools, tool_executor, max_steps,
+                               structured=True, cache_prefix=cache_prefix),
+                    on_delta,
+                )
         try:
             return self._stream_single(system, messages, model, cache_prefix, on_delta)
         except Exception:  # noqa: BLE001 — degrade to blocking, never a failed turn
@@ -2174,6 +2277,77 @@ class GeminiClient:
             return _emit_blocking(
                 self.reply_structured(system, messages, model, cache_prefix), on_delta
             )
+
+    def _loop_stream(
+        self, system: str, messages: list[Message], model: str,
+        tools: list[dict], tool_executor: Callable[[str, dict], str | dict], max_steps: int,
+        on_delta: Callable[[str], None], cache_prefix: str | None = None,
+    ) -> dict:
+        """v1.10 — the **streaming** structured function-calling loop (mirror of :meth:`_loop`).
+
+        Each round uses ``streamGenerateContent``. A **tool-call round** surfaces its ``functionCall``(s)
+        (nothing is shown — the reply-field decoder finds no ``reply`` in a tool call, so ``on_delta``
+        stays silent); the tool runs, its result feeds back, and the loop continues. The **terminal
+        answer round** streams the ``reply`` field via ``on_delta`` and is parsed on completion. So a turn
+        that calls no tool streams from the first round; a turn that does calls streams once results are
+        back. Structured-only (the reply path). Never mutates the blocking :meth:`_loop`."""
+        gtools = [{"functionDeclarations": self._to_gemini_tools(tools)}]
+        contents = _gemini_contents(messages)
+        acc: dict = {"input": 0, "output": 0, "cr": 0, "latency": 0, "think": []}
+        self.last_round_log = []
+        for step in range(max_steps + 1):
+            final = step >= max_steps
+            sys_text = system + (_JSON_STATE_INSTRUCTION if final else _GEMINI_TOOL_JSON_INSTRUCTION)
+            gen: dict = {"maxOutputTokens": self._max_tokens}
+            tc = self._thinking_config(model)
+            if tc:
+                gen["thinkingConfig"] = tc
+            body: dict = {
+                "systemInstruction": {"parts": [{"text": sys_text}]},
+                "contents": contents, "generationConfig": gen, "safetySettings": _GEMINI_SAFETY,
+            }
+            if final:  # forced answer round → schema, no tools
+                gen["responseMimeType"] = "application/json"
+                gen["responseSchema"] = _GEMINI_EMOTION_SCHEMA
+            else:  # intermediate → offer tools, no responseSchema (the schema-vs-tools split)
+                body["tools"] = gtools
+            body = self._cache_wrap(body, sys_text, cache_prefix, model)
+            started = time.monotonic()
+            acc_text, emitted, think, calls, usage = "", 0, "", [], {}
+            for chunk in self._post_stream(model, body):
+                if not isinstance(chunk, dict):
+                    continue
+                if chunk.get("usageMetadata"):
+                    usage = chunk["usageMetadata"]
+                for p in self._parts_of(chunk):
+                    if not isinstance(p, dict):
+                        continue
+                    if "functionCall" in p:
+                        calls.append(p["functionCall"])
+                    elif p.get("text") and p.get("thought"):
+                        think += p["text"]
+                    elif p.get("text"):
+                        acc_text += p["text"]
+                full = self._streamed_reply_prefix(acc_text)  # JSON reply field OR plain prose; silent on tool rounds
+                if len(full) > emitted:
+                    on_delta(full[emitted:])
+                    emitted = len(full)
+            latency = int((time.monotonic() - started) * 1000)
+            synthetic = {"candidates": [{"content": {"parts": [{"text": acc_text}]}}], "usageMetadata": usage}
+            self._accumulate(synthetic, acc, latency)
+            rstats = self._round_stats(synthetic, model, latency)
+            if think:
+                acc["think"].append(think)
+            if not calls and not final:  # salvage a text-encoded tool call (mirror _loop)
+                calls = _parse_tool_code(acc_text, {t["name"] for t in tools})
+            if not calls:  # terminal — the answer round (reply already streamed)
+                self.last_round_log.append(("reply", rstats))
+                self._finalize(acc, model)
+                return _clean_state(parse_emotion_json(acc_text)) if acc_text.strip() else dict(_GEMINI_BLOCKED_STATE)
+            self.last_round_log.append(("tool", rstats))
+            self._run_tool_round(contents, [{"functionCall": c} for c in calls], calls, tool_executor)
+        self._finalize(acc, model)
+        return dict(_GEMINI_BLOCKED_STATE)
 
     def _post_stream(self, model: str, body: dict) -> object:
         """Yield partial ``GenerateContentResponse`` dicts from the SSE stream. Uses the injected
@@ -2195,6 +2369,18 @@ class GeminiClient:
                     payload = line[5:].strip()
                     if payload and payload != "[DONE]":
                         yield json.loads(payload)
+
+    @staticmethod
+    def _streamed_reply_prefix(acc_text: str) -> str:
+        """The reply text shown so far from a streaming answer round — tolerant like
+        :func:`parse_emotion_json`: JSON output (```/``{…}``) → decode the growing ``reply`` field; a
+        plain-text answer (a small model that ignores the JSON instruction) → the text itself. Without
+        this, a non-JSON answer streams **nothing** (the strict decoder finds no ``reply`` field), even
+        though the blocking parser recovers it — so the turn would show `first == total`."""
+        stripped = acc_text.lstrip()
+        if stripped[:1] in ("{", "[") or stripped.startswith("```"):
+            return decode_json_string_value(acc_text, "reply")
+        return acc_text  # plain prose IS the reply (the final parse also falls back to {"reply": text})
 
     def _stream_single(
         self, system: str, messages: list[Message], model: str,
@@ -2218,7 +2404,7 @@ class GeminiClient:
                     think += p["text"]
                 else:
                     acc += p["text"]
-            full = decode_json_string_value(acc, "reply")
+            full = self._streamed_reply_prefix(acc)  # tolerant: JSON reply field OR a plain-text answer
             if len(full) > emitted:
                 on_delta(full[emitted:])
                 emitted = len(full)
