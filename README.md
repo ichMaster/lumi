@@ -12,16 +12,16 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**1.3 — explicit Gemini prompt cache (warm prefill across pauses).** On Gemini, the stable prompt
-prefix (canon + memory + facts + mood) is stored as an explicit `cachedContents` object and referenced
-every reply, so a post-pause turn stays warm instead of a cold re-read (`LUMI_GEMINI_EXPLICIT_CACHE`;
-off → byte-identical; Gemini only). A live probe (`scripts/gemini_probe.py --cache`) confirmed the API
-and its constraint — a cached-content request can't also set `system_instruction`/`tools`/`tool_config`,
-so tool-loop rounds stay implicit. `LUMI_GEMINI_CACHE_TTL` allows any cache lifetime (e.g. `5h`).
-Alongside: `LUMI_REASONING=off` (drop the reasoning directive **and** Gemini `thinkingBudget:0`,
-model-aware), a `LUMI_STT_DEVICE` mic pin, and an identity-core (`## Про Віталія`, capped by
-`LUMI_FACTS_CORE_MAX`) curated **solely by the offline `/review-facts` skill** — the weak in-app
-re-rank removed. See **[ROADMAP §v1.3](specification/ROADMAP.md)**.
+**1.4 — Streaming replies + sentence-chunked voicer.** With `LUMI_STREAM=on` Лілі's reply appears
+**as it generates** — the prose grows in place in the conversation (perceived TTFT ~2–3 s), the emotion
+is validated on completion (contract unchanged), and the local voicer speaks it **sentence-by-sentence**
+(`LUMI_VOICE_SENTENCES`). Streaming is real partial-JSON on **Anthropic** (`input_json_delta`) + **Gemini**
+(`streamGenerateContent` SSE) — including **tool turns** (the answer round streams while tool rounds stay
+silent); other providers emit once; any error degrades to the blocking path. A `first Xs` (time-to-first-
+symbol) indicator joins the stats bar and `/latency`. Both flags off by default → byte-identical; Telegram
+stays on the complete-record path. The felt gap shows on **fast, non-thinking** turns (a reasoning model
+with thinking on back-loads the reply; Gemini buffers structured output). See
+**[ROADMAP §v1.4](specification/ROADMAP.md)**.
 
 **1.2 — non-blocking input & message buffer (TUI).** Keep typing and sending while Лілі answers. The
 input box stays editable during a turn (`LUMI_INPUT_BUFFER`; off → today's locked input,

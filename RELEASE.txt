@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 1.4.0 (2026-07-17)
+---------------------------
+- v1.4 — Streaming replies (TUI) + sentence-chunked voicer. LUMI_STREAM streams the reply's prose as it generates; LUMI_VOICE_SENTENCES speaks it sentence-by-sentence. Both off by default; emotion validated at completion (contract unchanged); Telegram byte-identical. (LUMI-188..191)
+- Streaming seam on LLMClient: real partial-JSON streaming on Anthropic (input_json_delta) + Gemini (streamGenerateContent SSE); other providers emit once; blocking fallback on any error.
+- Tool turns stream too: streaming variants of the Gemini + Anthropic function-calling loops — tool-call rounds show nothing, the answer round streams; a tolerant decoder streams a plain-text answer as well.
+- TUI: streamed replies grow in place in the conversation (appear once), plus a TTFT ("first Xs") indicator on the stats bar and in /latency.
+- Roadmap: added v1.9 — OpenAI streaming (planned, not yet built).
+- Canon: Лілі's voice refined toward direct, concrete language (no metaphors).
+- Note: the felt streaming gap shows on fast, non-thinking turns; a reasoning model with thinking on back-loads the reply, and Gemini buffers structured output.
+
 Version 1.3.1 (2026-07-15)
 ---------------------------
 - Latency S0: per-stage PRE/MODEL/POST turn timing on the cache-log, a /latency read-out, and a "Turn latency (S0)" section (accumulated + per-session) in the cache report.
