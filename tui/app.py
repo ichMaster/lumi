@@ -23,7 +23,7 @@ from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.screen import ModalScreen
@@ -34,7 +34,7 @@ from core.biorhythm import format_biorhythms
 from core.config import load_config
 from core.cycle import format_cycle
 from core.emoji import EmojiRenderer, load_emoji_map
-from core.emotion import LogRenderer
+from core.emotion import EmotionState, LogRenderer
 from core.images import image_block, media_type_for
 from core.llm import LLMError
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
@@ -206,6 +206,11 @@ class LumiApp(App[None]):
         padding: 0 1;
         margin: 1 1 1 1;
     }
+    /* Each conversation line is a mounted widget — auto-height, tight packing (chat-log feel). */
+    #history > Static {
+        height: auto;
+        margin: 0;
+    }
 
     #prompt {
         height: 5;          /* border (2) + ~3 text lines; scrolls if longer */
@@ -219,15 +224,6 @@ class LumiApp(App[None]):
         color: $text-muted;
         background: $panel;
     }
-
-    /* v1.4 (LUMI-189): the live streaming reply grows here in place, then commits to #history at
-       completion. Hidden unless a streamed turn is in flight (toggled via .display). */
-    #live {
-        display: none;
-        height: auto;
-        padding: 0 1;
-        margin: 0 1;
-    }
     """
 
     def __init__(self, core: Core, session: Session | None = None) -> None:
@@ -238,10 +234,13 @@ class LumiApp(App[None]):
         self.transcript: list[str] = []
         # Лілі's most recent reply, for one-key copy.
         self._last_reply: str | None = None
-        # v1.4 (LUMI-189): accumulators for the in-place streamed reply / reasoning (grown in #live and
-        # the Thinking box during a streamed turn, then cleared when the final render commits to history).
+        # v1.4: the streamed reply grows in place inside the conversation flow — a message widget mounted
+        # into #history at turn start, grown per delta, and finalized as the reply itself (no separate box,
+        # no re-commit). `_stream_label`/`_stream_body` hold that widget while a streamed turn is in flight.
         self._stream_buf: str = ""
         self._stream_think_buf: str = ""
+        self._stream_label: Static | None = None
+        self._stream_body: Static | None = None
         # What's currently in the Thinking box (last turn's reasoning, or None).
         self._thinking_shown: str | None = None
         # The v0.3 emotion renderer — the "logged" tier (IEmotionRenderer).
@@ -309,8 +308,7 @@ class LumiApp(App[None]):
             thinking.border_title = "Thinking"
             thinking.border_subtitle = "Лілі's reasoning — last turn only"
             yield thinking
-            yield RichLog(id="history", wrap=True, markup=False)
-            yield Static(id="live")  # v1.4 (LUMI-189): the growing streamed reply (hidden until streaming)
+            yield VerticalScroll(id="history")  # the conversation — one mounted widget per line/message
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
             prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /model-set /biorhythm /closeness /recall /web /journal /new /prompt /latency /memory /forget"
@@ -455,14 +453,22 @@ class LumiApp(App[None]):
         return [Text(f"{label}:", style=f"bold {color}"), Markdown(message)]
 
     def _emit(self, plain: str, *renderables: RenderableType) -> None:
-        # ``transcript`` stays plain text (tests + simplicity); the widget is rich.
+        # ``transcript`` stays plain text (tests + simplicity); the conversation is mounted widgets.
         self.transcript.append(plain)
-        log = self.query_one("#history", RichLog)
-        if renderables:
-            for renderable in renderables:
-                log.write(renderable)
+        blocks = [Static(r) for r in renderables] if renderables else [Static(plain)]
+        self._mount_lines(*blocks)
+
+    def _mount_lines(self, *widgets: Static, before: Static | None = None) -> None:
+        """Mount conversation line-widgets into #history (optionally ``before`` an anchor) + auto-scroll."""
+        container = self.query_one("#history", VerticalScroll)
+        if before is not None:
+            container.mount(*widgets, before=before)
         else:
-            log.write(plain)
+            container.mount(*widgets)
+        self.call_after_refresh(self._scroll_history_end)
+
+    def _scroll_history_end(self) -> None:
+        self.query_one("#history", VerticalScroll).scroll_end(animate=False)
 
     def _say(self, label: str, message: str, color: str) -> None:
         self._emit(f"{label}: {message}", self._styled(label, message, color))
@@ -470,14 +476,21 @@ class LumiApp(App[None]):
     def _say_markdown(self, label: str, message: str, color: str) -> None:
         self._emit(f"{label}: {message}", *self._markdown_block(label, message, color))
 
-    def _show_tool_trace(self) -> None:
+    def _show_tool_trace(self, *, before: Static | None = None) -> None:
         """Show the file tools Лілі used this turn — dim lines above her reply (v0.19; off unless
-        `LUMI_FILE_TOOL_TRACE`). The full detail also streams to `.lumi/tool-log.jsonl`."""
+        `LUMI_FILE_TOOL_TRACE`). The full detail also streams to `.lumi/tool-log.jsonl`.
+
+        ``before`` (v1.4): on a streamed turn the reply widget is already mounted, so the traces mount
+        **above** it (they logically precede the reply) instead of appending after."""
         for name, args, result in getattr(self._core, "last_tool_calls", ()):
             arg_str = " ".join(f"{k}={v}" for k, v in args.items())
             preview = " ".join((result or "").split())[:90]
             line = f"🔧 {name}({arg_str}) → {preview}"
-            self._emit(line, Text(line, style="grey50"))
+            if before is not None:
+                self.transcript.append(line)
+                self._mount_lines(Static(Text(line, style="grey50")), before=before)
+            else:
+                self._emit(line, Text(line, style="grey50"))
 
     def _render_thinking(self, thinking: str | None) -> None:
         """Show the last turn's reasoning in the Thinking box only (empty if none).
@@ -537,7 +550,10 @@ class LumiApp(App[None]):
             return "stats: —"
         last_tok = (stats.input_tokens or 0) + (stats.output_tokens or 0)
         total_tok = totals.total_tokens  # all tokens: fresh input + cache read/write + output
-        last = f"last {self._fmt_tokens(last_tok)} tok · {self._fmt_latency(stats.latency_ms)}"
+        # v1.4: two time indicators when streaming — "first" = time-to-first-symbol, then the full response.
+        ttft = getattr(self._core, "last_ttft_ms", None)
+        first = f"first {self._fmt_latency(ttft)} · " if ttft is not None else ""
+        last = f"last {self._fmt_tokens(last_tok)} tok · {first}{self._fmt_latency(stats.latency_ms)}"
         if stats.cache_read_tokens:  # v0.15: prefix served from the prompt cache
             last += f" · cache {self._fmt_tokens(stats.cache_read_tokens)}↩"
         if stats.cache_write_tokens:  # the prefix was (re)written to the cache this turn
@@ -782,15 +798,18 @@ class LumiApp(App[None]):
         await self._run_turn(message, images=[block], mirror_input=True, display_text=f"🖼 {path} — {message}")
 
     async def _reply_streamed(self, text: str, images: list[dict] | None):
-        """v1.4 (LUMI-189): run the turn with streaming — the reply's prose grows in the ``#live`` area
-        (deltas marshalled from the reply thread to the UI thread via ``call_from_thread``), reasoning
-        routes to the Thinking box. ``#live`` is cleared at completion so the final render commits to
-        ``#history`` exactly as the blocking path (emotion/face resolved once, on the completed reply)."""
+        """v1.4: run the turn with streaming — the reply grows **in place inside the conversation**. A
+        message widget (label + body) is mounted into ``#history`` at turn start; deltas grow its body
+        (marshalled from the reply thread to the UI thread via ``call_from_thread``); reasoning routes to
+        the Thinking box. The **same** widget is finalized as the reply in :meth:`_finalize_streamed_reply`
+        — one message, appearing once, no separate box and no re-commit."""
         self._stream_buf = ""
         self._stream_think_buf = ""
-        live = self.query_one("#live", Static)
-        live.display = True
-        live.update(Text(f"{LILI_LABEL} ", style=f"bold {LILI_COLOR}"))
+        self._stream_label = Static(Text(f"{LILI_LABEL}:", style=f"bold {LILI_COLOR}"))
+        # The body streams in the DEFAULT text color — matching the final Markdown render — so it doesn't
+        # flip color when the stream finalizes (only the label carries the speaker color).
+        self._stream_body = Static(Text(""))
+        self._mount_lines(self._stream_label, self._stream_body)
         show_think = getattr(self._core, "think_show", "debug") != "off"
 
         def _on_delta(chunk: str) -> None:
@@ -800,24 +819,17 @@ class LumiApp(App[None]):
             if show_think:
                 self.call_from_thread(self._grow_stream_think, chunk)
 
-        try:
-            return await asyncio.to_thread(
-                self._core.reply, text, self._session, images=images,
-                on_delta=_on_delta, on_think_delta=_on_think,
-            )
-        finally:
-            live.display = False
-            live.update("")
-            self._stream_buf = ""
-            self._stream_think_buf = ""
+        return await asyncio.to_thread(
+            self._core.reply, text, self._session, images=images,
+            on_delta=_on_delta, on_think_delta=_on_think,
+        )
 
     def _grow_stream_reply(self, chunk: str) -> None:
-        """Append a streamed prose delta to the live reply line (UI thread; called via call_from_thread)."""
+        """Append a streamed prose delta to the in-flow reply body (UI thread; via call_from_thread)."""
         self._stream_buf += chunk
-        line = Text()
-        line.append(f"{LILI_LABEL} ", style=f"bold {LILI_COLOR}")
-        line.append(self._stream_buf, style=LILI_COLOR)
-        self.query_one("#live", Static).update(line)
+        if self._stream_body is not None:
+            self._stream_body.update(Text(self._stream_buf))  # default color; matches the final Markdown body
+            self._scroll_history_end()
 
     def _grow_stream_think(self, chunk: str) -> None:
         """Append a streamed reasoning delta to the Thinking box (replaced by the final at completion)."""
@@ -825,6 +837,27 @@ class LumiApp(App[None]):
         box = self.query_one("#thinking", RichLog)
         box.clear()
         box.write(Text(self._stream_think_buf, style=f"italic {THINKING_COLOR}"))
+
+    def _finalize_streamed_reply(self, state: EmotionState) -> None:
+        """Turn the mounted streaming widget INTO the final reply — emoji label + Markdown body — and
+        record it in the transcript. The same widget that grew stays; there is no second copy."""
+        emoji = self._emoji.glyph(state)
+        if self._stream_label is not None:
+            self._stream_label.update(Text(f"{LILI_LABEL} {emoji}:", style=f"bold {LILI_COLOR}"))
+        if self._stream_body is not None:
+            self._stream_body.update(Markdown(state.reply))
+        self.transcript.append(f"{LILI_LABEL} {emoji}: {state.reply}")
+        self._stream_label = self._stream_body = None
+        self._stream_buf = ""
+        self._scroll_history_end()
+
+    def _discard_streamed_reply(self) -> None:
+        """Remove the (unfinished) streamed reply widget when the turn failed before finalizing."""
+        for w in (self._stream_label, self._stream_body):
+            if w is not None:
+                w.remove()
+        self._stream_label = self._stream_body = None
+        self._stream_buf = ""
 
     async def _run_turn(
         self, text: str, *, hidden: bool = False, mirror_input: bool = False,
@@ -849,10 +882,11 @@ class LumiApp(App[None]):
         # the history log can steal it) so you can type through the model wait below.
         if self._input_buffer:
             self.query_one("#prompt", ChatInput).focus()
+        streamed = getattr(self._core, "stream_enabled", False) and not hidden
         try:
             assert self._session is not None
-            if getattr(self._core, "stream_enabled", False) and not hidden:
-                state = await self._reply_streamed(text, images)  # v1.4 (LUMI-189): grow in #live
+            if streamed:
+                state = await self._reply_streamed(text, images)  # v1.4: grows in place in the chat flow
             else:
                 state = await asyncio.to_thread(self._core.reply, text, self._session, images=images)
             self._connected = True
@@ -869,9 +903,15 @@ class LumiApp(App[None]):
             # Лілі's reasoning goes to the Thinking box only (not the chat);
             # the box shows just this turn's thinking, or clears if there was none.
             self._render_thinking(getattr(self._core, "last_thinking", None))
-            self._show_tool_trace()  # v0.19: the file tools she used this turn (dim, above the reply)
-            # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
-            self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
+            if streamed and self._stream_body is not None:
+                # The streamed reply widget is already in the flow — put any tool trace above it, then
+                # finalize the SAME widget as the reply (emoji label + Markdown). No second copy.
+                self._show_tool_trace(before=self._stream_label)
+                self._finalize_streamed_reply(state)
+            else:
+                self._show_tool_trace()  # v0.19: the file tools she used this turn (dim, above the reply)
+                # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
+                self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
             if self._bridge or self._voice:  # mirror ONLY Лілі's reply to the outbox (→ Telegram / voicer)
                 mirror_reply(self._outbox_path, state)
             if not hidden and self._sound_on:
@@ -880,6 +920,8 @@ class LumiApp(App[None]):
             # Log the REAL cause behind the generic line (→ .lumi/lumi.log) — usually an LLMError
             # (rate-limit/overload after retries). Without this the failure is silent and undiagnosable.
             _log.exception("reply failed (%s) — surfacing the unavailable line", type(exc).__name__)
+            if streamed:
+                self._discard_streamed_reply()  # drop the empty in-flow reply widget
             self._render_thinking(None)  # the failed turn has no thinking
             self._connected = False
             line = f"{ERROR_LINE}  ({type(exc).__name__})"  # a short hint; full traceback is in the log
@@ -1362,7 +1404,7 @@ class LumiApp(App[None]):
             await self._process_current_session()
             self._session = self._core.start_session()
             # Fresh session → fresh screen (memory is kept in the store).
-            self.query_one("#history", RichLog).clear()
+            self.query_one("#history", VerticalScroll).remove_children()
             self._render_thinking(None)  # clear the Thinking box too
             self.transcript.clear()
             self._last_reply = None
@@ -1448,10 +1490,13 @@ class LumiApp(App[None]):
         def _s(ms: int) -> str:
             return f"{ms / 1000:.1f}s"
 
+        ttft = last.get("ttft_ms")
+        first = f" · first symbol {_s(ttft)}" if ttft is not None else ""  # v1.4: TTFT when streaming
         lines = [
             "── turn latency (S0) ──",
             f"last turn: PRE {_s(last['pre_ms'])} · MODEL {_s(last['llm_ms'])} · "
-            f"POST {_s(last['post_ms'])}  =  {_s(last['total_ms'])}  (think {last['think_chars']} chars)",
+            f"POST {_s(last['post_ms'])}  =  {_s(last['total_ms'])}  (think {last['think_chars']} chars)"
+            + first,
             f"median /{n} turns: PRE {_s(med['pre_ms'])} · MODEL {_s(med['llm_ms'])} · "
             f"POST {_s(med['post_ms'])}  =  {_s(med['total_ms'])}",
         ]
@@ -1488,7 +1533,7 @@ class LumiApp(App[None]):
 
     def action_clear(self) -> None:
         """Clear the on-screen history. Лілі still remembers (the store is kept)."""
-        self.query_one("#history", RichLog).clear()
+        self.query_one("#history", VerticalScroll).remove_children()
         self.transcript.clear()
         self._last_reply = None
         self.notify("Screen cleared. Лілі still remembers — history is kept.")

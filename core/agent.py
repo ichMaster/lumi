@@ -751,8 +751,11 @@ class Core:
         self.last_stats: ResponseStats | None = None
         self.totals = UsageTotals()
         # S0 (LATENCY): per-stage turn timing — the last turn + a rolling window for /latency medians.
-        self.last_turn_timing: dict | None = None  # {pre_ms, llm_ms, post_ms, think_chars, total_ms}
+        self.last_turn_timing: dict | None = None  # {pre_ms, llm_ms, post_ms, think_chars, ttft_ms, total_ms}
         self._turn_timings: deque = deque(maxlen=200)
+        # v1.4: time-to-first-symbol — ms from the model call to the first SHOWN prose delta (streaming
+        # only; None on a blocking turn or a reply that was all reasoning). Reset per reply turn.
+        self.last_ttft_ms: int | None = None
         # The exact prompt sent on the last turn, for inspection ({system, messages}).
         self.last_prompt: dict | None = None
         # How many messages the last turn folded into the session digest (0 if none).
@@ -2323,11 +2326,14 @@ class Core:
         is resolved/validated on the completed result — the contract is unchanged)."""
         filt = StreamTagFilter()
         think_seen = 0
+        _t_stream = time.monotonic()  # ≈ the model-call start (this runs right after _t_llm in reply())
 
         def _on_delta(chunk: str) -> None:
             nonlocal think_seen
             shown = filt.feed(chunk)
             if shown:
+                if self.last_ttft_ms is None:  # the first VISIBLE symbol → time-to-first-symbol
+                    self.last_ttft_ms = int((time.monotonic() - _t_stream) * 1000)
                 on_delta(shown)
             if on_think_delta is not None and len(filt.think) > think_seen:
                 on_think_delta(filt.think[think_seen:])
@@ -2368,6 +2374,7 @@ class Core:
         """
         self._active_session_id = session.id  # stamp this turn's cache events with the session
         _t0 = time.monotonic()  # S0 (LATENCY): per-stage turn timing — PRE → MODEL CALL → POST
+        self.last_ttft_ms = None  # v1.4: measured in _reply_streamed; stays None on a blocking turn
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
         self.ensure_day_summaries()  # refresh the day digests the prompt will inject (date-based recall)
         self.ensure_week_summaries()  # refresh the week digests (date-based recall)
@@ -2511,7 +2518,8 @@ class Core:
         post_ms = int((time.monotonic() - _t_post) * 1000)
         self.last_turn_timing = {
             "pre_ms": _pre_ms, "llm_ms": _llm_ms, "post_ms": post_ms,
-            "think_chars": len(self.last_thinking or ""), "total_ms": _pre_ms + _llm_ms + post_ms,
+            "think_chars": len(self.last_thinking or ""), "ttft_ms": self.last_ttft_ms,
+            "total_ms": _pre_ms + _llm_ms + post_ms,
         }
         self._turn_timings.append(self.last_turn_timing)
         if self.last_stats is not None:

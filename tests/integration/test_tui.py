@@ -4,7 +4,9 @@ Drives a turn through the real app against MockLLMClient (no paid call) and
 asserts a model failure degrades to a readable line instead of crashing.
 """
 
+import pytest
 from rich.markdown import Markdown
+from textual.css.query import NoMatches
 from textual.widgets import Static
 
 from core.agent import Core
@@ -765,18 +767,6 @@ def _core_stream(tmp_path, llm):
     )
 
 
-async def test_grow_stream_reply_updates_live_and_buffer(tmp_path):
-    # The delta handler accumulates into _stream_buf and shows the growing line in #live.
-    app = LumiApp(_core_stream(tmp_path, MockLLMClient("привіт")))
-    async with app.run_test():
-        app._grow_stream_reply("Прив")
-        app._grow_stream_reply("іт, друже")
-        assert app._stream_buf == "Привіт, друже"
-        shown = str(app.query_one("#live", Static).render())
-        assert "Привіт, друже" in shown
-        assert LILI_LABEL in shown  # the growing line is labelled
-
-
 async def test_grow_stream_think_updates_the_box(tmp_path):
     app = LumiApp(_core_stream(tmp_path, MockLLMClient("ок")))
     async with app.run_test():
@@ -785,25 +775,61 @@ async def test_grow_stream_think_updates_the_box(tmp_path):
         assert app._stream_think_buf == "зважую слова"
 
 
-async def test_streamed_turn_renders_final_reply_and_hides_live(tmp_path):
-    # A streamed turn shows the reply incrementally, then commits the final line to history and hides #live.
+async def test_streamed_reply_appears_once_in_the_conversation(tmp_path):
+    # The v1.4 fix: the streamed reply grows in place inside the chat and STAYS — it appears exactly
+    # once (no separate live box below + a second committed copy).
     llm = MockLLMClient(states={"reply": "Привіт, як ти?", "emotion": "joy", "intensity": 0.7},
                         stream_chunk=3)
     app = LumiApp(_core_stream(tmp_path, llm))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
-        assert any("Привіт, як ти?" in line and line.startswith("Лілі") for line in app.transcript)
-        assert app.query_one("#live", Static).display is False   # live area cleared at completion
+        lili_lines = [ln for ln in app.transcript if "Привіт, як ти?" in ln]
+        assert len(lili_lines) == 1                       # exactly ONE copy, not two
+        assert lili_lines[0].startswith("Лілі")
+        assert app._stream_body is None                   # finalized — the grown widget became the reply
         assert app._stream_buf == ""
+        with pytest.raises(NoMatches):                    # the old separate #live box is gone
+            app.query_one("#live")
 
 
-async def test_streaming_off_never_shows_the_live_area(tmp_path):
-    # Off-pin: default core (stream off) → the blocking render; #live is never displayed.
+async def test_streamed_turn_failure_discards_the_reply_widget(tmp_path):
+    # A streamed turn that fails must not leave an empty "Лілі:" block dangling in the flow.
+    def boom(system, messages, model):
+        raise RuntimeError("model down")
+
+    app = LumiApp(_core_stream(tmp_path, MockLLMClient(boom)))
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert any(ERROR_LINE in ln for ln in app.transcript)   # readable error, no crash
+        assert app._stream_body is None                         # the mounted widget was discarded
+        assert app.query_one("#prompt").disabled is False       # loop still alive
+
+
+async def test_streaming_off_renders_reply_once(tmp_path):
+    # Off-pin: default core (stream off) → the blocking render; the reply still appears exactly once.
     app = LumiApp(_core(tmp_path, MockLLMClient("добре")))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
-        assert app.query_one("#live", Static).display is False
-        assert any("добре" in line and line.startswith("Лілі") for line in app.transcript)
+        lili_lines = [ln for ln in app.transcript if "добре" in ln and ln.startswith("Лілі")]
+        assert len(lili_lines) == 1
+        assert app._stream_body is None                   # no streaming widget was used
+
+
+async def test_stats_shows_ttft_first_indicator_when_streaming(tmp_path):
+    # v1.4: the stats bar gains a "first" (time-to-first-symbol) indicator beside the response time.
+    llm = MockLLMClient(states={"reply": "Привіт світ", "emotion": "joy", "intensity": 0.6}, stream_chunk=3)
+    app = LumiApp(_core_stream(tmp_path, llm))
+    async with app.run_test() as pilot:
+        assert "first" not in app._stats_text()          # nothing streamed yet
+        await _submit(pilot, app, "привіт")
+        assert "first" in app._stats_text()              # TTFT indicator appears after a streamed turn
+
+
+async def test_stats_has_no_ttft_indicator_without_streaming(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("добре")))  # stream off (default)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert "first" not in app._stats_text()          # blocking turn → no first-symbol indicator
 
 
 async def test_streamed_think_routes_to_box_not_chat(tmp_path):

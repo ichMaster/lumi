@@ -34,8 +34,9 @@ async def test_streamed_turn_writes_one_outbox_record_and_voicer_speaks_sentence
         app._voice = True                       # the TUI mirrors Лілі's reply to the outbox (for the voicer)
         app._outbox_path = outbox
         await _submit(pilot, app, "привіт")
-        assert any("Привіт. Як ти сьогодні?" in ln for ln in app.transcript)  # rendered
-        assert app.query_one("#live").display is False                        # live area cleared
+        rendered = [ln for ln in app.transcript if "Привіт. Як ти сьогодні?" in ln]
+        assert len(rendered) == 1                                             # rendered once, in place
+        assert app._stream_body is None                                       # finalized in the flow
 
     lili = [r for r in fifo.read_since(outbox, 0) if r.get("kind") != "user"]
     assert len(lili) == 1                                                      # ONE complete record

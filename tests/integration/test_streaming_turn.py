@@ -55,6 +55,24 @@ def test_stream_routes_think_and_shows_only_prose(tmp_path):
     assert "<" not in "".join(shown)
 
 
+def test_streamed_turn_records_ttft(tmp_path):
+    # v1.4: a streamed turn records time-to-first-symbol (ms) on the core + in the turn timing.
+    llm = MockLLMClient(states={"reply": "Привіт світ", "emotion": "joy", "intensity": 0.6}, stream_chunk=3)
+    core = _core(tmp_path, llm, stream=True)
+    core.reply("привіт", core.start_session(), on_delta=lambda _c: None)
+    assert isinstance(core.last_ttft_ms, int) and core.last_ttft_ms >= 0
+    assert core.last_turn_timing["ttft_ms"] == core.last_ttft_ms
+
+
+def test_blocking_turn_has_no_ttft(tmp_path):
+    # A blocking turn never streamed a symbol → ttft is None (no first-symbol indicator).
+    core = _core(tmp_path, MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5}),
+                 stream=False)
+    core.reply("привіт", core.start_session())
+    assert core.last_ttft_ms is None
+    assert core.last_turn_timing["ttft_ms"] is None
+
+
 def test_streamed_and_blocking_produce_the_same_state(tmp_path):
     # The streamed turn's EmotionState equals the blocking turn's (contract resolved at completion).
     canned = {"reply": "однакова відповідь", "emotion": "tender", "intensity": 0.8}

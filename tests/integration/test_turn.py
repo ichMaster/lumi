@@ -110,9 +110,10 @@ def test_reply_records_per_stage_timing(tmp_path):
     core, _ = _core_with(tmp_path, MockLLMClient("ок"))
     core.reply("привіт", core.start_session())
     t = core.last_turn_timing
-    assert set(t) == {"pre_ms", "llm_ms", "post_ms", "think_chars", "total_ms"}
+    assert set(t) == {"pre_ms", "llm_ms", "post_ms", "think_chars", "ttft_ms", "total_ms"}
     assert all(isinstance(t[k], int) and t[k] >= 0 for k in ("pre_ms", "llm_ms", "post_ms", "think_chars"))
     assert t["total_ms"] == t["pre_ms"] + t["llm_ms"] + t["post_ms"]  # the split sums to the total
+    assert t["ttft_ms"] is None  # v1.4: a blocking turn (no on_delta) never streamed a symbol
 
 
 def test_latency_summary_last_and_median(tmp_path):
