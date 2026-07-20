@@ -243,3 +243,4 @@ viewer/faces/raw/
 
 # Local canon backups (never tracked)
 core/canon/*_bak*
+core/*_bak*
