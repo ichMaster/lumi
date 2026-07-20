@@ -14,9 +14,12 @@ the return into a validated ``EmotionState``.
 
 from __future__ import annotations
 
+import atexit
 import json
 import logging
+import queue
 import re
+import threading
 import time
 from collections import deque
 from collections.abc import Callable, Iterable
@@ -385,6 +388,7 @@ class Core:
         reasoning_directive: str = REASONING_DIRECTIVE,  # v0.38: the think-phase instruction (inner_voice → here)
         think_show: str = "debug",  # v0.38: monologue surfacing — debug / open / off (logged, never persisted)
         stream: bool = False,  # v1.4 (LUMI-188): stream the reply prose via reply()'s on_delta when set
+        async_post: bool = False,  # v1.5 (LUMI-192): queue the post-turn persist off the critical path
         user_id: str = DEFAULT_USER_ID,
         memory_window: int = DEFAULT_MEMORY_WINDOW,
         compaction_batch: int = DEFAULT_COMPACTION_BATCH,
@@ -525,6 +529,11 @@ class Core:
         # REASONING_DIRECTIVE by default, or the authored core/inner_voice.md when LUMI_INNER_VOICE is on.
         self._reasoning_directive = reasoning_directive
         self._stream = stream  # v1.4: reply() streams prose to on_delta when this is on
+        # v1.5 (LUMI-192): the async post-turn queue — ONE ordered worker; lazy-started on first use.
+        self._async_post = async_post
+        self._post_q: queue.Queue | None = None
+        self._post_thread: threading.Thread | None = None
+        self._post_retry: list[Callable[[], None]] = []  # failed jobs, retried once on the next drain
         # v0.38: how the monologue is surfaced (debug/open/off); validated, default debug.
         self._think_show = think_show if think_show in ("debug", "open", "off") else "debug"
         self._model = model
@@ -2375,6 +2384,7 @@ class Core:
         self._active_session_id = session.id  # stamp this turn's cache events with the session
         _t0 = time.monotonic()  # S0 (LATENCY): per-stage turn timing — PRE → MODEL CALL → POST
         self.last_ttft_ms = None  # v1.4: measured in _reply_streamed; stays None on a blocking turn
+        self.drain_post()  # v1.5: the next prompt needs the prior turn persisted (cost lands in pre_ms)
         self._ensure_mood()  # compute today's mood once per local day (v0.6)
         self.ensure_day_summaries()  # refresh the day digests the prompt will inject (date-based recall)
         self.ensure_week_summaries()  # refresh the week digests (date-based recall)
@@ -2486,17 +2496,6 @@ class Core:
             validate_intent(raw.get("intent") or tag_intent or thinking_intent)
             if self._intent_enabled else None
         )
-        # Advance the per-user closeness: decay over silence + this turn's relational delta.
-        if self._closeness_enabled:
-            self._repo.set_closeness(
-                update_closeness(
-                    self._repo.get_closeness(self._user_id),
-                    self.last_relation,
-                    self._clock(),
-                    self._user_id,
-                    self._closeness_tuning,
-                )
-            )
         self._write_face_signal(state.emotion.value, state.intensity)  # update the viewer (v0.7)
 
         user_msg = make_message(session.id, self._user_id, "user", user_text, ts=turn_ts)
@@ -2510,10 +2509,28 @@ class Core:
             intensity=state.intensity,
             intent=self.last_intent,  # v1.1 (None when off/dropped)
         )
-        self._repo.append_message(user_msg)
-        self._repo.append_message(lili_msg)
-        # v0.16: index both new messages for semantic recall (best-effort, after the reply is built).
-        self._index_messages([user_msg, lili_msg])
+        # v1.5 (LUMI-192): the post-turn tail — closeness advance + the two appends + the recall index —
+        # in today's exact order. Sync (default) runs it inline; async queues it on the ordered worker
+        # (drained at the next prompt-build / session close / exit), so reply() returns immediately.
+        relation, now = self.last_relation, self._clock()
+
+        def _post_job() -> None:
+            if self._closeness_enabled:  # decay over silence + this turn's relational delta (v0.10)
+                self._repo.set_closeness(
+                    update_closeness(
+                        self._repo.get_closeness(self._user_id), relation, now,
+                        self._user_id, self._closeness_tuning,
+                    )
+                )
+            self._repo.append_message(user_msg)
+            self._repo.append_message(lili_msg)
+            # v0.16: index both new messages for semantic recall (best-effort, after the reply is built).
+            self._index_messages([user_msg, lili_msg])
+
+        if self._async_post:
+            self._post_enqueue(_post_job)  # post_ms then measures only the enqueue (S0 note)
+        else:
+            _post_job()
         # S0: close out the per-stage timing (POST = all local work after the model call) + log the turn.
         post_ms = int((time.monotonic() - _t_post) * 1000)
         self.last_turn_timing = {
@@ -2541,6 +2558,44 @@ class Core:
             "median": {k: _median(k) for k in ("pre_ms", "llm_ms", "post_ms", "total_ms")},
         }
 
+    # --- v1.5 (LUMI-192): the async post-turn queue -----------------------------------------------
+    def _post_enqueue(self, job: Callable[[], None]) -> None:
+        """Queue one post-turn job on the single ordered worker (lazy-started; drains at exit)."""
+        if self._post_q is None:
+            self._post_q = queue.Queue()
+            self._post_thread = threading.Thread(target=self._post_worker, daemon=True, name="lumi-post")
+            self._post_thread.start()
+            atexit.register(self.drain_post)  # clean shutdown loses nothing (best-effort)
+        self._post_q.put(job)
+
+    def _post_worker(self) -> None:
+        """The single worker loop: run jobs strictly FIFO; a failure is logged (never crashes the
+        worker — the next job still runs) and kept for one retry on the next drain."""
+        while True:
+            job = self._post_q.get()
+            try:
+                job()
+            except Exception:  # noqa: BLE001 — a failed persist must not kill the worker
+                _core_log.warning("async post job failed (will retry on next drain)", exc_info=True)
+                self._post_retry.append(job)
+            finally:
+                self._post_q.task_done()
+
+    def drain_post(self) -> None:
+        """Block until the queued post-turn work is fully persisted (+ retry failed jobs once).
+
+        Called at the start of the next turn's prompt-build (ordering — the next prompt needs the
+        prior messages), at session close, and at interpreter exit. A no-op when nothing is queued."""
+        if self._post_q is not None:
+            self._post_q.join()
+        if self._post_retry:
+            retries, self._post_retry = self._post_retry, []
+            for job in retries:
+                try:
+                    job()
+                except Exception:  # noqa: BLE001 — a second failure is dropped, never raised
+                    _core_log.error("async post job failed on retry — dropped", exc_info=True)
+
     def end_session(self, session: Session) -> ShortSummary | None:
         """Close a session: mark it ended, write a short summary, accumulate facts.
 
@@ -2551,6 +2606,7 @@ class Core:
         (ARCHITECTURE §Error handling).
         """
         self._active_session_id = session.id  # stamp the wrap-up (summary + facts) cache events
+        self.drain_post()  # v1.5: a clean close persists everything first (no lost turn)
         try:
             history = self._repo.load_messages(session.id)
             self._repo.end_session(session.id)
@@ -3186,6 +3242,7 @@ def build_core(
         reasoning_directive=reasoning_directive,
         think_show=cfg.think_show,
         stream=cfg.stream,  # v1.4 (LUMI-188)
+        async_post=cfg.async_post,  # v1.5 (LUMI-192)
         model=cfg.model,
         provider=cfg.provider,
         llm_factory=_llm_factory,

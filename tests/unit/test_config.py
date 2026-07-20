@@ -38,6 +38,16 @@ def test_reasoning_env_off(monkeypatch):
     assert load_config(load_env=False).reasoning is False
 
 
+def test_async_post_defaults_off(monkeypatch):
+    monkeypatch.delenv("LUMI_ASYNC_POST", raising=False)
+    assert load_config(load_env=False).async_post is False  # v1.5: off → synchronous, byte-identical
+
+
+def test_async_post_env_on(monkeypatch):
+    monkeypatch.setenv("LUMI_ASYNC_POST", "on")
+    assert load_config(load_env=False).async_post is True
+
+
 def test_stream_defaults_off(monkeypatch):
     monkeypatch.delenv("LUMI_STREAM", raising=False)
     assert load_config(load_env=False).stream is False  # v1.4: off by default → blocking, byte-identical

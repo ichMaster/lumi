@@ -337,6 +337,10 @@ class Config:
     # speaks sentence-by-sentence). OFF (default) → today's blocking turn, byte-identical. Anthropic/Gemini
     # stream token-by-token; other providers emit the whole reply once. Emotion is validated at completion.
     stream: bool = False
+    # v1.5 (LUMI-192): queue the post-turn persist (closeness + appends + recall index) on a single
+    # ordered background worker, so reply() returns the instant the emotion validates. Drained at the
+    # next prompt-build / session close / exit. OFF (default) → today's synchronous path, byte-identical.
+    async_post: bool = False
     # v0.38 Inner Voice: how the think monologue is surfaced — debug (operator-visible box, default) /
     # open (surfaced as her inner voice) / off (hidden). It is logged (never persisted to long-term memory).
     think_show: str = "debug"
@@ -613,6 +617,7 @@ def load_config(*, load_env: bool = True) -> Config:
     thinking = _parse_bool(os.getenv("LUMI_THINKING"))
     reasoning = (os.getenv("LUMI_REASONING") or "on").strip().lower() in _TRUTHY  # on by default
     stream = (os.getenv("LUMI_STREAM") or "off").strip().lower() in _TRUTHY  # v1.4 (LUMI-188), off by default
+    async_post = (os.getenv("LUMI_ASYNC_POST") or "off").strip().lower() in _TRUTHY  # v1.5 (LUMI-192)
 
     effort_env = os.getenv("LUMI_EFFORT")
     effort = effort_env.strip().lower() if effort_env and effort_env.strip() else DEFAULT_EFFORT
@@ -696,6 +701,7 @@ def load_config(*, load_env: bool = True) -> Config:
         thinking=thinking,
         reasoning=reasoning,
         stream=stream,
+        async_post=async_post,
         effort=effort,
         think_show=think_show,
         location=os.getenv("LUMI_LOCATION") or None,
