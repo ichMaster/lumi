@@ -342,6 +342,11 @@ class LumiApp(App[None]):
         self._sound_on = cfg.sound  # start on only if LUMI_SOUND=on; else toggle with F2
         now = self._core.clock()
         self._last_activity = self._last_nudge_ts = self._last_think_ts = now
+        # Bounded log retention: trim .lumi/*.log|jsonl to the last N days at startup + on a periodic
+        # tick (off the UI thread; in-place, so concurrently-appending writers are unaffected).
+        self._log_state_dir = cfg.store_path.parent
+        self._trim_logs()
+        self.set_interval(6 * 3600, self._trim_logs)  # every 6h — bounds a long-running session
         # Two separate menus, two independent timers — the nudge (openers) and the think (seeds)
         # run together and pace on their own stamps.
         # v0.42 LUMI-169: when the scheduler is ON it owns the idle rule (the migrated `idle:` %think
@@ -933,6 +938,14 @@ class LumiApp(App[None]):
             self._render_status()
             self._render_stats()
             self._drain_input_queue()  # v1.2: answer the next queued line (one turn each, FIFO)
+
+    def _trim_logs(self) -> None:
+        """Trim the state-dir logs to LOG_RETENTION_DAYS, off the UI thread (best-effort)."""
+        from core.logtrim import LOG_RETENTION_DAYS, trim_lumi_logs
+        self.run_worker(
+            asyncio.to_thread(trim_lumi_logs, self._log_state_dir, LOG_RETENTION_DAYS),
+            exclusive=False,
+        )
 
     def _keep_input_live(self) -> None:
         """v1.2: while a turn is in flight (buffer on), keep the input **focused and repainting** —
