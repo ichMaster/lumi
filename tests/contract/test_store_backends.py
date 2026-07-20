@@ -91,6 +91,36 @@ def test_vectors_still_work(repo):
     assert hits and hits[0][1].msg_id == "m1"
 
 
+def _vec(user, mid, vector, kind="message"):
+    return VectorRecord(user_id=user, msg_id=mid, vector=vector, text=f"t-{mid}",
+                        ts="2026-07-21T10:00:00+00:00", role="user", kind=kind)
+
+
+def test_vector_kind_scoping(repo):
+    repo.add_vectors([_vec("owner", "m1", [1.0, 0.0]), _vec("owner", "f1", [1.0, 0.0], kind="fact")])
+    assert [r.msg_id for _, r in repo.search_vectors("owner", [1.0, 0.0], 10, kind="fact")] == ["f1"]
+    assert [r.msg_id for _, r in repo.search_vectors("owner", [1.0, 0.0], 10, kind="message")] == ["m1"]
+
+
+def test_vector_isolation_between_users(repo):
+    repo.add_vectors([_vec("alice", "a1", [1.0, 0.0]), _vec("bob", "b1", [1.0, 0.0])])
+    assert [r.msg_id for _, r in repo.search_vectors("bob", [1.0, 0.0], 10)] == ["b1"]
+
+
+def test_vector_dedup_and_has_vector(repo):
+    repo.add_vector(_vec("owner", "m1", [1.0, 0.0]))
+    repo.add_vector(_vec("owner", "m1", [1.0, 0.0]))  # idempotent re-index
+    assert len(repo.search_vectors("owner", [1.0, 0.0], 10)) == 1
+    assert repo.has_vector("owner", "m1") and not repo.has_vector("owner", "nope")
+
+
+def test_vector_reset_drops_all_and_sets_model(repo):
+    repo.add_vector(_vec("owner", "m1", [1.0, 0.0]))
+    repo.reset_vectors("new-model")
+    assert repo.search_vectors("owner", [1.0, 0.0], 10) == []
+    assert repo.vectors_model() == "new-model"
+
+
 def test_reopen_preserves_everything(repo, tmp_path):
     s = repo.create_session("owner")
     repo.append_message(_msg(s.id, "owner", "user", "збережи мене"))
@@ -126,6 +156,46 @@ def test_sqlite_adopts_an_existing_json_store(tmp_path):
 
     again = SqliteRepository(tmp_path / "store.json")               # idempotent second open
     assert len(again.load_messages(s.id)) == 1                      # no duplicates
+
+
+def test_sqlite_adopts_the_vectors_jsonl_without_reembedding(tmp_path):
+    # v1.5 LUMI-194: an existing .vectors.jsonl re-packs into the DB — identical search results,
+    # no embedder anywhere near the path, and the vectors never held in the memory dicts.
+    old = JsonRepository(tmp_path / "store.json")
+    old.add_vectors([_vec("owner", "m1", [0.9, 0.1]), _vec("owner", "m2", [0.1, 0.9]),
+                     _vec("owner", "f1", [0.8, 0.2], kind="fact")])
+    expected = [(round(s, 6), r.msg_id) for s, r in old.search_vectors("owner", [1.0, 0.0], 3)]
+
+    new = SqliteRepository(tmp_path / "store.json")
+    got = [(round(s, 6), r.msg_id) for s, r in new.search_vectors("owner", [1.0, 0.0], 3)]
+    assert got == expected                                  # identical ranking after the re-pack
+    assert new._vectors == {}                               # NOT resident in RAM (the S2b point)
+    assert new.has_vector("owner", "m1")
+
+    again = SqliteRepository(tmp_path / "store.json")       # second open: table non-empty → no rescan
+    assert len(again.search_vectors("owner", [1.0, 0.0], 10)) == 3
+
+
+def test_sqlite_float32_blob_keeps_the_cosine_ranking(tmp_path):
+    # The float64→float32 round-trip must not change the ranking (tolerance ~1e-6 on scores).
+    vecs = [("a", [0.123456789, 0.987654321]), ("b", [0.5, 0.5]), ("c", [0.9999999, 0.0000001])]
+    j = JsonRepository(tmp_path / "j" / "store.json")
+    s = SqliteRepository(tmp_path / "s" / "store.json")
+    for mid, v in vecs:
+        j.add_vector(_vec("owner", mid, v))
+        s.add_vector(_vec("owner", mid, v))
+    q = [0.7, 0.3]
+    jr = [(r.msg_id, round(sc, 5)) for sc, r in j.search_vectors("owner", q, 3)]
+    sr = [(r.msg_id, round(sc, 5)) for sc, r in s.search_vectors("owner", q, 3)]
+    assert jr == sr
+
+
+def test_sqlite_clear_memory_deletes_the_user_vectors(tmp_path):
+    repo = SqliteRepository(tmp_path / "store.json")
+    repo.add_vectors([_vec("alice", "a1", [1.0, 0.0]), _vec("bob", "b1", [1.0, 0.0])])
+    repo.clear_memory("alice")
+    assert repo.search_vectors("alice", [1.0, 0.0], 10) == []
+    assert len(repo.search_vectors("bob", [1.0, 0.0], 10)) == 1  # untouched
 
 
 def test_sqlite_legacy_move_field_is_migrated_on_read(tmp_path):
