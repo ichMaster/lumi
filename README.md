@@ -12,6 +12,11 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**1.4.1** refines the v1.4 phase: the think-phase **inner voice** becomes four intent-owning voices
+(Розуміння / Цікавість / Норов / Пам'ять — Розуміння reads the subtext behind your words), the chosen
+conversation-move **intent** now shows in the status line and is required in the Gemini JSON every reply,
+and `.lumi/*.log|jsonl` get **periodic 10-day retention** (trimmed in place at startup + every 6 h).
+
 **1.4 — Streaming replies + sentence-chunked voicer.** With `LUMI_STREAM=on` Лілі's reply appears
 **as it generates** — the prose grows in place in the conversation (perceived TTFT ~2–3 s), the emotion
 is validated on completion (contract unchanged), and the local voicer speaks it **sentence-by-sentence**

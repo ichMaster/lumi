@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 1.4.1 (2026-07-20)
+---------------------------
+- Inner voice v3: the three think-phase voices became intent-owning movement vectors (Цікавість / Норов / Пам'ять), plus a fourth — РОЗУМІННЯ — that reads the subtext behind the user's words. The <think> voices are now required verbatim in the output, so a reasoning model surfaces the authored monologue instead of a paraphrase.
+- Intent: the chosen conversation-move now shows in the status line, and it is required in the Gemini JSON on every reply (both channels) — so it stops dropping on paraphrase turns.
+- Logs: periodic 10-day retention — .lumi/*.log|jsonl are trimmed in-place at startup and every 6h (safe for concurrently-appending writers).
+- Docs: model pricing comparison for the two profiles (docs/MODEL_PRICING.md).
+
 Version 1.4.0 (2026-07-17)
 ---------------------------
 - v1.4 — Streaming replies (TUI) + sentence-chunked voicer. LUMI_STREAM streams the reply's prose as it generates; LUMI_VOICE_SENTENCES speaks it sentence-by-sentence. Both off by default; emotion validated at completion (contract unchanged); Telegram byte-identical. (LUMI-188..191)
