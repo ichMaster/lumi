@@ -249,10 +249,13 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse th
   MODEL CALL is now ~83% of the turn, so streaming is the lever that actually attacks the felt wait.
   **OpenAI/DeepSeek + the Responses API get real SSE in v1.9** (they emit once until then); MiniMax stays
   blocking-emit.
-- **v1.5 · the durable POST fix (S1 + S2).** The async post-turn queue **and** the incremental store
-  behind `Repository` (append-only / SQLite, O(1) persist), shipped **together**: S1 alone is a
-  band-aid (crash-loss window + the store-growth time bomb — persist is O(history) today); with S2 the
-  POST fix is **complete and durable**. No contract change, **14.5 s → ~6–8 s felt.**
+- **v1.5 · the durable POST fix (S1 + S2 + S2b) — ✅ SHIPPED.** The async post-turn queue
+  (`LUMI_ASYNC_POST`: reply() returns at validate; the tail drains at the next prompt-build / close /
+  exit) **and** the SQLite backend (`LUMI_STORE_BACKEND=sqlite`: messages + closeness O(1) INSERT,
+  vectors as float32 BLOBs — no 450 MB RAM residency; `scripts/migrate_store.py` migrates without
+  re-embedding, `--export-json` rolls back). Both off by default → byte-identical. Measured pre-phase:
+  POST 0.7–6.5 s across configs (S0); with async on, `post_ms` ≈ the enqueue (~0 ms) — the drain cost
+  surfaces in the next turn's `pre_ms`; record the live after-numbers from `/latency`.
 - **v1.6 · registers = the [MODEL_ROLES](MODEL_ROLES.md) phase (S4, incl. S4-interim) = LAT-3.**
   Register-routed thinking with latency as the driving DoD (casual turn ≤ 4 s full). **S4-interim**
   folds in here: `LUMI_EFFORT=low` for the talking register + the trimmed talking-tier `inner_voice.md`
