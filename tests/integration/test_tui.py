@@ -349,6 +349,25 @@ async def test_status_line_shows_the_emotion(tmp_path):
         assert "joy 0.8" in app._status_text()  # v0.3: current emotion in the status line
 
 
+async def test_status_line_shows_the_intent_when_set(tmp_path):
+    # v1.1: the chosen conversation move appears in the status line; absent when there is none.
+    llm = MockLLMClient(states={"reply": "ок", "emotion": "calm", "intensity": 0.5, "intent": "deepen"})
+    core = Core(llm=llm, repository=JsonRepository(tmp_path / "store.json"),
+                canon="Ти — Лілі.", model="m", intent_enabled=True)
+    app = LumiApp(core)
+    async with app.run_test() as pilot:
+        assert "intent:" not in app._status_text()   # nothing yet
+        await _submit(pilot, app, "привіт")
+        assert "intent:deepen" in app._status_text()
+
+
+async def test_status_line_omits_intent_when_disabled(tmp_path):
+    app = LumiApp(_core(tmp_path, MockLLMClient("ok")))  # intent off by default
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт")
+        assert "intent:" not in app._status_text()
+
+
 async def test_turn_routes_state_through_the_renderer(tmp_path):
     llm = MockLLMClient(states={"reply": "ок", "emotion": "playful", "intensity": 0.6})
     app = LumiApp(_core(tmp_path, llm))

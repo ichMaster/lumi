@@ -534,8 +534,10 @@ class LumiApp(App[None]):
         style_part = f" · style: {self._core.style}"  # always show (incl. 'normal')
         emo = self._core.last_emotion
         emo_part = f" · {emo.emotion.value} {emo.intensity:.1f}" if emo else ""
+        intent = getattr(self._core, "last_intent", None)  # v1.1: the chosen conversation move
+        intent_part = f" · intent:{intent}" if intent else ""
         pending = f" · ⋯{len(self._input_queue)}" if self._input_queue else ""  # v1.2 queued lines
-        meta = f"{model}{think}{snd}{style_part}{emo_part}{pending}"
+        meta = f"{model}{think}{snd}{style_part}{emo_part}{intent_part}{pending}"
         if busy:
             return f"status: [yellow]{busy}[/] · {meta}"
         if not self._connected:
