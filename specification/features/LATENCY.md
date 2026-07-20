@@ -112,12 +112,18 @@ instant, without it the wait just moves *between* turns where nobody is watching
 ### S2 — Incremental store: stop rewriting 12.9 MB per message · kills the POST at the root
 Swap the all-in-one `store.json` dump for an **append-only path behind the same `Repository`
 seam** — either a JSONL journal (messages append; the rest of the store persists on close/interval)
-or **SQLite** (the ARCHITECTURE already names it as the intended next backend; `sqlite-vec` is
-likewise the named next step for the 450 MB vector file). The core does not change — this is
-exactly the "swap the backend must not touch the core" contract.
+or **SQLite** (the ARCHITECTURE already names it as the intended next backend). The core does not
+change — this is exactly the "swap the backend must not touch the core" contract.
 **Saving:** turns S1's queue from "hides seconds" into "there are no seconds to hide"; also fixes
 the store-growth time bomb (persist cost is O(history) today). **Effort:** 1–2 days. **Risk: LOW**
 (the seam exists; migration script + keep `store.json` export for back-compat).
+
+**S2b — the 450 MB vector store on SQLite (bundled with S2).** `store.vectors.jsonl` is the bigger
+hog: it **loads entirely into RAM at startup** and is appended per turn. Move the `VectorStore` (also
+behind `Repository`) to a SQLite table keyed by `user_id`, vector as a float32 `BLOB` → **~4–8×
+smaller**, no full-file load, per-message `INSERT`, and pruning by `DELETE … WHERE ts < ?`. App-side
+cosine stays (instant at this scale); **`sqlite-vec`** (the KNN index) is the later/at-scale upgrade.
+The migration re-packs the `.jsonl` into rows **without re-embedding** (no paid Voyage re-index).
 
 ### S3 — Stream the reply · **perceived TTFT ~10 s → ~2–3 s**, prerequisite for live voice
 Stream the completion into the TUI bubble as it generates. The contract survives untouched:
@@ -195,8 +201,8 @@ without dead air. **Effort:** 1–2 weeks. **Risk: MEDIUM-HIGH** — barge-in/VA
 Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse the same adapters).
 
 ### S7 — Small fry (do opportunistically, after S0 proves them)
-- **RAG pre-work:** if S0 shows the e5-large query embed + cosine over the 450 MB JSONL costs
-  >0.3 s, load vectors as one warm numpy matrix / move to `sqlite-vec` (rides S2).
+- **RAG pre-work:** if S0 shows the query embed + cosine over the vector store costs >0.3 s, load
+  vectors as one warm numpy matrix (the SQLite `BLOB` move is now **S2b**, in v1.5).
 - **Compaction off the turn:** the every-~20-messages compaction is a *blocking housekeeping model
   call inside a user turn* — run it in the S1 background queue instead (it only feeds the *next*
   prompt).
