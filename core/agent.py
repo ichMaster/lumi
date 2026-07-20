@@ -3194,9 +3194,15 @@ def build_core(
     cfg = config or load_config()
 
     if repository is None:
-        from state.local_store import JsonRepository  # imported here to keep core/ light
+        # v1.5 (LUMI-193): the backend is a config switch behind the same Repository contract.
+        if cfg.store_backend == "sqlite":
+            from state.sqlite_store import SqliteRepository  # imported here to keep core/ light
 
-        repository = JsonRepository(cfg.store_path)
+            repository = SqliteRepository(cfg.store_path)
+        else:  # "json" (default) → the untouched JSON store, byte-identical
+            from state.local_store import JsonRepository  # imported here to keep core/ light
+
+            repository = JsonRepository(cfg.store_path)
 
     if llm is None:
         llm = build_llm(cfg)  # v0.18: pick the backend from cfg.provider (anthropic by default)

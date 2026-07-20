@@ -38,6 +38,18 @@ def test_reasoning_env_off(monkeypatch):
     assert load_config(load_env=False).reasoning is False
 
 
+def test_store_backend_defaults_json(monkeypatch):
+    monkeypatch.delenv("LUMI_STORE_BACKEND", raising=False)
+    assert load_config(load_env=False).store_backend == "json"  # v1.5: default → the untouched store
+
+
+def test_store_backend_sqlite_and_unknown_falls_back(monkeypatch):
+    monkeypatch.setenv("LUMI_STORE_BACKEND", "sqlite")
+    assert load_config(load_env=False).store_backend == "sqlite"
+    monkeypatch.setenv("LUMI_STORE_BACKEND", "postgres")
+    assert load_config(load_env=False).store_backend == "json"  # unknown → safe default
+
+
 def test_async_post_defaults_off(monkeypatch):
     monkeypatch.delenv("LUMI_ASYNC_POST", raising=False)
     assert load_config(load_env=False).async_post is False  # v1.5: off → synchronous, byte-identical
