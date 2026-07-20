@@ -188,6 +188,9 @@ _GEMINI_TOOL_JSON_INSTRUCTION = (
     'user (and not calling any tool), output it as a single JSON object with exactly: "reply" (string — '
     "Лілі's words only), \"emotion\" (one of: "
     + ", ".join(e.value for e in Emotion) + '), "intensity" (number 0..1). '
+    'When the system prompt asks you to declare a conversation move, the final JSON object MUST also '
+    'include "intent" (exactly one of: ' + ", ".join(INTENTS) + ') on EVERY reply — required, never omit '
+    "it (unsure → the closest one). "
     "A function call and the final JSON reply are different things — never put the JSON inside a tool call."
 )
 
@@ -381,9 +384,10 @@ _JSON_STATE_INSTRUCTION = (
     '"reply" (string — Лілі\'s reply text, her words only), '
     '"emotion" (one of: ' + ", ".join(e.value for e in Emotion) + "), "
     '"intensity" (number between 0 and 1). '
-    'When the system prompt asks you to declare a conversation style, ALSO include '
-    '"intent" (exactly one of: ' + ", ".join(INTENTS) + "). "
-    'Example: {"reply": "...", "emotion": "calm", "intensity": 0.6}'
+    'When the system prompt asks you to declare a conversation move, you MUST include '
+    '"intent" (exactly one of: ' + ", ".join(INTENTS) + ") on EVERY reply — required, never omit it "
+    "(unsure → the closest one). "
+    'Example (with a move): {"reply": "...", "emotion": "calm", "intensity": 0.6, "intent": "deepen"}'
 )
 
 _JSON_THINKING_SUMMARY_INSTRUCTION = (
