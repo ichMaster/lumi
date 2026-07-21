@@ -253,9 +253,12 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse th
   (`LUMI_ASYNC_POST`: reply() returns at validate; the tail drains at the next prompt-build / close /
   exit) **and** the SQLite backend (`LUMI_STORE_BACKEND=sqlite`: messages + closeness O(1) INSERT,
   vectors as float32 BLOBs — no 450 MB RAM residency; `scripts/migrate_store.py` migrates without
-  re-embedding, `--export-json` rolls back). Both off by default → byte-identical. Measured pre-phase:
-  POST 0.7–6.5 s across configs (S0); with async on, `post_ms` ≈ the enqueue (~0 ms) — the drain cost
-  surfaces in the next turn's `pre_ms`; record the live after-numbers from `/latency`.
+  re-embedding, `--export-json` rolls back). Both off by default → byte-identical.
+  **Measured live (2026-07-22, post-migration, 5 turns):** POST **0.0 s** (was 0.7–6.5 s across
+  configs) — median turn PRE 1.8 s (incl. the prior turn's drain) · MODEL 6.6 s · POST 0.0 s = 8.4 s;
+  the migration re-packed 479 MB `store.vectors.jsonl` → a 111 MB `store.db` (~4.3×), `store.json`
+  12.9 MB → 3.6 MB. The MODEL CALL now IS the turn (~80%) — further wins live in v1.4 streaming
+  (felt) and v1.6 registers (actual).
 - **v1.6 · registers = the [MODEL_ROLES](MODEL_ROLES.md) phase (S4, incl. S4-interim) = LAT-3.**
   Register-routed thinking with latency as the driving DoD (casual turn ≤ 4 s full). **S4-interim**
   folds in here: `LUMI_EFFORT=low` for the talking register + the trimmed talking-tier `inner_voice.md`
