@@ -5,9 +5,10 @@ import pytest
 from core.intent import INTENTS, validate_intent
 
 
-def test_the_seven_authored_styles():
+def test_the_authored_styles():
+    # The 7 authored v1.1 moves + `mutate` (v1.5.x — the Алхімік voice's lateral «а що якщо…»).
     assert INTENTS == (
-        "deepen", "position", "object", "develop", "associate", "example", "return",
+        "deepen", "position", "object", "develop", "associate", "example", "return", "mutate",
     )
 
 

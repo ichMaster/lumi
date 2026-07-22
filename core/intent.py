@@ -11,9 +11,10 @@ the reply actually did what it declared.
 
 from __future__ import annotations
 
-# The closed set — the 7 reply intents. English enum values (like the emotion enum), stored
-# in store.json; the Ukrainian glosses live in the think instruction. One source of truth: the
-# set_state schema (core/llm.py) and the prompt instruction read this tuple.
+# The closed set — the reply intents (7 authored in v1.1 + `mutate` added in v1.5.x). English enum
+# values (like the emotion enum), stored in store.json; the Ukrainian glosses live in the think
+# instruction. One source of truth: the set_state schema (core/llm.py) and the prompt instruction
+# read this tuple.
 INTENTS: tuple[str, ...] = (
     "deepen",     # заглибити — конкретне питання про аспект сказаного
     "position",   # позиція — власне твердження від першої особи
@@ -22,6 +23,7 @@ INTENTS: tuple[str, ...] = (
     "associate",  # асоціація — власний матеріал (думки, минулі розмови)
     "example",    # приклад — потягнути з абстрактного в конкретне
     "return",     # повернутись — відкрите питання зі старої теми
+    "mutate",     # алхімія — повернути тему боком одним «а що якщо…» (навпаки/масштаб/деінде/схрестити)
 )
 
 
