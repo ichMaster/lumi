@@ -12,6 +12,11 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**1.5.1** refines the v1.5 phase: a fifth inner-voice — **УЯВА** (a new `mutate` intent, the lateral
+«а що якщо…» of four types) with the arbiter tilted against its associate bias, concrete associate
+sources, and a Gemini fix — tool-loop rounds now reserve the thinking headroom (the «…» empty-reply
+bug on reasoning models).
+
 **1.5 — Fast turns: the durable POST fix.** A text turn **feels done the moment Лілі has answered**:
 `LUMI_ASYNC_POST=on` queues the post-turn persist (closeness + appends + recall index) on an ordered
 background worker — `reply()` returns the instant the emotion validates, the queue drains at the next

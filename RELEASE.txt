@@ -1,6 +1,11 @@
 Lumi — Release notes
 ====================
 
+Version 1.5.1 (2026-07-22)
+---------------------------
+- Inner voice: a fifth appetite voice — УЯВА (mutate intent) — turns the topic sideways with ONE deliberate «а що якщо…» of four types (навпаки / масштаб / деінде / схрестити-з-давньою-темою); the mutation must hook into the real topic, the previous type may not repeat. The arbiter is tilted against its known associate bias (associate wins only when the accent begs for a memory; at parity УЯВА gets the edge). Associate itself got concrete sources instead of the vague «своє»: a memory from your conversations, a thought from her diary, an accumulated observation about you, or her own world.
+- fix(gemini): the '…' empty-reply bug — the tool-loop rounds sent maxOutputTokens WITHOUT the thinking headroom, so on a reasoning model (3.1-pro) the thinking ate the whole budget on a news/tool turn and the reply degraded to the blocked-state placeholder. Every round now reserves the answer above the thinking budget (regression-pinned).
+
 Version 1.5.0 (2026-07-22)
 ---------------------------
 - v1.5 — Fast turns: the durable POST fix (S1+S2+S2b). LUMI_ASYNC_POST queues the post-turn persist — reply() returns the instant the emotion validates (drained at the next prompt-build / session close / exit); LUMI_STORE_BACKEND=sqlite moves messages, closeness and the vector store to <store>.db — O(1) INSERT per turn, float32 BLOB vectors (~4x smaller, never RAM-resident). Both off by default → byte-identical. (LUMI-192..195)
