@@ -12,10 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**1.4.1** refines the v1.4 phase: the think-phase **inner voice** becomes four intent-owning voices
-(Розуміння / Цікавість / Норов / Пам'ять — Розуміння reads the subtext behind your words), the chosen
-conversation-move **intent** now shows in the status line and is required in the Gemini JSON every reply,
-and `.lumi/*.log|jsonl` get **periodic 10-day retention** (trimmed in place at startup + every 6 h).
+**1.5 — Fast turns: the durable POST fix.** A text turn **feels done the moment Лілі has answered**:
+`LUMI_ASYNC_POST=on` queues the post-turn persist (closeness + appends + recall index) on an ordered
+background worker — `reply()` returns the instant the emotion validates, the queue drains at the next
+prompt-build / session close / exit. `LUMI_STORE_BACKEND=sqlite` moves messages, closeness and the
+**vector store** to `<store>.db` — one O(1) `INSERT` per turn instead of a 12.9 MB `store.json`
+rewrite, vectors as float32 `BLOB`s (479 MB JSONL → 111 MB, never RAM-resident).
+`scripts/migrate_store.py` migrates in one command (backup, idempotent, **zero re-embedding**;
+`--export-json` rolls back). **Measured live: POST 0.7–6.5 s → 0.0 s; median turn 8.4 s.** Both flags
+off by default → byte-identical. Alongside: the **inner voice v4** («слухати як людина» — ПОЧУЛА →
+ДОДУМАЛА → голоси → хід, reply length follows the chosen intent). See
+**[ROADMAP §v1.5](specification/ROADMAP.md)**.
 
 **1.4 — Streaming replies + sentence-chunked voicer.** With `LUMI_STREAM=on` Лілі's reply appears
 **as it generates** — the prose grows in place in the conversation (perceived TTFT ~2–3 s), the emotion

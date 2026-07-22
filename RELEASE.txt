@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 1.5.0 (2026-07-22)
+---------------------------
+- v1.5 — Fast turns: the durable POST fix (S1+S2+S2b). LUMI_ASYNC_POST queues the post-turn persist — reply() returns the instant the emotion validates (drained at the next prompt-build / session close / exit); LUMI_STORE_BACKEND=sqlite moves messages, closeness and the vector store to <store>.db — O(1) INSERT per turn, float32 BLOB vectors (~4x smaller, never RAM-resident). Both off by default → byte-identical. (LUMI-192..195)
+- scripts/migrate_store.py — one-command migration: backs up first, idempotent, zero re-embedding; --export-json rolls back to the JSON backend.
+- Measured live after migration: POST 0.7-6.5s → 0.0s; median turn 8.4s (was 11.8-14.5s); vectors 479 MB JSONL → 111 MB store.db; store.json 12.9 → 3.6 MB.
+- Inner voice v4 «слухати як людина»: ПОЧУЛА → ДОДУМАЛА (акценти + висновки між рядків) → три голоси → арбітр; довжина відповіді за обраним intent; розмовний регістр + пастки проти дзеркалення.
+
 Version 1.4.1 (2026-07-20)
 ---------------------------
 - Inner voice v3: the three think-phase voices became intent-owning movement vectors (Цікавість / Норов / Пам'ять), plus a fourth — РОЗУМІННЯ — that reads the subtext behind the user's words. The <think> voices are now required verbatim in the output, so a reasoning model surfaces the authored monologue instead of a paraphrase.
