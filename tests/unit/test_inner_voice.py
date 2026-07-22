@@ -93,8 +93,8 @@ def test_build_core_on_but_missing_file_degrades_to_directive(tmp_path):
 def test_shipped_inner_voice_file_is_authored_three_voice():
     text = load_inner_voice(DEFAULT_INNER_VOICE_PATH)
     assert text is not None
-    # v4: РОЗУМІННЯ (the listening heart) + four appetite voices (АЛХІМІК added in v1.5.x).
-    for voice in ("РОЗУМІННЯ", "ЦІКАВІСТЬ", "НОРОВ", "ПАМ'ЯТЬ", "АЛХІМІК"):
+    # v4: РОЗУМІННЯ (the listening heart) + four appetite voices (УЯВА added in v1.5.x).
+    for voice in ("РОЗУМІННЯ", "ЦІКАВІСТЬ", "НОРОВ", "ПАМ'ЯТЬ", "УЯВА"):
         assert voice in text  # the five voices are present
     assert "<think>" in text  # keeps the wrap mechanism so split_reasoning still lifts the monologue
     assert "<intent>" in text  # the arbiter still tags the conversation move (v1.1)
