@@ -356,6 +356,41 @@ def test_reasoning_off_budget_zero_on_the_tool_loop_rounds_too():
     assert all(b["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0} for b in lt.bodies)
 
 
+def test_tool_loop_rounds_reserve_the_thinking_headroom():
+    # The '…' empty-reply bug: with thinking ON, the tool-loop rounds sent maxOutputTokens WITHOUT
+    # the answer headroom — on a reasoning model the thinking ate the whole budget, the visible parts
+    # came back empty, and the turn degraded to the blocked-state placeholder. Every loop round must
+    # reserve the answer above the thinking budget, exactly like the single-call path.
+    from core.llm import _GEMINI_THINKING_HEADROOM
+
+    def tool_exec(name, args):
+        return "tool result"
+
+    class _LoopTransport:
+        def __init__(self):
+            self.bodies = []
+            self.step = 0
+
+        def __call__(self, url, headers, body):
+            self.bodies.append(body)
+            self.step += 1
+            if self.step == 1:
+                return {"candidates": [{"content": {"parts": [
+                    {"functionCall": {"name": "find_in_file", "args": {}}}]}}]}
+            return _resp(_VALID)
+
+    lt = _LoopTransport()
+    c = GeminiClient("k", thinking=True, max_tokens=1024, _transport=lt)
+    c.reply_structured("SYS", [{"role": "user", "content": "hi"}], "gemini-3.1-pro-preview",
+                       tools=[{"name": "find_in_file", "description": "", "input_schema": {}}],
+                       tool_executor=tool_exec, max_steps=3)
+    assert len(lt.bodies) >= 2  # a tool round + the answer round
+    assert all(
+        b["generationConfig"]["maxOutputTokens"] == 1024 + _GEMINI_THINKING_HEADROOM
+        for b in lt.bodies
+    )
+
+
 def test_thinking_off_wins_over_thinking_on():
     # both flags set → off wins (no includeThoughts, budget 0)
     t = _Transport(_resp(_VALID))

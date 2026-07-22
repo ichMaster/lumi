@@ -2040,10 +2040,11 @@ class GeminiClient:
                 cfg["thinkingBudget"] = budget
         return cfg
 
-    def _generation_config(self, *, structured: bool, model: str | None = None) -> dict:
-        tc = self._thinking_config(model)
-        # Reserve max_tokens for the ANSWER on top of the thinking budget — Gemini counts thinking against
-        # maxOutputTokens, so without this a deep think starves the reply to empty (see _GEMINI_THINKING_HEADROOM).
+    def _max_output_for(self, tc: dict | None) -> int:
+        """``maxOutputTokens`` with the ANSWER reserved on top of the thinking budget — Gemini counts
+        thinking against the limit, so without this a deep think starves the reply to empty. Shared by
+        the single call AND the tool-loop rounds (the loops missing it was the '…' empty-reply bug on
+        reasoning models: thinking ate the whole budget on a news/tool turn → blocked-state placeholder)."""
         out = self._max_tokens
         if tc is not None:
             budget = tc.get("thinkingBudget")
@@ -2053,7 +2054,11 @@ class GeminiClient:
                 out += budget
             else:  # thinking on with a dynamic/unbounded budget → reserve headroom so the reply isn't starved
                 out += _GEMINI_THINKING_HEADROOM
-        cfg: dict = {"maxOutputTokens": out}
+        return out
+
+    def _generation_config(self, *, structured: bool, model: str | None = None) -> dict:
+        tc = self._thinking_config(model)
+        cfg: dict = {"maxOutputTokens": self._max_output_for(tc)}
         if structured:
             cfg["responseMimeType"] = "application/json"
             cfg["responseSchema"] = _GEMINI_EMOTION_SCHEMA
@@ -2302,8 +2307,8 @@ class GeminiClient:
         for step in range(max_steps + 1):
             final = step >= max_steps
             sys_text = system + (_JSON_STATE_INSTRUCTION if final else _GEMINI_TOOL_JSON_INSTRUCTION)
-            gen: dict = {"maxOutputTokens": self._max_tokens}
             tc = self._thinking_config(model)
+            gen: dict = {"maxOutputTokens": self._max_output_for(tc)}  # answer reserved above thinking
             if tc:
                 gen["thinkingConfig"] = tc
             body: dict = {
@@ -2464,8 +2469,8 @@ class GeminiClient:
                 sys_text = system + (_JSON_STATE_INSTRUCTION if final else _GEMINI_TOOL_JSON_INSTRUCTION)
             else:
                 sys_text = system
-            gen: dict = {"maxOutputTokens": self._max_tokens}
             tc = self._thinking_config(model)
+            gen: dict = {"maxOutputTokens": self._max_output_for(tc)}  # answer reserved above thinking
             if tc:  # LUMI-154 — surface the reasoning across the loop rounds too
                 gen["thinkingConfig"] = tc
             body: dict = {
