@@ -82,6 +82,18 @@ def test_filter_hides_emotion_intent_style_markers():
     assert _run(f, [raw]) == "Привіт"
 
 
+def test_filter_routes_thought_variant_to_think():
+    # Seen live (2026-07-29 voice probe): Gemini opens plain-text reasoning with <thought> — it must
+    # route to the think-box exactly like <think>/<thinking>, never reach the shown stream.
+    raw = "<thought>\nThe user is asking about my mood.\nPlan: 1. Greet.\n</thought>Привіт, тихо в мені."
+    f = StreamTagFilter()
+    assert _run(f, [raw]) == "Привіт, тихо в мені."
+    assert "Plan: 1." in f.think
+    g = StreamTagFilter()                                 # an UNCLOSED <thought> = all reasoning
+    assert _run(g, ["<thought>draft only, never closed"]) + g.flush() == ""
+    assert "never closed" in g.think
+
+
 def test_filter_shows_non_recognized_tags_literally():
     # A stray '<3' or an unknown tag is shown, not swallowed.
     f = StreamTagFilter()

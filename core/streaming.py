@@ -61,11 +61,12 @@ def decode_json_string_value(text: str, key: str = "reply") -> str:
     return "".join(out)
 
 
-# Recognized inline tags. `think` (+ t_think/thinking variants) routes to the think-box; emotion/intent/
+# Recognized inline tags. `think` (+ t_think/thinking/thought variants — Gemini models open plain-text
+# reasoning with `<thought>`, seen live in the voice probes) routes to the think-box; emotion/intent/
 # style are parsed separately by the core, so their markers+content are hidden from the shown stream.
 # Anything else ('<3', '<code>') is shown literally once its '>' arrives.
 _TAG_RE = re.compile(r"</?([A-Za-z][\w-]*)\b[^>]*>")
-_THINK_RE = re.compile(r"(?:t[_-]?)?think(?:ing)?$", re.IGNORECASE)
+_THINK_RE = re.compile(r"(?:t[_-]?)?(?:think(?:ing)?|thoughts?)$", re.IGNORECASE)
 _DROP_NAMES = {"emotion", "intent", "style"}
 
 
