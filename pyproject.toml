@@ -25,6 +25,12 @@ telegram = [
 voice = [
     "elevenlabs>=1",  # v0.14 local voicer (TTS); imported lazily, not needed by core/tests
 ]
+realtime = [
+    # v1.6.1 live voice probe (scripts/realtime_probe.py): OpenAI Realtime WS + local audio.
+    # Lazy, manual + paid — never needed by core/tests/CI.
+    "websockets>=12",
+    "sounddevice>=0.4",
+]
 dictation = [
     "sounddevice>=0.4",  # v0.26 dictator mic capture (separate process; lazy; not needed by core/tests)
     # Deepgram (default) is called over the raw REST endpoint (stdlib urllib) — no SDK, no version churn.
