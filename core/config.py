@@ -539,6 +539,9 @@ class Config:
     stt_device: str = ""  # mic for the dictator: a device index ("4") or a name substring ("MacBook Pro
     #                       Microphone"); "" → the system default input (e.g. AirPods — often unreliable)
     listen_flag_path: Path = DEFAULT_LISTEN_FLAG  # the on/off signal the TUI writes, the dictator reads
+    # v1.6.2 LUMI-200: the streaming-STT endpointing window (ms of silence before Deepgram ends the
+    # turn). 500 is the live-tuned default — 300 cut the owner off mid-phrase.
+    voice_endpoint_ms: int = 500
     deepgram_api_key: str = ""  # cloud STT key (secret — never logged); Whisper needs none
     # v0.8 biorhythms — computed cycles merged into the mood. On by default (with the mood).
     biorhythms: bool = True
@@ -882,6 +885,7 @@ def load_config(*, load_env: bool = True) -> Config:
         stt_lang=(os.getenv("LUMI_STT_LANG") or "uk").strip(),
         stt_device=(os.getenv("LUMI_STT_DEVICE") or "").strip(),
         listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else DEFAULT_LISTEN_FLAG,
+        voice_endpoint_ms=int(os.getenv("LUMI_VOICE_ENDPOINT_MS") or 500),
         deepgram_api_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),
         closeness_tuning=closeness_tuning,
         face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,

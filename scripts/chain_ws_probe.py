@@ -30,7 +30,6 @@ from __future__ import annotations
 import json
 import statistics
 import sys
-import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root on the path
@@ -51,9 +50,16 @@ from scripts.chain_probe import (  # noqa: E402 — the tested chain pieces, one
     speakable,
 )
 
-DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen"
-DEFAULT_ENDPOINT_MS = 500     # Deepgram endpointing silence window (300 cut the owner off mid-phrase)
-UTTERANCE_END_MS = 1000       # the backstop flush when endpointing never fires (trailing hum etc.)
+# v1.6.2 LUMI-200: the streaming-STT pieces were promoted into /voice — the probe is the manual
+# harness over the SAME tested adapter (one source of truth, no duplicated tracker).
+from voice.stream_stt import (  # noqa: E402
+    DEFAULT_ENDPOINT_MS,
+    UTTERANCE_END_MS,
+    UtteranceTracker,
+    build_deepgram_url,
+)
+
+_ = UTTERANCE_END_MS  # re-exported for the probe's CLI epilog/tests (the adapter owns the value)
 
 
 def parse_cli(argv: list[str]) -> dict:
@@ -76,60 +82,6 @@ def parse_cli(argv: list[str]) -> dict:
     ns = ap.parse_args(argv)
     return {"model": ns.model, "stt_model": ns.stt_model, "tts_model": ns.tts_model,
             "endpoint_ms": ns.endpoint_ms, "devices": ns.devices, "out": ns.out}
-
-
-def build_deepgram_url(*, model: str, lang: str = "uk", rate: int = MIC_RATE,
-                       endpoint_ms: int = DEFAULT_ENDPOINT_MS,
-                       utterance_end_ms: int = UTTERANCE_END_MS) -> str:
-    """The Deepgram streaming URL: raw linear16 mono + interim results (utterance_end needs them) +
-    endpointing — the server, not a local VAD, decides when the utterance ended."""
-    params = {
-        "model": model, "language": lang,
-        "encoding": "linear16", "sample_rate": str(rate), "channels": "1",
-        "interim_results": "true", "smart_format": "true",
-        "endpointing": str(endpoint_ms), "utterance_end_ms": str(utterance_end_ms),
-    }
-    return f"{DEEPGRAM_WS_URL}?{urllib.parse.urlencode(params)}"
-
-
-_TERMINAL_PUNCT = (".", "!", "?", "…")
-
-
-class UtteranceTracker:
-    """Assemble Deepgram streaming events into whole utterances. Pure — fed parsed JSON dicts.
-
-    ``Results`` with ``is_final`` contribute transcript segments; ``speech_final`` (the endpointing
-    decision) flushes the joined utterance — **but an UNFINISHED phrase is held**: when the joined
-    text does not end in terminal punctuation (smart_format punctuates completed speech), the
-    endpointing likely fired inside a natural mid-sentence pause (it cut the owner off live at
-    300 ms — «Я його спробував» / «…збирав»), so the tracker waits for the continuation (the parts
-    join into ONE utterance) or the ``UtteranceEnd`` backstop (~1 s), which flushes regardless.
-    Empty finals are ignored; a flush with nothing pending returns None."""
-
-    def __init__(self) -> None:
-        self._parts: list[str] = []
-
-    def feed(self, event: dict) -> str | None:
-        etype = event.get("type", "")
-        if etype == "Results":
-            alt = (((event.get("channel") or {}).get("alternatives")) or [{}])[0]
-            text = (alt.get("transcript") or "").strip()
-            if event.get("is_final"):
-                if text:
-                    self._parts.append(text)
-                if event.get("speech_final") and self._parts:
-                    joined = " ".join(self._parts)
-                    if joined.endswith(_TERMINAL_PUNCT):
-                        return self._flush()
-                    return None  # mid-phrase pause — hold for the continuation / the backstop
-        elif etype == "UtteranceEnd" and self._parts:
-            return self._flush()
-        return None
-
-    def _flush(self) -> str:
-        out = " ".join(self._parts)
-        self._parts = []
-        return out
 
 
 class WsStats:
