@@ -6,9 +6,11 @@ from core.intent import INTENTS, validate_intent
 
 
 def test_the_authored_styles():
-    # The 7 authored v1.1 moves + `mutate` (v1.5.x — the Алхімік voice's lateral «а що якщо…»).
+    # The 7 authored v1.1 moves + `mutate` (the УЯВА voice's lateral «а що якщо…») + `switch`
+    # (НОРОВ, mood-triggered: honestly closes his topic and offers her own).
     assert INTENTS == (
         "deepen", "position", "object", "develop", "associate", "example", "return", "mutate",
+        "switch",
     )
 
 
