@@ -298,6 +298,16 @@ class LumiApp(App[None]):
         # v0.7.x send/receive sound — off by default, toggled with Ctrl+S (lazy init).
         self._sound = SoundPlayer()
         self._sound_on: bool = False
+        # v1.6.2 (LUMI-202) voice mode: the in-TUI live loop (mic → Deepgram WS → one Core.reply on
+        # the talking register → ElevenLabs → speaker). "text" is the default AND the fallback —
+        # every voice failure degrades here with a readable line, never a dead TUI.
+        self._mode: str = "text"
+        self._app_cfg = None                    # the loaded Config (set in on_mount)
+        self._voice_loop = None                 # voice.live.VoiceLoop while mode == "voice"
+        self._voice_pipeline = None             # voice.stream_tts.SpeechPipeline (the speaker side)
+        self._voice_stream = None               # voice.stream_stt.DeepgramStream (the mic side)
+        self._voice_audio: tuple | None = None  # the (mic, spk) sounddevice streams
+        self._voice_workers: list = []          # the pump/synth Textual workers (cancelled on stop)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -311,7 +321,7 @@ class LumiApp(App[None]):
             yield VerticalScroll(id="history")  # the conversation — one mounted widget per line/message
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
             prompt.border_title = "You"
-            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /style /mood /model /model-set /biorhythm /closeness /recall /web /journal /new /prompt /latency /memory /forget"
+            prompt.border_subtitle = "Enter — send · Shift+Enter — newline · /mode-set /style /mood /model /model-set /biorhythm /closeness /recall /web /journal /new /prompt /latency /memory /forget"
             yield prompt
         yield Footer()
 
@@ -329,6 +339,7 @@ class LumiApp(App[None]):
         self.run_worker(asyncio.to_thread(self._core.ensure_backfill), exclusive=False)
         # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
         cfg = load_config()
+        self._app_cfg = cfg  # v1.6.2: voice mode reads keys/tuning from the loaded config
         self._emoji = EmojiRenderer(load_emoji_map(cfg.emoji_path))  # authored map (v0.5)
         self._nudge_enabled = cfg.idle_nudge
         self._idle_seconds = cfg.idle_seconds
@@ -395,6 +406,8 @@ class LumiApp(App[None]):
             set_listen_flag(self._listen_flag_path, False)  # start not-listening (the TUI owns the flag)
         if self._input_buffer:  # v1.2: keep the input focused + repainting while a turn runs, so
             self.set_interval(0.1, self._keep_input_live)  # your typing shows even under the reply's load
+        if cfg.mode_set == "voice":  # v1.6.2: start the live loop on mount (text stays the fallback)
+            self.run_worker(self._start_voice_mode(), exclusive=False)
 
     async def _refresh_world(self) -> None:
         """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
@@ -542,7 +555,8 @@ class LumiApp(App[None]):
         intent = getattr(self._core, "last_intent", None)  # v1.1: the chosen conversation move
         intent_part = f" · intent:{intent}" if intent else ""
         pending = f" · ⋯{len(self._input_queue)}" if self._input_queue else ""  # v1.2 queued lines
-        meta = f"{model}{think}{snd}{style_part}{emo_part}{intent_part}{pending}"
+        mode_part = " · mode:voice" if self._mode == "voice" else ""  # v1.6.2: surfaced when live
+        meta = f"{model}{mode_part}{think}{snd}{style_part}{emo_part}{intent_part}{pending}"
         if busy:
             return f"status: [yellow]{busy}[/] · {meta}"
         if not self._connected:
@@ -656,6 +670,10 @@ class LumiApp(App[None]):
             return
         if text == "/mood":
             self._show_mood()
+            prompt.focus()
+            return
+        if text == "/mode-set" or text.startswith("/mode-set "):  # v1.6.2: text | voice
+            await self._mode_set_command(text)
             prompt.focus()
             return
         if text == "/model-set" or text.startswith("/model-set "):
@@ -804,7 +822,8 @@ class LumiApp(App[None]):
         self._last_activity = self._core.clock()
         await self._run_turn(message, images=[block], mirror_input=True, display_text=f"🖼 {path} — {message}")
 
-    async def _reply_streamed(self, text: str, images: list[dict] | None):
+    async def _reply_streamed(self, text: str, images: list[dict] | None,
+                              register: str | None = None):
         """v1.4: run the turn with streaming — the reply grows **in place inside the conversation**. A
         message widget (label + body) is mounted into ``#history`` at turn start; deltas grow its body
         (marshalled from the reply thread to the UI thread via ``call_from_thread``); reasoning routes to
@@ -819,7 +838,11 @@ class LumiApp(App[None]):
         self._mount_lines(self._stream_label, self._stream_body)
         show_think = getattr(self._core, "think_show", "debug") != "off"
 
+        speak = self._voice_pipeline if register == "voice" else None  # v1.6.2: she also SPEAKS it
+
         def _on_delta(chunk: str) -> None:
+            if speak is not None:
+                speak.feed_delta(chunk)  # lock-protected — safe from the reply thread
             self.call_from_thread(self._grow_stream_reply, chunk)
 
         def _on_think(chunk: str) -> None:
@@ -828,7 +851,7 @@ class LumiApp(App[None]):
 
         return await asyncio.to_thread(
             self._core.reply, text, self._session, images=images,
-            on_delta=_on_delta, on_think_delta=_on_think,
+            on_delta=_on_delta, on_think_delta=_on_think, register=register,
         )
 
     def _grow_stream_reply(self, chunk: str) -> None:
@@ -869,7 +892,7 @@ class LumiApp(App[None]):
     async def _run_turn(
         self, text: str, *, hidden: bool = False, mirror_input: bool = False,
         images: list[dict] | None = None, display_text: str | None = None,
-        already_shown: bool = False,
+        already_shown: bool = False, register: str | None = None,
     ) -> None:
         """Run one model turn. A ``hidden`` turn (the idle nudge) suppresses the user
         line entirely — only Лілі's reply is shown — so she appears to speak first.
@@ -893,9 +916,15 @@ class LumiApp(App[None]):
         try:
             assert self._session is not None
             if streamed:
-                state = await self._reply_streamed(text, images)  # v1.4: grows in place in the chat flow
+                # v1.4: grows in place in the chat flow (+ v1.6.2: voice turns feed the speech pipeline)
+                state = await self._reply_streamed(text, images, register=register)
             else:
-                state = await asyncio.to_thread(self._core.reply, text, self._session, images=images)
+                state = await asyncio.to_thread(self._core.reply, text, self._session, images=images,
+                                                register=register)
+            if register == "voice" and self._voice_pipeline is not None:
+                if not streamed:  # blocking turn — speak the whole validated reply at once
+                    self._voice_pipeline.feed_delta(state.reply)
+                self._voice_pipeline.finish_turn()  # flush the held tail; reset for the next turn
             self._connected = True
             self._last_reply = state.reply
             # Route the validated state through the renderer (logs the field) — the
@@ -1204,6 +1233,141 @@ class LumiApp(App[None]):
         body = f"**Двигун:** {provider} / {model} ✓"
         self._emit(body, Markdown(body))
         self._render_status()  # the status bar shows self._core.model
+
+    # --- v1.6.2 (LUMI-202) voice mode: /mode-set + the in-TUI live loop ---------------------------
+
+    async def _mode_set_command(self, text: str) -> None:
+        """`/mode-set` shows the mode; `/mode-set voice` starts the live loop; `/mode-set text`
+        stops it. Voice is additive — the keyboard and every slash command keep working."""
+        arg = text[len("/mode-set"):].strip().lower()
+        if not arg:
+            body = (f"**Режим:** {self._mode} — `/mode-set text | voice` "
+                    "(voice: мікрофон → Deepgram → Лілі → ElevenLabs; навушники обов'язково)")
+            self._emit(body, Markdown(body))
+            return
+        if arg not in ("text", "voice"):
+            msg = "Невідомий режим — `/mode-set text | voice`."
+            self._emit(msg, Text(msg, style="yellow"))
+            return
+        if arg == self._mode:
+            self._emit(f"Режим уже {arg}.", Text(f"Режим уже {arg}.", style="yellow"))
+            return
+        if arg == "voice":
+            await self._start_voice_mode()
+        else:
+            await self._stop_voice_mode("Режим: text ✓")
+
+    async def _start_voice_mode(self) -> None:
+        """Bring the live loop up; ANY failure prints a readable line and stays in text mode."""
+        if self._mode == "voice":
+            return
+        cfg = self._app_cfg
+        missing = [name for name, val in (("DEEPGRAM_API_KEY", cfg.deepgram_api_key),
+                                          ("ELEVENLABS_API_KEY", cfg.elevenlabs_api_key),
+                                          ("LUMI_VOICE_ID", cfg.voice_id)) if not val]
+        if missing:
+            msg = f"Голосовий режим потребує {', '.join(missing)} у .env — лишаюся в text."
+            self._emit(msg, Text(msg, style="yellow"))
+            return
+        try:
+            from voice.dictator import resolve_input_device
+            from voice.live import VoiceLoop, open_audio
+            from voice.stream_stt import DeepgramStream, build_deepgram_url
+            from voice.stream_tts import ElevenLabsStreamTTS, SpeechPipeline
+
+            url = build_deepgram_url(model=cfg.stt_model or "nova-3", lang=cfg.stt_lang,
+                                     endpoint_ms=cfg.voice_endpoint_ms)
+            self._voice_stream = await DeepgramStream(cfg.deepgram_api_key, url=url).open()
+            tts = ElevenLabsStreamTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
+            self._voice_pipeline = SpeechPipeline(tts)
+            self._voice_loop = VoiceLoop(
+                stream=self._voice_stream, pipeline=self._voice_pipeline,
+                on_utterance=lambda t: self.run_worker(self._voice_turn(t), exclusive=False),
+                on_note=lambda line: self.call_later(self._emit, line, Text(line, style="dim")),
+            )
+            import sounddevice as sd  # lazy — the realtime extra; ImportError degrades below
+
+            mic_dev = resolve_input_device(cfg.stt_device, list(sd.query_devices()))
+            mic, spk = open_audio(asyncio.get_running_loop(), self._voice_stream,
+                                  self._voice_pipeline, mic_device=mic_dev)
+            mic.start()
+            spk.start()
+            self._voice_audio = (mic, spk)
+            self._voice_workers = [
+                self.run_worker(self._voice_pump(), exclusive=False),
+                self.run_worker(self._voice_synth(), exclusive=False),
+            ]
+        except Exception as exc:  # noqa: BLE001 — no key/dep/device/WS → text mode, never a dead TUI
+            _log.exception("voice mode failed to start (%s)", type(exc).__name__)
+            await self._stop_voice_mode(f"Голосовий режим не стартував ({type(exc).__name__}) — text.")
+            return
+        self._mode = "voice"
+        msg = "Режим: voice ✓ — говори (навушники!); /mode-set text — повернутися."
+        self._emit(msg, Markdown(msg))
+        self._render_status()
+
+    async def _stop_voice_mode(self, note: str | None = None) -> None:
+        """Tear the loop down (idempotent) and fall back to text; ``note`` is the shown reason."""
+        for worker in self._voice_workers:
+            worker.cancel()
+        self._voice_workers = []
+        if self._voice_audio is not None:
+            for dev in self._voice_audio:
+                try:
+                    dev.stop()
+                    dev.close()
+                except Exception:  # noqa: BLE001 — a half-open device must not block the fallback
+                    pass
+            self._voice_audio = None
+        if self._voice_pipeline is not None:
+            self._voice_pipeline.interrupt()  # silence anything still buffered
+        if self._voice_stream is not None:
+            try:
+                await self._voice_stream.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._voice_stream = None
+        self._voice_loop = None
+        self._voice_pipeline = None
+        self._mode = "text"
+        if note:
+            self._emit(note, Text(note, style="yellow"))
+        self._render_status()
+
+    async def _voice_pump(self) -> None:
+        """The Deepgram event pump; a dropped socket degrades to text with a readable line."""
+        try:
+            await self._voice_loop.pump_events()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _log.exception("voice pump dropped (%s)", type(exc).__name__)
+            await self._stop_voice_mode(f"Голосовий зв'язок упав ({type(exc).__name__}) — text.")
+        else:  # the server closed the socket (idle timeout etc.) — same graceful fallback
+            await self._stop_voice_mode("Голосовий зв'язок закрився — text.")
+
+    async def _voice_synth(self) -> None:
+        """The sentence → ElevenLabs pump (blocking reads in a thread; cancelled on stop)."""
+        try:
+            await self._voice_loop.synth_pump()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — TTS failures degrade the sound, never the TUI
+            _log.exception("voice synth pump dropped (%s)", type(exc).__name__)
+
+    async def _voice_turn(self, text: str) -> None:
+        """One committed utterance → exactly ONE Core turn on the talking register. Serialized on
+        the same single-turn mutex as every other input path (a spoken line while she is busy
+        waits its turn — the barge-in already silenced the audio)."""
+        waited = 0.0
+        while self._busy and waited < 60.0:
+            await asyncio.sleep(0.1)
+            waited += 0.1
+        if self._busy:  # a stuck turn — drop the utterance with a visible note, never deadlock
+            self._emit("(голос: хід пропущено — попередній ще триває)",
+                       Text("(голос: хід пропущено — попередній ще триває)", style="yellow"))
+            return
+        await self._run_turn(text, register="voice")
 
     def _model_set_command(self, text: str) -> None:
         """List or switch the per-provider model PROFILES — `/model-set`, `/model-set gemini`

@@ -240,7 +240,14 @@ from the active profile. Off (`LUMI_MODE_SET=text`, default) → **byte-identica
   > committed turn** (the v1.6.2 rule verbatim: barge-in cancels audio playback only). The spoken
   > prefix stays in history as what she actually said. Lands with v1.6.2.
 
-- **v1.6.2 — voice mode in the TUI: the chain-WS stack productized (REDEFINED by the probes).**
+- **v1.6.2 — voice mode in the TUI: the chain-WS stack productized (REDEFINED by the probes).
+  ✅ SHIPPED (LUMI-199..202).** Operator notes: `/mode-set voice` (or `LUMI_MODE_SET=voice`) starts
+  the live loop — needs `DEEPGRAM_API_KEY` + `ELEVENLABS_API_KEY` + `LUMI_VOICE_ID` and
+  **headphones**; the talking-register brain is the profile's `voice` tier (`LUMI_MODEL_VOICE`
+  overrides; gemini default `gemini-2.5-flash`); the endpointing window is `LUMI_VOICE_ENDPOINT_MS`
+  (500 ms); typed input + slash commands keep working; every failure (key/WS/TTS/mic) prints a
+  readable line and falls back to text. Spoken turns persist as ordinary `Message`s — one mind,
+  one memory path.
   The A/B/C/D winner becomes `mode: voice`: `/mode-set text|voice` + `LUMI_MODE_SET` (default
   `text` → byte-identical); the in-TUI live loop (asyncio **Deepgram WS** + `sounddevice`, the
   probe's `UtteranceTracker` phrase-hold promoted into `/voice` with tests; headphones); every
