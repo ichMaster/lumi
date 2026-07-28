@@ -187,14 +187,14 @@ def run() -> None:  # pragma: no cover — live WS + audio hardware glue (manual
     from core.config import load_config
     from voice.dictator import resolve_input_device
 
+    cfg = load_config()  # loads .env first — OPENAI_API_KEY may live there
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
-        raise SystemExit("OPENAI_API_KEY is not set (the probe is a paid live call).")
+        raise SystemExit("OPENAI_API_KEY is not set (.env or the environment) — the probe is a paid live call.")
     model = (os.getenv("LUMI_REALTIME_MODEL") or DEFAULT_MODEL).strip()
     voice = (os.getenv("LUMI_REALTIME_VOICE") or DEFAULT_VOICE).strip()
 
     print("assembling Лілі's prompt snapshot (close the TUI if it's running)…")
-    cfg = load_config()
     core = build_core(config=cfg)
     session = core.start_session()
     instructions = core.prompt_snapshot(session)
