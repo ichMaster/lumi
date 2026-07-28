@@ -25,7 +25,6 @@ stats) are pure and unit-tested; only ``run()`` touches the network and the audi
 from __future__ import annotations
 
 import json
-import re
 import statistics
 import sys
 from pathlib import Path
@@ -40,7 +39,17 @@ SPK_RATE = 24_000   # ElevenLabs pcm_24000 → the same speaker format as the re
 GEMINI_STREAM_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
 )
-ELEVEN_STREAM_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
+
+# v1.6.2 LUMI-201: the speaking-side helpers were promoted into /voice — the probe re-exports the
+# SAME tested pieces (one source of truth; the sibling probes import them from here).
+from voice.stream_tts import (  # noqa: E402
+    ELEVEN_STREAM_URL,
+    SentenceAssembler,
+    clean_sentence,
+    speakable,
+)
+
+_ = (ELEVEN_STREAM_URL, SentenceAssembler, clean_sentence, speakable)  # re-exported names
 
 # The voice-mode delivery block PREPENDED to the snapshot — the chain twin of the realtime probe's
 # SPEECH_STYLE: short spoken replies, pure Ukrainian, and NO text-protocol tags (the probe learned
@@ -119,55 +128,6 @@ class EnergyVAD:
             self._last_voice = None
             return "stop"
         return None
-
-
-# The v1.4 sentence rule (voice/sentences.py): break only at whitespace FOLLOWING . ! ? … — a word
-# is never cut. The assembler is its incremental form for a streamed reply.
-_SENT_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+")
-
-# The last line of defense before TTS: a plain "ЕМОЦІЯ: …" trailer (the thought-format shape the
-# StreamTagFilter's tag grammar doesn't cover) must never be spoken.
-_EMOTION_LINE_RE = re.compile(r"^\s*ЕМОЦІЯ:.*$", re.MULTILINE)
-
-
-def clean_sentence(text: str) -> str:
-    """Strip an unspoken trailer (a plain ЕМОЦІЯ: line) + collapse leftover whitespace."""
-    return re.sub(r"[ \t]{2,}", " ", _EMOTION_LINE_RE.sub("", text)).strip()
-
-
-_LATIN_RE = re.compile(r"[A-Za-z]")
-_CYRILLIC_RE = re.compile(r"[А-Яа-яЄєІіЇїҐґ]")
-
-
-def speakable(sentence: str) -> bool:
-    """The TTS gate: HER spoken lines are Ukrainian — a sentence dominated by Latin letters is a
-    LEAK (an untagged English reasoning block, a stray obscenity, raw code), not speech. The live
-    runs produced both; no flag governs plain-text CoT, so the gate does. Mixed lines with a real
-    Ukrainian part (a product name mid-sentence) stay speakable."""
-    latin = len(_LATIN_RE.findall(sentence))
-    cyrillic = len(_CYRILLIC_RE.findall(sentence))
-    if latin + cyrillic == 0:
-        return False  # nothing pronounceable (bare punctuation/markup)
-    return cyrillic >= latin
-
-
-class SentenceAssembler:
-    """Accumulate streamed text deltas → emit whole sentences as soon as they complete."""
-
-    def __init__(self) -> None:
-        self._buf = ""
-
-    def feed(self, delta: str) -> list[str]:
-        self._buf += delta
-        parts = _SENT_SPLIT_RE.split(self._buf)
-        if len(parts) == 1:
-            return []
-        self._buf = parts[-1]  # the (possibly incomplete) tail stays buffered
-        return [p.strip() for p in parts[:-1] if p.strip()]
-
-    def flush(self) -> list[str]:
-        tail, self._buf = self._buf.strip(), ""
-        return [tail] if tail else []
 
 
 def build_gemini_body(instructions: str, history: list[tuple[str, str]], user_text: str,
