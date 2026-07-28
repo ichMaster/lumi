@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 1.6.1 (2026-07-29)
+---------------------------
+- LUMI-196: Core.prompt_snapshot() — the assembled system prompt without a turn (the same builder a reply uses; no model call, nothing persisted) — the pure-context source for the voice probes.
+- LUMI-197: scripts/realtime_probe.py + scripts/voice.sh — the live OpenAI Realtime probe (mic <-> WS <-> speaker): per-run voice pick, lossless speaker buffer (the garbled-voice fix), accent steering per OpenAI guidance, mic watchdog, startup beep, --devices/--out.
+- LUMI-198: the live verdicts recorded into VOICE_MODE.md / ROADMAP: latency GO (median 1.25-1.37 s full loop), voice NO-GO (American accent unmoved by steering), persona PARTIAL (memory/canon carry through; text-protocol tags leaked into speech - fixed); realtime block in .env.example.
+- The A/B/C/D probe series: chain (Deepgram REST -> Gemini -> ElevenLabs), hybrid (realtime text-out -> ElevenLabs), and the WINNER chain-WS (streaming Deepgram with the phrase-hold -> gemini-2.5-flash structured -> her ElevenLabs voice) - 1.23 s median over 32 turns, her voice, the owner's verdict "прекрасно".
+- The voice-register guards, hard-won live: structured {reply} output (kills plain-text CoT preambles), the core's permissive safetySettings (mid-sentence finishReason cuts), the speakable Latin-vs-Cyrillic TTS gate, the talking register (no think directive in the snapshot).
+- Core fix: the v1.4 StreamTagFilter routes <thought>/<thoughts> like <think> (leaked into speech live; the TUI streaming path had the same hole).
+- v1.6.2 redefined around the chain-WS winner (Core stays the brain on the talking register; barge-in in scope; realtime-as-brain deferred) + issues LUMI-199..202 uploaded to GitHub.
+
 Version 1.5.1 (2026-07-22)
 ---------------------------
 - Inner voice: a fifth appetite voice — УЯВА (mutate intent) — turns the topic sideways with ONE deliberate «а що якщо…» of four types (навпаки / масштаб / деінде / схрестити-з-давньою-темою); the mutation must hook into the real topic, the previous type may not repeat. The arbiter is tilted against its known associate bias (associate wins only when the accent begs for a memory; at parity УЯВА gets the edge). Associate itself got concrete sources instead of the vague «своє»: a memory from your conversations, a thought from her diary, an accumulated observation about you, or her own world.

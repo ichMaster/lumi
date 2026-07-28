@@ -12,10 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**1.5.1** refines the v1.5 phase: a fifth inner-voice — **УЯВА** (a new `mutate` intent, the lateral
-«а що якщо…» of four types) with the arbiter tilted against its associate bias, concrete associate
-sources, and a Gemini fix — tool-loop rounds now reserve the thinking headroom (the «…» empty-reply
-bug on reasoning models).
+**1.6.1 — The live voice prototype.** Лілі speaks — four manual voice probes measured live:
+the OpenAI Realtime probe (`scripts/voice.sh` — latency GO at 1.25–1.37 s, voice NO-GO: an
+American accent no steering moved), the REST chain, the realtime+ElevenLabs hybrid, and the
+**winner — the streaming chain** (`scripts/voice_chain_ws.sh`: Deepgram WS with the phrase-hold →
+`gemini-2.5-flash` structured → her ElevenLabs voice — **1.23 s median over 32 turns**). Shipped
+along the way: `Core.prompt_snapshot()`, the `<thought>` fix in the v1.4 StreamTagFilter, and the
+v1.6.2 redefinition around the winning stack (the talking register + barge-in, LUMI-199..202).
 
 **1.5 — Fast turns: the durable POST fix.** A text turn **feels done the moment Лілі has answered**:
 `LUMI_ASYNC_POST=on` queues the post-turn persist (closeness + appends + recall index) on an ordered
