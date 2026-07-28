@@ -2319,6 +2319,18 @@ class Core:
         except Exception:  # noqa: BLE001 — tracing must never break a turn
             _usage_log.warning("tool log failed", exc_info=True)
 
+    def prompt_snapshot(self, session: Session) -> str:
+        """v1.6.1 (LUMI-196): the assembled system prompt as a reply turn would carry it — WITHOUT
+        running a turn. Runs the same lazy ensures as ``reply()`` (mood once per local day, the
+        day/week digests), then assembles via the one prompt builder; no RAG recall blocks (there is
+        no incoming message), no model call, nothing persisted. The realtime probe (and later the
+        v1.6.3 ``session.update``) reads Лілі's identity from here instead of duplicating the builder."""
+        self._ensure_mood()
+        self.ensure_day_summaries()
+        self.ensure_week_summaries()
+        system, _cache_prefix = self._system_prompt(session)
+        return system
+
     def _reply_streamed(
         self,
         system: str,
