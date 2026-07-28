@@ -177,13 +177,11 @@ from the active profile. Off (`LUMI_MODE_SET=text`, default) → **byte-identica
   > - **Latency — GO ✅:** speech-stop → first audio **median 1.37 s / 1.25 s** across sessions
   >   (min 0.41 / max 2.8) — and that covers the WHOLE cycle (his speech understood → reply
   >   generated → audio out). The inherited ≤2.5 s DoD beaten on the median; the live feel is real.
-  > - **Voice — NO-GO ❌ (below her ElevenLabs voice):** sessions 1–2 — a strong American accent
-  >   in Ukrainian («голос жахливий»), **unchanged** by the OpenAI-recommended steering (positive
-  >   identity anchor, leading block, stable-accent phrasing) even on the flagship, which
-  >   documentedly follows accent instructions harder than mini, and across voices (marin,
-  >   shimmer). Session 3, after the no-tags rule removed the English tag leakage from speech:
-  >   **noticeably better** («вже ліпше») — but still clearly below her existing ElevenLabs voice.
-  >   Ukrainian pronunciation is a real limitation of the built-in realtime voices. → the
+  > - **Voice — NO-GO ❌ («голос жахливий»):** a strong American accent in Ukrainian, **unchanged**
+  >   by the OpenAI-recommended steering (positive identity anchor, leading block, stable-accent
+  >   phrasing) even on the flagship, which documentedly follows accent instructions harder than
+  >   mini, and across voices (marin, shimmer). Ukrainian pronunciation is a real limitation of the
+  >   built-in realtime voices. → the
   >   **ElevenLabs hybrid** (realtime brain + `output_modalities:["text"]` + her existing ElevenLabs
   >   voice via streaming TTS, ~+0.5–1 s) is promoted from fallback to the **primary voice-identity
   >   candidate**; OpenAI custom voices exist but are gated to eligible customers (consent + sample
@@ -205,17 +203,60 @@ from the active profile. Off (`LUMI_MODE_SET=text`, default) → **byte-identica
   >   callback — fixed with a lossless byte buffer; startup beep / `--devices` / mic watchdog /
   >   per-run voice pick (`./scripts/voice.sh cedar`) added along the way.
 
-- **v1.6.2 — mode framework + transport MVP** — REALTIME_VOICE_MODE_SET.md Phases 1–3: `/mode-set`,
-  the adapter, WS session in the TUI, transcripts through `Core.reply()`, exact-text speech. Core
-  stays the brain; ships alone and is already useful. Precision rules (from the merged roadmap
-  draft): `create_response=false` + `semantic_vad` + `interrupt_response=true`; **exactly one
-  `Core.reply()` per committed transcript** (DoD); **barge-in cancels audio playback only, never a
-  committed Core turn**; `/model-set` mid-voice changes the *text* brain from the next turn without
-  restarting audio, while changing the realtime model/voice **requires a session restart** (pinned
-  by a test).
-- **v1.6.3 — realtime-as-brain** — instructions from the core prompt builder (live, refreshed via
-  `session.update`); `set_state` as a realtime tool; transcripts persisted as Messages; the
-  voice-trimmed inner-voice instruction; mini only.
+  > **A/B/C/D follow-up (2026-07-28/29 — four stacks, same snapshot, same metric
+  > speech-stop → first audio):**
+  >
+  > | probe | stack | median | voice | brain/quality |
+  > |---|---|---|---|---|
+  > | realtime (`voice.sh`) | all-OpenAI `gpt-realtime-2.1` | **1.31 s** | ❌ American accent | flagship; persona partial |
+  > | chain (`voice_chain.sh`) | Deepgram REST → `gemini-2.5-flash-lite` → ElevenLabs | 2.78 s (stt 1.41 · llm 0.93 · tts 0.26) | ✅ HER voice | ❌ flash-lite broke: name misses, confabulated memory, an obscene one-word reply, an untagged English CoT spoken aloud |
+  > | hybrid (`voice_hybrid.sh`) | `gpt-realtime-2.1` text-out → ElevenLabs | 2.12 s (llm 1.18 · sentence-wait ~0.65 · tts 0.28) | ✅ HER voice | flagship |
+  > | chain-WS (`voice_chain_ws.sh`) | **Deepgram WS** → `flash-lite` (structured) → ElevenLabs | **1.40 s** (llm 1.13 · tts 0.26 · endpoint ~0.8 felt) | ✅ HER voice | held THIS run (structured output); history says fragile |
+  > | **chain-WS (winner)** | **Deepgram WS → `gemini-2.5-flash` (structured) → ElevenLabs** | **1.60 s**, then **1.23 s over 32 turns** with the phrase-hold (llm 0.83 · tts 0.26 · endpoint ~1.1 felt — the hold's price) | ✅ HER voice | ✅ the owner's verdict: «ідеально» → «прекрасно» — persona, memory (Зетрос recall), natural repartee, zero leaks |
+  >
+  > **Read (the v1.6.3 design inputs):** the streaming-STT chain WINS — 1.6 s with her real voice
+  > and a brain that held the persona, beating the hybrid (2.12 s) and nearly matching all-OpenAI
+  > (1.31 s, unusable voice). Three hard-won lessons are design requirements for the voice
+  > register: **(1) structured output** (`responseMimeType: application/json` + a `{reply}` schema,
+  > streamed via `decode_json_string_value`) — the ONLY thing that stopped plain-text CoT preambles
+  > (instructions failed against three shapes: bare `thought`, `<thought>` — now routed by the core
+  > StreamTagFilter — and `(_thought_`); **(2) the core's permissive `safetySettings`** — without
+  > them Gemini's default filter cut replies mid-sentence (`finishReason` now surfaced live);
+  > **(3) the talking register** — the snapshot built with `LUMI_REASONING=off` (no think directive:
+  > prose streams immediately; the full inner voice stays a text-mode luxury), plus the `speakable`
+  > Latin-vs-Cyrillic gate before TTS. Known rough edge: silence-based endpointing splits a turn
+  > on a natural mid-sentence pause (observed at 300 ms; she bridged it gracefully) — the one thing
+  > realtime's semantic VAD does better. Mitigated: the window is 500 ms by default
+  > (`--endpoint-ms`) and an **un-punctuated `speech_final` is HELD** — the tracker waits for the
+  > continuation (segments join into one turn) or the ~1 s `UtteranceEnd` backstop, so a breathing
+  > pause no longer fires a reply. Probes: `scripts/chain_probe.py`, `scripts/hybrid_probe.py`,
+  > `scripts/chain_ws_probe.py`.
+  >
+  > **Next feature (owner-requested 2026-07-29): barge-in for the chain-WS stack** — she stops
+  > speaking when interrupted. The realtime stack gets this from `interrupt_response`; the chain
+  > must do it itself: Deepgram already streams interims DURING her playback (headphones — the mic
+  > hears only him), so *his speech while she is playing* = interrupt → **clear the speaker buffer,
+  > drop the queued TTS sentences, abandon the un-spoken tail of the reply — but never the
+  > committed turn** (the v1.6.2 rule verbatim: barge-in cancels audio playback only). The spoken
+  > prefix stays in history as what she actually said. Lands with v1.6.2.
+
+- **v1.6.2 — voice mode in the TUI: the chain-WS stack productized (REDEFINED by the probes).**
+  The A/B/C/D winner becomes `mode: voice`: `/mode-set text|voice` + `LUMI_MODE_SET` (default
+  `text` → byte-identical); the in-TUI live loop (asyncio **Deepgram WS** + `sounddevice`, the
+  probe's `UtteranceTracker` phrase-hold promoted into `/voice` with tests; headphones); every
+  committed utterance runs **exactly one `Core.reply()`** on the **talking register** (reasoning
+  off for the turn, the profile's `voice` tier — default `gemini-2.5-flash`, streamed structured
+  reply) so the emotion contract, closeness, RAG, memory writes and the v1.5 async queue apply
+  unchanged; the reply streams sentence-by-sentence into **ElevenLabs** (her voice, the lossless
+  speaker buffer, `StreamTagFilter` + `speakable` before TTS); **barge-in** — a Deepgram interim
+  during playback clears the speaker buffer + the queued sentences, never the committed turn.
+  Full phase definition: ROADMAP §v1.6.2; issues: `v1.6.2-issues.md`. (The OpenAI-Realtime
+  transport MVP — REALTIME_VOICE_MODE_SET.md Phases 1–3 — is superseded as the transport but
+  remains the design ancestor for the mode framework and failure rules.)
+- **v1.6.3 — realtime-as-brain — DEFERRED** (the chain-WS victory removes its driver; revisit only
+  if the chain's turn-taking proves insufficient) — instructions from the core prompt builder
+  (live, refreshed via `session.update`); `set_state` as a realtime tool; transcripts persisted as
+  Messages; the voice-trimmed inner-voice instruction; mini only.
 - **v1.6.4 — the classifier + the two-model set** — the lexical stage + tiny-classifier routing,
   the session handoff, stickiness, `/roles`-style surfacing (`status: mode:voice ✦ deep`), cost
   logging into the usage/cache reports.
