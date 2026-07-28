@@ -68,22 +68,34 @@ def parse_cli(argv: list[str]) -> dict:
             "devices": ns.devices, "out": ns.out}
 
 
-def build_session_update(instructions: str, *, voice: str = DEFAULT_VOICE) -> dict:
+# Spoken-delivery directive appended to the instructions: realtime models follow style/accent
+# guidance from instructions — this is the lever against the English-default delivery (there is no
+# output "language" parameter in the API; speech follows the text + these directions).
+SPEECH_STYLE = (
+    "\n\n[МОВЛЕННЯ] Говори ВИКЛЮЧНО українською, з природною українською вимовою та інтонацією "
+    "носія мови — БЕЗ американського чи англійського акценту. Українська фонетика: м'які "
+    "приголосні, чисті голосні, природний український ритм і мелодика речення. Імена та слова "
+    "вимовляй по-українськи. Темп — спокійний, живий, розмовний."
+)
+
+
+def build_session_update(instructions: str, *, voice: str = DEFAULT_VOICE, lang: str = "uk") -> dict:
     """The ``session.update`` payload: pure context + semantic VAD + pcm16@24k, audio out.
 
     The voice MUST ride the first update — it is immutable after the session's first audio
     (the Realtime API rule). ``create_response`` stays default (true): the model answers directly —
-    realtime-as-brain is exactly what this probe tastes."""
+    realtime-as-brain is exactly what this probe tastes. ``lang`` hints the INPUT transcription
+    (better Ukrainian ASR); the OUTPUT accent is steered by the appended SPEECH_STYLE directive."""
     return {
         "type": "session.update",
         "session": {
             "type": "realtime",
-            "instructions": instructions,
+            "instructions": instructions + SPEECH_STYLE,
             "output_modalities": ["audio"],
             "audio": {
                 "input": {
                     "format": {"type": "audio/pcm", "rate": SAMPLE_RATE},
-                    "transcription": {"model": "gpt-realtime-whisper"},
+                    "transcription": {"model": "gpt-realtime-whisper", "language": lang},
                     "turn_detection": {
                         "type": "semantic_vad",
                         "eagerness": "medium",
