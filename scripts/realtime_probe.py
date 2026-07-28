@@ -27,6 +27,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import statistics
 import sys
 from collections.abc import Callable
@@ -79,8 +80,26 @@ SPEECH_STYLE = (
     "як носійка української: м'які приголосні, чисті відкриті голосні, українська мелодика та "
     "наголоси. Тримай цю вимову стабільно від першого до останнього слова кожної репліки — вона "
     "ніколи не дрейфує. Імена, назви й запозичення озвучуй за українською фонетикою. Темп "
-    "спокійний, живий, розмовний.\n\n"
+    "спокійний, живий, розмовний.\n"
+    "Службові позначки з інструкцій нижче — теги на кшталт <emotion>, <intent>, <think>, слова "
+    "ЕМОЦІЯ/emotion/intent — це протокол ТЕКСТОВОГО режиму: у голосовій розмові НІКОЛИ не "
+    "промовляй і не додавай їх. Твоя репліка — тільки чиста українська мова, без жодного "
+    "англійського слова чи технічної позначки.\n\n"
 )
+
+# Text-mode service tags the snapshot teaches the model to emit (<emotion>…</emotion>,
+# <intent>…</intent>, <think>…</think>, a trailing ЕМОЦІЯ: line). In voice they leak into SPEECH —
+# English tokens mid-repliка (and they drag the accent). SPEECH_STYLE forbids them; this parser
+# strips whatever still slips through from the displayed transcript.
+_SERVICE_TAGS_RE = re.compile(
+    r"<think>.*?</think>|<(emotion|intent)>[^<]*</\1>|^\s*ЕМОЦІЯ:.*$",
+    re.DOTALL | re.MULTILINE,
+)
+
+
+def strip_service_tags(text: str) -> str:
+    """Remove text-protocol tags (<emotion>/<intent>/<think>/ЕМОЦІЯ:) from a spoken transcript."""
+    return re.sub(r"[ \t]{2,}", " ", _SERVICE_TAGS_RE.sub("", text)).strip()
 
 
 def build_session_update(instructions: str, *, voice: str = DEFAULT_VOICE, lang: str = "uk") -> dict:
@@ -148,6 +167,9 @@ class ProbeDispatcher:
         "response.created", "response.done", "response.output_item.added",
         "response.output_item.done", "response.content_part.added", "response.content_part.done",
         "rate_limits.updated", "error",
+        # discovered live in the v1.6.1 probe runs (recorded in VOICE_MODE.md §7):
+        "conversation.item.input_audio_transcription.delta",  # user ASR streams; we use .completed
+        "response.output_audio.done",                          # audio completion marker
     )
 
     def __init__(
@@ -280,7 +302,7 @@ def run() -> None:  # pragma: no cover — live WS + audio hardware glue (manual
         now=_time.monotonic,
         on_audio=on_audio,
         on_user_transcript=lambda t: print(f"\nYou: {t}"),
-        on_assistant_transcript=lambda t: print(f"Лілі: {t}"),
+        on_assistant_transcript=lambda t: print(f"Лілі: {strip_service_tags(t)}"),
         on_barge_in=lambda: (drain_speaker(), print("  [barge-in]")),
         on_first_audio=lambda s: print(f"  [first audio {s:.2f}s]"),
     )

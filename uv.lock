@@ -961,6 +961,10 @@ embed = [
 models = [
     { name = "openai" },
 ]
+realtime = [
+    { name = "sounddevice" },
+    { name = "websockets" },
+]
 telegram = [
     { name = "aiogram" },
 ]
@@ -983,10 +987,12 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "sounddevice", marker = "extra == 'dictation'", specifier = ">=0.4" },
+    { name = "sounddevice", marker = "extra == 'realtime'", specifier = ">=0.4" },
     { name = "textual", specifier = ">=0.80" },
     { name = "voyageai", marker = "extra == 'embed'", specifier = ">=0.2" },
+    { name = "websockets", marker = "extra == 'realtime'", specifier = ">=12" },
 ]
-provides-extras = ["dev", "telegram", "voice", "dictation", "embed", "models"]
+provides-extras = ["dev", "telegram", "voice", "realtime", "dictation", "embed", "models"]
 
 [[package]]
 name = "magic-filter"

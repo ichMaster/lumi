@@ -14,6 +14,7 @@ from scripts.realtime_probe import (
     build_session_update,
     parse_cli,
     pcm_from_b64,
+    strip_service_tags,
 )
 
 
@@ -118,3 +119,27 @@ def test_summary_median_and_unknown_events_collected():
 def test_empty_session_summary():
     d, _ = _dispatcher([0.0])
     assert d.summary() == {"turns": 0}
+
+
+def test_strip_service_tags_cleans_spoken_transcript():
+    # The live probe showed the model SPEAKING the text-protocol tags (English mid-repliка);
+    # the parser strips every shape seen in the 2026-07-28 session.
+    raw = ("Привіт. Настрій тихий. <emotion>calm 0.7</emotion> <intent>position</intent>")
+    assert strip_service_tags(raw) == "Привіт. Настрій тихий."
+    assert strip_service_tags("<think>вагаюсь…</think>Так, пам'ятаю.") == "Так, пам'ятаю."
+    assert strip_service_tags("Добре.\nЕМОЦІЯ: calm 0.6") == "Добре."
+    assert strip_service_tags("Без тегів — без змін.") == "Без тегів — без змін."
+
+
+def test_speech_style_forbids_service_tags_in_voice():
+    p = build_session_update("Ти — Лілі.")
+    head = p["session"]["instructions"].split("Ти — Лілі.")[0]
+    assert "НІКОЛИ не" in head and "<emotion>" in head    # the no-tags rule rides the leading block
+
+
+def test_discovered_probe_events_are_known_quiet():
+    d, got = _dispatcher([0.0])
+    d.feed({"type": "conversation.item.input_audio_transcription.delta", "delta": "пр"})
+    d.feed({"type": "response.output_audio.done"})
+    assert d.unknown == []                                # discovered 2026-07-28 → no longer "new"
+    assert got["user"] == []                              # .delta is ignored; .completed is the source

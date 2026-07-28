@@ -171,6 +171,40 @@ from the active profile. Off (`LUMI_MODE_SET=text`, default) → **byte-identica
   + mood, dumped via the core prompt builder). Headphones (no AEC yet). **Manual + paid, never
   CI.** The goal: hear Лілі live *now* — feel the first-audio latency, check the persona survives
   in speech, validate the event shapes (transcript/audio/VAD) that everything later builds on.
+
+  > **Probe result (v1.6.1 — RAN 2026-07-28, three sessions on `gpt-realtime-2.1` flagship,
+  > ~10 turns each):**
+  > - **Latency — GO ✅:** speech-stop → first audio **median 1.37 s / 1.25 s** across sessions
+  >   (min 0.41 / max 2.8) — and that covers the WHOLE cycle (his speech understood → reply
+  >   generated → audio out). The inherited ≤2.5 s DoD beaten on the median; the live feel is real.
+  > - **Voice — NO-GO ❌ (below her ElevenLabs voice):** sessions 1–2 — a strong American accent
+  >   in Ukrainian («голос жахливий»), **unchanged** by the OpenAI-recommended steering (positive
+  >   identity anchor, leading block, stable-accent phrasing) even on the flagship, which
+  >   documentedly follows accent instructions harder than mini, and across voices (marin,
+  >   shimmer). Session 3, after the no-tags rule removed the English tag leakage from speech:
+  >   **noticeably better** («вже ліпше») — but still clearly below her existing ElevenLabs voice.
+  >   Ukrainian pronunciation is a real limitation of the built-in realtime voices. → the
+  >   **ElevenLabs hybrid** (realtime brain + `output_modalities:["text"]` + her existing ElevenLabs
+  >   voice via streaming TTS, ~+0.5–1 s) is promoted from fallback to the **primary voice-identity
+  >   candidate**; OpenAI custom voices exist but are gated to eligible customers (consent + sample
+  >   recordings — check account eligibility).
+  > - **Persona — PARTIAL ⚠:** session 1 read as a **generic assistant**; session 2 (longer,
+  >   varied topics) showed the snapshot DOES carry through — she recalled the owner's name, her
+  >   creative canon (малює ескізи, музика як Lili Jinx), his projects (Пічка/hill-303), held one
+  >   mood consistently across turns, and stayed honest about no live clock/weather access. What
+  >   broke instead: the snapshot's TEXT-protocol instructions leaked into **speech** — she spoke
+  >   `<emotion>calm 0.7</emotion>` / `<intent>position</intent>` aloud (English tokens
+  >   mid-repliка, feeding the accent problem). Fix shipped in the probe: a leading no-tags rule
+  >   in the speech directive + a transcript tag-parser. The v1.6.3 lesson: the snapshot needs a
+  >   **voice-mode variant** (text-protocol sections stripped or overridden) — and v1.6.2's
+  >   Core-as-brain shell, where the persona provenly lives in the text mind, stays the safe path.
+  > - **Event shapes discovered:** `conversation.item.input_audio_transcription.delta` (the user's
+  >   ASR streams as deltas — the v1.6.2 adapter should assemble them or rely on `.completed`) and
+  >   `response.output_audio.done` (the audio completion marker), on top of the handled set.
+  > - **Implementation notes:** streamed-playback distortion traced to a chunk-truncating speaker
+  >   callback — fixed with a lossless byte buffer; startup beep / `--devices` / mic watchdog /
+  >   per-run voice pick (`./scripts/voice.sh cedar`) added along the way.
+
 - **v1.6.2 — mode framework + transport MVP** — REALTIME_VOICE_MODE_SET.md Phases 1–3: `/mode-set`,
   the adapter, WS session in the TUI, transcripts through `Core.reply()`, exact-text speech. Core
   stays the brain; ships alone and is already useful. Precision rules (from the merged roadmap
