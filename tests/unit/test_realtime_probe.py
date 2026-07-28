@@ -7,7 +7,14 @@ from __future__ import annotations
 
 import base64
 
-from scripts.realtime_probe import ProbeDispatcher, b64_pcm, build_session_update, pcm_from_b64
+from scripts.realtime_probe import (
+    KNOWN_VOICES,
+    ProbeDispatcher,
+    b64_pcm,
+    build_session_update,
+    parse_cli,
+    pcm_from_b64,
+)
 
 
 def test_session_update_payload_shape():
@@ -20,6 +27,14 @@ def test_session_update_payload_shape():
     assert s["audio"]["input"]["turn_detection"]["interrupt_response"] is True
     assert s["audio"]["input"]["format"]["rate"] == 24_000
     assert s["output_modalities"] == ["audio"]
+
+
+def test_parse_cli_voice_positional_flag_and_model():
+    assert parse_cli([])["voice"] is None                       # env/default decides
+    assert parse_cli(["cedar"])["voice"] == "cedar"              # positional
+    assert parse_cli(["--voice", "sage"])["voice"] == "sage"     # flag
+    assert parse_cli(["cedar", "--model", "gpt-realtime-2.1"])["model"] == "gpt-realtime-2.1"
+    assert "marin" in KNOWN_VOICES and "cedar" in KNOWN_VOICES
 
 
 def test_pcm_base64_round_trip():

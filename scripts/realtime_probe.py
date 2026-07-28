@@ -40,6 +40,29 @@ SAMPLE_RATE = 24_000  # pcm16 mono @ 24 kHz, both directions
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime"
 
+# The OpenAI built-in voices (per the Realtime docs; the account may expose more). marin/cedar are
+# the newest generation — start there; the voice is IMMUTABLE after the session's first audio, so
+# trying another one = another probe run: `./scripts/voice.sh cedar`.
+KNOWN_VOICES = ("marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse")
+
+
+def parse_cli(argv: list[str]) -> dict:
+    """Pure CLI parse: an optional positional voice (or --voice) + --model. CLI wins over env."""
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="Live voice probe — a spoken conversation with Лілі (v1.6.1).",
+        epilog=f"known voices: {', '.join(KNOWN_VOICES)} (one per run — the voice is "
+               "immutable after the session's first audio)",
+    )
+    ap.add_argument("voice", nargs="?", default=None,
+                    help=f"the OpenAI voice (default: env LUMI_REALTIME_VOICE or {DEFAULT_VOICE})")
+    ap.add_argument("--voice", dest="voice_flag", default=None, help="same as the positional")
+    ap.add_argument("--model", default=None,
+                    help=f"the realtime model (default: env LUMI_REALTIME_MODEL or {DEFAULT_MODEL})")
+    ns = ap.parse_args(argv)
+    return {"voice": ns.voice_flag or ns.voice, "model": ns.model}
+
 
 def build_session_update(instructions: str, *, voice: str = DEFAULT_VOICE) -> dict:
     """The ``session.update`` payload: pure context + semantic VAD + pcm16@24k, audio out.
@@ -187,12 +210,15 @@ def run() -> None:  # pragma: no cover — live WS + audio hardware glue (manual
     from core.config import load_config
     from voice.dictator import resolve_input_device
 
+    cli = parse_cli(sys.argv[1:])
     cfg = load_config()  # loads .env first — OPENAI_API_KEY may live there
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise SystemExit("OPENAI_API_KEY is not set (.env or the environment) — the probe is a paid live call.")
-    model = (os.getenv("LUMI_REALTIME_MODEL") or DEFAULT_MODEL).strip()
-    voice = (os.getenv("LUMI_REALTIME_VOICE") or DEFAULT_VOICE).strip()
+    model = (cli["model"] or os.getenv("LUMI_REALTIME_MODEL") or DEFAULT_MODEL).strip()
+    voice = (cli["voice"] or os.getenv("LUMI_REALTIME_VOICE") or DEFAULT_VOICE).strip()
+    if voice not in KNOWN_VOICES:
+        print(f"note: '{voice}' is not in the known list ({', '.join(KNOWN_VOICES)}) — trying anyway")
 
     print("assembling Лілі's prompt snapshot (close the TUI if it's running)…")
     core = build_core(config=cfg)
