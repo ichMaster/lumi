@@ -145,7 +145,7 @@ stream only their final round; tag filtering must never leak a half-tag; malform
 
 ### S4 — Register-routed thinking: fast by default, deep when it matters · **−3–7 s on casual turns**
 This is the "sometimes she can think longer" ask, and it is **already designed** as
-**[v1.6 MODEL_ROLES](MODEL_ROLES.md)** (talking / thinking / emotional). What this doc adds is
+**[MODEL_ROLES](MODEL_ROLES.md)** (talking / thinking / emotional — **superseded as the v1.6 phase**, unscheduled: v1.6 became the voice mode). What this doc adds is
 the *latency* framing and the interim knobs:
 
 - **The hidden think phase is a latency tax on every turn.** The v1.1 inner-voice
@@ -161,11 +161,11 @@ the *latency* framing and the interim knobs:
   gpt-5.5-mini — [core/models.toml](../../core/models.toml) already names them), emotional/thinking
   = the frontier reply model. Fast tiers also cut TTFT and 5–25× the cost.
 - **Interim, zero-code, today:** `LUMI_EFFORT=low` + a trimmed `inner_voice.md` retrospective —
-  banks a chunk of the saving while v1.6 is built.
+  banks a chunk of the saving until register routing is ever scheduled.
 
 **Saving:** on casual turns the model call drops ~6–10 s → **~1.5–3 s** (short think + fast tier +
-short reply). **Effort:** rides v1.6 (~2–3 days) + an authoring pass. **Risk: MEDIUM** — register
-misroute on a loaded message (v1.6's stickiness + "unsure → escalate" design addresses exactly
+short reply). **Effort:** ~2–3 days + an authoring pass, when scheduled. **Risk: MEDIUM** — register
+misroute on a loaded message (the design's stickiness + "unsure → escalate" design addresses exactly
 this; the lexical stage keeps short messages cheap). **Invariant: routing reads the message, never
 her mood — and never competence.**
 
@@ -219,7 +219,7 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse th
 | S1 | async POST | **−4.5–6.5 s** | ~1 day | low-med (crash window) | — |
 | S2 | incremental store | makes S1 structural; O(1) persist | 1–2 days | low | Repository seam (exists) |
 | S3 | streaming | perceived −7–8 s; wall for voice | 2–3 days | medium | LLMClient seam |
-| S4 | registers (v1.6) | **−3–7 s** model-side | 2–3 days + authoring | medium | v0.41 profiles ✅, v1.6 |
+| S4 | registers (unscheduled) | **−3–7 s** model-side | 2–3 days + authoring | medium | v0.41 profiles ✅ |
 | S5 | prompt P1–P5 | ~−0.5–1 s (big on cost) | per PO-II | per PO-II | — |
 | S6 | live voice | first audio ~2–2.5 s | 1–2 wks | med-high | **S3 + S4**, /voice adapters ✅ |
 | S7 | RAG/compaction/retries | −0.3–1.5 s | small each | low | S0 numbers |
@@ -232,7 +232,7 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse th
 | + S1 + S2 (+S0) | ~8–10 s | ~8–10 s |
 | + S4 interim (effort=low + short inner voice) | ~5–7 s | ~5–7 s |
 | + S3 streaming | ~5–7 s | **~2–3 s** |
-| + S4 full (v1.6) | **~2.5–4 s** | ~1.5–2 s |
+| + S4 full (unscheduled) | **~2.5–4 s** | ~1.5–2 s |
 | + S6 | — | **first audio ~2–2.5 s** |
 
 ---
@@ -258,17 +258,18 @@ Off by default (`LUMI_LIVE_VOICE` + keys). Web sibling later (v4.2/v4.4 reuse th
   configs) — median turn PRE 1.8 s (incl. the prior turn's drain) · MODEL 6.6 s · POST 0.0 s = 8.4 s;
   the migration re-packed 479 MB `store.vectors.jsonl` → a 111 MB `store.db` (~4.3×), `store.json`
   12.9 MB → 3.6 MB. The MODEL CALL now IS the turn (~80%) — further wins live in v1.4 streaming
-  (felt) and v1.6 registers (actual).
-- **v1.6 · registers = the [MODEL_ROLES](MODEL_ROLES.md) phase (S4, incl. S4-interim) = LAT-3.**
-  Register-routed thinking with latency as the driving DoD (casual turn ≤ 4 s full). **S4-interim**
-  folds in here: `LUMI_EFFORT=low` for the talking register + the trimmed talking-tier `inner_voice.md`
-  (the short inner voice the fast register uses).
+  (felt) and the v1.6 voice mode / register routing (actual).
+- **v1.6 · voice mode (redefined — [VOICE_MODE.md](VOICE_MODE.md)).** The phase became **mode text /
+  mode voice** on OpenAI Realtime: `gpt-realtime-2.1-mini` everyday + `gpt-realtime-2.1` deep,
+  picked by a classifier; realtime-as-brain answers in audio **sub-second** — it absorbs **LAT-4/S6**
+  outright. The old **S4 register routing** ([MODEL_ROLES.md](MODEL_ROLES.md), superseded) may
+  return later as a text-brain cost lever, unscheduled.
 - **S7 · optional for now** — the RAG/compaction/retry fixes are small, low-risk levers taken
   opportunistically (e.g. compaction off the turn rides naturally with the v1.5 queue); not a phase
   of their own.
-- **LAT-4 · live voice mode (S6) — on hold.** A later phase beside the voice family; hard-gated on
-  v1.4 + v1.6. DoD (when taken up): median stop-speaking → first-audio ≤ 2.5 s over 20 live turns;
-  barge-in works; the thinking register produces a spoken acknowledgment, not silence.
+- **LAT-4 · live voice (S6) — absorbed into v1.6** ([VOICE_MODE.md](VOICE_MODE.md)): the
+  realtime-as-brain slices (v1.6.3+) deliver the live loop directly; the ≤2.5 s first-audio DoD is
+  inherited and beaten (sub-second); barge-in is native to the Realtime session.
 
 ---
 

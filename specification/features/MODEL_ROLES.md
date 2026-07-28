@@ -1,5 +1,10 @@
 # Model roles — register-routed replies (talking / thinking / emotional)
 
+> **SUPERSEDED (2026-07-28)** — the v1.6 phase was redefined as the **voice mode**
+> ([VOICE_MODE.md](VOICE_MODE.md)): mode text / mode voice on OpenAI Realtime with a two-model
+> classifier. This document's two-stage classifier + stickiness design lives on there (§3);
+> text-register routing may return later as a cost lever, unscheduled. Kept for reference.
+
 Today one model answers **every** turn, whatever the turn is: "дякую, добраніч" pays the same frontier
 price as "поясни, чому кеш інвалідовується", and an emotionally loaded confession gets the same engine
 as a shopping list. This document specifies **model roles**: the reply is answered in one of three
