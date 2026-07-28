@@ -68,14 +68,18 @@ def parse_cli(argv: list[str]) -> dict:
             "devices": ns.devices, "out": ns.out}
 
 
-# Spoken-delivery directive appended to the instructions: realtime models follow style/accent
-# guidance from instructions — this is the lever against the English-default delivery (there is no
-# output "language" parameter in the API; speech follows the text + these directions).
+# Spoken-delivery directive PREPENDED to the instructions: there is no output-language/accent
+# parameter in the Realtime API — speech is steered by instructions only. Per OpenAI's own
+# accent-control guidance: a POSITIVE identity anchor (not a negation), the accent held stable from
+# the first word to the last, natural vowel shaping — and the style block leads the prompt (the
+# opening carries the most steering weight for delivery).
 SPEECH_STYLE = (
-    "\n\n[МОВЛЕННЯ] Говори ВИКЛЮЧНО українською, з природною українською вимовою та інтонацією "
-    "носія мови — БЕЗ американського чи англійського акценту. Українська фонетика: м'які "
-    "приголосні, чисті голосні, природний український ритм і мелодика речення. Імена та слова "
-    "вимовляй по-українськи. Темп — спокійний, живий, розмовний."
+    "[ГОЛОС І ВИМОВА — НАЙВИЩИЙ ПРІОРИТЕТ]\n"
+    "Ти — українка з Києва, українська — твоя рідна й єдина мова мовлення. Вимовляй КОЖНЕ слово "
+    "як носійка української: м'які приголосні, чисті відкриті голосні, українська мелодика та "
+    "наголоси. Тримай цю вимову стабільно від першого до останнього слова кожної репліки — вона "
+    "ніколи не дрейфує. Імена, назви й запозичення озвучуй за українською фонетикою. Темп "
+    "спокійний, живий, розмовний.\n\n"
 )
 
 
@@ -90,7 +94,7 @@ def build_session_update(instructions: str, *, voice: str = DEFAULT_VOICE, lang:
         "type": "session.update",
         "session": {
             "type": "realtime",
-            "instructions": instructions + SPEECH_STYLE,
+            "instructions": SPEECH_STYLE + instructions,
             "output_modalities": ["audio"],
             "audio": {
                 "input": {

@@ -21,9 +21,9 @@ def test_session_update_payload_shape():
     p = build_session_update("Ти — Лілі.", voice="cedar")
     assert p["type"] == "session.update"
     s = p["session"]
-    assert s["instructions"].startswith("Ти — Лілі.")               # pure context rides instructions
-    assert "українською" in s["instructions"]                       # + the speech-style directive
-    assert "БЕЗ американського" in s["instructions"]                # the anti-accent lever
+    assert s["instructions"].startswith("[ГОЛОС І ВИМОВА")           # the delivery block LEADS the prompt
+    assert "Ти — Лілі." in s["instructions"]                        # …then the pure context
+    assert "носійка української" in s["instructions"]               # positive identity anchor, no negation
     assert s["audio"]["output"]["voice"] == "cedar"                 # voice set BEFORE first audio
     assert s["audio"]["input"]["transcription"]["language"] == "uk" # Ukrainian ASR hint
     assert s["audio"]["input"]["turn_detection"]["type"] == "semantic_vad"
