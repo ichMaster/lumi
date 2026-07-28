@@ -89,15 +89,21 @@ class ModelProfile(NamedTuple):
     think: str
     mood: str
     housekeeping: str
+    # v1.6.2 LUMI-199: the TALKING register — the voice-mode reply tier (fast, prose-first; the
+    # chain-WS probes measured gemini-2.5-flash as the floor that holds the persona). Optional in
+    # models.toml / LUMI_MODEL_PROFILES; "" → the profile's think tier at resolution.
+    voice: str = ""
 
 
-# The three authored default sets — frontier reply, balanced think/mood, cheapest housekeeping.
+# The three authored default sets — frontier reply, balanced think/mood, cheapest housekeeping,
+# and the voice talking-register tier (v1.6.2).
 DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
     "anthropic": ModelProfile("anthropic", "claude-opus-4-8", "claude-sonnet-5",
-                              "claude-sonnet-5", "claude-haiku-4-5-20251001"),
-    "openai": ModelProfile("openai", "gpt-5.5", "gpt-5.5-mini", "gpt-5.5-mini", "gpt-5.5-nano"),
+                              "claude-sonnet-5", "claude-haiku-4-5-20251001", "claude-sonnet-5"),
+    "openai": ModelProfile("openai", "gpt-5.5", "gpt-5.5-mini", "gpt-5.5-mini", "gpt-5.5-nano",
+                           "gpt-5.5-mini"),
     "gemini": ModelProfile("gemini", "gemini-3.1-pro-preview", "gemini-2.5-flash",
-                           "gemini-2.5-flash", "gemini-2.5-flash-lite"),
+                           "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"),
 }
 
 
@@ -128,7 +134,8 @@ def _load_models_file(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str,
             fields = [str(block.get(k, "")).strip()
                       for k in ("provider", "reply", "think", "mood", "housekeeping")]
             if all(fields):
-                profiles[str(name).strip().lower()] = ModelProfile(fields[0].lower(), *fields[1:])
+                voice = str(block.get("voice", "")).strip()  # v1.6.2: optional talking-register tier
+                profiles[str(name).strip().lower()] = ModelProfile(fields[0].lower(), *fields[1:], voice)
     return aliases, profiles
 
 
@@ -147,7 +154,8 @@ def _parse_model_profiles(raw: str, base: dict[str, ModelProfile] | None = None)
             continue
         provider, tiers = target.split(":", 1)
         parts = [p.strip() for p in tiers.split(",")]
-        if name and provider.strip() and len(parts) == 4 and all(parts):
+        # 4 parts = the v0.41 shape; an optional 5th (v1.6.2) is the voice talking-register tier.
+        if name and provider.strip() and len(parts) in (4, 5) and all(parts):
             out[name] = ModelProfile(provider.strip().lower(), *parts)
     return out
 
@@ -303,6 +311,7 @@ class Config:
     model_think: str = ""         # LUMI_MODEL_THINK — the think path (kind="think")
     model_mood: str = ""          # LUMI_MODEL_MOOD — the daily mood call (kind="mood")
     model_housekeeping: str = ""  # LUMI_MODEL_HOUSEKEEPING — session-start / session-close / compaction
+    model_voice: str = ""         # LUMI_MODEL_VOICE — the v1.6.2 talking register (voice-mode reply tier)
     # v0.40 LUMI-158 (Layer 2, gated, Anthropic-only): per-step routing inside the tool-loop —
     # continuation rounds dig on the step tier, the first round + the visible terminal stay on the
     # call's model (R2 two-pass). Coherence risk with mixed tiers → off by default, A/B before enabling.
@@ -681,6 +690,10 @@ def load_config(*, load_env: bool = True) -> Config:
         model_mood=(os.getenv("LUMI_MODEL_MOOD") or "").strip() or (_prof.mood if _prof else ""),
         model_housekeeping=(os.getenv("LUMI_MODEL_HOUSEKEEPING") or "").strip()
         or (_prof.housekeeping if _prof else ""),
+        # v1.6.2 LUMI-199: the talking register — env wins, then the profile's voice tier, then its
+        # think tier (a profile without `voice` still resolves to a sensible fast model).
+        model_voice=(os.getenv("LUMI_MODEL_VOICE") or "").strip()
+        or (_prof.voice if _prof else "") or (_prof.think if _prof else ""),
         tool_step_routing=(os.getenv("LUMI_TOOL_STEP_ROUTING") or "off").strip().lower() in _TRUTHY,
         model_tool_step=(os.getenv("LUMI_MODEL_TOOL_STEP") or "").strip(),
         model_aliases=_parse_model_aliases(

@@ -24,6 +24,7 @@ reply = "claude-opus-4-8"
 think = "claude-sonnet-5"
 mood = "claude-sonnet-5"
 housekeeping = "claude-haiku-4-5-20251001"
+voice = "claude-sonnet-5"           # v1.6.2: the talking register (voice-mode reply tier)
 
 [profiles.openai]
 provider = "openai"
@@ -31,6 +32,7 @@ reply = "gpt-5.5"
 think = "gpt-5.5-mini"
 mood = "gpt-5.5-mini"
 housekeeping = "gpt-5.5-nano"
+voice = "gpt-5.5-mini"              # v1.6.2: the talking register
 
 [profiles.gemini]
 provider = "gemini"
@@ -38,3 +40,4 @@ reply = "gemini-3.1-pro-preview"
 think = "gemini-2.5-flash"
 mood = "gemini-2.5-flash"
 housekeeping = "gemini-2.5-flash-lite"
+voice = "gemini-2.5-flash"          # v1.6.2: the talking register — the probes' measured floor

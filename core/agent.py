@@ -385,6 +385,7 @@ class Core:
         model_think: str = "",         # v0.40: route kind="think" to this Claude tier (unset → model)
         model_mood: str = "",          # v0.40: route kind="mood" (unset → model)
         model_housekeeping: str = "",  # v0.40: route session-start/-close/compaction (unset → model)
+        model_voice: str = "",         # v1.6.2 LUMI-199: the talking register (unset → think → model)
         reasoning_directive: str = REASONING_DIRECTIVE,  # v0.38: the think-phase instruction (inner_voice → here)
         think_show: str = "debug",  # v0.38: monologue surfacing — debug / open / off (logged, never persisted)
         stream: bool = False,  # v1.4 (LUMI-188): stream the reply prose via reply()'s on_delta when set
@@ -542,6 +543,7 @@ class Core:
         self._model_think = model_think.strip()
         self._model_mood = model_mood.strip()
         self._model_housekeeping = model_housekeeping.strip()
+        self._model_voice = model_voice.strip()  # v1.6.2: the talking register's reply tier
         # v0.37 LUMI-148: runtime `/model` engine toggle — the active provider, a (provider, model) →
         # LLMClient factory (rebuilds from the loaded config keys), and the configured aliases.
         self._active_provider = provider
@@ -856,6 +858,7 @@ class Core:
         self._model_think = profile.think
         self._model_mood = profile.mood
         self._model_housekeeping = profile.housekeeping
+        self._model_voice = profile.voice or profile.think  # v1.6.2: the talking register
         self._active_profile = key
 
     @property
@@ -1498,7 +1501,8 @@ class Core:
         }
 
     def _system_prompt(
-        self, session: Session, recall: str | None = None, fact_recall: str | None = None
+        self, session: Session, recall: str | None = None, fact_recall: str | None = None,
+        *, reasoning: bool = True,
     ) -> tuple[str, str]:
         """Assemble the system prompt for this turn — returns ``(system, cache_prefix)``,
         the cacheable stable head (v0.15). Rehydrated for the user.
@@ -1507,6 +1511,10 @@ class Core:
         — if the current session has been compacted — its running digest. Loaded
         per turn, so a restart recalls prior context and new memory takes effect.
         Isolation holds — only this ``user_id``'s records are read.
+
+        ``reasoning=False`` (v1.6.2, the talking register) omits the reasoning/inner-voice
+        directive entirely — the voice turn streams prose immediately instead of a think block;
+        everything else in the prompt is identical.
         """
         # date-based recall three date-based layers (cumulative): per-WEEK digests (last week_days) →
         # per-DAY digests (last day_days) → per-SESSION detail (last session_days). Coarse → fine.
@@ -1570,7 +1578,8 @@ class Core:
         # wrapped in <think>…</think> (parsed out in reply()); the style rides last.
         # v0.38: this is the generic REASONING_DIRECTIVE, or her authored inner_voice.md when on.
         # v0.25: when the news tool is on, add the authored "how she delivers news" line (EN→UK, cited).
-        canon = f"{self._canon}\n\n{self._reasoning_directive}" if self._reasoning_directive else self._canon
+        directive = self._reasoning_directive if reasoning else ""  # v1.6.2: voice register drops it
+        canon = f"{self._canon}\n\n{directive}" if directive else self._canon
         if self._news_enabled:
             from core.news import NEWS_DIRECTIVE
 
@@ -1609,7 +1618,8 @@ class Core:
 
         ``think`` / ``mood`` / the housekeeping kinds (``session-start`` / ``session-close`` /
         ``compaction`` / bare ``housekeeping``) route to their configured Claude tier; an unset tier —
-        and the visible ``reply`` path, which never comes through here — stays on ``self._model``.
+        and the default ``reply`` path — stays on ``self._model``. ``voice`` (v1.6.2) is the one kind
+        the REPLY path routes through: the talking register's tier, falling back think → model.
         **Provider guard:** the tier vars name Claude ids, so routing applies only while the active
         engine is Anthropic; on a foreign engine (gpt-5.5 / gemini) every call uses ``self._model``
         (a Claude id must never reach another provider's API).
@@ -1624,6 +1634,8 @@ class Core:
             return self._model_think or self._model
         if kind == "mood":
             return self._model_mood or self._model
+        if kind == "voice":  # v1.6.2: the talking register (voice-mode reply)
+            return self._model_voice or self._model_think or self._model
         return self._model_housekeeping or self._model
 
     def _housekeeping_reply(
@@ -2340,6 +2352,7 @@ class Core:
         tool_executor: Callable[[str, dict], str] | None,
         on_delta: Callable[[str], None],
         on_think_delta: Callable[[str], None] | None,
+        model: str | None = None,  # v1.6.2: the talking register's tier (None → self._model)
     ) -> dict:
         """v1.4 (LUMI-188): drive ``reply_structured_stream`` with a :class:`StreamTagFilter` wrapping the
         deltas — showing prose, routing ``<think>`` to ``on_think_delta``, hiding inline tags, never
@@ -2361,7 +2374,7 @@ class Core:
                 think_seen = len(filt.think)
 
         raw = self._llm.reply_structured_stream(
-            system=system, messages=messages, model=self._model, cache_prefix=cache_prefix,
+            system=system, messages=messages, model=model or self._model, cache_prefix=cache_prefix,
             on_delta=_on_delta, tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
         )
         tail = filt.flush()
@@ -2375,6 +2388,7 @@ class Core:
         self, user_text: str, session: Session, *, images: list[dict] | None = None,
         on_delta: Callable[[str], None] | None = None,
         on_think_delta: Callable[[str], None] | None = None,
+        register: str | None = None,
     ) -> EmotionState:
         """Run one turn and return Лілі's validated :class:`EmotionState` (v0.3).
 
@@ -2392,6 +2406,15 @@ class Core:
         routed to ``on_think_delta``, inline tags hidden — never a half-tag). The returned
         :class:`EmotionState` is unchanged: ``{reply, emotion, intensity}`` is resolved and validated on
         the **completed** stream (the contract is untouched). Off / no callback → today's blocking turn.
+
+        ``register="voice"`` (v1.6.2, LUMI-199) runs this ONE turn on the **talking register** — the
+        voice-mode reply config the chain-WS probes measured: the reasoning/inner-voice directive is
+        omitted from the system prompt (prose streams immediately), the model is the profile's
+        ``voice`` tier (fallback think → model), and native thinking is forced off for the call (on
+        Gemini an explicit ``thinkingBudget: 0`` — a flash tier keeps thinking when the config is
+        merely omitted). Everything else — closeness, RAG, memory writes, the async POST queue, the
+        v0.3 validation gate — is the normal turn, one memory path. ``None`` (default) →
+        byte-identical to before.
         """
         self._active_session_id = session.id  # stamp this turn's cache events with the session
         _t0 = time.monotonic()  # S0 (LATENCY): per-stage turn timing — PRE → MODEL CALL → POST
@@ -2422,6 +2445,7 @@ class Core:
         system, cache_prefix = self._system_prompt(
             session, recall=self._recall_block(user_text, live),
             fact_recall=self._fact_recall_block(user_text),  # v0.36: top-K relevant non-core facts
+            reasoning=(register != "voice"),  # v1.6.2: the talking register drops the think directive
         )
         self.last_prompt = {"system": system, "cache_prefix": cache_prefix, "messages": list(messages)}
         self._active_cache_prefix = cache_prefix if self._prompt_cache else None  # fingerprinted for the cache monitor
@@ -2436,15 +2460,35 @@ class Core:
         _pre_ms = int((time.monotonic() - _t0) * 1000)  # S0: PRE — RAG embed+search, compaction, prompt build
         _t_llm = time.monotonic()
         _cache_bp = cache_prefix if self._prompt_cache else None  # v0.15 cache breakpoint
-        if self._stream and on_delta is not None:  # v1.4 (LUMI-188): stream the prose, filter tags live
-            raw = self._reply_streamed(
-                system, messages, _cache_bp, tools, tool_executor, on_delta, on_think_delta
-            )
-        else:
-            raw = self._llm.reply_structured(
-                system=system, messages=messages, model=self._model, cache_prefix=_cache_bp,
-                tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
-            )
+        # v1.6.2 (LUMI-199): the talking register — the voice tier answers, with native thinking
+        # forced off for THIS call (the _housekeeping_reply toggle pattern; on Gemini `_thinking_off`
+        # sends the explicit thinkingBudget=0 a flash tier needs). Restored in `finally` either way.
+        turn_model = self._model_for("voice") if register == "voice" else self._model
+        llm = self._llm
+        prev_thinking = getattr(llm, "_thinking", None)
+        prev_thinking_off = getattr(llm, "_thinking_off", None)
+        if register == "voice":
+            if prev_thinking:
+                llm._thinking = False
+            if prev_thinking_off is not None:
+                llm._thinking_off = True
+        try:
+            if self._stream and on_delta is not None:  # v1.4 (LUMI-188): stream the prose, filter tags live
+                raw = self._reply_streamed(
+                    system, messages, _cache_bp, tools, tool_executor, on_delta, on_think_delta,
+                    model=turn_model,
+                )
+            else:
+                raw = self._llm.reply_structured(
+                    system=system, messages=messages, model=turn_model, cache_prefix=_cache_bp,
+                    tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
+                )
+        finally:
+            if register == "voice":
+                if prev_thinking:
+                    llm._thinking = prev_thinking
+                if prev_thinking_off is not None:
+                    llm._thinking_off = prev_thinking_off
         _llm_ms = int((time.monotonic() - _t_llm) * 1000)  # S0: MODEL CALL (all tool-loop rounds)
         _t_post = time.monotonic()
         # Split any <think>…</think> reasoning, then the inline <emotion> tag, out of
@@ -3270,6 +3314,7 @@ def build_core(
         model_think=cfg.model_think,
         model_mood=cfg.model_mood,
         model_housekeeping=cfg.model_housekeeping,
+        model_voice=cfg.model_voice,  # v1.6.2 LUMI-199: the talking register
         user_id=user_id,
         memory_window=cfg.memory_window,
         compaction_batch=cfg.compaction_batch,
