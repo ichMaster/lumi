@@ -91,6 +91,24 @@ def test_gemini_stream_tool_round_then_streams_the_answer():
     assert out["reply"] == "Знайшла: Привіт" and out["emotion"] == "joy"
 
 
+def test_gemini_stream_hallucinated_set_state_is_terminal_not_unknown_tool():
+    # v1.6.2 live bug, streaming path: a phantom native "set_state" functionCall (never declared)
+    # must NOT reach tool_executor as "unknown tool" — it's the terminal state, one round.
+    rounds = [[{"candidates": [{"content": {"parts": [
+        {"functionCall": {"name": "set_state", "args": {"emotion": "playful", "intent": "develop"}}},
+    ]}}]}]]
+    gem = GeminiClient("k", _stream_transport=_rounds_transport(rounds))
+    ran: list = []
+    deltas: list[str] = []
+    out = gem.reply_structured_stream(
+        "sys", _MSGS, "gemini-2.5-flash", on_delta=deltas.append,
+        tools=[{"name": "recall", "input_schema": {"type": "object"}}],
+        tool_executor=lambda n, a: ran.append((n, a)) or "BOOM",
+    )
+    assert ran == []                                     # never dispatched as a real tool call
+    assert out["emotion"] == "playful" and out["intent"] == "develop"
+
+
 def test_gemini_stream_with_tools_enabled_but_none_called_streams_from_round_one():
     # The common case: tools offered, but she answers directly → streams from the first round (no tool).
     rounds = [_gemini_chunks({"reply": "Привіт без інструментів", "emotion": "calm", "intensity": 0.5})]

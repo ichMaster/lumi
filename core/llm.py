@@ -307,6 +307,25 @@ def _clean_state(state: dict) -> dict:
     return state
 
 
+def _split_hallucinated_state_call(calls: list[dict], text: str) -> dict | None:
+    """Gemini sometimes emits a **native** ``functionCall`` named exactly the emotion tool's name
+    (``set_state`` — the Anthropic-only structured tool, never declared here) instead of the
+    expected JSON reply. The known leak was previously text-only (a ```tool_code``` block, salvaged
+    elsewhere) — live v1.6.2 voice-mode runs showed it also arrives as a genuine functionCall, which
+    ``tool_executor`` doesn't recognize: every turn burned a wasted "error: unknown tool 'set_state'"
+    round. Treat it exactly like Anthropic's real terminal tool call: its ``args`` ARE the state,
+    falling back to any accompanying round text for ``reply`` when the args omit it (the model often
+    puts the actual reply as plain text alongside the phantom call). Returns ``None`` when no such
+    call is present — the caller's normal tool-round path is untouched."""
+    hallucinated = next((c for c in calls if c.get("name") == _EMOTION_TOOL["name"]), None)
+    if hallucinated is None:
+        return None
+    state = dict(hallucinated.get("args") or {})
+    if text.strip() and not (isinstance(state.get("reply"), str) and state["reply"].strip()):
+        state["reply"] = text
+    return state
+
+
 def _gemini_part(block: object) -> dict:
     """A message content block → a Gemini ``part`` (image → ``inlineData``, else ``text``)."""
     if is_image_block(block):
@@ -2347,6 +2366,11 @@ class GeminiClient:
             rstats = self._round_stats(synthetic, model, latency)
             if think:
                 acc["think"].append(think)
+            hallucinated_state = _split_hallucinated_state_call(calls, acc_text)
+            if hallucinated_state is not None:  # a phantom set_state functionCall — terminal, not a tool
+                self.last_round_log.append(("reply", rstats))
+                self._finalize(acc, model)
+                return _clean_state(hallucinated_state)
             if not calls and not final:  # salvage a text-encoded tool call (mirror _loop)
                 calls = _parse_tool_code(acc_text, {t["name"] for t in tools})
             if not calls:  # terminal — the answer round (reply already streamed)
@@ -2496,8 +2520,15 @@ class GeminiClient:
             if tk:
                 acc["think"].append(tk)
             calls = [p["functionCall"] for p in parts if isinstance(p, dict) and "functionCall" in p]
+            text = self._text_from_parts(parts)
+            hallucinated_state = _split_hallucinated_state_call(calls, text)
+            if hallucinated_state is not None:  # a phantom set_state functionCall — terminal, not a tool
+                self.last_round_log.append(("reply", rstats))
+                self._finalize(acc, model)
+                if not structured:
+                    return _sanitize_reply(hallucinated_state.get("reply", "") or "")
+                return _clean_state(hallucinated_state)
             if not calls:
-                text = self._text_from_parts(parts)
                 # Gemini-2.5 sometimes writes the tool call as a ```tool_code```/<tool_code> block instead of a
                 # native functionCall — salvage and continue (not on the forced final round, which has no tools).
                 salvaged = [] if final else _parse_tool_code(text, {t["name"] for t in tools})

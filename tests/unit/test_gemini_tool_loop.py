@@ -77,6 +77,36 @@ def test_loop_runs_tool_then_returns_terminal_state():
     assert len(t.bodies) == 2
 
 
+def test_loop_treats_a_hallucinated_set_state_call_as_terminal_not_unknown_tool():
+    # v1.6.2 live bug: Gemini sometimes emits a NATIVE functionCall named "set_state" — the
+    # Anthropic-only tool, never declared here — instead of the JSON reply. Routing it to
+    # tool_executor errored "unknown tool" and burned a wasted round on EVERY voice turn. It must
+    # be treated as the terminal state instead, using its own args.
+    c, t = _client(_Queue([
+        _resp([_fcall("set_state", {"emotion": "playful", "intensity": 0.8, "intent": "develop",
+                                    "relation": {"warmth": 0.8, "vulnerability": 0.1, "playful": 0.8,
+                                                "harm": 0, "manipulation": 0}})]),
+    ]))
+    seen = []
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gemini-2.5-flash",
+                             tools=_TOOLS, tool_executor=lambda n, i: seen.append((n, i)) or "BOOM")
+    assert seen == []                                    # never dispatched to the real tool executor
+    assert len(t.bodies) == 1                            # ONE round, not a wasted retry
+    assert out["emotion"] == "playful" and out["intent"] == "develop"
+
+
+def test_loop_hallucinated_set_state_falls_back_to_accompanying_text_for_reply():
+    # The model often puts the real reply as separate TEXT alongside the phantom call, not in args
+    # (the live shape: "Навіщо повторювати?..." as text + a set_state call carrying only relation/intent).
+    c, t = _client(_Queue([
+        _resp([{"text": "Навіщо повторювати?"}, _fcall("set_state", {"intent": "position"})]),
+    ]))
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gemini-2.5-flash",
+                             tools=_TOOLS, tool_executor=lambda n, i: "BOOM")
+    assert out["reply"] == "Навіщо повторювати?"
+    assert out["intent"] == "position"
+
+
 def test_intermediate_round_offers_tools_no_schema():
     c, t = _client(_Queue([_resp([_fcall("read_file", {})]), _resp([{"text": _STATE_JSON}])]))
     c.reply_structured("s", [{"role": "user", "content": "hi"}], "m",
