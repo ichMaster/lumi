@@ -1275,7 +1275,7 @@ class LumiApp(App[None]):
             self._emit(msg, Text(msg, style="yellow"))
             return
         try:
-            from voice.dictator import resolve_input_device
+            from voice.dictator import resolve_input_device, resolve_output_device
             from voice.live import VoiceLoop, open_audio
             from voice.stream_stt import DeepgramStream, build_deepgram_url
             from voice.stream_tts import ElevenLabsStreamTTS, SpeechPipeline
@@ -1292,9 +1292,11 @@ class LumiApp(App[None]):
             )
             import sounddevice as sd  # lazy — the realtime extra; ImportError degrades below
 
-            mic_dev = resolve_input_device(cfg.stt_device, list(sd.query_devices()))
+            devices = list(sd.query_devices())
+            mic_dev = resolve_input_device(cfg.stt_device, devices)
+            out_dev = resolve_output_device(cfg.voice_out_device, devices)
             mic, spk = open_audio(asyncio.get_running_loop(), self._voice_stream,
-                                  self._voice_pipeline, mic_device=mic_dev)
+                                  self._voice_pipeline, mic_device=mic_dev, out_device=out_dev)
             mic.start()
             spk.start()
             self._voice_audio = (mic, spk)

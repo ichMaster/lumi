@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from state import fifo
 from tui.bridge import drain_inbox, drain_inbox_records, set_listen_flag
-from voice.dictator import read_flag, resolve_input_device
+from voice.dictator import read_flag, resolve_input_device, resolve_output_device
 
 # --- resolve_input_device (LUMI_STT_DEVICE → a sounddevice index) ----------------------------------
 _DEVICES = [
-    {"name": "AirPods Pro", "max_input_channels": 1},        # 0
-    {"name": "MacBook Pro Microphone", "max_input_channels": 1},  # 1
-    {"name": "Some Speakers", "max_input_channels": 0},      # 2 (output only)
+    {"name": "AirPods Pro", "max_input_channels": 1, "max_output_channels": 2},  # 0
+    {"name": "MacBook Pro Microphone", "max_input_channels": 1, "max_output_channels": 0},  # 1
+    {"name": "Some Speakers", "max_input_channels": 0, "max_output_channels": 2},  # 2 (output only)
 ]
 
 
@@ -37,6 +37,26 @@ def test_resolve_device_index_without_input_channels_is_none():
 
 def test_resolve_device_no_match_is_none():
     assert resolve_input_device("Bluetooth Blender", _DEVICES) is None
+
+
+# --- resolve_output_device (LUMI_VOICE_OUT_DEVICE → a sounddevice index — the speaker twin) --------
+def test_resolve_output_device_empty_spec_is_default():
+    assert resolve_output_device("", _DEVICES) is None
+
+
+def test_resolve_output_device_by_name_and_index():
+    assert resolve_output_device("AirPods", _DEVICES) == 0
+    assert resolve_output_device("airpods pro", _DEVICES) == 0  # case-insensitive
+    assert resolve_output_device("2", _DEVICES) == 2
+
+
+def test_resolve_output_device_rejects_input_only_devices():
+    assert resolve_output_device("MacBook Pro Microphone", _DEVICES) is None  # no output channels
+    assert resolve_output_device("1", _DEVICES) is None                      # index has 0 output channels
+
+
+def test_resolve_output_device_no_match_is_none():
+    assert resolve_output_device("Bluetooth Blender", _DEVICES) is None
 
 
 # --- set_listen_flag (the TUI is the sole writer; the dictator reads it) ---------------------------

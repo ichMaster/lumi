@@ -27,17 +27,29 @@ def resolve_input_device(spec: str, devices: list[dict]) -> int | None:
     """Resolve ``LUMI_STT_DEVICE`` to a sounddevice input-device index. ``spec`` is an index (``"4"``)
     or a case-insensitive name substring (``"MacBook Pro Microphone"``). ``""``/no match → ``None``
     (the system default input). Only devices with an input channel are considered for a name match."""
+    return _resolve_device(spec, devices, "max_input_channels")
+
+
+def resolve_output_device(spec: str, devices: list[dict]) -> int | None:
+    """Resolve ``LUMI_VOICE_OUT_DEVICE`` to a sounddevice output-device index — the speaker twin of
+    :func:`resolve_input_device`. ``""``/no match → ``None`` (the system default OUTPUT, which is
+    NOT always headphones even when connected — live: voice-mode audio came out the laptop speakers
+    because nothing forced the headphone device)."""
+    return _resolve_device(spec, devices, "max_output_channels")
+
+
+def _resolve_device(spec: str, devices: list[dict], channel_key: str) -> int | None:
     spec = (spec or "").strip()
     if not spec:
         return None
     if spec.isdigit():
         i = int(spec)
-        if 0 <= i < len(devices) and devices[i].get("max_input_channels", 0) > 0:
+        if 0 <= i < len(devices) and devices[i].get(channel_key, 0) > 0:
             return i
         return None
     low = spec.lower()
     for i, d in enumerate(devices):
-        if d.get("max_input_channels", 0) > 0 and low in d.get("name", "").lower():
+        if d.get(channel_key, 0) > 0 and low in d.get("name", "").lower():
             return i
     return None
 

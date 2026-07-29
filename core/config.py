@@ -542,6 +542,11 @@ class Config:
     # v1.6.2 LUMI-200: the streaming-STT endpointing window (ms of silence before Deepgram ends the
     # turn). 500 is the live-tuned default — 300 cut the owner off mid-phrase.
     voice_endpoint_ms: int = 500
+    # v1.6.2 (post-LUMI-202 fix): the SPEAKER device for voice mode — an index ("2") or a name
+    # substring ("AirPods"/"Headphones"); "" → the system default OUTPUT, which is NOT always
+    # headphones even when they're connected (live: audio came out the laptop speakers). Mirrors
+    # stt_device's resolution (index-or-substring, resolved against sd.query_devices()).
+    voice_out_device: str = ""
     # v1.6.2 LUMI-202: the interaction mode at startup — "text" (today's TUI, byte-identical) or
     # "voice" (the live loop starts on mount). /mode-set switches at runtime; text is the fallback.
     mode_set: str = "text"
@@ -889,6 +894,7 @@ def load_config(*, load_env: bool = True) -> Config:
         stt_device=(os.getenv("LUMI_STT_DEVICE") or "").strip(),
         listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else DEFAULT_LISTEN_FLAG,
         voice_endpoint_ms=int(os.getenv("LUMI_VOICE_ENDPOINT_MS") or 500),
+        voice_out_device=(os.getenv("LUMI_VOICE_OUT_DEVICE") or "").strip(),
         mode_set=(lambda m: m if m in ("text", "voice") else "text")(
             (os.getenv("LUMI_MODE_SET") or "text").strip().lower()),
         deepgram_api_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),
