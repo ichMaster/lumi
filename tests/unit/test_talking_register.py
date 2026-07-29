@@ -101,6 +101,24 @@ def test_default_register_is_byte_identical(tmp_path):
     assert _DIRECTIVE in core.last_prompt["system"]          # the directive rides as before
 
 
+def test_voice_register_offers_no_tools_even_when_enabled(tmp_path):
+    # Live regression: a REAL declared tool (recall/date/…) sitting next to the emotion
+    # instructions' "заповни... інструмента set_state" wording drove Gemini to hallucinate a
+    # native set_state call on almost every voice turn (confirmed live — near-empty replies,
+    # silently absorbed by the client's own degrade). The talking register must not offer any
+    # tool at all — automatic RAG memory (a prompt injection, not a tool) is unaffected.
+    t = _Transport()
+    llm = GeminiClient("k", _transport=t)
+    core, _ = _core(tmp_path, llm, model_voice="gemini-2.5-flash", date_tool_enabled=True)
+    session = core.start_session()
+
+    core.reply("привіт", session, register="voice")
+    assert "tools" not in t.bodies[-1]                    # no tool offered on the talking register
+
+    core.reply("привіт ще раз", session)                  # register=None — the same date tool now rides
+    assert "tools" in t.bodies[-1]
+
+
 def test_voice_register_restores_the_thinking_flags(tmp_path):
     llm = MockLLMClient("ок")
     llm._thinking = True                                     # simulate a thinking-on client

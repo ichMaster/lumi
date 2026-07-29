@@ -2455,8 +2455,15 @@ class Core:
             vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in live
         } | self._turn_rag_anchor_ids
         # v0.19/v0.21: when the file tool and/or the wiki tool is on, run the turn as a bounded
-        # tool-loop (file sandbox + Wikipedia), with a name-routing executor.
-        tools, tool_executor = self._turn_tools()
+        # tool-loop (file sandbox + Wikipedia), with a name-routing executor. The talking register
+        # (v1.6.2) skips this: a REAL declared tool sitting next to the emotion instructions'
+        # "заповни... інструмента set_state" wording is what drove Gemini to hallucinate a native
+        # set_state functionCall on almost every voice turn (confirmed live — tiny/empty replies,
+        # silently absorbed by the GeminiClient degrade). The probes that actually worked well never
+        # offered tools either. Automatic RAG memory (_recall_block, injected above) is untouched —
+        # only the model-INITIATED tool call is off for this register.
+        tools, tool_executor = (None, None) if register == "voice" else self._turn_tools()
+        self.last_tool_calls = []  # keep the per-turn trace consistent when the register skips _turn_tools()
         _pre_ms = int((time.monotonic() - _t0) * 1000)  # S0: PRE — RAG embed+search, compaction, prompt build
         _t_llm = time.monotonic()
         _cache_bp = cache_prefix if self._prompt_cache else None  # v0.15 cache breakpoint
