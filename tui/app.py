@@ -406,8 +406,10 @@ class LumiApp(App[None]):
             set_listen_flag(self._listen_flag_path, False)  # start not-listening (the TUI owns the flag)
         if self._input_buffer:  # v1.2: keep the input focused + repainting while a turn runs, so
             self.set_interval(0.1, self._keep_input_live)  # your typing shows even under the reply's load
-        if cfg.mode_set == "voice":  # v1.6.2: start the live loop on mount (text stays the fallback)
-            self.run_worker(self._start_voice_mode(), exclusive=False)
+        if cfg.mode_set == "voice":  # v1.6.2: start the live loop only AFTER the initial DOM is
+            # attached — starting the worker synchronously in on_mount can race Textual's own
+            # attachment of #history (a MountError if a key/device failure emits a line instantly).
+            self.call_after_refresh(lambda: self.run_worker(self._start_voice_mode(), exclusive=False))
 
     async def _refresh_world(self) -> None:
         """Fetch the ambient *now / here* snapshot off-thread and hand it to the core.
@@ -948,7 +950,10 @@ class LumiApp(App[None]):
                 self._show_tool_trace()  # v0.19: the file tools she used this turn (dim, above the reply)
                 # Her emotion shows as an emoji next to her name (v0.5), e.g. "Лілі 😄✨:".
                 self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", state.reply, LILI_COLOR)
-            if self._bridge or self._voice:  # mirror ONLY Лілі's reply to the outbox (→ Telegram / voicer)
+            # Mirror to the outbox for Telegram / the OLD local voicer daemon — but NOT a voice-mode
+            # turn: the v1.6.2 SpeechPipeline already spoke it live, so mirroring would double-speak
+            # (the outbox voicer would replay the same reply a second time via a separate synth).
+            if (self._bridge or self._voice) and register != "voice":
                 mirror_reply(self._outbox_path, state)
             if not hidden and self._sound_on:
                 self._sound.receive()  # her reply arrived (suppressed for the idle nudge)
