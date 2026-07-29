@@ -93,6 +93,20 @@ def test_loop_treats_a_hallucinated_set_state_call_as_terminal_not_unknown_tool(
     assert seen == []                                    # never dispatched to the real tool executor
     assert len(t.bodies) == 1                            # ONE round, not a wasted retry
     assert out["emotion"] == "playful" and out["intent"] == "develop"
+    assert isinstance(out["reply"], str) and out["reply"].strip()  # NEVER empty — the v0.3 gate raises
+
+
+def test_loop_hallucinated_set_state_with_no_reply_anywhere_degrades_not_crashes():
+    # Regression: the FIRST version of this fix left "reply" missing when the phantom call carried
+    # no reply AND no text rode alongside it — validate() raises EmotionError on an empty reply,
+    # which surfaced live as repeated "Лілі is unavailable right now" after every such turn.
+    from core.emotion import validate
+
+    c, t = _client(_Queue([_resp([_fcall("set_state", {"intent": "position"})])]))
+    out = c.reply_structured("sys", [{"role": "user", "content": "hi"}], "gemini-2.5-flash",
+                             tools=_TOOLS, tool_executor=lambda n, i: "BOOM")
+    assert isinstance(out["reply"], str) and out["reply"].strip()
+    validate(out)  # must NOT raise — a real turn would otherwise crash to "unavailable"
 
 
 def test_loop_hallucinated_set_state_falls_back_to_accompanying_text_for_reply():

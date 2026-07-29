@@ -316,13 +316,19 @@ def _split_hallucinated_state_call(calls: list[dict], text: str) -> dict | None:
     round. Treat it exactly like Anthropic's real terminal tool call: its ``args`` ARE the state,
     falling back to any accompanying round text for ``reply`` when the args omit it (the model often
     puts the actual reply as plain text alongside the phantom call). Returns ``None`` when no such
-    call is present — the caller's normal tool-round path is untouched."""
+    call is present — the caller's normal tool-round path is untouched.
+
+    ``reply`` is NEVER left empty: a truly empty result (no args.reply, no accompanying text — the
+    call arrived alone) falls back to the same blocked-state placeholder the rest of this client
+    uses, not a missing field — the v0.3 gate raises ``EmotionError`` on an empty reply, and an
+    unattended voice/scheduled turn must degrade, never crash the caller (live regression: this
+    exact gap surfaced as repeated "Лілі is unavailable" after the first version of this fix)."""
     hallucinated = next((c for c in calls if c.get("name") == _EMOTION_TOOL["name"]), None)
     if hallucinated is None:
         return None
     state = dict(hallucinated.get("args") or {})
-    if text.strip() and not (isinstance(state.get("reply"), str) and state["reply"].strip()):
-        state["reply"] = text
+    if not (isinstance(state.get("reply"), str) and state["reply"].strip()):
+        state["reply"] = text.strip() or _GEMINI_BLOCKED_STATE["reply"]
     return state
 
 

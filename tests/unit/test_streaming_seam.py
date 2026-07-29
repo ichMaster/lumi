@@ -107,6 +107,7 @@ def test_gemini_stream_hallucinated_set_state_is_terminal_not_unknown_tool():
     )
     assert ran == []                                     # never dispatched as a real tool call
     assert out["emotion"] == "playful" and out["intent"] == "develop"
+    assert isinstance(out["reply"], str) and out["reply"].strip()  # never empty — validate() raises
 
 
 def test_gemini_stream_with_tools_enabled_but_none_called_streams_from_round_one():
