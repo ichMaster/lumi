@@ -52,6 +52,29 @@ def test_interim_in_silence_never_interrupts():
     assert loop_events_quiet and turns == []
 
 
+def test_repeated_interims_while_streaming_barge_in_only_once():
+    # Live bug: Deepgram fires MANY interim events per second while he talks; if the reply is
+    # STILL streaming new sentences in during that window, each interim used to re-satisfy
+    # "she is audible" and fire ANOTHER interrupt() + [barge-in] note — a rapid churn that showed
+    # up as TUI lag (a mounted line per event) and choppy audio (nothing ever finished playing).
+    notes: list[str] = []
+    pipeline = SpeechPipeline(MockStreamTTS())
+    loop = VoiceLoop(stream=None, pipeline=pipeline, on_utterance=lambda t: None,
+                     on_note=notes.append)
+    pipeline.feed_delta("Перше речення. ")
+    loop.handle_event(_interim("а"))                     # the first interim while she's queued/playing
+    assert notes == ["[barge-in]"]
+    # the reply is STILL generating and queues MORE sentences even though he already interrupted
+    pipeline.feed_delta("Друге речення, що йде запізно. ")
+    for _ in range(5):                                    # a burst of further interims, same utterance
+        loop.handle_event(_interim("а ще"))
+    assert notes == ["[barge-in]"]                        # only the FIRST one fired
+    assert pipeline.pending == 0                           # the late sentence was muted, never queued
+    pipeline.finish_turn()
+    pipeline.feed_delta("Наступний хід. ")                 # a fresh turn speaks normally again
+    assert pipeline.pending == 1
+
+
 def test_committed_utterance_runs_exactly_one_turn():
     loop, _, turns = _loop()
     loop.handle_event(_final("Привіт, як справи?"))

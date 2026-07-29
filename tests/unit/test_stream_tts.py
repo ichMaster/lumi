@@ -84,7 +84,10 @@ def test_barge_in_clears_buffer_and_queue_but_only_audio():
     assert p.pending == 0                             # …the queued tail is dropped…
     assert p.synth_next() is None
     p.interrupt()                                     # …and a second interrupt is a no-op
-    p.feed_delta("Новий хід. ")                       # the NEXT turn speaks normally
+    p.feed_delta("Ще з того ж ходу. ")                # v1.6.2: muted for the REST of this turn —
+    assert p.pending == 0                             # a still-streaming reply can't re-arm barge-in
+    p.finish_turn()                                   # the interrupted turn ends…
+    p.feed_delta("Новий хід. ")                       # …the NEXT turn speaks normally
     assert p.synth_next() == "Новий хід."
 
 

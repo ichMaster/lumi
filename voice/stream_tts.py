@@ -179,6 +179,7 @@ class SpeechPipeline:
         self._lock = threading.Lock()
         self._queue: deque[str] = deque()
         self._epoch = 0
+        self._muted = False  # v1.6.2 fix: True after a barge-in, until the NEXT turn (finish_turn)
         self.skipped: list[str] = []  # unspeakable sentences, kept visible for diagnosis
 
     # --- the reply-stream side -------------------------------------------------------------------
@@ -197,8 +198,11 @@ class SpeechPipeline:
             self._enqueue(sentence)
         self._filt = StreamTagFilter()
         self._asm = SentenceAssembler()
+        self._muted = False  # a fresh turn is free to speak again
 
     def _enqueue(self, sentence: str) -> None:
+        if self._muted:  # he interrupted THIS turn — stop feeding it audio, don't re-arm barge-in
+            return
         cleaned = clean_sentence(sentence)
         if not cleaned:
             return
@@ -232,8 +236,16 @@ class SpeechPipeline:
         return sentence
 
     def interrupt(self) -> None:
-        """Barge-in: he spoke while she was playing — stop the sound, keep the turn. Idempotent."""
+        """Barge-in: he spoke while she was playing — stop the sound, keep the turn. Idempotent, and
+        MUTES the rest of this turn's audio: without this, a still-streaming reply keeps queueing
+        new sentences while he keeps talking, and each one re-satisfies "she is audible" for the
+        NEXT interim transcript — a rapid interrupt/re-queue loop that showed up live as repeated
+        ``[barge-in]`` lines (TUI lag from the widget churn) and choppy audio (nothing ever finished
+        playing). Once muted, :meth:`pending`/:attr:`buffer` stay empty for the rest of the turn, so
+        the caller's barge-in check naturally stops re-firing — :meth:`finish_turn` unmutes for the
+        next turn."""
         with self._lock:
             self._epoch += 1
             self._queue.clear()
         self.buffer.clear()
+        self._muted = True
