@@ -80,6 +80,44 @@ def test_repeated_interims_while_streaming_barge_in_only_once():
     assert pipeline.pending == 3
 
 
+def test_noise_barge_in_with_empty_final_resumes():
+    # The live "sound gone forever": a noise interim fires the barge-in, its final comes back
+    # EMPTY (nothing to commit) — no utterance ever commits, so the commit-resume never runs.
+    # The empty final must lift the pause itself.
+    loop, pipeline, turns = _loop()
+    pipeline.feed_delta("Речення в черзі. ")
+    loop.handle_event(_interim("шум"))                  # noise triggers the barge-in
+    assert pipeline.paused
+    loop.handle_event(_final("", speech_final=True))    # …and its final is empty — noise confirmed
+    assert not pipeline.paused                          # she resumes; nothing was lost
+    assert turns == []                                  # and no phantom turn ran
+    assert pipeline.pending == 1
+
+
+def test_utterance_end_with_nothing_pending_resumes():
+    # The other recovery path: an UtteranceEnd whose flush found nothing (already flushed / noise).
+    loop, pipeline, _ = _loop()
+    pipeline.feed_delta("Речення в черзі. ")
+    loop.handle_event(_interim("а"))
+    assert pipeline.paused
+    loop.handle_event({"type": "UtteranceEnd"})         # nothing pending in the tracker
+    assert not pipeline.paused
+
+
+def test_held_partial_keeps_the_pause_until_its_backstop_commits():
+    # A held un-punctuated speech_final means he's MID-thought — she must stay quiet; the
+    # UtteranceEnd backstop commits the partial (~1 s) and the commit branch resumes.
+    loop, pipeline, turns = _loop()
+    pipeline.feed_delta("Речення в черзі. ")
+    loop.handle_event(_interim("зажди я"))
+    assert pipeline.paused
+    loop.handle_event(_final("зажди я хочу сказати", speech_final=True))  # held — no punctuation
+    assert pipeline.paused                              # still his floor — she keeps waiting
+    loop.handle_event({"type": "UtteranceEnd"})         # the backstop commits the partial
+    assert not pipeline.paused                          # …and the commit resumed her
+    assert turns == ["зажди я хочу сказати"]
+
+
 def test_stumble_then_continue_both_replies_get_spoken_in_full():
     # Owner's scenario: he starts talking, pauses (a request already fires for the partial
     # utterance), then continues — a SECOND utterance commits and gets its own reply. Both replies

@@ -67,7 +67,28 @@ class VoiceLoop:
             self._pipeline.resume()
             self.utterances.append(utterance)
             self._on_utterance(utterance)  # non-blocking — the TUI schedules the turn
+        elif self._speech_settled(event):
+            # He stopped speaking but NOTHING committed — a noise/trailing interim triggered the
+            # barge-in and its final came back empty (or the UtteranceEnd found nothing pending).
+            # Without this resume the pause had no lifter at all: the live "sound gone forever"
+            # (a committed utterance was the ONLY resume path). A held partial (un-punctuated
+            # speech_final) deliberately does NOT settle — he's mid-thought; its UtteranceEnd
+            # backstop commits it within ~1 s and resumes through the branch above.
+            self._pipeline.resume()
         return utterance
+
+    @staticmethod
+    def _speech_settled(event: dict) -> bool:
+        """True when the event says «he is done speaking» with nothing left pending: an EMPTY final
+        transcript (the interrupting sound was noise) or an ``UtteranceEnd`` (the backstop — if it
+        had anything to flush, the tracker returned it and the commit branch already resumed)."""
+        etype = event.get("type", "")
+        if etype == "UtteranceEnd":
+            return True
+        if etype == "Results" and event.get("is_final"):
+            alt = (((event.get("channel") or {}).get("alternatives")) or [{}])[0]
+            return not (alt.get("transcript") or "").strip()
+        return False
 
     def _is_barge_in(self, event: dict) -> bool:
         """He is speaking (a non-empty interim) while she is audible, OR about to be (queued and not

@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from collections import deque
 from collections.abc import Iterator
 
@@ -174,7 +175,8 @@ class SpeechPipeline:
     commits) lifts the pause: she finishes what she hadn't said yet, in order, then continues into
     whatever came after — nothing she was going to say is silently skipped."""
 
-    def __init__(self, tts, buffer: SpeakerBuffer | None = None) -> None:
+    def __init__(self, tts, buffer: SpeakerBuffer | None = None,
+                 *, auto_resume_s: float = 4.0) -> None:
         self._tts = tts
         self.buffer = buffer if buffer is not None else SpeakerBuffer()
         self._filt = StreamTagFilter()
@@ -183,6 +185,11 @@ class SpeechPipeline:
         self._queue: deque[str] = deque()
         self._epoch = 0
         self._paused = False  # True from interrupt() until resume() — the backlog keeps growing
+        # The safety valve: if NOTHING ever calls resume() (Deepgram sent no final/UtteranceEnd for
+        # the interrupting noise — seen live as "sound gone forever"), un-pause by timeout. Long
+        # enough to never cut into a real spoken utterance (those commit or backstop within ~1-2 s).
+        self._auto_resume_s = auto_resume_s
+        self._paused_at = 0.0
         self.skipped: list[str] = []  # unspeakable sentences, kept visible for diagnosis
 
     # --- the reply-stream side -------------------------------------------------------------------
@@ -228,11 +235,15 @@ class SpeechPipeline:
         """Stream ONE queued sentence into the speaker buffer; return its text (None when idle OR
         while paused — the backlog waits for :meth:`resume`, it is never dropped).
 
-        An :meth:`interrupt` DURING the stream aborts the remaining chunks (the epoch check) — the
-        already-buffered audio was cleared by the interrupt itself; the partially-spoken sentence
-        itself is not replayed (only what hadn't STARTED is preserved)."""
+        An :meth:`interrupt` DURING the stream aborts the remaining chunks (the epoch check) and
+        **requeues the sentence at the FRONT** — «вона договорює свій меседж»: the interrupted
+        sentence replays from its start after the resume, then the rest follows in order."""
         if self._paused:
-            return None
+            # The watchdog: a pause only resume() never lifted (no final ever came for the
+            # interrupting noise) un-sticks itself — silence must never be permanent.
+            if time.monotonic() - self._paused_at < self._auto_resume_s:
+                return None
+            self.resume()
         with self._lock:
             if not self._queue:
                 return None
@@ -240,14 +251,16 @@ class SpeechPipeline:
             epoch = self._epoch
         for chunk in self._tts.stream(sentence, emotion=emotion):
             with self._lock:
-                if self._epoch != epoch:  # barged-in mid-sentence — drop the rest
-                    return sentence
+                if self._epoch != epoch:  # barged-in mid-sentence — replay it whole after resume
+                    self._queue.appendleft(sentence)
+                    return None
             self.buffer.feed(chunk)
         return sentence
 
     def resume(self) -> None:
         """Lift a barge-in pause — the synth pump resumes speaking the queued backlog in order."""
-        self._paused = False
+        with self._lock:
+            self._paused = False
 
     def interrupt(self) -> None:
         """Barge-in: he spoke while she was playing — stop the sound, PAUSE (not cancel). Idempotent.
@@ -260,5 +273,6 @@ class SpeechPipeline:
         loop (``[barge-in]`` spam / TUI lag) and content silently discarded instead of queued."""
         with self._lock:
             self._epoch += 1
+            self._paused = True
+            self._paused_at = time.monotonic()
         self.buffer.clear()
-        self._paused = True

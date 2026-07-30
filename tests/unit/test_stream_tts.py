@@ -96,20 +96,44 @@ def test_barge_in_pauses_sound_but_keeps_the_queue():
     assert [p.synth_next() for _ in range(4)] == ["Друге.", "Третє.", "Ще з того ж ходу.", "Новий хід."]
 
 
-def test_barge_in_mid_sentence_aborts_remaining_chunks():
+def test_barge_in_mid_sentence_requeues_it_to_replay_whole():
+    # «вона договорює свій меседж»: the sentence playing at the moment of the barge-in is NOT
+    # lost — it goes back to the FRONT of the queue and replays from its start after the resume.
     p = SpeechPipeline(MockStreamTTS())
 
-    class _InterruptingTTS:
+    class _InterruptOnceTTS:
         def __init__(self, pipeline):
             self._p = pipeline
+            self._fired = False
 
         def stream(self, text, *, emotion=None):
             yield b"FIRST"
-            self._p.interrupt()                        # he barges in between chunks
-            yield b"AFTER"                             # must never reach the buffer
+            if not self._fired:
+                self._fired = True
+                self._p.interrupt()                    # he barges in between chunks — once
+                yield b"AFTER"                         # must never reach the buffer
+                return
+            yield b"REST"                              # the replay after resume streams fully
 
-    p._tts = _InterruptingTTS(p)
-    p.feed_delta("Довге речення. ")
-    assert p.synth_next() == "Довге речення."          # the sentence returns (turn not cancelled)
+    p._tts = _InterruptOnceTTS(p)
+    p.feed_delta("Довге речення. Наступне. ")
+    assert p.synth_next() is None                      # aborted mid-play → requeued, not "spoken"
     assert not p.buffer.playing                        # FIRST was cleared by the interrupt itself
-    assert p.buffer.pull(100) == b""                   # and AFTER was dropped by the epoch check
+    assert p.pending == 2                              # the interrupted sentence is BACK, in front
+    assert p.synth_next() is None                      # paused — nothing plays while he talks
+    p.resume()
+    assert p.synth_next() == "Довге речення."          # replayed whole…
+    assert p.synth_next() == "Наступне."               # …then the rest, in order
+    assert p.buffer.pull(100) == (b"FIRST" + b"REST") * 2  # both replays streamed in full
+
+
+def test_pause_auto_resumes_after_the_watchdog_timeout():
+    # The safety valve: if NOTHING ever calls resume() (Deepgram sent no final for the interrupting
+    # noise — the live "sound gone forever"), the pause un-sticks itself after auto_resume_s.
+    p = SpeechPipeline(MockStreamTTS([b"AU"]), auto_resume_s=4.0)
+    p.feed_delta("Речення. ")
+    p.interrupt()
+    assert p.synth_next() is None and p.paused          # freshly paused — silent
+    p._paused_at -= 5.0                                 # pretend 5 s passed with no resume signal
+    assert p.synth_next() == "Речення."                 # the watchdog lifted the pause
+    assert not p.paused
