@@ -38,12 +38,12 @@ async def test_normal_turn_still_mirrors_to_outbox_for_the_old_voicer(tmp_path):
         assert "Привіт!" in app._outbox_path.read_text(encoding="utf-8")
 
 
-async def test_a_failed_voice_turn_still_unmutes_the_pipeline_for_the_next_reply(tmp_path):
-    # Live bug: finish_turn() (which lifts a barge-in's mute — voice/stream_tts.py) ran only on
-    # the SUCCESS path. A turn that raised (EmotionError etc.) skipped it, so once ANY voice turn
-    # had been interrupted and a LATER turn happened to fail, the mute never lifted again — every
-    # reply after that went silently un-queued ("потім в наступному реплаї може бути звук, а може
-    # і не бути"). finish_turn() now runs in `finally`, unconditionally.
+async def test_a_failed_voice_turn_still_resets_the_pipeline_for_the_next_reply(tmp_path):
+    # Live bug (earlier fix): finish_turn() ran only on the SUCCESS path in _run_turn, so a turn
+    # that raised (EmotionError etc.) skipped it, leaving the StreamTagFilter/SentenceAssembler in
+    # whatever half-parsed state the failed stream left them — corrupting the NEXT turn's parsing.
+    # finish_turn() now runs in `finally`, unconditionally (pause/resume itself no longer depends
+    # on turn success at all — only on interrupt()/resume(), see voice/stream_tts.py).
     from core.llm import MockLLMClient
     from voice.stream_tts import MockStreamTTS, SpeechPipeline
 
@@ -52,12 +52,11 @@ async def test_a_failed_voice_turn_still_unmutes_the_pipeline_for_the_next_reply
     app = LumiApp(core)
     async with app.run_test() as pilot:
         app._voice_pipeline = SpeechPipeline(MockStreamTTS())
-        app._voice_pipeline.interrupt()  # simulate: an EARLIER turn was barge-in interrupted
-        assert app._voice_pipeline._muted is True
+        stale_filt = app._voice_pipeline._filt
 
         await app._run_turn("привіт", register="voice")  # this turn RAISES (empty reply)
         await pilot.pause()
 
-        assert app._voice_pipeline._muted is False        # unmuted despite the failure
+        assert app._voice_pipeline._filt is not stale_filt  # finish_turn() ran despite the failure
         app._voice_pipeline.feed_delta("Наступна репліка. ")  # a trailing space completes the sentence
         assert app._voice_pipeline.pending == 1            # …and the NEXT reply queues normally

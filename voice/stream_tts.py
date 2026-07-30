@@ -162,14 +162,17 @@ class SpeakerBuffer:
 
 
 class SpeechPipeline:
-    """Reply deltas in → her voice out, with barge-in. The live loop drives it:
+    """Reply deltas in → her voice out, with barge-in **as a queue, not a discard**. The live loop
+    drives it:
 
     ``feed_delta`` per streamed chunk (+ ``finish_turn`` at the end) queues whole clean speakable
     sentences; ``synth_next()`` (called from a worker/executor — it blocks on the TTS read) streams
-    ONE queued sentence into the speaker buffer and returns its text, or ``None`` when idle.
-    :meth:`interrupt` is the barge-in: clears the buffer + the queue and aborts the in-flight
-    sentence's remaining chunks — **audio only; the committed turn is not this class's to cancel**.
-    """
+    ONE queued sentence into the speaker buffer and returns its text, or ``None`` when idle/paused.
+    :meth:`interrupt` is the barge-in: stops the SOUND immediately (clears the buffer, aborts the
+    in-flight sentence) and **pauses** — but the queued backlog (including sentences a still-
+    streaming turn keeps adding) is NEVER discarded. :meth:`resume` (called once your utterance
+    commits) lifts the pause: she finishes what she hadn't said yet, in order, then continues into
+    whatever came after — nothing she was going to say is silently skipped."""
 
     def __init__(self, tts, buffer: SpeakerBuffer | None = None) -> None:
         self._tts = tts
@@ -179,7 +182,7 @@ class SpeechPipeline:
         self._lock = threading.Lock()
         self._queue: deque[str] = deque()
         self._epoch = 0
-        self._muted = False  # v1.6.2 fix: True after a barge-in, until the NEXT turn (finish_turn)
+        self._paused = False  # True from interrupt() until resume() — the backlog keeps growing
         self.skipped: list[str] = []  # unspeakable sentences, kept visible for diagnosis
 
     # --- the reply-stream side -------------------------------------------------------------------
@@ -190,7 +193,9 @@ class SpeechPipeline:
                 self._enqueue(sentence)
 
     def finish_turn(self) -> None:
-        """End of the reply stream: flush the held tail, reset the filters for the next turn."""
+        """End of the reply stream: flush the held tail, reset the filters for the next turn. Does
+        NOT touch the pause — that's driven purely by interrupt()/resume(), independent of whether
+        a turn succeeded or failed (so a failed turn can never leave audio stuck paused)."""
         tail = self._filt.flush()
         if tail:
             self._asm.feed(tail)
@@ -198,11 +203,8 @@ class SpeechPipeline:
             self._enqueue(sentence)
         self._filt = StreamTagFilter()
         self._asm = SentenceAssembler()
-        self._muted = False  # a fresh turn is free to speak again
 
     def _enqueue(self, sentence: str) -> None:
-        if self._muted:  # he interrupted THIS turn — stop feeding it audio, don't re-arm barge-in
-            return
         cleaned = clean_sentence(sentence)
         if not cleaned:
             return
@@ -218,11 +220,19 @@ class SpeechPipeline:
         with self._lock:
             return len(self._queue)
 
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
     def synth_next(self, *, emotion: str | None = None) -> str | None:
-        """Stream ONE queued sentence into the speaker buffer; return its text (None when idle).
+        """Stream ONE queued sentence into the speaker buffer; return its text (None when idle OR
+        while paused — the backlog waits for :meth:`resume`, it is never dropped).
 
         An :meth:`interrupt` DURING the stream aborts the remaining chunks (the epoch check) — the
-        already-buffered audio was cleared by the interrupt itself."""
+        already-buffered audio was cleared by the interrupt itself; the partially-spoken sentence
+        itself is not replayed (only what hadn't STARTED is preserved)."""
+        if self._paused:
+            return None
         with self._lock:
             if not self._queue:
                 return None
@@ -235,17 +245,20 @@ class SpeechPipeline:
             self.buffer.feed(chunk)
         return sentence
 
+    def resume(self) -> None:
+        """Lift a barge-in pause — the synth pump resumes speaking the queued backlog in order."""
+        self._paused = False
+
     def interrupt(self) -> None:
-        """Barge-in: he spoke while she was playing — stop the sound, keep the turn. Idempotent, and
-        MUTES the rest of this turn's audio: without this, a still-streaming reply keeps queueing
-        new sentences while he keeps talking, and each one re-satisfies "she is audible" for the
-        NEXT interim transcript — a rapid interrupt/re-queue loop that showed up live as repeated
-        ``[barge-in]`` lines (TUI lag from the widget churn) and choppy audio (nothing ever finished
-        playing). Once muted, :meth:`pending`/:attr:`buffer` stay empty for the rest of the turn, so
-        the caller's barge-in check naturally stops re-firing — :meth:`finish_turn` unmutes for the
-        next turn."""
+        """Barge-in: he spoke while she was playing — stop the sound, PAUSE (not cancel). Idempotent.
+        The queue is deliberately NOT cleared: nothing she was going to say is skipped — a
+        still-streaming turn keeps adding to it, and it all plays once :meth:`resume` lifts the
+        pause. Debounce is automatic, not a separate flag: once paused, ``buffer.playing`` is False
+        and :meth:`synth_next` refuses to start anything new, so the caller's barge-in check
+        (``playing or (not paused and pending)``) naturally stops re-firing for repeated interim
+        transcripts during the same burst — the live symptom before this: a rapid interrupt/re-queue
+        loop (``[barge-in]`` spam / TUI lag) and content silently discarded instead of queued."""
         with self._lock:
             self._epoch += 1
-            self._queue.clear()
         self.buffer.clear()
-        self._muted = True
+        self._paused = True

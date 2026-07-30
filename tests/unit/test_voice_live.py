@@ -31,15 +31,18 @@ def _loop(on_utterance=None):
 
 
 def test_interim_while_she_plays_is_a_barge_in():
+    # Barge-in is a QUEUE, not a discard (owner requirement): the sound stops, but nothing queued
+    # is thrown away — it plays once resume() is called.
     loop, pipeline, _ = _loop()
     pipeline.buffer.feed(b"AUDIO")                      # she is audible
     loop.handle_event(_interim("так але"))
-    assert not pipeline.buffer.playing                  # her sound stopped
+    assert not pipeline.buffer.playing and pipeline.paused  # her sound stopped, now paused
     loop2, pipeline2, _ = _loop()
     pipeline2.feed_delta("В черзі речення. ")           # not yet audible, but queued
     assert pipeline2.pending == 1
     loop2.handle_event(_interim("зажди"))
-    assert pipeline2.pending == 0                       # the queued tail dropped too
+    assert pipeline2.pending == 1                       # still queued — nothing was skipped
+    assert pipeline2.paused and pipeline2.synth_next() is None  # just not played while paused
 
 
 def test_interim_in_silence_never_interrupts():
@@ -53,10 +56,10 @@ def test_interim_in_silence_never_interrupts():
 
 
 def test_repeated_interims_while_streaming_barge_in_only_once():
-    # Live bug: Deepgram fires MANY interim events per second while he talks; if the reply is
-    # STILL streaming new sentences in during that window, each interim used to re-satisfy
-    # "she is audible" and fire ANOTHER interrupt() + [barge-in] note — a rapid churn that showed
-    # up as TUI lag (a mounted line per event) and choppy audio (nothing ever finished playing).
+    # Live bug: Deepgram fires MANY interim events per second while he talks. Barge-in must fire
+    # ONCE per burst (not re-interrupt on every interim — that showed up as TUI lag from repeated
+    # [barge-in] lines) — but everything the still-streaming reply keeps adding must stay QUEUED,
+    # not be discarded, and play once he's done talking.
     notes: list[str] = []
     pipeline = SpeechPipeline(MockStreamTTS())
     loop = VoiceLoop(stream=None, pipeline=pipeline, on_utterance=lambda t: None,
@@ -65,14 +68,41 @@ def test_repeated_interims_while_streaming_barge_in_only_once():
     loop.handle_event(_interim("а"))                     # the first interim while she's queued/playing
     assert notes == ["[barge-in]"]
     # the reply is STILL generating and queues MORE sentences even though he already interrupted
-    pipeline.feed_delta("Друге речення, що йде запізно. ")
+    pipeline.feed_delta("Друге речення, що йде пізніше. ")
     for _ in range(5):                                    # a burst of further interims, same utterance
         loop.handle_event(_interim("а ще"))
-    assert notes == ["[barge-in]"]                        # only the FIRST one fired
-    assert pipeline.pending == 0                           # the late sentence was muted, never queued
-    pipeline.finish_turn()
-    pipeline.feed_delta("Наступний хід. ")                 # a fresh turn speaks normally again
+    assert notes == ["[barge-in]"]                        # only the FIRST one fired — debounced
+    assert pipeline.pending == 2                           # BOTH sentences queued, nothing skipped
+    assert pipeline.paused
+    loop.handle_event(_final("ну добре."))                 # his utterance commits → she may speak again
+    assert not pipeline.paused
+    pipeline.feed_delta("Наступний хід. ")                 # its sentences queue right behind the backlog
+    assert pipeline.pending == 3
+
+
+def test_stumble_then_continue_both_replies_get_spoken_in_full():
+    # Owner's scenario: he starts talking, pauses (a request already fires for the partial
+    # utterance), then continues — a SECOND utterance commits and gets its own reply. Both replies
+    # must be spoken in full, in order — nothing skipped just because two turns stacked up.
+    pipeline = SpeechPipeline(MockStreamTTS())
+    loop = VoiceLoop(stream=None, pipeline=pipeline, on_utterance=lambda t: None)
+
+    loop.handle_event(_final("Перше повідомлення."))       # commit 1 → resume() (no-op, nothing queued)
+    pipeline.feed_delta("Відповідь перша. ")                # reply 1 starts streaming/playing
+    assert pipeline.synth_next() == "Відповідь перша."
+    assert pipeline.buffer.playing
+
+    loop.handle_event(_interim("а ще"))                     # he's ALREADY talking again → barge-in
+    assert pipeline.paused
+    pipeline.feed_delta("Відповідь перша, хвіст. ")         # reply 1 is still streaming — queues, held
     assert pipeline.pending == 1
+
+    loop.handle_event(_final("Друге повідомлення."))        # commit 2 → resume()
+    assert not pipeline.paused
+    pipeline.finish_turn()                                  # reply 1's turn ends
+    pipeline.feed_delta("Відповідь друга. ")                # reply 2 streams in behind it
+
+    assert [pipeline.synth_next() for _ in range(2)] == ["Відповідь перша, хвіст.", "Відповідь друга."]
 
 
 def test_committed_utterance_runs_exactly_one_turn():

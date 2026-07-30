@@ -51,24 +51,36 @@ class VoiceLoop:
 
     # --- the decision core (pure — fed parsed events) ----------------------------------------------
     def handle_event(self, event: dict) -> str | None:
-        """One Deepgram event → maybe a barge-in, maybe a committed utterance (returned + routed)."""
+        """One Deepgram event → maybe a barge-in, maybe a committed utterance (returned + routed).
+
+        A barge-in only PAUSES her (voice/stream_tts.SpeechPipeline.interrupt — nothing queued is
+        discarded); once your utterance commits — whatever triggered it, a real pause-then-continue
+        included — :meth:`resume` lets her finish what she hadn't said, then continue into whatever
+        comes next, all still in FIFO order. This also covers stacked commits (you paused mid-
+        thought, a request already fired, then you continued): every commit calls resume(), so
+        nothing queued ever gets silently skipped."""
         if self._is_barge_in(event):
             self._pipeline.interrupt()
             self._on_note("[barge-in]")
         utterance = self._tracker.feed(event)
         if utterance:
+            self._pipeline.resume()
             self.utterances.append(utterance)
             self._on_utterance(utterance)  # non-blocking — the TUI schedules the turn
         return utterance
 
     def _is_barge_in(self, event: dict) -> bool:
-        """He is speaking (a non-empty interim) while she is audible → stop her sound."""
+        """He is speaking (a non-empty interim) while she is audible, OR about to be (queued and not
+        already paused) → stop her sound. Once paused, this is False until :meth:`resume` — the
+        pause state itself is the debounce, so a burst of interim events fires exactly one barge-in."""
         if event.get("type") != "Results" or event.get("is_final"):
             return False
         alt = (((event.get("channel") or {}).get("alternatives")) or [{}])[0]
         if not (alt.get("transcript") or "").strip():
             return False
-        return self._pipeline.buffer.playing or self._pipeline.pending > 0
+        return self._pipeline.buffer.playing or (
+            not self._pipeline.paused and self._pipeline.pending > 0
+        )
 
     # --- the async pumps (thin — drive the injected seams) -----------------------------------------
     async def pump_events(self) -> None:

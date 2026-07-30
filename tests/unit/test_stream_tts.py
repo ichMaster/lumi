@@ -72,7 +72,9 @@ def test_pipeline_guards_think_tags_english_and_trailers():
     assert "The user is asking about my mood." in p.skipped  # the leak is visible, not silent
 
 
-def test_barge_in_clears_buffer_and_queue_but_only_audio():
+def test_barge_in_pauses_sound_but_keeps_the_queue():
+    # The owner's explicit requirement: barge-in is a QUEUE, not a discard — she stays silent while
+    # interrupted, then finishes exactly what she hadn't said, in order, once resume() is called.
     tts = MockStreamTTS([b"AUDIO"])
     p = SpeechPipeline(tts)
     p.feed_delta("Перше. Друге. Третє. ")
@@ -81,14 +83,17 @@ def test_barge_in_clears_buffer_and_queue_but_only_audio():
     assert p.buffer.playing
     p.interrupt()                                     # he talks over her
     assert not p.buffer.playing                       # the sound stopped…
-    assert p.pending == 0                             # …the queued tail is dropped…
-    assert p.synth_next() is None
+    assert p.pending == 2                             # …but "Друге."/"Третє." are still waiting
+    assert p.paused and p.synth_next() is None        # paused — nothing plays while he's talking
     p.interrupt()                                     # …and a second interrupt is a no-op
-    p.feed_delta("Ще з того ж ходу. ")                # v1.6.2: muted for the REST of this turn —
-    assert p.pending == 0                             # a still-streaming reply can't re-arm barge-in
-    p.finish_turn()                                   # the interrupted turn ends…
-    p.feed_delta("Новий хід. ")                       # …the NEXT turn speaks normally
-    assert p.synth_next() == "Новий хід."
+    p.feed_delta("Ще з того ж ходу. ")                # a still-streaming reply keeps adding —
+    assert p.pending == 3                             # …queued too, nothing is skipped
+    p.finish_turn()                                    # the interrupted turn ends (filters reset only)
+    assert p.paused and p.pending == 3                 # still paused — finish_turn never resumes
+    p.resume()                                          # his utterance committed — she may speak again
+    assert not p.paused
+    p.feed_delta("Новий хід. ")                        # the next turn's sentences queue right after
+    assert [p.synth_next() for _ in range(4)] == ["Друге.", "Третє.", "Ще з того ж ходу.", "Новий хід."]
 
 
 def test_barge_in_mid_sentence_aborts_remaining_chunks():
