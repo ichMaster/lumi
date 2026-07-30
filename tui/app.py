@@ -923,10 +923,8 @@ class LumiApp(App[None]):
             else:
                 state = await asyncio.to_thread(self._core.reply, text, self._session, images=images,
                                                 register=register)
-            if register == "voice" and self._voice_pipeline is not None:
-                if not streamed:  # blocking turn — speak the whole validated reply at once
-                    self._voice_pipeline.feed_delta(state.reply)
-                self._voice_pipeline.finish_turn()  # flush the held tail; reset for the next turn
+            if register == "voice" and self._voice_pipeline is not None and not streamed:
+                self._voice_pipeline.feed_delta(state.reply)  # blocking turn — queue the whole reply
             self._connected = True
             self._last_reply = state.reply
             # Route the validated state through the renderer (logs the field) — the
@@ -968,6 +966,12 @@ class LumiApp(App[None]):
             line = f"{ERROR_LINE}  ({type(exc).__name__})"  # a short hint; full traceback is in the log
             self._emit(line, Text(line, style=f"bold {ERROR_COLOR}"))
         finally:
+            # Always closes the turn's speech pipeline — success OR error. A barge-in mutes the
+            # pipeline for the REST of this turn (voice/stream_tts.SpeechPipeline.interrupt); only
+            # finish_turn() lifts that mute for the next one. Skipping this on the error path left
+            # every later voice reply silently un-queued after the first interruption (live bug).
+            if register == "voice" and self._voice_pipeline is not None:
+                self._voice_pipeline.finish_turn()
             self._set_busy(False)  # unlock + refocus the input — your turn again
             self._render_status()
             self._render_stats()
