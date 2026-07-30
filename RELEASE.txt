@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 1.6.2 (2026-07-30)
+---------------------------
+- LUMI-199: the talking register — a voice role in the model profiles (gemini -> gemini-2.5-flash, LUMI_MODEL_VOICE, the optional 5th LUMI_MODEL_PROFILES part) + register="voice" on Core.reply(): the voice tier answers, the reasoning/inner-voice directive is omitted, native thinking is forced off (Gemini gets the explicit thinkingBudget=0); emotion contract, closeness, RAG, memory writes and the async queue unchanged; register off pinned byte-identical.
+- LUMI-200: streaming STT adapter — voice/stream_stt.py: the Deepgram WS URL (linear16 16k uk, interims, endpointing 500 ms / LUMI_VOICE_ENDPOINT_MS), the UtteranceTracker phrase-hold (an un-punctuated speech_final waits for the continuation or the UtteranceEnd backstop), the DeepgramStream seam with an injectable connector; the chain-WS probe imports the promoted pieces.
+- LUMI-201: streaming TTS output — voice/stream_tts.py: the ElevenLabs stream endpoint (pcm_24000, her voice), the lossless SpeakerBuffer, the SpeechPipeline (StreamTagFilter + clean_sentence + the speakable Latin-vs-Cyrillic gate before TTS, one synth per sentence).
+- LUMI-202: /mode-set text|voice + LUMI_MODE_SET (default text, byte-identical) — the in-TUI live loop: exactly one Core.reply() per committed utterance, the reply renders AND speaks; typed input + slash commands keep working; every failure (keys/WS/TTS/mic) degrades to text with a readable line; mode:voice in the status bar.
+- fix(gemini): a hallucinated native set_state functionCall (the Anthropic-only tool Gemini sometimes emits) is treated as the terminal state — not "unknown tool", never an empty reply (the blocked-state placeholder guards the v0.3 gate); the talking register offers NO tools at all — a real declared tool next to the emotion instructions was the trigger.
+- fix(voice): LUMI_VOICE_OUT_DEVICE picks the speaker (audio was routing to the laptop speakers even with headphones connected; resolve_output_device mirrors the mic resolution); the voice-mode autostart mount race; the old outbox voicer double-speaking voice turns.
+- Barge-in is a QUEUE, not a discard: an interruption pauses her sound (nothing queued is lost, the in-flight sentence requeues to replay whole); she resumes when your utterance commits — or on an empty final / a nothing-to-flush UtteranceEnd (the noise case), with a 4 s auto-resume watchdog so silence can never be permanent; one [barge-in] per burst (the pause itself is the debounce); a failed turn still resets the pipeline (finish_turn in finally).
+
 Version 1.6.1 (2026-07-29)
 ---------------------------
 - LUMI-196: Core.prompt_snapshot() — the assembled system prompt without a turn (the same builder a reply uses; no model call, nothing persisted) — the pure-context source for the voice probes.

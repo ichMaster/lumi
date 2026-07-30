@@ -12,6 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**1.6.2 — Voice mode in the TUI.** The probes' winning stack productized: `/mode-set voice`
+(or `LUMI_MODE_SET=voice`) turns the TUI into a live spoken conversation — mic → Deepgram WS
+(streaming recognition, the phrase-hold) → **exactly one `Core.reply()` on the talking register**
+(the profile's `voice` tier, no think directive, full memory/emotion semantics) → her ElevenLabs
+voice, sentence-streamed (LUMI-199..202). **Barge-in is a queue, not a discard**: interrupt her
+and she pauses, hears you out, then finishes the interrupted sentence and everything queued, in
+order — with commit/empty-final/UtteranceEnd resume paths plus a 4 s watchdog (silence can never
+be permanent). Hardened live: the hallucinated Gemini `set_state` functionCall is terminal (and
+the voice register offers no tools — the trigger), `LUMI_VOICE_OUT_DEVICE` picks the speaker,
+autostart mount-race and old-voicer double-speak fixed. Text mode off-pin byte-identical.
+
 **1.6.1 — The live voice prototype.** Лілі speaks — four manual voice probes measured live:
 the OpenAI Realtime probe (`scripts/voice.sh` — latency GO at 1.25–1.37 s, voice NO-GO: an
 American accent no steering moved), the REST chain, the realtime+ElevenLabs hybrid, and the
