@@ -260,13 +260,20 @@ from the active profile. Off (`LUMI_MODE_SET=text`, default) → **byte-identica
   Full phase definition: ROADMAP §v1.6.2; issues: `v1.6.2-issues.md`. (The OpenAI-Realtime
   transport MVP — REALTIME_VOICE_MODE_SET.md Phases 1–3 — is superseded as the transport but
   remains the design ancestor for the mode framework and failure rules.)
-- **v1.6.3 — realtime-as-brain — DEFERRED** (the chain-WS victory removes its driver; revisit only
+- **v1.6.3 — voice polish (REDEFINED — the second live-use round):** the first-clause cut for the
+  felt first-audio latency (~0.3–0.65 s measured sitting in the full-first-sentence wait);
+  emotion-colored ElevenLabs delivery (the talking register speaks NEUTRAL today —
+  `voice_settings_for` gets the turn's validated emotion, previous-turn state colors the live
+  stream); Deepgram WS auto-reconnect with backoff (a drop no longer kills voice mode instantly);
+  and observability — the probes' per-turn stage line + a `/latency` voice section + Gemini prices
+  in `core/usage.py`. Full phase definition: ROADMAP §v1.6.3; issues: `v1.6.3-issues.md`.
+- **v1.6.x (deferred) — realtime-as-brain** (the chain-WS victory removes its driver; revisit only
   if the chain's turn-taking proves insufficient) — instructions from the core prompt builder
   (live, refreshed via `session.update`); `set_state` as a realtime tool; transcripts persisted as
   Messages; the voice-trimmed inner-voice instruction; mini only.
-- **v1.6.4 — the classifier + the two-model set** — the lexical stage + tiny-classifier routing,
-  the session handoff, stickiness, `/roles`-style surfacing (`status: mode:voice ✦ deep`), cost
-  logging into the usage/cache reports.
+- **v1.6.x (deferred) — the classifier + the two-model set** — the lexical stage + tiny-classifier
+  routing, the session handoff, stickiness, `/roles`-style surfacing (`status: mode:voice ✦ deep`),
+  cost logging into the usage/cache reports.
 - **v1.6.5 (later — may slip beyond v1.6)** — realtime tools beyond `set_state` (recall/news), the
   web client (WebRTC + ephemeral tokens + AEC for free), full-duplex GPT-Live evaluation.
 
