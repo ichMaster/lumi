@@ -203,6 +203,85 @@ async def test_pump_events_end_to_end_spoken_turn():
     assert pipeline.buffer.pull(100) == b"AU" * 2
 
 
+class _FlakyConnector:
+    """A scripted Deepgram connector: each call pops the next behavior — a _FakeEventsWS (list of
+    raw frames), or an Exception instance to raise (a failed reconnect attempt)."""
+
+    def __init__(self, script):
+        self._script = list(script)
+        self.connects = 0
+
+    async def __call__(self, url, headers):
+        self.connects += 1
+        step = self._script.pop(0) if self._script else ConnectionError("no more sockets")
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+class _FakeEventsWS:
+    def __init__(self, frames, *, die_after: bool = False):
+        self._frames = list(frames)
+        self._die_after = die_after
+
+    async def send(self, data):
+        pass
+
+    async def close(self):
+        pass
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self._frames:
+            if self._die_after:
+                raise ConnectionError("socket dropped")
+            raise StopAsyncIteration
+        return self._frames.pop(0)
+
+
+async def test_resilient_pump_heals_a_drop_then_degrades_when_retries_exhaust():
+    # Outage 1: the socket dies mid-session → attempt 1 fails, attempt 2 reconnects (fresh
+    # tracker, "reconnected" note); the healed socket serves one utterance, then closes for good —
+    # all 3 attempts fail → the pump returns (the TUI's cue to degrade to text).
+    ws1 = _FakeEventsWS([json.dumps(_interim("прив"))], die_after=True)
+    ws2 = _FakeEventsWS([json.dumps(_final("Привіт, як справи?"))])
+    connector = _FlakyConnector([ws1, ConnectionError("still down"), ws2,
+                                 ConnectionError("down"), ConnectionError("down"),
+                                 ConnectionError("down")])
+    stream = DeepgramStream("k", url=build_deepgram_url(model="nova-3"), _connect=connector)
+    await stream.open()
+
+    notes: list[str] = []
+    turns: list[str] = []
+    pipeline = SpeechPipeline(MockStreamTTS())
+    loop = VoiceLoop(stream=stream, pipeline=pipeline, on_utterance=turns.append,
+                     on_note=notes.append)
+    first_tracker = loop._tracker
+    await loop.pump_events_resilient(reconnect=3, backoff_s=0)   # returns ONLY when exhausted
+    assert turns == ["Привіт, як справи?"]                       # the healed socket kept working
+    assert loop._tracker is not first_tracker                    # fresh tracker per reconnect
+    assert notes.count("voice: reconnected") == 1
+    assert notes.count("voice: reconnecting 1/3…") == 2          # outage 1 + the final outage
+    assert notes[-1] == "voice: reconnecting 3/3…"               # …which exhausted all attempts
+
+
+async def test_send_pcm_into_a_dead_socket_is_dropped_not_raised():
+    class _DeadWS:
+        async def send(self, data):
+            raise ConnectionError("dead")
+
+        async def close(self):
+            pass
+
+    stream = DeepgramStream("k", url="wss://x", _connect=None)
+    stream._ws = _DeadWS()
+    await stream.send_pcm(b"\x00\x01")                           # swallowed — never a storm
+    stream._ws = None
+    await stream.send_pcm(b"\x00\x01")                           # a reconnect gap — same
+
+
 def test_mode_set_config_default_is_text(monkeypatch):
     from core.config import load_config
 

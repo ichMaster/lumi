@@ -115,9 +115,27 @@ class DeepgramStream:
             await self._ws.close()
             self._ws = None
 
+    async def reopen(self) -> DeepgramStream:
+        """Close (best-effort) and connect again IN PLACE — the same object heals, so the mic
+        sender's closure keeps working across a reconnect (v1.6.3 LUMI-205)."""
+        try:
+            await self.close()
+        except Exception:  # noqa: BLE001 — a half-dead socket must not block the reconnect
+            self._ws = None
+        return await self.open()
+
     async def send_pcm(self, pcm: bytes) -> None:
-        """One raw linear16 mic frame → Deepgram (binary WS message)."""
-        await self._ws.send(pcm)
+        """One raw linear16 mic frame → Deepgram (binary WS message).
+
+        Frames into a dead/reconnecting socket are DROPPED silently — the mic stays open through
+        a reconnect, and an exception storm from the capture thread must never kill the loop."""
+        ws = self._ws
+        if ws is None:
+            return
+        try:
+            await ws.send(pcm)
+        except Exception:  # noqa: BLE001 — a dropped frame during a drop, never a storm
+            return
 
     async def events(self) -> AsyncIterator[dict]:
         """Parsed server events, in order; non-JSON frames are skipped."""

@@ -1356,15 +1356,16 @@ class LumiApp(App[None]):
         self._render_status()
 
     async def _voice_pump(self) -> None:
-        """The Deepgram event pump; a dropped socket degrades to text with a readable line."""
+        """The Deepgram event pump with self-healing (LUMI-205): a dropped/closed socket reconnects
+        with backoff up to LUMI_VOICE_RECONNECT times; only an exhausted outage degrades to text."""
         try:
-            await self._voice_loop.pump_events()
+            await self._voice_loop.pump_events_resilient(reconnect=self._app_cfg.voice_reconnect)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — unexpected (the resilient pump absorbs drops)
             _log.exception("voice pump dropped (%s)", type(exc).__name__)
             await self._stop_voice_mode(f"Голосовий зв'язок упав ({type(exc).__name__}) — text.")
-        else:  # the server closed the socket (idle timeout etc.) — same graceful fallback
+        else:  # the retries exhausted — the same graceful fallback as before
             await self._stop_voice_mode("Голосовий зв'язок закрився — text.")
 
     async def _voice_synth(self) -> None:

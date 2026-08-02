@@ -109,6 +109,40 @@ class VoiceLoop:
         async for event in self._stream.events():
             self.handle_event(event)
 
+    async def pump_events_resilient(self, *, reconnect: int = 3, backoff_s: float = 1.0) -> None:
+        """v1.6.3 LUMI-205 — :meth:`pump_events` that HEALS: a socket drop (error or a server-side
+        close) triggers up to ``reconnect`` in-place reopen attempts with exponential backoff
+        (``backoff_s`` · 1/2/4…); each successful reconnect gets a **fresh tracker** (a
+        half-utterance across a drop is unrecoverable and must not corrupt the next one) and resets
+        the retry budget. Returns normally only when a whole outage's retries exhaust — the caller
+        (the TUI) then degrades to text. The mic keeps capturing throughout: frames into the dead
+        socket are dropped by the sender guard, never an exception storm."""
+        import asyncio
+
+        while True:
+            try:
+                await self.pump_events()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — a dropped socket is the EXPECTED failure here
+                pass
+            healed = False
+            for attempt in range(1, max(0, reconnect) + 1):
+                self._on_note(f"voice: reconnecting {attempt}/{reconnect}…")
+                await asyncio.sleep(backoff_s * (2 ** (attempt - 1)))
+                try:
+                    await self._stream.reopen()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001 — this attempt failed; the next backs off longer
+                    continue
+                self._tracker = UtteranceTracker()  # never resume into a half-parsed utterance
+                self._on_note("voice: reconnected")
+                healed = True
+                break
+            if not healed:
+                return  # retries exhausted — the caller shows the readable degrade to text
+
     async def synth_pump(self, *, poll_s: float = 0.05) -> None:
         """Drain queued sentences into the speaker buffer off the event loop (blocking TTS reads
         run in a thread). Cancelled by the TUI when voice mode stops."""

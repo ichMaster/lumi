@@ -551,6 +551,9 @@ class Config:
     # many complete words (earlier first audio — the probes measured ~0.3–0.65 s in the wait for
     # the full first sentence). 0 → off (whole sentences only, the v1.6.2 behavior).
     voice_first_clause_words: int = 8
+    # v1.6.3 LUMI-205: reconnect attempts (exponential backoff) before a dropped Deepgram socket
+    # degrades voice mode to text. 0 → the v1.6.2 behavior (any drop falls straight to text).
+    voice_reconnect: int = 3
     # v1.6.2 LUMI-202: the interaction mode at startup — "text" (today's TUI, byte-identical) or
     # "voice" (the live loop starts on mount). /mode-set switches at runtime; text is the fallback.
     mode_set: str = "text"
@@ -900,6 +903,7 @@ def load_config(*, load_env: bool = True) -> Config:
         voice_endpoint_ms=int(os.getenv("LUMI_VOICE_ENDPOINT_MS") or 500),
         voice_out_device=(os.getenv("LUMI_VOICE_OUT_DEVICE") or "").strip(),
         voice_first_clause_words=int(os.getenv("LUMI_VOICE_FIRST_CLAUSE_WORDS") or 8),
+        voice_reconnect=int(os.getenv("LUMI_VOICE_RECONNECT") or 3),
         mode_set=(lambda m: m if m in ("text", "voice") else "text")(
             (os.getenv("LUMI_MODE_SET") or "text").strip().lower()),
         deepgram_api_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),
