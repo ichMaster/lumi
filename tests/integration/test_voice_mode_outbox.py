@@ -38,6 +38,23 @@ async def test_normal_turn_still_mirrors_to_outbox_for_the_old_voicer(tmp_path):
         assert "Привіт!" in app._outbox_path.read_text(encoding="utf-8")
 
 
+async def test_voice_stage_line_prints_and_feeds_the_latency_section(tmp_path):
+    # LUMI-206: the three stamps assemble into one dim line per spoken turn + the /latency history.
+    app = _app(tmp_path)
+    async with app.run_test() as pilot:
+        app._voice_stage = {"commit": 100.0, "endpoint_s": 0.7, "llm_ts": 100.9}
+        app._note_voice_stages(101.2)                     # the first audio chunk landed at 101.2
+        await pilot.pause()
+        assert any("voice: endpoint 0.7s · llm first 0.9s · tts first 0.3s = 1.2s" in t
+                   for t in app.transcript)
+        assert round(app._voice_stages[-1]["total_s"], 2) == 1.2  # recorded for /latency
+        assert app._voice_stage is None                   # one line per turn
+
+        app._voice_stage = {"commit": None, "llm_ts": None}
+        app._note_voice_stages(50.0)                      # missing stamps → silence, never an error
+        assert len(app._voice_stages) == 1
+
+
 async def test_a_failed_voice_turn_still_resets_the_pipeline_for_the_next_reply(tmp_path):
     # Live bug (earlier fix): finish_turn() ran only on the SUCCESS path in _run_turn, so a turn
     # that raised (EmotionError etc.) skipped it, leaving the StreamTagFilter/SentenceAssembler in

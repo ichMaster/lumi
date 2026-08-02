@@ -19,6 +19,7 @@ layer (:func:`open_audio` below) — hardware-touching, uncovered by design.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 
 from voice.stream_stt import DeepgramStream, UtteranceTracker
@@ -41,13 +42,20 @@ class VoiceLoop:
         on_utterance: Callable[[str], None],
         tracker: UtteranceTracker | None = None,
         on_note: Callable[[str], None] | None = None,
+        now: Callable[[], float] | None = None,
     ) -> None:
         self._stream = stream
         self._pipeline = pipeline
         self._tracker = tracker if tracker is not None else UtteranceTracker()
         self._on_utterance = on_utterance
         self._on_note = on_note or (lambda _line: None)
+        self._now = now or time.monotonic
         self.utterances: list[str] = []  # every committed utterance, for tests/diagnosis
+        # v1.6.3 LUMI-206 — the stage line's first stamp. The audio glue updates last_voice_ts on
+        # every loud mic block (the probes' diagnostic); a commit records its time + the endpoint
+        # gap (last loud sound → the commit decision — the felt part the other stages don't see).
+        self.last_voice_ts = 0.0
+        self.last_commit: dict | None = None  # {"ts": monotonic, "endpoint_s": float | None}
 
     # --- the decision core (pure — fed parsed events) ----------------------------------------------
     def handle_event(self, event: dict) -> str | None:
@@ -64,6 +72,11 @@ class VoiceLoop:
             self._on_note("[barge-in]")
         utterance = self._tracker.feed(event)
         if utterance:
+            now = self._now()  # LUMI-206: the commit stamp + the endpoint diagnostic
+            self.last_commit = {
+                "ts": now,
+                "endpoint_s": max(0.0, now - self.last_voice_ts) if self.last_voice_ts else None,
+            }
             self._pipeline.resume()
             self.utterances.append(utterance)
             self._on_utterance(utterance)  # non-blocking — the TUI schedules the turn
@@ -155,18 +168,26 @@ class VoiceLoop:
 
 
 def open_audio(loop, stream: DeepgramStream, pipeline: SpeechPipeline,
-               *, mic_device=None, out_device=None):  # pragma: no cover — sounddevice glue
+               *, mic_device=None, out_device=None,
+               voice_loop: VoiceLoop | None = None):  # pragma: no cover — sounddevice glue
     """Open the mic → WS sender and the speaker ← buffer player; returns ``(mic, spk)`` streams.
 
     Hardware + network glue (headphones — no AEC in the local phases): the mic callback ships raw
     pcm frames onto the asyncio loop; the speaker callback pulls exactly what plays (the lossless
-    rule). The caller owns start/stop/close."""
+    rule). With a ``voice_loop``, loud mic blocks stamp its ``last_voice_ts`` (the LUMI-206
+    endpoint diagnostic — the probes' cheap peak check over the block head). The caller owns
+    start/stop/close."""
     import asyncio
 
     import sounddevice as sd
 
     def mic_cb(indata, frames, t, status) -> None:
         data = bytes(indata)
+        if voice_loop is not None:
+            peak = max((abs(int.from_bytes(data[i:i + 2], "little", signed=True))
+                        for i in range(0, min(len(data), 200), 2)), default=0)
+            if peak >= 800:
+                voice_loop.last_voice_ts = time.monotonic()
         asyncio.run_coroutine_threadsafe(stream.send_pcm(data), loop)
 
     def spk_cb(outdata, frames, t, status) -> None:

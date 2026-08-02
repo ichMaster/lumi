@@ -42,12 +42,20 @@ PRICING: dict[str, ModelPricing] = {
     "claude-sonnet-4-6": ModelPricing(3.0, 15.0),
     "claude-sonnet-4-5": ModelPricing(3.0, 15.0),
     "claude-haiku-4-5": ModelPricing(1.0, 5.0),
+    # v1.6.3 LUMI-206: Gemini list prices — without these every gemini call cost the OPUS-tier
+    # default estimate, wildly overstating the (all-Gemini) voice mode in the ledger and /usage.
+    # Order matters for the prefix match: the more specific id first (flash-lite before flash).
+    "gemini-3.1-pro": ModelPricing(2.0, 12.0),
+    "gemini-3.5-flash": ModelPricing(1.5, 9.0),
+    "gemini-2.5-flash-lite": ModelPricing(0.10, 0.40),
+    "gemini-2.5-flash": ModelPricing(0.30, 2.50),
 }
 _DEFAULT_PRICING = ModelPricing(5.0, 25.0)  # unknown model → an opus-tier estimate
 
 
 def pricing_for(model: str) -> ModelPricing:
-    """Best-effort price lookup: exact id, then prefix (handles date/``[1m]`` suffixes), then family."""
+    """Best-effort price lookup: exact id, then prefix (handles date/``[1m]``/``-preview``
+    suffixes), then family."""
     m = (model or "").strip().lower()
     if m in PRICING:
         return PRICING[m]
@@ -58,6 +66,10 @@ def pricing_for(model: str) -> ModelPricing:
         return PRICING["claude-haiku-4-5"]
     if "sonnet" in m:
         return PRICING["claude-sonnet-4-6"]
+    if "flash-lite" in m:
+        return PRICING["gemini-2.5-flash-lite"]
+    if "flash" in m:
+        return PRICING["gemini-2.5-flash"]
     return _DEFAULT_PRICING
 
 

@@ -226,7 +226,7 @@ class SpeechPipeline:
 
     def __init__(self, tts, buffer: SpeakerBuffer | None = None,
                  *, auto_resume_s: float = 4.0, first_clause_words: int = 0,
-                 emotion_supplier=None) -> None:
+                 emotion_supplier=None, on_first_audio=None) -> None:
         self._tts = tts
         self.buffer = buffer if buffer is not None else SpeakerBuffer()
         # v1.6.3 LUMI-204: her voice carries her state — a callable returning the CURRENT validated
@@ -235,6 +235,10 @@ class SpeechPipeline:
         # (she is still in the mood she was in when she started speaking). Presentation only —
         # voice_settings_for maps it, the same bias the v0.14 voicer uses; the text is untouched.
         self._emotion_supplier = emotion_supplier
+        # v1.6.3 LUMI-206: the stage line's third stamp — called ONCE with time.monotonic() when the
+        # first audio chunk after mark_turn() reaches the speaker buffer (from the synth thread).
+        self._on_first_audio = on_first_audio
+        self._await_first_audio = False
         # v1.6.3 LUMI-203: >0 → the turn's FIRST chunk may cut at a clause/word threshold for
         # earlier first audio; 0 (default) → whole-sentence splitting, byte-identical to before.
         self._first_clause_words = max(0, first_clause_words)
@@ -295,6 +299,11 @@ class SpeechPipeline:
     def paused(self) -> bool:
         return self._paused
 
+    def mark_turn(self) -> None:
+        """LUMI-206: arm the first-audio stamp — the next chunk fed to the buffer fires
+        ``on_first_audio`` once (the TUI's per-turn stage line)."""
+        self._await_first_audio = True
+
     def synth_next(self, *, emotion: str | None = None) -> str | None:
         """Stream ONE queued sentence into the speaker buffer; return its text (None when idle OR
         while paused — the backlog waits for :meth:`resume`, it is never dropped).
@@ -324,6 +333,13 @@ class SpeechPipeline:
                     self._queue.appendleft(sentence)
                     return None
             self.buffer.feed(chunk)
+            if self._await_first_audio:  # LUMI-206: the turn's first audible moment, stamped once
+                self._await_first_audio = False
+                if self._on_first_audio is not None:
+                    try:
+                        self._on_first_audio(time.monotonic())
+                    except Exception:  # noqa: BLE001 — a stats callback must never break the sound
+                        pass
         return sentence
 
     def resume(self) -> None:

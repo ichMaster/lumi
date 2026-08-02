@@ -14,6 +14,7 @@ import logging
 import random
 import shutil
 import subprocess
+import time
 from collections import deque
 from pathlib import Path
 
@@ -308,6 +309,10 @@ class LumiApp(App[None]):
         self._voice_stream = None               # voice.stream_stt.DeepgramStream (the mic side)
         self._voice_audio: tuple | None = None  # the (mic, spk) sounddevice streams
         self._voice_workers: list = []          # the pump/synth Textual workers (cancelled on stop)
+        # v1.6.3 LUMI-206: the per-turn stage stamps (commit/endpoint from VoiceLoop, llm-first from
+        # the reply stream, first audio from the pipeline) + the session history for /latency.
+        self._voice_stage: dict | None = None
+        self._voice_stages: list[dict] = []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -845,6 +850,9 @@ class LumiApp(App[None]):
         def _on_delta(chunk: str) -> None:
             if speak is not None:
                 speak.feed_delta(chunk)  # lock-protected — safe from the reply thread
+                stage = self._voice_stage  # LUMI-206: the turn's second stamp — the first delta
+                if stage is not None and stage.get("llm_ts") is None:
+                    stage["llm_ts"] = time.monotonic()
             self.call_from_thread(self._grow_stream_reply, chunk)
 
         def _on_think(chunk: str) -> None:
@@ -1298,6 +1306,9 @@ class LumiApp(App[None]):
             self._voice_pipeline = SpeechPipeline(
                 tts, first_clause_words=cfg.voice_first_clause_words,  # LUMI-203: earlier first audio
                 emotion_supplier=_current_emotion,                     # LUMI-204: emotion in the voice
+                # LUMI-206: the first audio chunk after mark_turn() completes the stage line
+                # (called from the synth thread → marshal to the UI thread).
+                on_first_audio=lambda ts: self.call_from_thread(self._note_voice_stages, ts),
             )
             self._voice_loop = VoiceLoop(
                 stream=self._voice_stream, pipeline=self._voice_pipeline,
@@ -1310,7 +1321,8 @@ class LumiApp(App[None]):
             mic_dev = resolve_input_device(cfg.stt_device, devices)
             out_dev = resolve_output_device(cfg.voice_out_device, devices)
             mic, spk = open_audio(asyncio.get_running_loop(), self._voice_stream,
-                                  self._voice_pipeline, mic_device=mic_dev, out_device=out_dev)
+                                  self._voice_pipeline, mic_device=mic_dev, out_device=out_dev,
+                                  voice_loop=self._voice_loop)  # LUMI-206: the endpoint stamp
             mic.start()
             spk.start()
             self._voice_audio = (mic, spk)
@@ -1389,7 +1401,33 @@ class LumiApp(App[None]):
             self._emit("(голос: хід пропущено — попередній ще триває)",
                        Text("(голос: хід пропущено — попередній ще триває)", style="yellow"))
             return
+        # LUMI-206: arm the stage stamps for THIS spoken turn (commit/endpoint were just recorded
+        # by the VoiceLoop; llm-first lands on the first streamed delta, first-audio via mark_turn).
+        commit = dict(self._voice_loop.last_commit or {}) if self._voice_loop else {}
+        self._voice_stage = {"commit": commit.get("ts"), "endpoint_s": commit.get("endpoint_s"),
+                             "llm_ts": None}
+        if self._voice_pipeline is not None:
+            self._voice_pipeline.mark_turn()
         await self._run_turn(text, register="voice")
+
+    def _note_voice_stages(self, audio_ts: float) -> None:
+        """LUMI-206 — one dim line per spoken turn: where its time went. Called (marshalled to the
+        UI thread) when the turn's first audio chunk reaches the speaker buffer; needs the commit
+        stamp + the first-delta stamp to say anything useful — missing pieces degrade to silence,
+        never an error."""
+        stage = self._voice_stage
+        self._voice_stage = None  # one line per turn
+        if not stage or stage.get("commit") is None or stage.get("llm_ts") is None:
+            return
+        llm_s = max(0.0, stage["llm_ts"] - stage["commit"])
+        tts_s = max(0.0, audio_ts - stage["llm_ts"])
+        total_s = max(0.0, audio_ts - stage["commit"])
+        endpoint = stage.get("endpoint_s")
+        record = {"endpoint_s": endpoint, "llm_s": llm_s, "tts_s": tts_s, "total_s": total_s}
+        self._voice_stages.append(record)  # the /latency voice section aggregates these
+        endpoint_part = f"endpoint {endpoint:.1f}s · " if endpoint is not None else ""
+        line = f"voice: {endpoint_part}llm first {llm_s:.1f}s · tts first {tts_s:.1f}s = {total_s:.1f}s"
+        self._emit(line, Text(line, style="dim"))
 
     def _model_set_command(self, text: str) -> None:
         """List or switch the per-provider model PROFILES — `/model-set`, `/model-set gemini`
@@ -1701,6 +1739,18 @@ class LumiApp(App[None]):
             f"median /{n} turns: PRE {_s(med['pre_ms'])} · MODEL {_s(med['llm_ms'])} · "
             f"POST {_s(med['post_ms'])}  =  {_s(med['total_ms'])}",
         ]
+        if self._voice_stages:  # v1.6.3 LUMI-206: the spoken turns' stages (present only when any)
+            import statistics as _st
+
+            def _vmed(key: str) -> float:
+                vals = [r[key] for r in self._voice_stages if r.get(key) is not None]
+                return _st.median(vals) if vals else 0.0
+
+            lines.append(
+                f"voice /{len(self._voice_stages)} turns: endpoint {_vmed('endpoint_s'):.1f}s · "
+                f"llm first {_vmed('llm_s'):.1f}s · tts first {_vmed('tts_s'):.1f}s  =  "
+                f"{_vmed('total_s'):.1f}s"
+            )
         body = "\n".join(lines)
         self._emit(body, Text(body, style=THINKING_COLOR))
 

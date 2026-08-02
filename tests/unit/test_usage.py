@@ -36,6 +36,18 @@ def test_pricing_exact_prefix_family_and_default():
     assert pricing_for("some-future-model").input == 5.0           # default estimate
 
 
+def test_pricing_gemini_models_no_longer_cost_the_opus_default():
+    # v1.6.3 LUMI-206: before these rows every gemini call (the WHOLE voice mode) was estimated at
+    # the $5/$25 opus default — a ~17–50× overstatement in the ledger and /usage.
+    assert pricing_for("gemini-3.1-pro-preview").input == 2.0      # prefix past "-preview"
+    assert pricing_for("gemini-3.1-pro-preview").output == 12.0
+    assert pricing_for("gemini-2.5-flash").input == 0.30           # the voice tier
+    assert pricing_for("gemini-2.5-flash-lite").input == 0.10      # the more-specific prefix wins
+    assert pricing_for("gemini-3.5-flash").output == 9.0
+    assert pricing_for("gemini-9.9-flash-lite-preview").input == 0.10  # family fallback: flash-lite
+    assert pricing_for("gemini-9.9-flash-preview").input == 0.30       # family fallback: flash
+
+
 def test_cost_usd_math_and_cache_ttl_multiplier():
     # 1M input on opus = $5; cache read = 10% = $0.50; cache write 1h = 2× = $10; output = $25.
     assert _rec(input=1_000_000, output=0, cache_read=0, cache_write=0).cost_usd == 5.0

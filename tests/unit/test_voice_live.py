@@ -282,6 +282,36 @@ async def test_send_pcm_into_a_dead_socket_is_dropped_not_raised():
     await stream.send_pcm(b"\x00\x01")                           # a reconnect gap — same
 
 
+def test_commit_stamps_time_and_the_endpoint_gap():
+    # LUMI-206: the stage line's first stamp — commit time + the gap from the last loud mic block.
+    clock = [100.0]
+    pipeline = SpeechPipeline(MockStreamTTS())
+    loop = VoiceLoop(stream=None, pipeline=pipeline, on_utterance=lambda t: None,
+                     now=lambda: clock[0])
+    loop.last_voice_ts = 99.1                            # the audio glue's last loud block
+    loop.handle_event(_final("Привіт, як справи?"))
+    assert loop.last_commit["ts"] == 100.0
+    assert round(loop.last_commit["endpoint_s"], 2) == 0.9
+    loop2 = VoiceLoop(stream=None, pipeline=pipeline, on_utterance=lambda t: None,
+                      now=lambda: 5.0)
+    loop2.handle_event(_final("Так."))                   # no mic stamp yet (fresh session)
+    assert loop2.last_commit["endpoint_s"] is None       # honest: unknown, not a fake zero
+
+
+def test_mark_turn_fires_on_first_audio_exactly_once_per_turn():
+    stamps: list[float] = []
+    p = SpeechPipeline(MockStreamTTS([b"A", b"B"]), on_first_audio=stamps.append)
+    p.feed_delta("Перше. Друге. ")
+    p.mark_turn()
+    p.synth_next()                                        # first chunk of the turn → one stamp
+    p.synth_next()                                        # more sentences — no re-fire
+    assert len(stamps) == 1
+    p.mark_turn()                                         # the next turn re-arms
+    p.feed_delta("Третє. ")
+    p.synth_next()
+    assert len(stamps) == 2
+
+
 def test_mode_set_config_default_is_text(monkeypatch):
     from core.config import load_config
 
