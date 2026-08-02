@@ -1288,8 +1288,16 @@ class LumiApp(App[None]):
                                      endpoint_ms=cfg.voice_endpoint_ms)
             self._voice_stream = await DeepgramStream(cfg.deepgram_api_key, url=url).open()
             tts = ElevenLabsStreamTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
+
+            def _current_emotion() -> str | None:
+                # LUMI-204: her LAST validated emotion colors the delivery (the new turn's state
+                # takes over the moment it validates — natural continuity while she's generating).
+                state = getattr(self._core, "last_emotion", None)
+                return state.emotion.value if state is not None else None
+
             self._voice_pipeline = SpeechPipeline(
                 tts, first_clause_words=cfg.voice_first_clause_words,  # LUMI-203: earlier first audio
+                emotion_supplier=_current_emotion,                     # LUMI-204: emotion in the voice
             )
             self._voice_loop = VoiceLoop(
                 stream=self._voice_stream, pipeline=self._voice_pipeline,

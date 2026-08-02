@@ -73,6 +73,34 @@ def test_pipeline_guards_think_tags_english_and_trailers():
     assert "The user is asking about my mood." in p.skipped  # the leak is visible, not silent
 
 
+# --- LUMI-204: emotion-colored delivery ------------------------------------------------------------
+def test_emotion_supplier_colors_each_sentence_and_hands_over_mid_stream():
+    mood = {"now": "calm"}
+    tts = MockStreamTTS()
+    p = SpeechPipeline(tts, emotion_supplier=lambda: mood["now"])
+    p.feed_delta("Перше речення. Друге речення. ")
+    assert p.synth_next() == "Перше речення."
+    mood["now"] = "playful"                              # the new turn's state validates mid-stream
+    assert p.synth_next() == "Друге речення."
+    assert tts.emotions == ["calm", "playful"]           # the handover is per-sentence
+
+
+def test_emotion_supplier_failures_and_absence_degrade_to_neutral():
+    tts = MockStreamTTS()
+    p = SpeechPipeline(tts)                               # no supplier at all — v1.6.2 behavior
+    p.feed_delta("Одне. ")
+    p.synth_next()
+
+    def boom():
+        raise RuntimeError("state unavailable")
+
+    tts2 = MockStreamTTS()
+    p2 = SpeechPipeline(tts2, emotion_supplier=boom)      # a failing supplier degrades, never blocks
+    p2.feed_delta("Два. ")
+    p2.synth_next()
+    assert tts.emotions == [None] and tts2.emotions == [None]
+
+
 # --- LUMI-203: the first-clause cut ----------------------------------------------------------------
 def test_first_chunk_cuts_at_a_clause_boundary_with_enough_words():
     # Streamed like a real reply — small deltas; the cut fires the moment the clause clears the

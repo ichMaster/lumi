@@ -168,14 +168,16 @@ class ElevenLabsStreamTTS:
 
 
 class MockStreamTTS:
-    """A canned streaming TTS for tests — records sentences, yields scripted chunks."""
+    """A canned streaming TTS for tests — records sentences (+ per-call emotion), yields chunks."""
 
     def __init__(self, chunks: list[bytes] | None = None) -> None:
         self.calls: list[str] = []
+        self.emotions: list[str | None] = []  # LUMI-204: the delivery bias each sentence carried
         self._chunks = chunks if chunks is not None else [b"AUDIO"]
 
-    def stream(self, text: str, *, emotion: str | None = None) -> Iterator[bytes]:  # noqa: ARG002
+    def stream(self, text: str, *, emotion: str | None = None) -> Iterator[bytes]:
         self.calls.append(text)
+        self.emotions.append(emotion)
         yield from self._chunks
 
 
@@ -223,9 +225,16 @@ class SpeechPipeline:
     whatever came after — nothing she was going to say is silently skipped."""
 
     def __init__(self, tts, buffer: SpeakerBuffer | None = None,
-                 *, auto_resume_s: float = 4.0, first_clause_words: int = 0) -> None:
+                 *, auto_resume_s: float = 4.0, first_clause_words: int = 0,
+                 emotion_supplier=None) -> None:
         self._tts = tts
         self.buffer = buffer if buffer is not None else SpeakerBuffer()
+        # v1.6.3 LUMI-204: her voice carries her state — a callable returning the CURRENT validated
+        # emotion name (or None → the neutral middle). The previous turn's state colors the stream
+        # while the new one is still generating; the new state takes over the moment it validates
+        # (she is still in the mood she was in when she started speaking). Presentation only —
+        # voice_settings_for maps it, the same bias the v0.14 voicer uses; the text is untouched.
+        self._emotion_supplier = emotion_supplier
         # v1.6.3 LUMI-203: >0 → the turn's FIRST chunk may cut at a clause/word threshold for
         # earlier first audio; 0 (default) → whole-sentence splitting, byte-identical to before.
         self._first_clause_words = max(0, first_clause_words)
@@ -304,6 +313,11 @@ class SpeechPipeline:
                 return None
             sentence = self._queue.popleft()
             epoch = self._epoch
+        if emotion is None and self._emotion_supplier is not None:
+            try:  # LUMI-204: the caller's current state colors this sentence's delivery
+                emotion = self._emotion_supplier()
+            except Exception:  # noqa: BLE001 — a supplier failure degrades to neutral, never silence
+                emotion = None
         for chunk in self._tts.stream(sentence, emotion=emotion):
             with self._lock:
                 if self._epoch != epoch:  # barged-in mid-sentence — replay it whole after resume
