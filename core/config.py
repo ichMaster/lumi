@@ -547,6 +547,10 @@ class Config:
     # headphones even when they're connected (live: audio came out the laptop speakers). Mirrors
     # stt_device's resolution (index-or-substring, resolved against sd.query_devices()).
     voice_out_device: str = ""
+    # v1.6.3 LUMI-203: the first spoken chunk of a turn may cut at a clause boundary / after this
+    # many complete words (earlier first audio — the probes measured ~0.3–0.65 s in the wait for
+    # the full first sentence). 0 → off (whole sentences only, the v1.6.2 behavior).
+    voice_first_clause_words: int = 8
     # v1.6.2 LUMI-202: the interaction mode at startup — "text" (today's TUI, byte-identical) or
     # "voice" (the live loop starts on mount). /mode-set switches at runtime; text is the fallback.
     mode_set: str = "text"
@@ -895,6 +899,7 @@ def load_config(*, load_env: bool = True) -> Config:
         listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else DEFAULT_LISTEN_FLAG,
         voice_endpoint_ms=int(os.getenv("LUMI_VOICE_ENDPOINT_MS") or 500),
         voice_out_device=(os.getenv("LUMI_VOICE_OUT_DEVICE") or "").strip(),
+        voice_first_clause_words=int(os.getenv("LUMI_VOICE_FIRST_CLAUSE_WORDS") or 8),
         mode_set=(lambda m: m if m in ("text", "voice") else "text")(
             (os.getenv("LUMI_MODE_SET") or "text").strip().lower()),
         deepgram_api_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),

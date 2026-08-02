@@ -60,6 +60,53 @@ class SentenceAssembler:
         return [tail] if tail else []
 
 
+# v1.6.3 LUMI-203: a clause boundary the first chunk may cut at — , ; : followed by whitespace.
+# The em-dash is deliberately NOT a boundary (a chunk ending in «—» sounds broken); word-hyphens
+# («світло-сірий») are untouched by construction (no whitespace after the hyphen).
+_CLAUSE_BOUNDARY_RE = re.compile(r"[,;:]\s+")
+_MIN_CLAUSE_WORDS = 3  # a 1–2-word opening fragment reads badly — hold until the clause clears it
+
+
+class FirstClauseAssembler(SentenceAssembler):
+    """LUMI-203 — the first-clause cut: the probes measured ~0.3–0.65 s of the felt first-audio
+    latency sitting in the wait for the FULL first sentence. Until the first chunk of a turn has
+    been emitted, a clause boundary (with ≥ ``_MIN_CLAUSE_WORDS`` words before it) or a complete-
+    word threshold (``first_words``) also flushes; after that first emission the turn reverts to
+    whole-sentence splitting (prosody suffers least at the opening word groups). Never cuts
+    mid-word — the threshold path emits only words already followed by whitespace."""
+
+    def __init__(self, first_words: int = 8) -> None:
+        super().__init__()
+        self._first_words = max(1, first_words)
+        self._armed = True  # until ANYTHING is emitted this turn
+
+    def feed(self, delta: str) -> list[str]:
+        out = super().feed(delta)  # a completed sentence always wins (and disarms)
+        if out:
+            self._armed = False
+            return out
+        if not self._armed:
+            return []
+        # No full sentence yet — the FIRST clause boundary with enough words before it cuts.
+        for m in _CLAUSE_BOUNDARY_RE.finditer(self._buf):
+            left = self._buf[: m.start() + 1]  # keep the punctuation on the spoken chunk
+            if len(left.split()) >= _MIN_CLAUSE_WORDS:
+                self._buf = self._buf[m.end():]
+                self._armed = False
+                return [left.strip()]
+        # …else the word threshold: emit the first N COMPLETE words (never a partial tail).
+        complete = self._buf.split() if self._buf[-1:].isspace() else self._buf.split()[:-1]
+        if len(complete) >= self._first_words:
+            head = complete[: self._first_words]
+            idx = 0
+            for word in head:  # walk the real buffer so inner whitespace survives the rebuild
+                idx = self._buf.index(word, idx) + len(word)
+            self._buf = self._buf[idx:].lstrip()
+            self._armed = False
+            return [" ".join(head)]
+        return []
+
+
 # The last line of defense before TTS: a plain "ЕМОЦІЯ: …" trailer (the thought-format shape the
 # StreamTagFilter's tag grammar doesn't cover) must never be spoken.
 _EMOTION_LINE_RE = re.compile(r"^\s*ЕМОЦІЯ:.*$", re.MULTILINE)
@@ -176,11 +223,14 @@ class SpeechPipeline:
     whatever came after — nothing she was going to say is silently skipped."""
 
     def __init__(self, tts, buffer: SpeakerBuffer | None = None,
-                 *, auto_resume_s: float = 4.0) -> None:
+                 *, auto_resume_s: float = 4.0, first_clause_words: int = 0) -> None:
         self._tts = tts
         self.buffer = buffer if buffer is not None else SpeakerBuffer()
+        # v1.6.3 LUMI-203: >0 → the turn's FIRST chunk may cut at a clause/word threshold for
+        # earlier first audio; 0 (default) → whole-sentence splitting, byte-identical to before.
+        self._first_clause_words = max(0, first_clause_words)
         self._filt = StreamTagFilter()
-        self._asm = SentenceAssembler()
+        self._asm = self._new_asm()
         self._lock = threading.Lock()
         self._queue: deque[str] = deque()
         self._epoch = 0
@@ -209,7 +259,12 @@ class SpeechPipeline:
         for sentence in self._asm.flush():
             self._enqueue(sentence)
         self._filt = StreamTagFilter()
-        self._asm = SentenceAssembler()
+        self._asm = self._new_asm()  # re-arms the first-clause cut for the next turn
+
+    def _new_asm(self) -> SentenceAssembler:
+        if self._first_clause_words > 0:
+            return FirstClauseAssembler(self._first_clause_words)
+        return SentenceAssembler()
 
     def _enqueue(self, sentence: str) -> None:
         cleaned = clean_sentence(sentence)

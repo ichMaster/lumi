@@ -1288,7 +1288,9 @@ class LumiApp(App[None]):
                                      endpoint_ms=cfg.voice_endpoint_ms)
             self._voice_stream = await DeepgramStream(cfg.deepgram_api_key, url=url).open()
             tts = ElevenLabsStreamTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
-            self._voice_pipeline = SpeechPipeline(tts)
+            self._voice_pipeline = SpeechPipeline(
+                tts, first_clause_words=cfg.voice_first_clause_words,  # LUMI-203: earlier first audio
+            )
             self._voice_loop = VoiceLoop(
                 stream=self._voice_stream, pipeline=self._voice_pipeline,
                 on_utterance=lambda t: self.run_worker(self._voice_turn(t), exclusive=False),

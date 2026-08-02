@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from voice.stream_tts import (
     ElevenLabsStreamTTS,
+    FirstClauseAssembler,
     MockStreamTTS,
     SpeakerBuffer,
     SpeechPipeline,
@@ -70,6 +71,54 @@ def test_pipeline_guards_think_tags_english_and_trailers():
         pass
     assert tts.calls == ["Привіт.", "Добре."]                # only pure Ukrainian prose was spoken
     assert "The user is asking about my mood." in p.skipped  # the leak is visible, not silent
+
+
+# --- LUMI-203: the first-clause cut ----------------------------------------------------------------
+def test_first_chunk_cuts_at_a_clause_boundary_with_enough_words():
+    # Streamed like a real reply — small deltas; the cut fires the moment the clause clears the
+    # min-word guard, long before the sentence terminator arrives.
+    a = FirstClauseAssembler(8)
+    assert a.feed("Зараз розкажу ") == []                     # no boundary yet
+    assert a.feed("тобі, що я ") == ["Зараз розкажу тобі,"]   # ≥3 words before the comma → cut
+    assert a.feed("думаю про це все. І далі буде. ") == \
+        ["що я думаю про це все.", "І далі буде."]            # then whole sentences
+
+
+def test_first_chunk_stays_whole_when_the_sentence_arrives_complete():
+    # A sentence that lands in ONE delta has nothing to gain from a cut — spoken whole (prosody).
+    a = FirstClauseAssembler(8)
+    assert a.feed("Привіт, любий друже, як ти там? ") == ["Привіт, любий друже, як ти там?"]
+
+
+def test_first_chunk_min_length_guard_holds_tiny_clauses():
+    a = FirstClauseAssembler(8)
+    assert a.feed("Так, добре, ") == []                       # "Так," (1) and "Так, добре," (2) — held
+    assert a.feed("поїхали далі разом. Потім. ") == ["Так, добре, поїхали далі разом.", "Потім."]
+
+
+def test_first_chunk_word_threshold_never_cuts_mid_word():
+    a = FirstClauseAssembler(4)
+    assert a.feed("раз два три чотири п'я") == ["раз два три чотири"]  # 4 complete words; "п'я" held
+    assert a.feed("ть шість. ") == ["п'ять шість."]           # the partial word survived intact
+
+
+def test_first_clause_mode_rearms_per_turn_and_zero_is_off():
+    tts = MockStreamTTS()
+    p = SpeechPipeline(tts, first_clause_words=8)
+    p.feed_delta("Привіт, любий друже, ")
+    p.feed_delta("як ти ")                                    # streamed — the sentence isn't done yet
+    assert p.synth_next() == "Привіт, любий друже,"           # turn 1: the clause cut fired
+    p.finish_turn()
+    assert p.synth_next() == "як ти"                          # turn 1's tail flushed — nothing lost
+    p.feed_delta("Знову, довший початок, ")
+    p.feed_delta("і ще ")
+    assert p.synth_next() == "Знову, довший початок,"         # re-armed for turn 2
+    off = SpeechPipeline(MockStreamTTS(), first_clause_words=0)
+    off.feed_delta("Привіт, любий друже, ")
+    off.feed_delta("як ти ")
+    assert off.synth_next() is None                           # 0 → holds for the full sentence
+    off.feed_delta("там сьогодні? ")
+    assert off.synth_next() == "Привіт, любий друже, як ти там сьогодні?"
 
 
 def test_barge_in_pauses_sound_but_keeps_the_queue():
