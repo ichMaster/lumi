@@ -1,6 +1,11 @@
 Lumi — Release notes
 ====================
 
+Version 2.1.1 (2026-10-04)
+---------------------------
+- fix(mood): the face theme survives an echoed description — the mood model often writes "ТЕМА: 3am: <description>"; split_theme now keeps the leading theme slug (description, quotes, **bold** ignored), so those days get their themed faces instead of the default pack.
+- fix(mood): the daily mood survives a restart — today's reading is reused from mood.log on start (same resolution, same theme, no extra model call); the model is called once per local day, as specified.
+
 Version 2.1.0 (2026-10-04)
 ---------------------------
 - LUMI-207: LUMI_HOME — one data root for all mutable state (store, vectors, journal, file sandbox, the inbox/outbox bus, logs, schedule state); per-path envs still win; authored files stay in the repo; unset → the in-repo .lumi, byte-identical (pinned).

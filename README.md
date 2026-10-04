@@ -12,6 +12,10 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.1.1 — Mood & theme fixes.** Her face theme no longer falls back to the default pack when the mood
+model echoes the theme description (`ТЕМА: 3am: …` → `3am`), and the daily mood is computed **once per day**
+again — a restart reuses today's reading from `mood.log` instead of re-rolling the mood and the theme.
+
 **2.1 — Prod & dev: two Лілі, one codebase.** The Лілі you live with no longer runs from the development tree:
 a **prod** instance (`~/lumi/prod` — a release-tag checkout, her real memory in `data/`) and a **dev** instance
 (the working tree, test data, its own Telegram bot) run side by side. `LUMI_HOME` moves all mutable state with one
