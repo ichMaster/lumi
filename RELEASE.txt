@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 2.1.0 (2026-10-04)
+---------------------------
+- LUMI-207: LUMI_HOME — one data root for all mutable state (store, vectors, journal, file sandbox, the inbox/outbox bus, logs, schedule state); per-path envs still win; authored files stay in the repo; unset → the in-repo .lumi, byte-identical (pinned).
+- LUMI-208: LUMI_ENV + the version badge — the TUI status line starts with `prod v2.1.0` (bold red) / `dev v2.1.0` (dim); the Telegram daemons log env + version; unset → unchanged.
+- LUMI-209: the env guard — a data-root env-marker; a prod-marked root never opens from a non-prod instance, prod never opens another env's root, prod runs only from a clean checkout exactly at a tag (LUMI_ALLOW_DIRTY_PROD bypasses only that, warned); readable refusal at every entry point before the root is touched.
+- LUMI-210: the prod home — scripts/prod_update.py (refuses while prod runs / without uv; verify tag → backup data/ → checkout → uv sync → new-.env-keys warning; moves code, never data or config) + docs/PROD_SETUP.md (install, migration, run, update, hotfix, rollback).
+- fix(prod): a running prod started via `uv run` is detected by working directory (lsof), not only by argv.
+- docs(prod): per-path overrides must be removed from the prod .env (a relative one resolves inside app/).
+- Her real memory now lives in ~/lumi/prod (migrated 2026-10-04); the working tree is dev with its own Telegram bot.
+
 Version 1.6.3 (2026-10-04)
 ---------------------------
 - LUMI-203: the first-clause cut — the turn's first spoken chunk flushes at a clause boundary or the first N words (LUMI_VOICE_FIRST_CLAUSE_WORDS, default 8; 0 → byte-identical), later chunks stay whole sentences.

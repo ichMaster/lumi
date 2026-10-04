@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.1 — Prod & dev: two Лілі, one codebase.** The Лілі you live with no longer runs from the development tree:
+a **prod** instance (`~/lumi/prod` — a release-tag checkout, her real memory in `data/`) and a **dev** instance
+(the working tree, test data, its own Telegram bot) run side by side. `LUMI_HOME` moves all mutable state with one
+variable; `LUMI_ENV` puts a `prod v2.1.0` / `dev` badge at the start of the status line; an **env guard** refuses
+to let the dev tree open prod data or prod run unreleased code; `scripts/prod_update.py` updates prod to a tag
+(backup → checkout → sync; never touches data or config). Operator guide: [docs/PROD_SETUP.md](docs/PROD_SETUP.md)
+(LUMI-207..210). Everything unset → byte-identical.
+
 **1.6.3 — Voice polish.** The second live-use round of voice mode: her **first audio starts earlier** — the
 turn's first spoken chunk cuts at a clause boundary or the first N words (`LUMI_VOICE_FIRST_CLAUSE_WORDS`);
 **her voice carries the turn's emotion** (the validated state feeds `voice_settings_for` per sentence); a
