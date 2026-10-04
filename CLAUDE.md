@@ -41,6 +41,8 @@ The specification is the source of truth. Read it before writing code:
 
 Authoring guide (not a design spec): [docs/CANON_SPEC.md](docs/CANON_SPEC.md) — how to write/generate Лілі's canon, the v0.1 character file (`core/canon/lili.md`) loaded as the system prompt.
 
+Operator guide (not a design spec): [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) — the v2.2 server + TUI client + CLI (per-instance port + token, what client mode can't do yet, troubleshooting).
+
 Operator guide (not a design spec): [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) — how to connect, run, and **monitor** the v0.13 Telegram bridge (BotFather token + allowlist, the 3 processes, the `inbox`/`outbox` file-bus pending checks, troubleshooting).
 
 Optimization guide (not a design spec): [docs/PROMPT_OPTIMIZATION.md](docs/PROMPT_OPTIMIZATION.md) — the per-section token analysis of the system prompt + the phased plan to cut it ~10× (facts digest (shipped) → config trims → **v0.15 prompt caching** → v0.16–17 RAG → v2.7 facts-fade), with the target cache-the-static / RAG-the-dynamic architecture. Continued by [PROMPT_OPTIMIZATION_II.md](docs/PROMPT_OPTIMIZATION_II.md) (tool-pull memory: index in the prompt, body behind a tool — P1–P5 **shipped**, system ~62.6 KB → ~29 KB) and [PROMPT_OPTIMIZATION_III.md](docs/PROMPT_OPTIMIZATION_III.md) (the 2026-07-14 remeasure: the new whales are the **thought stream** — per-thought snippet cap **T1**, v2.9's prompt half — and the **inner-voice think instruction** — trim **T2**, the size+latency double lever per [[LATENCY]]; then facts re-rank T3 / canon-adjacent compress T4 → the ~21 KB floor where the prompt is ~⅔ canon).
@@ -82,8 +84,8 @@ Python, **Anthropic SDK — Claude Haiku (v0.1); more models (Claude tiers / Ope
 /tui            # terminal interface (Textual): in-process in v0, refactored to a server client in v3.1; Log/Emoji renderers
 /telegram       # later (v0.13): the Telegram bridge — two dumb daemons over a file bus (inbox/outbox JSONL FIFO); the TUI stays the brain, no core logic, no aiogram in the TUI
 /viewer         # later (v0.7): local desktop emotion-face window (Tkinter) + faces/ asset pack; polls a local signal
-/cli            # later (v3.1): CLI management utility — run/inspect the server, manage users, config
-/server         # later (v3.1): wraps core, client/server API; multi-user/session (v3.3); cross-pollination (v4.3); gallery/journal/canvas + async jobs & proactive turns (v6)
+/cli            # v2.2: CLI management utility — serve/status/memory/model/config over the API; manage users later (v4)
+/server         # v2.2: FastAPI over the core (API v1: turn/command/state/session, client token); streaming v2.3, pushes v2.4, the brain v2.5; multi-user later (v4)
 /web            # later (v3.4): web client (chat, portrait/animation, voice toggle, dictation, gallery/canvas) + admin panel (v3.5); Image/Animation renderers + asset packs
 /voice          # later (v0.14+): shared TTS adapter + local voicer (v0.14); shared STT adapter + local dictator (v0.21); reused by web voice (v4.2) / web dictation (v4.4)
 /mcp            # later (v5.2+): MCP client + web_search (v5.2), world-context/knowledge (v5.3), image/music generators (v6.3/v6.5); untrusted-content handling

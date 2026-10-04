@@ -71,6 +71,10 @@ Start prod *before* dev touches anything: the first instance to open an unmarked
 
 ## Run
 
+*From v2.2 prod can also run as a server + client — give the prod `.env` its own `LUMI_SERVER_PORT` (8765)
++ `LUMI_SERVER_TOKEN` and follow [SERVER_SETUP.md](SERVER_SETUP.md); the in-process way below stays the
+default until the brain moves into the server (v2.5).*
+
 ```bash
 ~/lumi/prod/app/lumi                                          # the prod TUI
 cd ~/lumi/prod/app && uv run python -m telegram.inbound      # daemon 1 (separate terminal)
