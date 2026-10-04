@@ -50,6 +50,18 @@ def test_parse_emotion_json_garbage_degrades_to_reply():
     assert out == {"reply": "not json at all"}  # → the v0.3 gate fills emotion=calm
 
 
+def test_parse_emotion_json_tolerates_raw_newlines_inside_the_reply_string():
+    # Regression (live 2026-08-30): the models write multi-paragraph replies and emit the LITERAL line
+    # break instead of \n, which strict JSON rejects. The fallback then returned the whole object as
+    # `reply` — the user saw the raw {"reply": …} text in the TUI and emotion/intent were lost.
+    raw = '{"reply": "Перший абзац.\n\nДругий абзац.", "emotion": "thoughtful",' \
+          ' "intensity": 0.8, "intent": "mutate"}'
+    out = parse_emotion_json(raw)
+    assert out["reply"] == "Перший абзац.\n\nДругий абзац."  # newlines preserved as real breaks
+    assert out["emotion"] == "thoughtful" and out["intensity"] == 0.8
+    assert out["intent"] == "mutate"  # the whole state survives, not just the text
+
+
 # --- the client ------------------------------------------------------------------------------------
 def test_satisfies_llmclient_protocol():
     assert isinstance(_client("{}"), LLMClient)

@@ -46,6 +46,8 @@ PRICING: dict[str, ModelPricing] = {
     # default estimate, wildly overstating the (all-Gemini) voice mode in the ledger and /usage.
     # Order matters for the prefix match: the more specific id first (flash-lite before flash).
     "gemini-3.1-pro": ModelPricing(2.0, 12.0),
+    "gemini-3.7-flash": ModelPricing(0.75, 3.75),
+    "gemini-3.6-flash": ModelPricing(0.75, 3.75),
     "gemini-3.5-flash": ModelPricing(1.5, 9.0),
     "gemini-2.5-flash-lite": ModelPricing(0.10, 0.40),
     "gemini-2.5-flash": ModelPricing(0.30, 2.50),

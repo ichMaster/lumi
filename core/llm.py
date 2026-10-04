@@ -192,6 +192,12 @@ _GEMINI_TOOL_JSON_INSTRUCTION = (
     'include "intent" (exactly one of: ' + ", ".join(INTENTS) + ') on EVERY reply — required, never omit '
     "it (unsure → the closest one). "
     "A function call and the final JSON reply are different things — never put the JSON inside a tool call."
+    # The canon prompt tells her to fill a `set_state` tool — that is the ANTHROPIC-only terminal tool and is
+    # never declared here. The Gemini 3.x flash tiers obey it literally: they emit a phantom `set_state`
+    # functionCall carrying only the state args, leave the prose in the thinking part, and the turn degrades
+    # to the "…" placeholder. Say plainly that it does not exist so the state rides the final JSON instead.
+    + " The set_state tool does NOT exist here — never call it. Put emotion, intensity and intent"
+      " (and any relation values) as FIELDS of the final JSON object, together with the reply text."
 )
 
 # Gemini-2.5 sometimes emits a code-style tool call (```tool_code\nprint(recall(query="…"))``` or
@@ -459,6 +465,11 @@ def parse_emotion_json(content: str) -> dict:
 
     Tolerates ```json fences and surrounding prose (extracts the first ``{…}`` block); a total parse
     failure degrades to ``{"reply": <text>}`` so the gate fills ``emotion=calm`` — never raises.
+
+    Parsed with ``strict=False`` so a RAW newline inside a string value still loads. The models write
+    multi-paragraph replies and regularly emit the literal line break instead of ``\\n``, which is
+    invalid JSON: strict parsing failed, the fallback returned the WHOLE object as ``reply``, and the
+    user saw the raw ``{"reply": …}`` text with emotion/intent silently lost (live 2026-08-30 report).
     """
     text = (content or "").strip()
     if text.startswith("```"):  # ```json … ``` fences
@@ -466,7 +477,7 @@ def parse_emotion_json(content: str) -> dict:
         if text[:4].lower() == "json":
             text = text[4:].strip()
     try:
-        data = json.loads(text)
+        data = json.loads(text, strict=False)
         if isinstance(data, dict):
             return data
     except (json.JSONDecodeError, ValueError):
@@ -474,7 +485,7 @@ def parse_emotion_json(content: str) -> dict:
     match = re.search(r"\{.*\}", text, re.S)  # first {...} block embedded in prose
     if match:
         try:
-            data = json.loads(match.group(0))
+            data = json.loads(match.group(0), strict=False)
             if isinstance(data, dict):
                 return data
         except (json.JSONDecodeError, ValueError):
