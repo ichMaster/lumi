@@ -45,6 +45,12 @@ class MoodState:
 
 # The face-theme line the mood call appends ("ТЕМА: <name>") — parsed out, never injected.
 _THEME_RE = re.compile(r"(?im)^[ \t]*тема[ \t]*:[ \t]*(.+?)[ \t]*$")
+# A theme NAME is a folder slug (``3am``, ``quiet-collapse``) — the leading slug of the ТЕМА value. The
+# model often echoes the whole manifest line ("ТЕМА: 3am: Rooftop loneliness…") or decorates the name.
+_THEME_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")
+_THEME_DECOR = "*_`'\"«»“”„[]() \t"
+# The mood log's per-reading header (v0.6): "===== 2026-06-07 =====" on its own line.
+_MOOD_LOG_HEADER_RE = re.compile(r"(?m)^===== (\d{4}-\d{2}-\d{2}) =====[ \t]*$")
 
 
 def load_natal(path: str | Path) -> str:
@@ -103,9 +109,32 @@ def mood_request(
 
 
 def split_theme(reading: str) -> str | None:
-    """Extract the «ТЕМА: <name>» face theme the mood chose (lowercased), or ``None``."""
+    """Extract the «ТЕМА: <name>» face theme the mood chose (lowercased), or ``None``.
+
+    Only the leading theme **slug** is kept, so an echoed description or decoration still resolves:
+    ``ТЕМА: 3am: Rooftop…`` / ``ТЕМА: **3am**`` / ``ТЕМА: «3am» — …`` → ``3am`` (the core then validates
+    it against the manifest). A value with no slug (``ТЕМА: немає``) → ``None``.
+    """
     match = _THEME_RE.search(reading)
-    return match.group(1).strip().lower() if match else None
+    if not match:
+        return None
+    name = _THEME_NAME_RE.match(match.group(1).strip().lower().lstrip(_THEME_DECOR))
+    return name.group(0) if name else None
+
+
+def reading_from_log(log_text: str, day: str) -> str | None:
+    """The LAST full reading logged for ``day`` in the mood log, or ``None`` (none / empty).
+
+    The log is append-only (a ``===== <day> =====`` header line, then the reading), so the last block for a day is the
+    reading that day's mood actually runs on — reused across restarts instead of a new mood call.
+    """
+    headers = list(_MOOD_LOG_HEADER_RE.finditer(log_text or ""))
+    for i in range(len(headers) - 1, -1, -1):
+        if headers[i].group(1) == day:
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(log_text)
+            reading = log_text[headers[i].end():end].strip()
+            return reading or None
+    return None
 
 
 def strip_theme(reading: str) -> str:

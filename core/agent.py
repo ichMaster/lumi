@@ -95,6 +95,7 @@ from core.mood import (
     MoodState,
     load_natal,
     mood_request,
+    reading_from_log,
     split_resolution,
     split_theme,
     strip_theme,
@@ -1821,6 +1822,16 @@ class Core:
             body = f"{body} <intent>{m.intent}</intent>"
         return f"[{format_stamp(m.ts)}] {body}"
 
+    def _logged_mood_reading(self, today: str) -> str | None:
+        """Today's reading from the mood log (v2.1.1), or ``None`` — no log, unreadable, or none today."""
+        if self._mood_log_path is None:
+            return None
+        try:
+            text = self._mood_log_path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        return reading_from_log(text, today)
+
     def _ensure_mood(self) -> None:
         """Compute today's mood once per local day (cached); **log the full reading**.
 
@@ -1849,15 +1860,20 @@ class Core:
             if anchor is not None:
                 self._cycle = menstrual_phase(anchor[0], today_date, anchor[1])
                 cycle_line = format_cycle(self._cycle)
-        try:
-            system, msgs = mood_request(
-                self._natal, today, biorhythms=bio_line, cycle=cycle_line,
-                themes=self._theme_descriptions or None,  # v0.11: also pick a face theme
-                thoughts=self._recent_thoughts_text() if self._thoughts_enabled else None,  # v0.12
-            )
-            reading = self._housekeeping_reply(system, msgs, kind="mood").strip()
-        except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
-            return
+        # v2.1.1: today's mood is computed ONCE per local day — a restart reuses the reading already
+        # logged for today (same resolution, same face theme) instead of a new call that re-rolls both.
+        reading = self._logged_mood_reading(today)
+        fresh = reading is None
+        if fresh:
+            try:
+                system, msgs = mood_request(
+                    self._natal, today, biorhythms=bio_line, cycle=cycle_line,
+                    themes=self._theme_descriptions or None,  # v0.11: also pick a face theme
+                    thoughts=self._recent_thoughts_text() if self._thoughts_enabled else None,  # v0.12
+                )
+                reading = self._housekeeping_reply(system, msgs, kind="mood").strip()
+            except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
+                return
         if not reading:
             return
         # v0.11: pull the «ТЕМА: …» pick (validated against the manifest, else default/None) and
@@ -1868,6 +1884,8 @@ class Core:
             date=today, resolution=split_resolution(strip_theme(reading)), reading=reading,
             theme=theme,
         )
+        if not fresh:
+            return  # restored from today's log — already logged, nothing to append
         _mood_log.info("mood %s:\n%s", today, reading, extra={"date": today})
         if self._mood_log_path is not None:  # also persist the full reading, readable
             try:
