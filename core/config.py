@@ -178,9 +178,14 @@ DEFAULT_NUDGE_PATH = _REPO_ROOT / "core" / "nudges.md"
 # v0.12 proactive-think seeds (%think {topic}) — separate file from the v0.4 nudge openers.
 DEFAULT_THINK_SEEDS_PATH = _REPO_ROOT / "core" / "think_seeds.md"
 
+# v2.1 the DATA ROOT — every mutable-state default below derives from it. ``LUMI_HOME`` moves it (a prod
+# instance keeps her memory outside the checkout); unset → this in-repo ``.lumi``, exactly as before.
+# Authored files (canon, styles, schedule.toml, models.toml, faces …) are CODE and stay repo-relative.
+DEFAULT_DATA_ROOT = _REPO_ROOT / ".lumi"
+
 # v0.42 thought scheduler — the authored schedule + the module's own last-fired state (not a bus).
 DEFAULT_SCHEDULE_PATH = _REPO_ROOT / "core" / "schedule.toml"
-DEFAULT_SCHEDULE_STATE_PATH = _REPO_ROOT / ".lumi" / "schedule.state"
+DEFAULT_SCHEDULE_STATE_PATH = DEFAULT_DATA_ROOT / "schedule.state"
 
 # Emotion→emoji map (v0.5); editable. Optional (built-in default in core/emoji.py).
 DEFAULT_EMOJI_PATH = _REPO_ROOT / "core" / "emoji.md"
@@ -193,19 +198,19 @@ DEFAULT_CLOSENESS_PATH = _REPO_ROOT / "core" / "closeness.md"
 
 # Face image packs + theme manifest (v0.7 + v0.11 themes); the viewer renders from here.
 DEFAULT_FACES_DIR = _REPO_ROOT / "viewer" / "faces"
-DEFAULT_FILES_DIR = _REPO_ROOT / ".lumi" / "files"  # v0.19 file-tool sandbox root (per-user subdirs)
+DEFAULT_FILES_DIR = DEFAULT_DATA_ROOT / "files"  # v0.19 file-tool sandbox root (per-user subdirs)
 # v0.28 journal root — a DEDICATED per-user diary store, a sibling of (and OUTSIDE) the file sandbox, so
 # the raw file tools can never reach/modify it; only the journal tool writes there.
-DEFAULT_JOURNAL_DIR = _REPO_ROOT / ".lumi" / "journal"
+DEFAULT_JOURNAL_DIR = DEFAULT_DATA_ROOT / "journal"
 
 # Local store file (gitignored runtime data, not source). user_id-keyed in v0.2.
-DEFAULT_STORE_PATH = _REPO_ROOT / ".lumi" / "store.json"
+DEFAULT_STORE_PATH = DEFAULT_DATA_ROOT / "store.json"
 
 # v0.13 bridge file bus (gitignored runtime data): the TUI reads inbox, writes outbox.
-DEFAULT_INBOX_PATH = _REPO_ROOT / ".lumi" / "inbox.jsonl"
-DEFAULT_OUTBOX_PATH = _REPO_ROOT / ".lumi" / "outbox.jsonl"
+DEFAULT_INBOX_PATH = DEFAULT_DATA_ROOT / "inbox.jsonl"
+DEFAULT_OUTBOX_PATH = DEFAULT_DATA_ROOT / "outbox.jsonl"
 # v0.26 dictation: the TUI flips this on the listen key; the dictator reads it (on/off).
-DEFAULT_LISTEN_FLAG = _REPO_ROOT / ".lumi" / "listen.flag"
+DEFAULT_LISTEN_FLAG = DEFAULT_DATA_ROOT / "listen.flag"
 
 # Rolling window: how many recent messages are kept verbatim in context. Older
 # messages of the current session are folded into a running digest (compaction),
@@ -322,6 +327,7 @@ class Config:
     inner_voice: bool = False
     inner_voice_path: Path = DEFAULT_INNER_VOICE_PATH
     styles_path: Path = DEFAULT_STYLES_PATH
+    data_root: Path = DEFAULT_DATA_ROOT  # v2.1 LUMI_HOME — where every mutable-state default lives
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     compaction_batch: int = DEFAULT_COMPACTION_BATCH
@@ -603,8 +609,13 @@ def load_config(*, load_env: bool = True) -> Config:
     styles_env = os.getenv("LUMI_STYLES_PATH")
     styles_path = Path(styles_env) if styles_env else DEFAULT_STYLES_PATH
 
+    # v2.1 the data root: LUMI_HOME → every mutable default below derives from it; unset → the in-repo
+    # .lumi (the DEFAULT_* constants, byte-identical). A per-path env still wins over the root.
+    home_env = (os.getenv("LUMI_HOME") or "").strip()
+    data_root = Path(home_env).expanduser() if home_env else DEFAULT_DATA_ROOT
+
     store_env = os.getenv("LUMI_STORE_PATH")
-    store_path = Path(store_env) if store_env else DEFAULT_STORE_PATH
+    store_path = Path(store_env) if store_env else data_root / "store.json"
 
     window_env = os.getenv("LUMI_MEMORY_WINDOW")
     memory_window = int(window_env) if window_env else DEFAULT_MEMORY_WINDOW
@@ -723,6 +734,7 @@ def load_config(*, load_env: bool = True) -> Config:
         inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default
         inner_voice_path=inner_voice_path,
         styles_path=styles_path,
+        data_root=data_root,
         store_path=store_path,
         memory_window=memory_window,
         compaction_batch=compaction_batch,
@@ -757,6 +769,7 @@ def load_config(*, load_env: bool = True) -> Config:
         think_seeds_path=Path(ts) if (ts := os.getenv("LUMI_THINK_SEEDS_PATH")) else DEFAULT_THINK_SEEDS_PATH,
         scheduler=_parse_bool(os.getenv("LUMI_SCHEDULER")),
         schedule_path=Path(sp) if (sp := os.getenv("LUMI_SCHEDULE_PATH")) else DEFAULT_SCHEDULE_PATH,
+        schedule_state_path=data_root / "schedule.state",  # v2.1: follows the data root (no per-path env)
         sched_tick_ms=int(os.getenv("LUMI_SCHED_TICK_MS") or 30000),
         sched_tick_fast_ms=int(os.getenv("LUMI_SCHED_TICK_FAST_MS") or 60000),
         sched_catchup_h=int(os.getenv("LUMI_SCHED_CATCHUP_H") or 6),
@@ -783,7 +796,7 @@ def load_config(*, load_env: bool = True) -> Config:
         usage_report=(os.getenv("LUMI_USAGE_REPORT") or "on").strip().lower() in _TRUTHY,  # on by default
         cache_monitor=(os.getenv("LUMI_CACHE_MONITOR") or "off").strip().lower() in _TRUTHY,  # off by default
         file_tool=(os.getenv("LUMI_FILE_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
-        files_dir=Path(os.getenv("LUMI_FILES_DIR")) if os.getenv("LUMI_FILES_DIR") else DEFAULT_FILES_DIR,
+        files_dir=Path(os.getenv("LUMI_FILES_DIR")) if os.getenv("LUMI_FILES_DIR") else data_root / "files",
         file_read_lines=int(os.getenv("LUMI_FILE_READ_LINES") or 200),
         file_read_max_total=int(os.getenv("LUMI_FILE_READ_MAX_TOTAL") or 2000),
         file_read_max_chars=int(os.getenv("LUMI_FILE_READ_MAX_CHARS") or 8000),
@@ -816,7 +829,7 @@ def load_config(*, load_env: bool = True) -> Config:
         web_lookup_max_calls=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CALLS") or 2),
         web_lookup_max_chars=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CHARS") or 2000),
         journal=(os.getenv("LUMI_JOURNAL") or "off").strip().lower() in _TRUTHY,  # v0.28, off by default
-        journal_dir=Path(jd) if (jd := os.getenv("LUMI_JOURNAL_DIR")) else DEFAULT_JOURNAL_DIR,
+        journal_dir=Path(jd) if (jd := os.getenv("LUMI_JOURNAL_DIR")) else data_root / "journal",
         journal_max_chars=int(os.getenv("LUMI_JOURNAL_MAX_CHARS") or 4000),
         image=(os.getenv("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
         vision_max=int(os.getenv("LUMI_VISION_MAX") or 4),
@@ -877,8 +890,8 @@ def load_config(*, load_env: bool = True) -> Config:
         thought_imagine_cap=int(os.getenv("LUMI_THOUGHT_IMAGINE_CAP") or 1),  # v0.33 %imagine paid sub-cap
         thought_surface=(os.getenv("LUMI_THOUGHT_SURFACE") or "off").strip().lower() in _TRUTHY,  # v0.33
         bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
-        inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else DEFAULT_INBOX_PATH,
-        outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else DEFAULT_OUTBOX_PATH,
+        inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else data_root / "inbox.jsonl",
+        outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else data_root / "outbox.jsonl",
         telegram_token=(os.getenv("LUMI_TELEGRAM_TOKEN") or "").strip(),
         telegram_allowlist=_parse_id_list(os.getenv("LUMI_TELEGRAM_ALLOWLIST")),
         telegram_flush_s=int(os.getenv("LUMI_TELEGRAM_FLUSH_S") or 2),
@@ -899,7 +912,7 @@ def load_config(*, load_env: bool = True) -> Config:
         stt_model=(os.getenv("LUMI_STT_MODEL") or "").strip(),
         stt_lang=(os.getenv("LUMI_STT_LANG") or "uk").strip(),
         stt_device=(os.getenv("LUMI_STT_DEVICE") or "").strip(),
-        listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else DEFAULT_LISTEN_FLAG,
+        listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else data_root / "listen.flag",
         voice_endpoint_ms=int(os.getenv("LUMI_VOICE_ENDPOINT_MS") or 500),
         voice_out_device=(os.getenv("LUMI_VOICE_OUT_DEVICE") or "").strip(),
         voice_first_clause_words=int(os.getenv("LUMI_VOICE_FIRST_CLAUSE_WORDS") or 8),

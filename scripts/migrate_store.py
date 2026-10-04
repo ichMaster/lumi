@@ -10,7 +10,7 @@ Rollback: ``--export-json`` writes the DB's messages back into ``store.json`` an
 into ``.vectors.jsonl`` (float lists), so ``LUMI_STORE_BACKEND=json`` picks everything up again.
 
 Usage:
-    uv run python scripts/migrate_store.py [--store .lumi/store.json]
+    uv run python scripts/migrate_store.py [--store PATH]   # default: the configured store (LUMI_HOME-aware)
     uv run python scripts/migrate_store.py --export-json   # rollback to the JSON backend
 
 Stop the TUI / daemons first — a live writer would race the migration.
@@ -90,8 +90,11 @@ def export_json(store_path: Path) -> None:
 
 
 def main() -> None:
+    from core.config import load_config  # v2.1: the default follows LUMI_HOME / LUMI_STORE_PATH
+
     ap = argparse.ArgumentParser(description="Migrate the Lumi store JSON ↔ SQLite (v1.5)")
-    ap.add_argument("--store", default=".lumi/store.json", help="path to store.json")
+    ap.add_argument("--store", default=str(load_config().store_path),
+                    help="path to store.json (default: the configured store)")
     ap.add_argument("--export-json", action="store_true", help="rollback: DB → store.json + vectors.jsonl")
     args = ap.parse_args()
     path = Path(args.store)
