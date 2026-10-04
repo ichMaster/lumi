@@ -20,6 +20,7 @@ from pathlib import Path
 
 from rich.console import RenderableType
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
@@ -100,6 +101,18 @@ def thought_status_label(name: str, last_tool: str | None = None) -> str:
 def thought_meta_line(name: str) -> str:
     """The v0.33 (gated) chat-log meta line marking an autonomous act — e.g. ``✦ Лілі читає новини…``."""
     return f"✦ Лілі {_THOUGHT_VERBS.get(name, 'міркує')}…"
+
+
+def env_badge(env: str | None, version: str | None) -> str:
+    """The v2.1 status-line badge naming which Лілі this is — ``prod v2.1.0 · `` (bold red) / ``dev … · `` (dim).
+
+    ``env`` unset → ``""``, so the status line stays byte-identical. The version is dropped when unknown.
+    """
+    if not env:
+        return ""
+    label = escape(f"{env} v{version}" if version else env)
+    style = "bold red" if env == "prod" else "dim"
+    return f"[{style}]{label}[/] · "
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -304,6 +317,7 @@ class LumiApp(App[None]):
         # every voice failure degrades here with a readable line, never a dead TUI.
         self._mode: str = "text"
         self._app_cfg = None                    # the loaded Config (set in on_mount)
+        self._env_badge: str = ""               # v2.1 LUMI_ENV badge ("" → status line unchanged)
         self._voice_loop = None                 # voice.live.VoiceLoop while mode == "voice"
         self._voice_pipeline = None             # voice.stream_tts.SpeechPipeline (the speaker side)
         self._voice_stream = None               # voice.stream_stt.DeepgramStream (the mic side)
@@ -345,6 +359,7 @@ class LumiApp(App[None]):
         # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
         cfg = load_config()
         self._app_cfg = cfg  # v1.6.2: voice mode reads keys/tuning from the loaded config
+        self._env_badge = env_badge(cfg.env, cfg.app_version)  # v2.1: which Лілі is this (prod/dev)
         self._emoji = EmojiRenderer(load_emoji_map(cfg.emoji_path))  # authored map (v0.5)
         self._nudge_enabled = cfg.idle_nudge
         self._idle_seconds = cfg.idle_seconds
@@ -564,11 +579,12 @@ class LumiApp(App[None]):
         pending = f" · ⋯{len(self._input_queue)}" if self._input_queue else ""  # v1.2 queued lines
         mode_part = " · mode:voice" if self._mode == "voice" else ""  # v1.6.2: surfaced when live
         meta = f"{model}{mode_part}{think}{snd}{style_part}{emo_part}{intent_part}{pending}"
+        badge = self._env_badge  # v2.1: "" unless LUMI_ENV is set → byte-identical
         if busy:
-            return f"status: [yellow]{busy}[/] · {meta}"
+            return f"{badge}status: [yellow]{busy}[/] · {meta}"
         if not self._connected:
-            return f"status: [red]{STATUS_OFFLINE}[/] · {model} · no connection"
-        return f"status: [green]{STATUS_READY}[/] · {meta}"
+            return f"{badge}status: [red]{STATUS_OFFLINE}[/] · {model} · no connection"
+        return f"{badge}status: [green]{STATUS_READY}[/] · {meta}"
 
     def _stats_text(self) -> str:
         """The statistics line — last response + running totals (total tokens only)."""

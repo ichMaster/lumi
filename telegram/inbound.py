@@ -112,6 +112,8 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
         stt = build_stt(cfg.stt_provider, api_key=cfg.deepgram_api_key or cfg.elevenlabs_api_key, model=cfg.stt_model)
     log.info("inbound up: allowlist=%s, flush=%ss, voice_stt=%s, inbox=%s",
              sorted(allow), cfg.telegram_flush_s, cfg.telegram_stt, cfg.inbox_path)
+    if cfg.env:  # v2.1: which instance this daemon serves (prod/dev) — no secrets, no text
+        log.info("env=%s version=%s", cfg.env, cfg.app_version or "?")
 
     async def _flusher() -> None:
         while True:

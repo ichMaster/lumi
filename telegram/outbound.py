@@ -253,6 +253,8 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
         "outbound up: voice=%s, batch=%d, catchup=%dh, photo=%s, chats=%s",
         cfg.telegram_voice, cfg.telegram_batch, cfg.telegram_catchup_h, cfg.telegram_photo, sorted(chats),
     )
+    if cfg.env:  # v2.1: which instance this daemon serves (prod/dev) — no secrets, no text
+        log.info("env=%s version=%s", cfg.env, cfg.app_version or "?")
 
     async def _main() -> None:
         if not sent_path.is_file():

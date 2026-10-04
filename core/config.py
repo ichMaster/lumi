@@ -182,6 +182,17 @@ DEFAULT_THINK_SEEDS_PATH = _REPO_ROOT / "core" / "think_seeds.md"
 # instance keeps her memory outside the checkout); unset → this in-repo ``.lumi``, exactly as before.
 # Authored files (canon, styles, schedule.toml, models.toml, faces …) are CODE and stay repo-relative.
 DEFAULT_DATA_ROOT = _REPO_ROOT / ".lumi"
+# v2.1 the running version — the checkout's VERSION file (shown in the LUMI_ENV status badge).
+DEFAULT_VERSION_PATH = _REPO_ROOT / "VERSION"
+
+
+def read_version(path: Path = DEFAULT_VERSION_PATH) -> str | None:
+    """The checkout's version string (stripped), or ``None`` when the file is missing/unreadable/empty."""
+    try:
+        return path.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
 
 # v0.42 thought scheduler — the authored schedule + the module's own last-fired state (not a bus).
 DEFAULT_SCHEDULE_PATH = _REPO_ROOT / "core" / "schedule.toml"
@@ -328,6 +339,8 @@ class Config:
     inner_voice_path: Path = DEFAULT_INNER_VOICE_PATH
     styles_path: Path = DEFAULT_STYLES_PATH
     data_root: Path = DEFAULT_DATA_ROOT  # v2.1 LUMI_HOME — where every mutable-state default lives
+    env: str | None = None               # v2.1 LUMI_ENV — prod | dev | … (None → no status badge)
+    app_version: str | None = None       # v2.1 the checkout's VERSION (shown in the badge)
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     compaction_batch: int = DEFAULT_COMPACTION_BATCH
@@ -735,6 +748,8 @@ def load_config(*, load_env: bool = True) -> Config:
         inner_voice_path=inner_voice_path,
         styles_path=styles_path,
         data_root=data_root,
+        env=(os.getenv("LUMI_ENV") or "").strip().lower() or None,  # v2.1: unset/blank → no badge
+        app_version=read_version(),
         store_path=store_path,
         memory_window=memory_window,
         compaction_batch=compaction_batch,
