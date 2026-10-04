@@ -49,6 +49,7 @@ from core.config import load_config
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import EmotionState, LogRenderer
 from core.images import image_block, media_type_for
+from core.llm import LLMError
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.repository import Session
 from core.schedule import load_schedule
@@ -61,6 +62,7 @@ from tui.bridge import (
     mirror_user,
     set_listen_flag,
 )
+from tui.remote import NOT_YET, ServerBusy, ServerUnavailable, client_mode_config
 from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
@@ -258,6 +260,9 @@ class LumiApp(App[None]):
     def __init__(self, core: Core, session: Session | None = None) -> None:
         super().__init__()
         self._core = core
+        # v2.2 (LUMI-213): client mode — `core` is a tui.remote.RemoteCore over the server API.
+        self._remote: bool = bool(getattr(core, "is_remote", False))
+        self._not_yet: list[str] = []  # features this .env enables that the server can't host yet
         self._session = session
         # Plain-text mirror of the conversation (for tests + simplicity).
         self.transcript: list[str] = []
@@ -365,7 +370,8 @@ class LumiApp(App[None]):
         self._render_status()
         self._render_stats()
         self.query_one("#prompt", ChatInput).focus()
-        self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
+        if not self._remote:  # v2.2: in client mode the server takes its own ambient snapshot
+            self.run_worker(self._refresh_world(), exclusive=False)  # ambient fetch (v0.4)
         # mood (v0.6) — render the bar after, so the startup mood call's tokens show up
         self.run_worker(self._render_after(asyncio.to_thread(self._core.ensure_mood)), exclusive=False)
         # v0.16 semantic recall: index the existing history once, off the UI thread, so /recall
@@ -373,6 +379,8 @@ class LumiApp(App[None]):
         self.run_worker(asyncio.to_thread(self._core.ensure_backfill), exclusive=False)
         # v0.4 idle nudge: load config + openers, then poll on a coarse interval.
         cfg = load_config()
+        if self._remote:  # v2.2: the server is the brain — what it can't host yet stays off in the client
+            cfg, self._not_yet = client_mode_config(cfg)
         self._app_cfg = cfg  # v1.6.2: voice mode reads keys/tuning from the loaded config
         self._env_badge = env_badge(cfg.env, cfg.app_version)  # v2.1: which Лілі is this (prod/dev)
         self._emoji = EmojiRenderer(load_emoji_map(cfg.emoji_path))  # authored map (v0.5)
@@ -390,9 +398,10 @@ class LumiApp(App[None]):
         self._last_activity = self._last_nudge_ts = self._last_think_ts = now
         # Bounded log retention: trim .lumi/*.log|jsonl to the last N days at startup + on a periodic
         # tick (off the UI thread; in-place, so concurrently-appending writers are unaffected).
-        self._log_state_dir = cfg.store_path.parent
-        self._trim_logs()
-        self.set_interval(6 * 3600, self._trim_logs)  # every 6h — bounds a long-running session
+        if not self._remote:  # v2.2: a client never touches the server's data root
+            self._log_state_dir = cfg.store_path.parent
+            self._trim_logs()
+            self.set_interval(6 * 3600, self._trim_logs)  # every 6h — bounds a long-running session
         # Two separate menus, two independent timers — the nudge (openers) and the think (seeds)
         # run together and pace on their own stamps.
         # v0.42 LUMI-169: when the scheduler is ON it owns the idle rule (the migrated `idle:` %think
@@ -441,6 +450,8 @@ class LumiApp(App[None]):
             set_listen_flag(self._listen_flag_path, False)  # start not-listening (the TUI owns the flag)
         if self._input_buffer:  # v1.2: keep the input focused + repainting while a turn runs, so
             self.set_interval(0.1, self._keep_input_live)  # your typing shows even under the reply's load
+        if self._not_yet:  # v2.2: say once what this .env enables that the server doesn't host yet
+            self.call_after_refresh(self._announce_not_yet)
         if cfg.mode_set == "voice":  # v1.6.2: start the live loop only AFTER the initial DOM is
             # attached — starting the worker synchronously in on_mount can race Textual's own
             # attachment of #history (a MountError if a key/device failure emits a line instantly).
@@ -686,7 +697,17 @@ class LumiApp(App[None]):
         # Commands — handled here, not sent to the model or persisted as a turn.
         # v2.2 (LUMI-211): the core-state commands run through the command layer (core/commands.py) —
         # one implementation any client renders; the client-bound ones below stay in the TUI.
-        result = run_command(self._core, self._session, text)
+        try:  # only a "/" line can be a command — chat never pays a command round-trip (client mode)
+            if not text.startswith("/"):
+                result = None
+            elif self._remote:
+                result = await asyncio.to_thread(self._layer, text)
+            else:
+                result = self._layer(text)
+        except LLMError as exc:  # v2.2 client mode: the server is down / busy / rejected the token
+            self._emit_server_error(exc)
+            prompt.focus()
+            return
         if result is not None:
             await self._apply_command_result(text, result)
             prompt.focus()
@@ -709,6 +730,10 @@ class LumiApp(App[None]):
             return
 
         # %directive (v0.12) — her mind acts, not a chat message. Unknown %name → falls through.
+        if self._remote and text.startswith("%"):  # v2.2: the thought-stream moves into the server in v2.5
+            self._emit_not_yet("%directives")
+            prompt.focus()
+            return
         if text.startswith("%") and self._session is not None:
             parsed = parse_directive(text)
             if parsed is not None:  # v0.33: surface the running act on the status line (not `requesting…`)
@@ -752,6 +777,9 @@ class LumiApp(App[None]):
 
         The TUI is the **only** writer of the flag: ``on`` → the dictator records; ``off`` → it recognizes
         and writes your line to `inbox` (which the TUI then drains). A no-op when dictation is off."""
+        if self._remote:  # v2.2: the dictator writes the server's inbox — v2.5
+            self.notify(f"Dictation: {NOT_YET}.", severity="warning", timeout=2)
+            return
         if not self._dictation or self._listen_flag_path is None:
             self.notify("Dictation is off (set LUMI_DICTATION=on + run the dictator).",
                         severity="warning", timeout=2)
@@ -947,8 +975,11 @@ class LumiApp(App[None]):
                 self._discard_streamed_reply()  # drop the empty in-flow reply widget
             self._render_thinking(None)  # the failed turn has no thinking
             self._connected = False
-            line = f"{ERROR_LINE}  ({type(exc).__name__})"  # a short hint; full traceback is in the log
-            self._emit(line, Text(line, style=f"bold {ERROR_COLOR}"))
+            if isinstance(exc, (ServerUnavailable, ServerBusy)):  # v2.2 client mode: say what's wrong
+                self._emit_server_error(exc)
+            else:
+                line = f"{ERROR_LINE}  ({type(exc).__name__})"  # a short hint; full traceback is in the log
+                self._emit(line, Text(line, style=f"bold {ERROR_COLOR}"))
         finally:
             # Always closes the turn's speech pipeline — success OR error. A barge-in mutes the
             # pipeline for the REST of this turn (voice/stream_tts.SpeechPipeline.interrupt); only
@@ -1195,6 +1226,9 @@ class LumiApp(App[None]):
                     "(voice: мікрофон → Deepgram → Лілі → ElevenLabs; навушники обов'язково)")
             self._emit(body, Markdown(body))
             return
+        if arg == "voice" and self._remote:  # v2.2: the live voice loop needs the in-process core
+            self._emit_not_yet("voice mode")
+            return
         if arg not in ("text", "voice"):
             msg = "Невідомий режим — `/mode-set text | voice`."
             self._emit(msg, Text(msg, style="yellow"))
@@ -1410,7 +1444,8 @@ class LumiApp(App[None]):
             self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
             self._render_status()
             self._render_stats()
-            await self._refresh_world()  # re-snapshot ambient context for the new session
+            if not self._remote:  # v2.2: the server re-snapshots on its own new session
+                await self._refresh_world()  # re-snapshot ambient context for the new session
         finally:
             self._busy = False
 
@@ -1421,7 +1456,11 @@ class LumiApp(App[None]):
 
             def _on_confirm(confirmed: bool | None) -> None:
                 if confirmed:
-                    done = run_command(self._core, self._session, line, confirmed=True)
+                    try:
+                        done = self._layer(line, confirmed=True)
+                    except LLMError as exc:  # v2.2 client mode
+                        self._emit_server_error(exc)
+                        return
                     if done is not None:
                         self._show_command_result(done)
                 else:
@@ -1439,6 +1478,27 @@ class LumiApp(App[None]):
         self._show_command_result(result)
         if name in ("/style", "/model", "/model-set"):
             self._render_status()  # the status bar shows the style / model / profile
+
+    def _layer(self, line: str, *, confirmed: bool = False) -> CommandResult | None:
+        """The command layer — in-process, or the server's (v2.2 client mode)."""
+        if self._remote:
+            return self._core.command(line, confirmed=confirmed)
+        return run_command(self._core, self._session, line, confirmed=confirmed)
+
+    def _emit_server_error(self, exc: Exception) -> None:
+        """A client-mode server problem as one readable line (v2.2)."""
+        self._connected = isinstance(exc, ServerBusy)  # busy is still connected; down/rejected is not
+        line = f"⚠ {exc}"
+        self._emit(line, Text(line, style=f"bold {ERROR_COLOR}"))
+        self._render_status()
+
+    def _emit_not_yet(self, feature: str) -> None:
+        """A feature the v2.2 server doesn't host yet — said plainly, never a crash."""
+        line = f"{feature}: {NOT_YET} (LUMI_SERVER=off runs the full in-process Лілі)"
+        self._emit(line, Text(line, style=SYSTEM_COLOR))
+
+    def _announce_not_yet(self) -> None:
+        self._emit_not_yet(", ".join(self._not_yet))
 
     def _show_command_result(self, result: CommandResult) -> None:
         """Show a result in the look its kind always had in the TUI (toast → a transient notice)."""

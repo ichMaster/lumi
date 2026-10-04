@@ -33,8 +33,50 @@ def _setup_logging(cfg) -> None:
         pass
 
 
+def _client_log_path(cfg):
+    """A client's own log — OUTSIDE the server's data root (v2.2: a client never touches it)."""
+    from pathlib import Path
+
+    return Path.home() / ".cache" / "lumi" / f"client-{cfg.env or 'default'}.log"
+
+
+def _setup_client_logging(cfg) -> None:
+    try:
+        path = _client_log_path(cfg)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        root = logging.getLogger("lumi")
+        root.setLevel(logging.INFO)
+        if not any(isinstance(h, logging.FileHandler) for h in root.handlers):
+            handler = logging.FileHandler(path, encoding="utf-8")
+            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+            root.addHandler(handler)
+    except OSError:
+        pass
+
+
+def _run_client(cfg) -> None:
+    """v2.2 client mode (LUMI_SERVER=on): no core, no env guard, no data root — the server is the brain."""
+    from tui.remote import RemoteCore, ServerAuthError, ServerUnavailable
+
+    if not cfg.server_token:
+        raise SystemExit("LUMI_SERVER=on needs LUMI_SERVER_TOKEN — the same token the server uses.")
+    _setup_client_logging(cfg)
+    core = RemoteCore(f"http://{cfg.server_host}:{cfg.server_port}", cfg.server_token)
+    try:
+        core.connect()
+    except ServerAuthError as exc:  # the server is up — the tokens differ
+        raise SystemExit(f"{exc}\nUse the same LUMI_SERVER_TOKEN as the server's .env.") from None
+    except ServerUnavailable as exc:
+        raise SystemExit(f"{exc}\nStart it with `python -m server` — or set LUMI_SERVER=off for the "
+                         "in-process Лілі.") from None
+    LumiApp(core).run()
+
+
 def main() -> None:
     cfg = load_config()
+    if cfg.server:  # v2.2: the TUI as a client of the server
+        _run_client(cfg)
+        return
     notes = guard_entry(cfg)  # v2.1: refuse before touching the data root (dev ↛ prod data, prod = released code)
     _setup_logging(cfg)
     for note in notes:

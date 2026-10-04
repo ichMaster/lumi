@@ -344,6 +344,7 @@ class Config:
     server_host: str = "127.0.0.1"       # v2.2 LUMI_SERVER_HOST — the server binds here (localhost by default)
     server_port: int = 8765              # v2.2 LUMI_SERVER_PORT — one port per instance (prod/dev)
     server_token: str = ""               # v2.2 LUMI_SERVER_TOKEN — the client token (required to serve; never logged)
+    server: bool = False                 # v2.2 LUMI_SERVER — the TUI runs as a CLIENT of that server (no core in-process)
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     compaction_batch: int = DEFAULT_COMPACTION_BATCH
@@ -756,6 +757,7 @@ def load_config(*, load_env: bool = True) -> Config:
         server_host=(os.getenv("LUMI_SERVER_HOST") or "127.0.0.1").strip(),  # v2.2
         server_port=int(os.getenv("LUMI_SERVER_PORT") or 8765),
         server_token=(os.getenv("LUMI_SERVER_TOKEN") or "").strip(),
+        server=(os.getenv("LUMI_SERVER") or "off").strip().lower() in _TRUTHY,  # v2.2 client mode, off by default
         store_path=store_path,
         memory_window=memory_window,
         compaction_batch=compaction_batch,
