@@ -130,3 +130,20 @@ def test_uv_run_children_are_caught_by_cwd(tmp_path):
     ]
     found = prod_processes(lines, home, cwd_pids={"201", "202"})
     assert [f.split()[0] for f in found] == ["201", "202"]
+
+
+def test_a_shell_sitting_in_app_is_not_prod(tmp_path):
+    # Regression (found deploying 2.1.1, 2026-10-04): terminals cd'd into ~/lumi/prod/app matched by cwd
+    # and blocked the update; only python/uv processes can hold her data.
+    home = tmp_path / "prod"
+    lines = [
+        "  301 -zsh",
+        "  302 /bin/zsh -il",
+        "  303 vim README.md",
+        "  304 uv run python -m telegram.inbound",
+        f"  305 {home}/app/.venv/bin/python3 -m telegram.inbound",
+        "  306 /opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/Resources/"
+        "Python.app/Contents/MacOS/Python -m tui",
+    ]
+    found = prod_processes(lines, home, cwd_pids={"301", "302", "303", "304", "305", "306"})
+    assert [f.split()[0] for f in found] == ["304", "305", "306"]

@@ -72,10 +72,20 @@ def prod_processes(ps_lines: list[str], home: Path, cwd_pids: set[str] = frozens
     needles = {f"{home}/app/.venv/bin/python", f"{home.resolve()}/app/.venv/bin/python"}
     hits = []
     for line in ps_lines:
-        pid = line.strip().split(" ", 1)[0]
-        if pid in cwd_pids or any(n in line for n in needles):
+        pid, _, command = line.strip().partition(" ")
+        in_app = pid in cwd_pids and _is_lumi_command(command)  # a shell sitting in app/ isn't prod
+        if in_app or any(n in line for n in needles):
             hits.append(line.strip())
     return hits
+
+
+def _is_lumi_command(command: str) -> bool:
+    """A process that can hold her data: a python interpreter or ``uv`` — not a shell/editor in app/."""
+    tokens = command.split()
+    if not tokens:
+        return False
+    first = tokens[0].rsplit("/", 1)[-1]
+    return first in {"uv", "uvx"} or "python" in first.lower() or first == "Python"
 
 
 def pids_working_in(lsof_out: str, app: Path) -> set[str]:
