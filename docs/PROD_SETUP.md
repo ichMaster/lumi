@@ -46,6 +46,12 @@ LUMI_HOME=~/lumi/prod/data
 LUMI_ENV=prod
 ```
 
+**Delete every per-path override** you copied over — `LUMI_STORE_PATH`, `LUMI_FILES_DIR`,
+`LUMI_JOURNAL_DIR`, `LUMI_INBOX_PATH`, `LUMI_OUTBOX_PATH`, `LUMI_LISTEN_FLAG`. An explicit path beats
+`LUMI_HOME`, and a relative one (`LUMI_FILES_DIR=.lumi/files`) would resolve **inside `app/`** — her
+journal and files would quietly land in the checkout instead of `data/`. Check with
+`grep -nE '^LUMI_[A-Z_]*(PATH|DIR|FLAG)=' ~/lumi/prod/.env` — it should print nothing.
+
 ## Migrate her memory (once)
 
 Her live memory is the dev tree's in-repo `.lumi/` today (~324 MB; the store runs on SQLite in WAL
