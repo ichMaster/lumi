@@ -108,6 +108,9 @@ def run() -> None:  # pragma: no cover - mic capture + STT glue (no audio/paid C
     from voice.stt import build_stt
 
     cfg = load_config()
+    from core.envguard import guard_entry
+
+    guard_entry(cfg)  # v2.1: refuse before touching the data root (dev ↛ prod data, prod = released code)
     if not cfg.dictation:
         raise SystemExit("LUMI_DICTATION is off")
 

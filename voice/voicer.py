@@ -115,6 +115,9 @@ def run() -> None:  # pragma: no cover - cloud TTS + local playback glue (no pai
     from voice.tts import ElevenLabsTTS
 
     cfg = load_config()
+    from core.envguard import guard_entry
+
+    guard_entry(cfg)  # v2.1: refuse before touching the data root (dev ↛ prod data, prod = released code)
     if not cfg.voice:
         raise SystemExit("LUMI_VOICE is off")
     if not cfg.elevenlabs_api_key:

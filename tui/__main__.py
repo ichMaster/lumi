@@ -10,6 +10,7 @@ import logging
 
 from core.agent import build_core
 from core.config import load_config
+from core.envguard import guard_entry
 from core.llm import LLMError
 from tui.app import LumiApp
 from tui.bridge import make_photo_sink
@@ -34,7 +35,10 @@ def _setup_logging(cfg) -> None:
 
 def main() -> None:
     cfg = load_config()
+    notes = guard_entry(cfg)  # v2.1: refuse before touching the data root (dev ↛ prod data, prod = released code)
     _setup_logging(cfg)
+    for note in notes:
+        logging.getLogger("lumi.envguard").warning(note)
     # v0.24 send_image: supply the sink only when the Telegram bridge AND the image tool are on — the
     # TUI is the single outbox writer, so the core's send_image tool calls this closure instead of ever
     # touching the outbox. Bridge off → sink stays None (the tool reports "Telegram not connected").

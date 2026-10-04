@@ -220,6 +220,9 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     from . import get_logger
 
     cfg = load_config()
+    from core.envguard import guard_entry
+
+    guard_entry(cfg)  # v2.1: refuse before touching the data root (dev ↛ prod data, prod = released code)
     if not cfg.telegram_token:
         raise SystemExit("LUMI_TELEGRAM_TOKEN is not set")
     if not cfg.telegram_allowlist:
