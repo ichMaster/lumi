@@ -64,10 +64,33 @@ def new_unset_keys(old_example: str, new_example: str, prod_env: str) -> list[st
     return sorted(env_keys(new_example) - env_keys(old_example) - set_keys(prod_env))
 
 
-def prod_processes(ps_lines: list[str], home: Path) -> list[str]:
-    """The ``ps`` lines of processes running prod's venv python (``<home>/app/.venv/bin/python…``)."""
+def prod_processes(ps_lines: list[str], home: Path, cwd_pids: set[str] = frozenset()) -> list[str]:
+    """The ``ps`` lines of prod processes: running prod's venv python by path, OR working inside
+    ``<home>/app`` (``cwd_pids``). The cwd signal is the one that matters — under ``uv run`` the child
+    python shows up in ``ps`` as the resolved framework interpreter (``…/Python.app/…``), not the venv path.
+    """
     needles = {f"{home}/app/.venv/bin/python", f"{home.resolve()}/app/.venv/bin/python"}
-    return [line.strip() for line in ps_lines if any(n in line for n in needles)]
+    hits = []
+    for line in ps_lines:
+        pid = line.strip().split(" ", 1)[0]
+        if pid in cwd_pids or any(n in line for n in needles):
+            hits.append(line.strip())
+    return hits
+
+
+def pids_working_in(lsof_out: str, app: Path) -> set[str]:
+    """PIDs whose current directory is ``app`` or below, from ``lsof -d cwd -Fpn`` output."""
+    roots = {str(app), str(app.resolve())}
+    pids: set[str] = set()
+    pid = None
+    for line in lsof_out.splitlines():
+        if line.startswith("p"):
+            pid = line[1:]
+        elif line.startswith("n") and pid is not None:
+            path = line[1:]
+            if any(path == r or path.startswith(r + "/") for r in roots):
+                pids.add(pid)
+    return pids
 
 
 # --- glue -----------------------------------------------------------------------------------------
@@ -116,7 +139,8 @@ def main(argv: list[str] | None = None) -> None:
 
     # 1. never back up a live WAL store
     ps = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout.splitlines()
-    running = prod_processes(ps, home)
+    lsof = subprocess.run(["lsof", "-d", "cwd", "-Fpn"], capture_output=True, text=True).stdout
+    running = prod_processes(ps, home, pids_working_in(lsof, app))
     if running:
         _die("prod is running — stop the TUI and the daemons first:\n  " + "\n  ".join(running))
 

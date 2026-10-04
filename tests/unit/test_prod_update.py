@@ -10,6 +10,7 @@ from scripts.prod_update import (
     env_keys,
     main,
     new_unset_keys,
+    pids_working_in,
     prod_processes,
     set_keys,
     valid_tag,
@@ -104,3 +105,28 @@ def test_dry_run_changes_nothing(tmp_path, capsys, monkeypatch):
     assert not (home / "backups").exists()  # no backup taken
     assert all("checkout" not in a and "fetch" not in a and "sync" not in a for a in calls)
     assert sorted(p.name for p in Path(home).iterdir()) == ["app", "data"]
+
+
+def test_pids_working_in_parses_lsof_cwd_output(tmp_path):
+    app = tmp_path / "prod" / "app"
+    out = (
+        f"p101\nfcwd\nn{app}\n"
+        f"p102\nfcwd\nn{app}/core\n"
+        "p103\nfcwd\nn/Users/me/development/lumi\n"
+        f"p104\nfcwd\nn{app}-old\n"  # a sibling dir with the same prefix — not inside app/
+    )
+    assert pids_working_in(out, app) == {"101", "102"}
+
+
+def test_uv_run_children_are_caught_by_cwd(tmp_path):
+    # Regression (found migrating prod, 2026-10-04): under `uv run` the python child shows in ps as the
+    # resolved framework interpreter, NOT <home>/app/.venv/bin/python — matching argv alone missed a
+    # running prod and would have backed up a live WAL store.
+    home = tmp_path / "prod"
+    lines = [
+        "  201 uv run python -m tui",
+        "  202 /opt/homebrew/Cellar/python@3.14/.../Python.app/Contents/MacOS/Python -m tui",
+        "  203 /opt/homebrew/Cellar/python@3.14/.../Python.app/Contents/MacOS/Python -m tui",  # the dev one
+    ]
+    found = prod_processes(lines, home, cwd_pids={"201", "202"})
+    assert [f.split()[0] for f in found] == ["201", "202"]
