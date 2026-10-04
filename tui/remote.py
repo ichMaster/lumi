@@ -134,6 +134,14 @@ class RemoteCore:
     def refresh(self) -> None:
         self._state = self._call("GET", "/v1/state")
 
+    def health(self) -> dict[str, Any]:
+        """The open ``/v1/health`` (env + version) — no token needed."""
+        return self._call("GET", "/v1/health", auth=False)
+
+    @property
+    def session_id(self) -> str | None:
+        return self._state.get("session_id")
+
     # --- the turn + commands -------------------------------------------------------------------------
     def reply(self, user_text: str, session: Any, *, images: list[dict] | None = None,
               on_delta: Callable[[str], None] | None = None,
