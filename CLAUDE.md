@@ -109,5 +109,15 @@ A spec → issues → execute → release pipeline lives in `.claude/skills/` (p
 - **`/execute-issues <label>`** — implement each issue in dependency order: code → `pytest` + `ruff` validation (mock model/TTS/STT/web-search, no paid APIs) → one commit per issue → close → `specification/roadmap/implementation/vN-execution-report.md`. Tests ship with each feature; the emotion/memory/API/web-search contracts and the spec stay in sync.
 - **`/release-version <x.y.z>`** — bump `VERSION`/`README.md`, prepend `RELEASE.txt`, commit, annotated-tag, push. Uses the `A.B.C` notation (roadmap phase `vA.B` → `A.B.0`). **Never bumps the version without explicit user confirmation.**
 
+Around that core trio sits the fuller pipeline (ported from matrix-agora, retargeted to Lumi):
+
+- **`/generate-issues <vA.B>`** — decompose one ROADMAP phase into a dependency-ordered `specification/roadmap/implementation/vA.B-issues.md`, grounded in the real current code (next free `LUMI-###` id, never renumbered).
+- **`/reconcile-issues <vA.B>`** — re-check an already-generated issues file against the real implementation (read-only live checks) and correct drift in place with a dated `⟳ Reconciled` mark; never implements.
+- **`/execute-issues-file <vA.B>`** — the offline counterpart of `/execute-issues`: run the phase straight from the local issues file (no GitHub), gates + owner-confirmed manual checks, one commit per issue, then the execution report.
+- **`/review-and-fix-issues [target]`** — review a phase/component/branch, write a criticality-ranked recommendations doc in `specification/roadmap/implementation/`, fix the fix-now items with regression tests, record the outcome in the same doc; never releases.
+- **`/harden-findings`** — sweep the review docs for still-unfixed HIGH/MEDIUM findings, fix each with a regression test, update the docs; optional patch release.
+- **`/ship-phase <selector>`** — the full GitHub-backed loop per phase: generate (+reconcile) → upload → execute → review-and-fix → release `A.B.0`, with a harden sweep at the end (opt out `--no-harden`); gated, stops on failure, pauses for owner-run steps.
+- **`/ship-solution [selector]`** — the same loop offline from existing issues files (reconcile → execute-file → review-and-fix → release), timed per phase, harden once at the end.
+
 Issue files live under `specification/roadmap/implementation/` (`vN-issues.md`), derived from the ROADMAP phases. The pipeline uses the `gh` CLI and a GitHub remote (create one with `gh repo create` if the repo doesn't have one yet).
 </content>
