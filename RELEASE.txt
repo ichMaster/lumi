@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 1.6.3 (2026-10-04)
+---------------------------
+- LUMI-203: the first-clause cut — the turn's first spoken chunk flushes at a clause boundary or the first N words (LUMI_VOICE_FIRST_CLAUSE_WORDS, default 8; 0 → byte-identical), later chunks stay whole sentences.
+- LUMI-204: emotion-colored delivery — the SpeechPipeline passes the current validated emotion into voice_settings_for per sentence (the previous turn's state colors the stream until the new one validates).
+- LUMI-205: Deepgram WS resilience — a dropped socket reconnects in place with backoff (LUMI_VOICE_RECONNECT, default 3), degrading to text only when retries are exhausted.
+- LUMI-206: voice observability — the per-turn stage line, a voice section in /latency, Gemini prices in usage.
+- fix(gemini): parse_emotion_json tolerates raw newlines inside JSON strings (strict=False) — the raw {"reply": …} object no longer leaks with emotion/intent lost; the tool-JSON instruction says set_state does not exist (no phantom calls → no "…" turns); gemini-3.6/3.7-flash prices.
+- docs: the ROADMAP restructure — v2 = the client/server split (prod & dev → server skeleton → streaming → pushes → brain moves → Linux deploy → pipelines → pywebview), Personality → v3, platform → v4, face → v5…v7; the full SDLC skill pipeline ported (generate/reconcile/execute-file/review-and-fix/harden/ship-phase/ship-solution).
+
 Version 1.6.2 (2026-07-30)
 ---------------------------
 - LUMI-199: the talking register — a voice role in the model profiles (gemini -> gemini-2.5-flash, LUMI_MODEL_VOICE, the optional 5th LUMI_MODEL_PROFILES part) + register="voice" on Core.reply(): the voice tier answers, the reasoning/inner-voice directive is omitted, native thinking is forced off (Gemini gets the explicit thinkingBudget=0); emotion contract, closeness, RAG, memory writes and the async queue unchanged; register off pinned byte-identical.

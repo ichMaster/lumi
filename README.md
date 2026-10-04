@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**1.6.3 — Voice polish.** The second live-use round of voice mode: her **first audio starts earlier** — the
+turn's first spoken chunk cuts at a clause boundary or the first N words (`LUMI_VOICE_FIRST_CLAUSE_WORDS`);
+**her voice carries the turn's emotion** (the validated state feeds `voice_settings_for` per sentence); a
+**dropped Deepgram socket heals in place** with backoff (`LUMI_VOICE_RECONNECT`) instead of killing voice mode;
+and every spoken turn shows its **stage timings** (a dim line + a voice section in `/latency`, Gemini prices in
+usage) (LUMI-203..206). Also: Gemini JSON-terminal fixes (raw newlines in replies, no phantom `set_state`), and
+the ROADMAP restructured around **v2 — the client/server split** (prod & dev first). Text mode off-pin byte-identical.
+
 **1.6.2 — Voice mode in the TUI.** The probes' winning stack productized: `/mode-set voice`
 (or `LUMI_MODE_SET=voice`) turns the TUI into a live spoken conversation — mic → Deepgram WS
 (streaming recognition, the phrase-hold) → **exactly one `Core.reply()` on the talking register**
