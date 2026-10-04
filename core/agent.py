@@ -2320,6 +2320,11 @@ class Core:
 
         return JOURNAL_TOOLS, journal.execute
 
+    @property
+    def journal_enabled(self) -> bool:
+        """Whether the v0.28 journal is on (``LUMI_JOURNAL``) — the command layer gates ``/journal`` on it."""
+        return self._journal_enabled
+
     def journal_read(self, date: str | None = None) -> str:
         """Read a journal entry for the ``/journal`` command (read-only; default today/most recent)."""
         journal = self._journal(with_stamp=False)

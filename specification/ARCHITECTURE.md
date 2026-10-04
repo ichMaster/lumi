@@ -191,6 +191,8 @@ These are the stable seams between the core and everything else. Changing a cont
 - **World-context MCP (v5.3):** `weather.get(location)`, `time.now()`, `calendar.events(date)`, `moon.phase(date)`, `wiki.lookup(query)`, `news.recent(topic?)` — passive, knowledge-only; results are data, not instructions (WORLD_CONTEXT_MCP.md).
 - **Creative tools (v6):** `gallery.add/list/get/remove` (internal per-user store), `image.submit/status` + `music.submit/status` (async MCP generators), `canvas.apply/skip` (synchronous), `journal.write/read` (admin-only). Artifacts are data, not commands. See GALLERY_MCP.md / CREATIVE_MCP.md / CO_CREATION_CANVAS.md / JOURNAL.md.
 
+- **Command layer (v2.2):** `run_command(core, session, line, *, confirmed=False) -> CommandResult | None` in `core/commands.py` — the core-state slash commands as one implementation any client renders. `CommandResult{text, kind, confirm, turn}`; `kind` ∈ `info` (markdown) · `notice` · `ack` · `meta` · `warning` · `error` · `toast`; `confirm` set → nothing happened yet, the client asks and re-runs with `confirmed=True`; `turn` set → the client runs that text as a turn. `None` → not a layer command. The layer imports no interface code. Pinned by `tests/contract/test_command_layer_contract.py`.
+
 ## Data model
 
 Field-level shapes for storage and context assembly. v0 stores these as local JSON or SQLite; v3 moves them behind the same `Repository` into a server DB without changing the core. Every per-user record carries `user_id`; in v0–v3.1 that is the single default `owner`.

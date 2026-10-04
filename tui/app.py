@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import time
 from collections import deque
+from dataclasses import replace
 from pathlib import Path
 
 from rich.console import RenderableType
@@ -32,15 +33,23 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
 from core.agent import Core
-from core.biorhythm import format_biorhythms
+from core.commands import (  # v2.2 (LUMI-211): the command layer; the constants are re-exported for clients/tests
+    BIORHYTHM_OFF,  # noqa: F401
+    CANCELLED_LINE,
+    CLEARED_LINE,  # noqa: F401
+    MEMORY_EMPTY,  # noqa: F401
+    MOOD_PENDING,  # noqa: F401
+    CommandResult,
+    fmt_latency,
+    fmt_tokens,
+    run_command,
+    tokens_line,
+)
 from core.config import load_config
-from core.cycle import format_cycle
 from core.emoji import EmojiRenderer, load_emoji_map
 from core.emotion import EmotionState, LogRenderer
 from core.images import image_block, media_type_for
-from core.llm import LLMError
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
-from core.prompt import mark_cache_breakpoint
 from core.repository import Session
 from core.schedule import load_schedule
 from core.thoughts import parse_directive
@@ -59,11 +68,6 @@ LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is Eng
 _log = logging.getLogger("lumi.tui")
 
 ERROR_LINE = "Лілі is unavailable right now. Try again in a moment."
-MEMORY_EMPTY = "_Memory is empty so far._"
-MOOD_PENDING = "_Лілі ще не визначила настрій сьогодні — напиши їй, і він складеться._"
-BIORHYTHM_OFF = "_Біоритми вимкнені або немає дати народження — напиши їй, щоб порахувати._"
-CLEARED_LINE = "Memory cleared (short- and long-term)."
-CANCELLED_LINE = "Cancelled."
 
 # Speaker colors — so your lines and Лілі's read apart at a glance.
 USER_COLOR = "cyan"
@@ -101,6 +105,17 @@ def thought_status_label(name: str, last_tool: str | None = None) -> str:
 def thought_meta_line(name: str) -> str:
     """The v0.33 (gated) chat-log meta line marking an autonomous act — e.g. ``✦ Лілі читає новини…``."""
     return f"✦ Лілі {_THOUGHT_VERBS.get(name, 'міркує')}…"
+
+
+def command_renderable(result: CommandResult) -> RenderableType:
+    """A command-layer result (v2.2) in the look the TUI always gave it — the kind picks the style."""
+    if result.kind == "info":
+        return Markdown(result.text)
+    style = {
+        "notice": SYSTEM_COLOR, "ack": f"bold {SYSTEM_COLOR}", "meta": THINKING_COLOR,
+        "warning": "yellow", "error": ERROR_COLOR,
+    }.get(result.kind, SYSTEM_COLOR)
+    return Text(result.text, style=style)
 
 
 def env_badge(env: str | None, version: str | None) -> str:
@@ -552,13 +567,11 @@ class LumiApp(App[None]):
     # --- status line -----------------------------------------------------
     @staticmethod
     def _fmt_tokens(n: int | None) -> str:
-        if n is None:
-            return "—"
-        return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+        return fmt_tokens(n)
 
     @staticmethod
     def _fmt_latency(ms: int) -> str:
-        return f"{ms / 1000:.1f}s" if ms >= 1000 else f"{ms}ms"
+        return fmt_latency(ms)
 
     @staticmethod
     def _short_model(model: str) -> str:
@@ -671,72 +684,19 @@ class LumiApp(App[None]):
         prompt = self.query_one("#prompt", ChatInput)
 
         # Commands — handled here, not sent to the model or persisted as a turn.
-        if text == "/memory":
-            self._show_memory()
-            prompt.focus()
-            return
-        if text == "/forget":
-            self._forget()
-            prompt.focus()
-            return
-        if text == "/prompt":
-            self._show_prompt()
-            prompt.focus()
-            return
-        if text == "/latency":
-            self._show_latency()
-            prompt.focus()
-            return
-        if text == "/style" or text.startswith("/style "):
-            self._style_command(text)
-            prompt.focus()
-            return
-        if text == "/mood":
-            self._show_mood()
+        # v2.2 (LUMI-211): the core-state commands run through the command layer (core/commands.py) —
+        # one implementation any client renders; the client-bound ones below stay in the TUI.
+        result = run_command(self._core, self._session, text)
+        if result is not None:
+            await self._apply_command_result(text, result)
             prompt.focus()
             return
         if text == "/mode-set" or text.startswith("/mode-set "):  # v1.6.2: text | voice
             await self._mode_set_command(text)
             prompt.focus()
             return
-        if text == "/model-set" or text.startswith("/model-set "):
-            self._model_set_command(text)
-            prompt.focus()
-            return
-        if text == "/model" or text.startswith("/model "):
-            self._model_command(text)
-            prompt.focus()
-            return
-        if text == "/biorhythm":
-            self._show_biorhythm()
-            prompt.focus()
-            return
-        if text == "/closeness":
-            self._show_closeness()
-            prompt.focus()
-            return
-        if text == "/thoughts":
-            self._show_thoughts()
-            prompt.focus()
-            return
-        if text == "/regen-summaries":
-            self._regen_summaries_command()
-            prompt.focus()
-            return
-        if text == "/recall" or text.startswith("/recall "):
-            self._recall_command(text)
-            prompt.focus()
-            return
         if text in ("/web", "/search", "/w") or text.startswith(("/web ", "/search ", "/w ")):
             await self._web_command(text)
-            prompt.focus()
-            return
-        if text == "/journal" or text.startswith("/journal "):
-            await self._journal_command(text)
-            prompt.focus()
-            return
-        if text == "/theme" or text.startswith("/theme "):
-            self._theme_command(text)
             prompt.focus()
             return
         if text == "/new":
@@ -1221,51 +1181,8 @@ class LumiApp(App[None]):
             self._inbox_busy = False
 
     # --- memory commands -------------------------------------------------
-    def _show_memory(self) -> None:
-        """Render the user's memory (facts + summaries) — the `/memory` command."""
-        mem = self._core.view_memory()
-        lines: list[str] = []
-        if mem.facts:
-            lines.append("**What Лілі remembers about you:**")
-            lines += [f"- {f}" for f in mem.facts]
-        if mem.summaries:
-            lines.append("**Memory of past conversations:**")
-            lines += [f"- {s}" for s in mem.summaries]
-        body = "\n".join(lines) if lines else MEMORY_EMPTY
-        self._emit(body, Markdown(body))
 
-    def _show_mood(self) -> None:
-        """Show Лілі's mood of the day — the `/mood` command (v0.6)."""
-        resolution = self._core.mood
-        body = f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING
-        self._emit(body, Markdown(body))
 
-    def _model_command(self, text: str) -> None:
-        """Show or swap the active engine on the fly — `/model`, `/model opus`, `/model gpt-5.5`,
-        `/model claude-haiku-4-5-20251001` (a bare full id — provider inferred, v0.41 LUMI-163), or
-        `/model provider:id` (v0.37 LUMI-148). No restart; the status bar reflects the new model."""
-        arg = text[len("/model"):].strip()
-        alias_list = ", ".join(sorted(self._core.model_aliases)) or "(none configured)"
-        if not arg:
-            current = f"{self._core.provider or '?'} / {self._core.model}"
-            body = (f"**Двигун:** {current}\n\nАліаси: {alias_list}\n"
-                    "`/model <аліас>`, `/model <повний-id>` або `/model provider:id` — перемкнути без рестарту.")
-            self._emit(body, Markdown(body))
-            return
-        try:
-            provider, model = self._core.resolve_model_target(arg)
-        except ValueError as exc:  # unknown alias / malformed → a clear, non-fatal message
-            self._emit(str(exc), Text(str(exc), style="yellow"))
-            return
-        try:
-            self._core.switch_model(provider, model)
-        except LLMError as exc:  # missing key / unknown provider → the old engine stays in place
-            msg = f"Не вдалося перемкнути двигун: {exc}"
-            self._emit(msg, Text(msg, style="red"))
-            return
-        body = f"**Двигун:** {provider} / {model} ✓"
-        self._emit(body, Markdown(body))
-        self._render_status()  # the status bar shows self._core.model
 
     # --- v1.6.2 (LUMI-202) voice mode: /mode-set + the in-TUI live loop ---------------------------
 
@@ -1445,120 +1362,7 @@ class LumiApp(App[None]):
         line = f"voice: {endpoint_part}llm first {llm_s:.1f}s · tts first {tts_s:.1f}s = {total_s:.1f}s"
         self._emit(line, Text(line, style="dim"))
 
-    def _model_set_command(self, text: str) -> None:
-        """List or switch the per-provider model PROFILES — `/model-set`, `/model-set gemini`
-        (v0.41 LUMI-162). One atomic step: the engine + the think/mood/housekeeping tiers together;
-        the reply-only `/model` afterwards drops the profile mark (the stack no longer matches)."""
-        arg = text[len("/model-set"):].strip()
-        profiles = self._core.model_profiles
-        if not arg:
-            active = self._core.profile
-            if not profiles:
-                self._emit("Профілі не налаштовані.", Text("Профілі не налаштовані.", style="yellow"))
-                return
-            lines = []
-            for name in sorted(profiles):
-                p = profiles[name]
-                mark = " **← активний**" if name == active else ""
-                lines.append(f"- **{name}** ({p.provider}): reply `{p.reply}` · think `{p.think}` · "
-                             f"mood `{p.mood}` · housekeeping `{p.housekeeping}`{mark}")
-            body = ("**Профілі моделей:**\n" + "\n".join(lines) +
-                    "\n\n`/model-set <назва>` — перемкнути весь стек (reply + tiers) без рестарту.")
-            self._emit(body, Markdown(body))
-            return
-        try:
-            self._core.switch_profile(arg)
-        except ValueError as exc:  # unknown profile → a clear, non-fatal message
-            self._emit(str(exc), Text(str(exc), style="yellow"))
-            return
-        except LLMError as exc:  # missing key / unknown provider → the old stack stays in place
-            msg = f"Не вдалося перемкнути профіль: {exc}"
-            self._emit(msg, Text(msg, style="red"))
-            return
-        p = profiles[self._core.profile]
-        body = (f"**Профіль:** {self._core.profile} ({p.provider}) ✓ — reply `{p.reply}`, "
-                f"think `{p.think}`, mood `{p.mood}`, housekeeping `{p.housekeeping}`")
-        self._emit(body, Markdown(body))
-        self._render_status()  # the status bar shows profile:model
 
-    def _theme_command(self, text: str) -> None:
-        """Manually set / clear the face theme — `/theme <name>` and `/theme auto` (v0.11)."""
-        arg = text[len("/theme"):].strip()
-        available = ", ".join(self._core.themes) or "(жодної)"
-        if not arg:
-            current = self._core.theme or "(плоский v0.7)"
-            body = (f"**Тема обличчя:** {current}\nДоступні: {available}\n"
-                    "`/theme <назва>` — поставити, `/theme auto` — за настроєм дня.")
-        elif arg.lower() == "auto":
-            self._core.set_theme(None)
-            body = "Тема обличчя: **авто** (за настроєм дня)."
-        elif self._core.set_theme(arg):
-            body = f"Тема обличчя: **{arg}**."
-        else:
-            body = f"Невідома тема «{arg}». Доступні: {available}"
-        self._emit(body, Markdown(body))
-
-    def _regen_summaries_command(self) -> None:
-        """Operator one-off (`/regen-summaries`, v0.34): force-rebuild the day/week digests so a format
-        change (e.g. `LUMI_MEMORY_INDEX`) applies to existing data (the lazy refresh skips unchanged days)."""
-        n = self._core.regenerate_summaries()
-        note = f"Regenerated {n} day/week digest(s) from the kept session summaries."
-        self._emit(note, Text(note, style=SYSTEM_COLOR))
-
-    def _show_thoughts(self) -> None:
-        """Show the recent dated thought-stream — the `/thoughts` command (v0.12)."""
-        if self._core.thoughts_show == "off":
-            body = "Перегляд думок вимкнено."
-        else:
-            view = self._core.thoughts_view()
-            body = f"**Що в мене на думці:**\n\n{view}" if view else "Поки що жодних думок."
-        self._emit(body, Markdown(body))
-
-    def _recall_command(self, text: str) -> None:
-        """Explicit semantic search — the `/recall <query>` command (v0.16; v0.17 context expansion).
-
-        Renders each hit as a dated dialogue **snippet** (the matched line with its session
-        neighbours, anchor + score marked), so search results read as moments, not orphan lines.
-        Empty query / no results → a friendly note; off (LUMI_RECALL) → says so.
-        """
-        raw = text[len("/recall"):].strip()
-        if not self._core.recall_enabled:
-            body = "Семантичний пошук вимкнено (увімкни `LUMI_RECALL=on`)."
-            self._emit(body, Markdown(body))
-            return
-        # By default `/recall` searches PAST conversations, skipping the **current session's** own
-        # echoes (they're already in the live window). `!all` (or `!here`) searches everything,
-        # including this conversation. The flag is stripped from the query.
-        include_current = False
-        before: str | None = None
-        after: str | None = None
-        kept: list[str] = []
-        for tok in raw.split():
-            low = tok.lower()
-            if low in ("!all", "!here"):
-                include_current = True
-            elif low.startswith("before:"):
-                before = tok[len("before:"):]
-            elif low.startswith("after:"):
-                after = tok[len("after:"):]
-            else:
-                kept.append(tok)
-        query = " ".join(kept)
-        if not query:
-            body = ("Що згадати? `/recall <запит>` — фільтри: `!all` (і ця розмова), "
-                    "`after:РРРР-ММ-ДД`, `before:РРРР-ММ-ДД` (за датою)")
-            self._emit(body, Markdown(body))
-            return
-        exclude = None if include_current or self._session is None else self._session.id
-        moments = self._core.recall_moments(query, exclude_session=exclude, before=before, after=after)
-        parts = ([] if exclude else ["з цією розмовою"]) \
-            + ([f"від {after}"] if after else []) + ([f"до {before}"] if before else [])
-        flt = f" ({', '.join(parts)})" if parts else ""
-        if not moments:
-            body = f"Нічого не згадалося про «{query}»{flt}."
-        else:
-            body = f"**Згадую про «{query}»{flt}:**\n\n" + "\n\n".join(moments)
-        self._emit(body, Markdown(body))
 
     async def _web_command(self, text: str) -> None:
         """``/web <query>`` (v0.27, aliases ``/search`` ``/w``) — fire **one** live web lookup; Лілі answers
@@ -1575,67 +1379,6 @@ class LumiApp(App[None]):
         self._last_activity = self._core.clock()  # a typed command resets the idle timer
         await self._run_turn(query, mirror_input=True)  # a normal turn — she looks it up + answers
 
-    async def _journal_command(self, text: str) -> None:
-        """``/journal [date|list|write]`` (v0.28) — read or write Лілі's day-summary diary. `/journal`
-        shows today / the most recent entry; `/journal <date>` a given day; `/journal list` the dates;
-        `/journal write` asks her to write today's summary now (she decides the prose). Gated by
-        ``LUMI_JOURNAL``."""
-        if not self._journal_enabled:
-            self.notify("Journal is off — set LUMI_JOURNAL=on.", severity="warning", timeout=3)
-            return
-        arg = text.split(None, 1)[1].strip() if " " in text else ""
-        if arg == "write":
-            self._last_activity = self._core.clock()
-            await self._run_turn("Запиши, будь ласка, підсумок сьогоднішнього дня у щоденник.",
-                                 mirror_input=True)
-            return
-        if arg == "list":
-            body = self._core.journal_list()
-        elif arg:  # a date (YYYY-MM-DD)
-            body = self._core.journal_read(arg)
-        else:
-            body = self._core.journal_read()
-        self._emit(body, Markdown(body))
-
-    def _show_closeness(self) -> None:
-        """Show the current relationship level by name — the `/closeness` command (v0.10).
-
-        Only the level + its name; the raw value / dimension scores stay internal.
-        """
-        level, name = self._core.closeness_status()
-        label = name or f"рівень {level}"
-        body = f"**Близькість:** {label} (рівень {level} з 5)"
-        self._emit(body, Markdown(body))
-
-    def _show_biorhythm(self) -> None:
-        """Show today's computed body rhythms — biorhythms + cycle — the `/biorhythm` command (v0.8)."""
-        b = self._core.biorhythms
-        c = self._core.cycle
-        if not b and not c:
-            self._emit(BIORHYTHM_OFF, Markdown(BIORHYTHM_OFF))
-            return
-        parts: list[str] = []
-        if b:
-            parts.append(f"**Біоритми Лілі сьогодні:**\n\n{format_biorhythms(b)}")
-        if c:
-            parts.append(f"**Цикл:** {format_cycle(c)}")
-        body = "\n\n".join(parts)
-        self._emit(body, Markdown(body))
-
-    def _forget(self) -> None:
-        """Clear the user's memory after a confirmation — the `/forget` command."""
-
-        def _on_confirm(confirmed: bool | None) -> None:
-            if confirmed:
-                self._core.clear_memory()
-                self._emit(CLEARED_LINE, Text(CLEARED_LINE, style=f"bold {SYSTEM_COLOR}"))
-            else:
-                self._emit(CANCELLED_LINE, Text(CANCELLED_LINE, style=SYSTEM_COLOR))
-
-        self.push_screen(
-            ConfirmScreen("Clear Лілі's memory about you? This can't be undone."),
-            _on_confirm,
-        )
 
     # --- session + prompt commands --------------------------------------
     async def _process_current_session(self) -> None:
@@ -1671,104 +1414,60 @@ class LumiApp(App[None]):
         finally:
             self._busy = False
 
-    def _style_command(self, text: str) -> None:
-        """Лілі picks her own style each turn. `/style` lists the palette + who chose;
-        `/style <name>` *recommends* a style (a soft hint, she still decides);
-        `/style auto` clears the recommendation.
-        """
-        arg = text[len("/style"):].strip()
-        if not arg:
-            metas = ", ".join(self._core.meta_names()) or "—"
-            bases = ", ".join(self._core.base_names())
-            rec = self._core.recommendation or "—"
-            line = (
-                f"Лілі обирає стиль сама (зараз: {self._core.style} · рекомендація: {rec}).\n"
-                f"Мега-стилі: {metas}\nБазові: {bases}\n"
-                "/style <назва> — порадити · /style auto — без поради"
-            )
-            self._emit(line, Text(line, style=SYSTEM_COLOR))
+
+    async def _apply_command_result(self, line: str, result: CommandResult) -> None:
+        """Act on a command-layer result (v2.2): confirm first, run it as a turn, or show it."""
+        if result.confirm is not None:  # e.g. /forget — nothing happened yet; ask, then re-run confirmed
+
+            def _on_confirm(confirmed: bool | None) -> None:
+                if confirmed:
+                    done = run_command(self._core, self._session, line, confirmed=True)
+                    if done is not None:
+                        self._show_command_result(done)
+                else:
+                    self._emit(CANCELLED_LINE, Text(CANCELLED_LINE, style=SYSTEM_COLOR))
+
+            self.push_screen(ConfirmScreen(result.confirm), _on_confirm)
             return
-        if self._core.set_style(arg):
-            rec = self._core.recommendation
-            line = (
-                f"Рекомендація стилю → {rec}. Лілі врахує (вирішує сама)."
-                if rec else "Стиль → авто. Лілі обирає сама."
-            )
-            self._emit(line, Text(line, style=f"bold {SYSTEM_COLOR}"))
-            self._render_status()
-        else:
-            names = ", ".join(self._core.style_names())
-            line = f"Unknown style in '{arg}'. Available: {names}"
-            self._emit(line, Text(line, style=ERROR_COLOR))
+        if result.turn is not None:  # e.g. /journal write — a request to her, run as a normal turn
+            self._last_activity = self._core.clock()
+            await self._run_turn(result.turn, mirror_input=True)
+            return
+        name = line.strip().split(" ", 1)[0]
+        if name == "/latency" and result.kind == "meta" and (voice := self._voice_latency_line()):
+            result = replace(result, text=f"{result.text}\n{voice}")  # the spoken turns' local stages
+        self._show_command_result(result)
+        if name in ("/style", "/model", "/model-set"):
+            self._render_status()  # the status bar shows the style / model / profile
+
+    def _show_command_result(self, result: CommandResult) -> None:
+        """Show a result in the look its kind always had in the TUI (toast → a transient notice)."""
+        if result.kind == "toast":
+            self.notify(result.text, severity="warning", timeout=3)
+            return
+        self._emit(result.text, command_renderable(result))
+
+    def _voice_latency_line(self) -> str | None:
+        """The spoken turns' median stages for `/latency` (v1.6.3 LUMI-206) — TUI-local, or None."""
+        if not self._voice_stages:
+            return None
+        import statistics as _st
+
+        def _vmed(key: str) -> float:
+            vals = [r[key] for r in self._voice_stages if r.get(key) is not None]
+            return _st.median(vals) if vals else 0.0
+
+        return (
+            f"voice /{len(self._voice_stages)} turns: endpoint {_vmed('endpoint_s'):.1f}s · "
+            f"llm first {_vmed('llm_s'):.1f}s · tts first {_vmed('tts_s'):.1f}s  =  "
+            f"{_vmed('total_s'):.1f}s"
+        )
 
     def _last_tokens_line(self) -> str | None:
-        """The last turn's token usage for the `/prompt` dump — in/out + cache + latency, or None."""
-        stats = self._core.last_stats
-        if stats is None:
-            return None
-        bits = [
-            f"in {self._fmt_tokens(stats.input_tokens or 0)}",
-            f"out {self._fmt_tokens(stats.output_tokens or 0)}",
-        ]
-        if stats.cache_read_tokens:
-            bits.append(f"cache {self._fmt_tokens(stats.cache_read_tokens)}↩")
-        if stats.cache_write_tokens:
-            bits.append(f"wrote {self._fmt_tokens(stats.cache_write_tokens)}↑")
-        bits.append(self._fmt_latency(stats.latency_ms))
-        return "[TOKENS] " + " · ".join(bits)
+        """The last turn's token usage — in/out + cache + latency, or None (the command layer's format)."""
+        return tokens_line(self._core.last_stats)
 
-    def _show_prompt(self) -> None:
-        """Show the exact prompt sent on the last turn (+ its token cost) — `/prompt`."""
-        p = getattr(self._core, "last_prompt", None)
-        if not p:
-            msg = "No prompt yet — make a turn first."
-            self._emit(msg, Text(msg, style=SYSTEM_COLOR))
-            return
-        system = mark_cache_breakpoint(p["system"], p.get("cache_prefix"))  # show the cache split
-        head = ["── last turn's prompt ──"]
-        if (tokens := self._last_tokens_line()) is not None:
-            head.append(tokens)
-        parts = [*head, "", "[SYSTEM]", system, "", "[MESSAGES]"]
-        parts += [f"{m['role']}: {m['content']}" for m in p["messages"]]
-        body = "\n".join(parts)
-        self._emit(body, Text(body, style=THINKING_COLOR))  # dim, like a meta block
 
-    def _show_latency(self) -> None:
-        """Show the last turn's per-stage timing + rolling medians — `/latency` (S0)."""
-        s = self._core.latency_summary() if hasattr(self._core, "latency_summary") else None
-        if not s:
-            msg = "No latency yet — make a turn first."
-            self._emit(msg, Text(msg, style=SYSTEM_COLOR))
-            return
-        last, med, n = s["last"], s["median"], s["n"]
-
-        def _s(ms: int) -> str:
-            return f"{ms / 1000:.1f}s"
-
-        ttft = last.get("ttft_ms")
-        first = f" · first symbol {_s(ttft)}" if ttft is not None else ""  # v1.4: TTFT when streaming
-        lines = [
-            "── turn latency (S0) ──",
-            f"last turn: PRE {_s(last['pre_ms'])} · MODEL {_s(last['llm_ms'])} · "
-            f"POST {_s(last['post_ms'])}  =  {_s(last['total_ms'])}  (think {last['think_chars']} chars)"
-            + first,
-            f"median /{n} turns: PRE {_s(med['pre_ms'])} · MODEL {_s(med['llm_ms'])} · "
-            f"POST {_s(med['post_ms'])}  =  {_s(med['total_ms'])}",
-        ]
-        if self._voice_stages:  # v1.6.3 LUMI-206: the spoken turns' stages (present only when any)
-            import statistics as _st
-
-            def _vmed(key: str) -> float:
-                vals = [r[key] for r in self._voice_stages if r.get(key) is not None]
-                return _st.median(vals) if vals else 0.0
-
-            lines.append(
-                f"voice /{len(self._voice_stages)} turns: endpoint {_vmed('endpoint_s'):.1f}s · "
-                f"llm first {_vmed('llm_s'):.1f}s · tts first {_vmed('tts_s'):.1f}s  =  "
-                f"{_vmed('total_s'):.1f}s"
-            )
-        body = "\n".join(lines)
-        self._emit(body, Text(body, style=THINKING_COLOR))
 
     # --- clipboard actions ----------------------------------------------
     def _copy(self, text: str) -> None:
