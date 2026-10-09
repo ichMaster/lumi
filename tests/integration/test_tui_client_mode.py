@@ -134,3 +134,29 @@ async def test_chat_lines_never_cost_a_command_round_trip(tmp_path, client_env):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт", until="Радо!")
     assert "/v1/turn" in paths and "/v1/command" not in paths
+
+
+async def test_a_successful_command_restores_online_after_a_blip(tmp_path, client_env):
+    # Code review #4: after a server error the status said "offline" until the next successful TURN.
+    app_srv = create_app(Core(llm=MockLLMClient("x"), repository=JsonRepository(tmp_path / "s.json"),
+                              canon="C", model="m"), token=TOKEN)
+    live = TestClient(app_srv)
+    blip = {"left": 1}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/command" and blip["left"]:
+            blip["left"] -= 1
+            raise httpx.ConnectError("blip", request=request)
+        res = live.request(request.method, request.url.path, headers=dict(request.headers),
+                           content=request.content)
+        return httpx.Response(res.status_code, json=res.json())
+
+    remote = RemoteCore("http://testserver", TOKEN,
+                        client=httpx.Client(transport=httpx.MockTransport(handler), base_url="http://testserver"))
+    remote.connect()
+    app = LumiApp(remote)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "/mood", until="unreachable")
+        assert "offline" in app._status_text()
+        await _submit(pilot, app, "/mood", until=MOOD_PENDING)
+        assert "offline" not in app._status_text()  # the answered command brought it back

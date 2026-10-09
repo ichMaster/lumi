@@ -702,6 +702,9 @@ class LumiApp(App[None]):
                 result = None
             elif self._remote:
                 result = await asyncio.to_thread(self._layer, text)
+                if not self._connected:  # the server answered — back online (not only after a turn)
+                    self._connected = True
+                    self._render_status()
             else:
                 result = self._layer(text)
         except LLMError as exc:  # v2.2 client mode: the server is down / busy / rejected the token
