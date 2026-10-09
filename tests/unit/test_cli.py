@@ -78,6 +78,10 @@ def test_model_and_model_set(tmp_path):
 
 
 def test_config_masks_every_secret(monkeypatch):
+    # Hermetic: an earlier test's load_dotenv() may have put the developer's .env (its own server port)
+    # into os.environ — pin the server keys this test asserts on.
+    for key in ("LUMI_SERVER_PORT", "LUMI_SERVER_HOST"):
+        monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-SUPERSECRET")
     monkeypatch.setenv("LUMI_SERVER_TOKEN", "tok-SUPERSECRET")
     monkeypatch.setenv("LUMI_TELEGRAM_TOKEN", "123:SUPERSECRET")
