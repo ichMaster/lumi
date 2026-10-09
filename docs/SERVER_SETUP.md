@@ -17,7 +17,8 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 - **The server owns everything stateful**: her memory (the data root), the model calls, the session. A
   client never opens the data root.
 - **One instance = one server = one port + one token.** prod and dev each run their own.
-- **Blocking turns.** Streaming over the socket arrives in v2.3; pushes and proactive turns in v2.4.
+- **Streamed turns (v2.3).** With `LUMI_STREAM=on` in the instance's `.env`, the reply grows token by token in
+  the client and the think-box fills live, as in the in-process TUI. Pushes and proactive turns arrive in v2.4.
 
 ## Setup (once per instance)
 
@@ -62,6 +63,14 @@ One-shot commands (not a live monitor): each asks the server once, prints, exits
 | `./lumi-cli config` | the instance's effective config, every key/token masked |
 
 Errors are one readable line and exit code 1 (server down, token rejected, busy).
+
+## Streaming and what happens when it breaks (v2.3)
+
+The client streams whenever the **server** streams (`LUMI_STREAM` in the server's `.env`); otherwise every
+turn is blocking, as in v2.2. Each turn carries its own id. If the stream breaks mid-answer — the server
+restarts, the connection drops, a frame arrives garbled — the client asks for **that same turn** the
+blocking way and shows its final text: Лілі never answers twice, and nothing you sent is sent again. If the
+server is gone entirely you get one `⚠ server unreachable …` line; start it again and the next turn streams.
 
 ## What client mode doesn't do yet
 
