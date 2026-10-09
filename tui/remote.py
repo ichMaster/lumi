@@ -9,7 +9,10 @@ v2.3. What the server can't host yet raises :class:`NotInServerMode` (the TUI tu
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+import logging
+import uuid
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
@@ -23,6 +26,49 @@ from core.emotion import Emotion, EmotionState
 from core.llm import LLMError, ResponseStats
 
 NOT_YET = "not yet in server mode"
+log = logging.getLogger("lumi.client")
+
+
+class MalformedStream(ValueError):
+    """An SSE frame whose data isn't the JSON the server sends."""
+
+
+class _StreamBroken(Exception):
+    """The stream failed before its outcome — the turn is fetched by its id the blocking way."""
+
+
+def parse_sse(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Server-Sent Events → ``(event, data)`` frames (v2.3). ``:`` comments and unknown fields are ignored,
+    multi-line ``data`` is joined, a blank line ends a frame; data that isn't JSON → :class:`MalformedStream`."""
+    event: str | None = None
+    data: list[str] = []
+
+    def frame() -> tuple[str, dict[str, Any]]:
+        try:
+            payload = json.loads("\n".join(data)) if data else {}
+        except ValueError:
+            raise MalformedStream(f"bad data in a {event or 'message'!r} frame") from None
+        if not isinstance(payload, dict):
+            raise MalformedStream(f"non-object data in a {event or 'message'!r} frame")
+        return event or "message", payload
+
+    for raw in lines:
+        line = raw.rstrip("\r")
+        if not line:
+            if event is not None or data:
+                yield frame()
+            event, data = None, []
+            continue
+        if line.startswith(":"):
+            continue
+        field, _, value = line.partition(":")
+        value = value[1:] if value.startswith(" ") else value
+        if field == "event":
+            event = value
+        elif field == "data":
+            data.append(value)
+    if event is not None or data:  # a last frame without its blank line
+        yield frame()
 
 
 class ServerUnavailable(LLMError):
@@ -85,7 +131,6 @@ class RemoteCore:
     """The client-mode stand-in for :class:`core.agent.Core` — see the module doc."""
 
     is_remote = True
-    stream_enabled = False  # v2.2 is blocking; the TUI's non-streaming path renders the reply
     last_compaction = None
     last_tool_calls: list = []
 
@@ -152,15 +197,53 @@ class RemoteCore:
               on_delta: Callable[[str], None] | None = None,
               on_think_delta: Callable[[str], None] | None = None,
               register: str | None = None) -> EmotionState:
-        """One blocking turn on the server (stream callbacks ignored until v2.3)."""
-        body: dict[str, Any] = {"text": user_text}
+        """One turn on the server — streamed into the TUI's v1.4 callbacks when the server streams (v2.3),
+        else blocking. Every turn carries a fresh ``turn_id``: if the stream breaks, the same id is asked
+        for the blocking way and the server returns that turn's outcome — she never answers twice."""
+        body: dict[str, Any] = {"text": user_text, "turn_id": uuid.uuid4().hex}
         if images:
             body["images"] = images
-        res = self._call("POST", "/v1/turn", json=body)
+        res: dict[str, Any] | None = None
+        if on_delta is not None and self.stream_enabled:
+            try:
+                res = self._stream_turn(body, on_delta, on_think_delta)
+            except _StreamBroken as exc:
+                log.info("stream broke (%s) — fetching turn %s the blocking way", exc, body["turn_id"])
+        if res is None:
+            res = self._call("POST", "/v1/turn", json=body)
         self._absorb(res)
         self.last_thinking = res.get("thinking")
         self.last_intent = res.get("intent")
         return EmotionState(reply=res["reply"], emotion=Emotion(res["emotion"]), intensity=float(res["intensity"]))
+
+    def _stream_turn(self, body: dict[str, Any], on_delta: Callable[[str], None],
+                     on_think_delta: Callable[[str], None] | None) -> dict[str, Any]:
+        """Consume ``/v1/turn/stream``: deltas → the callbacks, ``done`` → the payload. Anything short of an
+        outcome (a drop, a garbled frame, an early end, an older server) → :class:`_StreamBroken`."""
+        try:
+            with self._http.stream("POST", "/v1/turn/stream", json=body, headers=self._auth) as res:
+                if res.status_code == 401:
+                    raise ServerAuthError("the server rejected the token — check LUMI_SERVER_TOKEN")
+                if res.status_code == 409:
+                    raise ServerBusy("Лілі is busy with another request — try again")
+                if res.status_code == 404:
+                    raise _StreamBroken("no stream route (an older server)")
+                if res.status_code >= 400:
+                    raise _StreamBroken(f"HTTP {res.status_code}")
+                for event, data in parse_sse(res.iter_lines()):
+                    if event == "delta":
+                        on_delta(str(data.get("text", "")))
+                    elif event == "think" and on_think_delta is not None:
+                        on_think_delta(str(data.get("text", "")))
+                    elif event == "done":
+                        return data
+                    elif event == "error":
+                        raise LLMError(str(data.get("detail") or "turn failed"))
+        except httpx.TransportError as exc:
+            raise _StreamBroken(type(exc).__name__) from None
+        except MalformedStream as exc:
+            raise _StreamBroken(str(exc)) from None
+        raise _StreamBroken("the stream ended without an outcome")
 
     def command(self, line: str, *, confirmed: bool = False) -> CommandResult | None:
         """A slash command through the server's command layer (``None`` → not a layer command)."""
@@ -225,6 +308,11 @@ class RemoteCore:
     @property
     def theme(self) -> str | None:
         return self._state.get("theme")
+
+    @property
+    def stream_enabled(self) -> bool:
+        """v2.3: stream when the server's core does (``LUMI_STREAM`` on the server) — the TUI branches on it."""
+        return bool(self._state.get("stream_enabled"))
 
     @property
     def think_show(self) -> str:
