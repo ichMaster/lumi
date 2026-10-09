@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from core.agent import build_core
+from core.brainlock import guard_single_brain
 from core.config import load_config
 from core.envguard import guard_entry
 from core.llm import LLMError
@@ -77,6 +78,7 @@ def main() -> None:
         _run_client(cfg)
         return
     notes = guard_entry(cfg)  # v2.1: refuse before touching the data root (dev ↛ prod data, prod = released code)
+    guard_single_brain(cfg, "tui")  # one brain per memory: never alongside ./lumi-server or another ./lumi
     _setup_logging(cfg)
     for note in notes:
         logging.getLogger("lumi.envguard").warning(note)

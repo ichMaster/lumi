@@ -42,8 +42,9 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 ```
 
 The launchers `cd` to their own checkout, so the right `.env` is read wherever you call them from
-(prod: `~/lumi/prod/app/lumi-server`, dev: `~/development/lumi/lumi-server`). **Never run `./lumi`
-(in-process) and `./lumi-server` on the same instance at once** — two brains on one memory.
+(prod: `~/lumi/prod/app/lumi-server`, dev: `~/development/lumi/lumi-server`). **One brain per memory:**
+`./lumi` (in-process) and `./lumi-server` can't run on the same instance at once — the second one refuses
+("another brain already runs on this data root…"); talk to a running server with `./lumi-client`.
 
 ## The CLI
 
@@ -84,6 +85,7 @@ until the brain moves into the server (**v2.5**) — in client mode they're swit
 | `Лілі is busy with another request` | one request at a time (e.g. the CLI ran during a turn) | try again |
 | `LUMI_SERVER_TOKEN is not set` | no token in `.env` | add one (Setup step 2) |
 | `address already in use` (server start) | another server holds the port | stop it, or give this instance its own port |
+| `another brain already runs on this data root` | `./lumi` or `./lumi-server` already runs on this instance | stop it — or, for a running server, use `./lumi-client` |
 
 Logs: the server writes `<data root>/lumi.log` (as the in-process TUI did); a client writes
 `~/.cache/lumi/client-<env>.log` (never into the data root).

@@ -64,6 +64,9 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
         raise SystemExit("LUMI_SERVER_TOKEN is not set — the server never runs without a client token "
                          "(see .env.example).")
     guard_entry(cfg)  # v2.1: refuse before touching the data root
+    from core.brainlock import guard_single_brain
+
+    guard_single_brain(cfg, "server")  # one brain per memory: never alongside ./lumi on the same root
     try:
         import uvicorn
 
