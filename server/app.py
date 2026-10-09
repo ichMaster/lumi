@@ -1,21 +1,30 @@
-"""The server API v1 (v2.2, LUMI-212) — the routes, the token rule, the one-at-a-time lock.
+"""The server API v1 (v2.2 LUMI-212, v2.3 LUMI-216) — the routes, the token rule, the one-at-a-time lock.
 
 Every ``/v1/*`` route except ``health`` requires ``Authorization: Bearer <token>`` (constant-time compare;
 the token is never logged or echoed). One core, one session: a turn, a command and a session switch hold
-the same lock, so a second request while one runs gets ``409 busy`` instead of interleaving. Blocking turns
-only (streaming arrives in v2.3); the emotion contract is validated by the core as always.
+the same lock, so a second request while one runs gets ``409 busy`` instead of interleaving.
+
+v2.3: a turn can **stream** (``POST /v1/turn/stream`` → Server-Sent Events ``delta``/``think``/``done``/
+``error``) and every turn carries an optional **idempotent** ``turn_id``: each turn runs in its own runner
+thread that holds the lock to the end, results are kept by id, and a known id waits for / returns the stored
+result instead of running again — so a client retrying after a dropped stream never makes Лілі answer
+twice. The emotion contract is validated by the core on completion, as always (``done`` carries it).
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import queue
 import secrets
 import threading
-from collections.abc import Callable
+from collections import OrderedDict
+from collections.abc import Callable, Iterator
 from dataclasses import asdict
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.commands import run_command
@@ -27,6 +36,26 @@ log = logging.getLogger("lumi.server")
 class TurnRequest(BaseModel):
     text: str
     images: list[dict[str, Any]] | None = None  # v0.22 image blocks (base64) — /image over the API
+    turn_id: str | None = None  # v2.3: idempotency key — a known id returns the stored result, never reruns
+
+
+MAX_KEPT_TURNS = 32  # finished turns remembered by id (for retries after a dropped stream)
+_END = ("_end", None)
+
+
+def sse(event: str, data: dict[str, Any]) -> str:
+    """One Server-Sent Event — ``data`` as one JSON line (newline-safe)."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+class _TurnRecord:
+    """One turn's lifecycle: streamed events while it runs, then its result (or error), kept by id."""
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.events: queue.Queue = queue.Queue()
+        self.result: dict[str, Any] | None = None
+        self.error: tuple[int, str] | None = None
 
 
 class CommandRequest(BaseModel):
@@ -69,6 +98,7 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
         "totals": totals_dict(core.totals),
         "mood": core.mood, "theme": core.theme,
         "think_show": getattr(core, "think_show", "debug"),
+        "stream_enabled": bool(getattr(core, "stream_enabled", False)),  # v2.3: the client streams when on
     }
 
 
@@ -81,6 +111,8 @@ class _Service:
         self.env = env
         self.version = version
         self.lock = threading.Lock()
+        self._turns: OrderedDict[str, _TurnRecord] = OrderedDict()  # v2.3: turn_id → record
+        self._turns_lock = threading.Lock()
 
     def state(self) -> dict[str, Any]:
         return state_snapshot(self.core, self.session, env=self.env, version=self.version)
@@ -88,6 +120,59 @@ class _Service:
     def acquire(self) -> None:
         if not self.lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="busy")
+
+    # --- v2.3 turns: one runner thread each, kept by id -------------------------------------------------
+    def begin_turn(self, req: TurnRequest, *, stream: bool) -> tuple[_TurnRecord, bool]:
+        """The record for this turn and whether it is NEW. A known ``turn_id`` returns the existing record
+        (running or done) without running anything; a new turn takes the lock (409 if another runs)."""
+        with self._turns_lock:
+            if req.turn_id and req.turn_id in self._turns:
+                return self._turns[req.turn_id], False
+            self.acquire()  # 409 while a different turn / command runs
+            record = _TurnRecord()
+            if req.turn_id:
+                self._turns[req.turn_id] = record
+                self._forget_old_turns()
+        threading.Thread(target=self._run_turn, args=(record, req, stream), daemon=True,
+                         name="lumi-turn").start()
+        return record, True
+
+    def _forget_old_turns(self) -> None:
+        while len(self._turns) > MAX_KEPT_TURNS:
+            oldest_id, oldest = next(iter(self._turns.items()))
+            if not oldest.done.is_set():
+                break  # never forget a running turn
+            del self._turns[oldest_id]
+
+    def _run_turn(self, record: _TurnRecord, req: TurnRequest, stream: bool) -> None:
+        """The runner: owns the lock for the whole turn — a disconnecting client can't stop it midway."""
+        try:
+            hooks: dict[str, Any] = {}
+            if stream:
+                hooks = {
+                    "on_delta": lambda text: record.events.put(("delta", {"text": text})),
+                    "on_think_delta": lambda text: record.events.put(("think", {"text": text})),
+                }
+            result = self.core.reply(req.text, self.session, images=req.images, **hooks)
+            record.result = self.turn_payload(result)
+        except LLMError as exc:  # the model failed — a readable error, the session stays usable
+            log.warning("turn failed: %s", exc)
+            record.error = (502, f"model unavailable: {exc}")
+        except Exception:  # anything else — logged in full, the client gets a readable line (the TUI rule)
+            log.exception("turn failed")
+            record.error = (500, "turn failed — see the server log")
+        finally:
+            self.lock.release()
+            record.done.set()
+            record.events.put(_END)
+
+    def turn_payload(self, result: Any) -> dict[str, Any]:
+        core = self.core
+        return {
+            "reply": result.reply, "emotion": result.emotion.value, "intensity": result.intensity,
+            "thinking": getattr(core, "last_thinking", None), "intent": getattr(core, "last_intent", None),
+            "style": core.style, "stats": stats_dict(core.last_stats), "state": self.state(),
+        }
 
 
 def create_app(core: Any, *, token: str, session: Any = None, env: str | None = None,
@@ -120,23 +205,34 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
 
     @app.post("/v1/turn", dependencies=guarded)
     def turn(req: TurnRequest) -> dict[str, Any]:
-        service.acquire()
-        try:
-            result = service.core.reply(req.text, service.session, images=req.images)
-        except LLMError as exc:  # the model failed — a readable error, the session stays usable
-            log.warning("turn failed: %s", exc)
-            raise HTTPException(status_code=502, detail=f"model unavailable: {exc}") from None
-        except Exception:  # anything else — logged in full, the client gets a readable line (the TUI rule)
-            log.exception("turn failed")
-            raise HTTPException(status_code=500, detail="turn failed — see the server log") from None
-        finally:
-            service.lock.release()
-        core = service.core
-        return {
-            "reply": result.reply, "emotion": result.emotion.value, "intensity": result.intensity,
-            "thinking": getattr(core, "last_thinking", None), "intent": getattr(core, "last_intent", None),
-            "style": core.style, "stats": stats_dict(core.last_stats), "state": service.state(),
-        }
+        """A blocking turn — or, for a known ``turn_id``, the stored result of that turn (never a rerun)."""
+        record, _ = service.begin_turn(req, stream=False)
+        record.done.wait()
+        if record.error is not None:
+            raise HTTPException(status_code=record.error[0], detail=record.error[1])
+        return record.result
+
+    @app.post("/v1/turn/stream", dependencies=guarded)
+    def turn_stream(req: TurnRequest) -> StreamingResponse:
+        """A streamed turn as Server-Sent Events: ``delta``/``think`` while she answers, then exactly one
+        ``done`` (the blocking payload) or ``error``. A known ``turn_id`` skips straight to its outcome."""
+        record, fresh = service.begin_turn(req, stream=True)
+
+        def events() -> Iterator[str]:
+            if fresh:
+                while True:
+                    kind, data = record.events.get()
+                    if kind == "_end":
+                        break
+                    yield sse(kind, data)
+            record.done.wait()
+            if record.error is not None:
+                yield sse("error", {"detail": record.error[1]})
+            else:
+                yield sse("done", record.result)
+
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.post("/v1/command", dependencies=guarded)
     def command(req: CommandRequest) -> dict[str, Any]:
