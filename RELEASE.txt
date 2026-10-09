@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 2.2.0 (2026-10-10)
+---------------------------
+- LUMI-211: the command layer — the 15 core-state slash commands move into core/commands.py (run_command → CommandResult{text, kind, confirm, turn}); one implementation any client renders, the in-process TUI output unchanged (semantic kinds keep the exact look).
+- LUMI-212: the server — python -m server (FastAPI, the `server` extra): API v1 health/state/turn/command/session-new, a client token on every route but health, one request at a time, no docs endpoints.
+- LUMI-213: TUI client mode — LUMI_SERVER=on runs the TUI over a thin RemoteCore (no core, no data root); what the server can't host yet (thought-stream, Telegram bridge, voice) says "not yet in server mode".
+- LUMI-214: the CLI — serve, status, memory show|clear, model, model-set, config (secrets masked).
+- LUMI-215: docs/SERVER_SETUP.md + the launchers ./lumi-server, ./lumi-client, ./lumi-cli.
+- fix(core): one brain per data root — the server and the in-process TUI hold <root>/brain.lock; a second brain on the same memory is refused (code review #1).
+- fix: a non-Lumi answer on the server port, EOF at the `memory clear` prompt and a stale "offline" status are readable/self-healing now (code review #2–#4).
+- fix(prod): a shell sitting in ~/lumi/prod/app no longer blocks prod_update.py.
+
 Version 2.1.1 (2026-10-04)
 ---------------------------
 - fix(mood): the face theme survives an echoed description — the mood model often writes "ТЕМА: 3am: <description>"; split_theme now keeps the leading theme slug (description, quotes, **bold** ignored), so those days get their themed faces instead of the default pack.

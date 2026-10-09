@@ -12,6 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.2 — Server & client.** Лілі can run as a **server** — `./lumi-server` (FastAPI over the core, a client
+token, localhost) — with the **TUI as a client** (`./lumi-client`) and a small **CLI** (`./lumi-cli status`,
+`memory show`, `model`, `config`). The slash commands became a **command layer in the core** (one
+implementation any client renders; the in-process look unchanged), and **one brain per memory** is enforced:
+the server and the in-process TUI never run on the same data root. The thought-stream, Telegram and voice stay
+in-process until v2.5. Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) (LUMI-211..215). `./lumi` unchanged.
+
 **2.1.1 — Mood & theme fixes.** Her face theme no longer falls back to the default pack when the mood
 model echoes the theme description (`ТЕМА: 3am: …` → `3am`), and the daily mood is computed **once per day**
 again — a restart reuses today's reading from `mood.log` instead of re-rolling the mood and the theme.
