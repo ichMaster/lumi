@@ -122,3 +122,15 @@ def test_client_mode_config_turns_off_and_names_what_the_server_cant_host(monkey
     assert {"Telegram bridge", "scheduler", "voice mode"} <= set(was_on)
     assert not cfg.bridge and not cfg.scheduler and cfg.mode_set == "text"
     assert not cfg.thoughts and not cfg.idle_nudge and not cfg.voice and not cfg.dictation
+
+
+def test_a_non_lumi_answer_on_the_port_is_unavailable_not_a_traceback():
+    # Code review #2: a 200 with HTML (another service on the port) used to escape as JSONDecodeError —
+    # a traceback at client start, a dead TUI worker on a command.
+    html = httpx.MockTransport(lambda r: httpx.Response(200, text="<html>nginx</html>",
+                                                        headers={"content-type": "text/html"}))
+    rc = RemoteCore("http://x", TOKEN, client=httpx.Client(transport=html, base_url="http://x"))
+    with pytest.raises(ServerUnavailable, match="not as a Lumi server"):
+        rc.connect()
+    with pytest.raises(ServerUnavailable):
+        rc.command("/mood")  # an LLMError — the TUI's command path shows it as a readable line

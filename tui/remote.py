@@ -117,7 +117,12 @@ class RemoteCore:
             except ValueError:
                 detail = None
             raise LLMError(detail or f"server error {res.status_code}")
-        return res.json()
+        try:
+            return res.json()
+        except ValueError:  # something else listens on the port (a web server, a proxy page)
+            raise ServerUnavailable(
+                f"{self.base_url} answered, but not as a Lumi server (HTTP {res.status_code})"
+            ) from None
 
     def _absorb(self, payload: dict[str, Any]) -> None:
         state = payload.get("state")
