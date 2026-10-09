@@ -38,7 +38,7 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 ```bash
 ./lumi-server                     # the server (Ctrl+C stops it, closing the session) — = python -m cli serve
 ./lumi-client                     # the TUI as a client of that server (= LUMI_SERVER=on ./lumi)
-uv run python -m cli status       # what it's running: env, version, model, session, turns, mood, theme
+./lumi-cli status                 # what it's running: env, version, model, session, turns, mood, theme
 ```
 
 The launchers `cd` to their own checkout, so the right `.env` is read wherever you call them from
@@ -47,15 +47,18 @@ The launchers `cd` to their own checkout, so the right `.env` is read wherever y
 
 ## The CLI
 
+One-shot commands (not a live monitor): each asks the server once, prints, exits. `./lumi-cli` is
+`uv run python -m cli` from its own checkout.
+
 | Command | Does |
 |---|---|
-| `python -m cli serve` | run the server |
-| `python -m cli status` | health + state (env, version, model/profile, session, turns, mood, theme) |
-| `python -m cli memory show` | what she remembers about you (`/memory`) |
-| `python -m cli memory clear` | asks `[y/N]`, then clears (`/forget`) |
-| `python -m cli model [name]` | show / switch the engine (`/model`) |
-| `python -m cli model-set [profile]` | show / switch the model profile (`/model-set`) |
-| `python -m cli config` | the instance's effective config, every key/token masked |
+| `./lumi-cli serve` | run the server |
+| `./lumi-cli status` | health + state (env, version, model/profile, session, turns, mood, theme) |
+| `./lumi-cli memory show` | what she remembers about you (`/memory`) |
+| `./lumi-cli memory clear` | asks `[y/N]`, then clears (`/forget`) |
+| `./lumi-cli model [name]` | show / switch the engine (`/model`) |
+| `./lumi-cli model-set [profile]` | show / switch the model profile (`/model-set`) |
+| `./lumi-cli config` | the instance's effective config, every key/token masked |
 
 Errors are one readable line and exit code 1 (server down, token rejected, busy).
 
