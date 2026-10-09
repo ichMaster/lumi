@@ -119,3 +119,17 @@ def test_no_token_configured_refuses(monkeypatch):
     monkeypatch.delenv("LUMI_SERVER_TOKEN", raising=False)
     with pytest.raises(SystemExit, match="LUMI_SERVER_TOKEN"):
         main(["status"])
+
+
+@pytest.mark.parametrize("interrupt", [EOFError, KeyboardInterrupt])
+def test_memory_clear_with_no_terminal_or_ctrl_c_cancels(tmp_path, interrupt):
+    # Code review #3: `./lumi-cli memory clear < /dev/null` (or Ctrl+C at the prompt) was a traceback.
+    api, core = _api(tmp_path)
+    cleared: list = []
+    core.clear_memory = lambda *a, **k: cleared.append(1)
+
+    def ask(question):
+        raise interrupt
+
+    code, out, err = _run(["memory", "clear"], api, ask=ask)
+    assert code == 0 and "Cancelled." in out and cleared == [] and "Traceback" not in err

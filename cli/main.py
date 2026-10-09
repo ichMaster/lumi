@@ -100,7 +100,10 @@ def main(argv: list[str] | None = None, *, client: Any = None,
             if asked is None or asked.confirm is None:
                 _print_result(asked, out)
                 return 0
-            answer = ask(f"{asked.confirm} [y/N] ").strip().lower()
+            try:
+                answer = ask(f"{asked.confirm} [y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):  # no terminal / Ctrl+C at the prompt = "no"
+                answer = ""
             if answer not in ("y", "yes", "т", "так"):
                 print("Cancelled.", file=out)
                 return 0
