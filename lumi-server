@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run Лілі as a SERVER (v2.2) — her brain behind the client token, on localhost. Usage: ./lumi-server
+# Needs LUMI_SERVER_TOKEN + this instance's own LUMI_SERVER_PORT in .env (docs/SERVER_SETUP.md).
+# Ctrl+C stops it and closes the session. --all-extras: the server needs the same extras as the TUI.
+cd "$(dirname "$0")" && exec uv run --all-extras python -m server "$@"

@@ -36,13 +36,14 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 ## Run (three processes)
 
 ```bash
-python -m cli serve               # or: python -m server   — the server (Ctrl+C stops it, closing the session)
-LUMI_SERVER=on ./lumi             # the TUI as a client of that server
-python -m cli status              # what it's running: env, version, model, session, turns, mood, theme
+./lumi-server                     # the server (Ctrl+C stops it, closing the session) — = python -m cli serve
+./lumi-client                     # the TUI as a client of that server (= LUMI_SERVER=on ./lumi)
+uv run python -m cli status       # what it's running: env, version, model, session, turns, mood, theme
 ```
 
-Set `LUMI_SERVER=on` in the `.env` to make client mode the default for that instance. Run each from its
-instance directory (prod: `~/lumi/prod/app`, dev: `~/development/lumi`) so the right `.env` is read.
+The launchers `cd` to their own checkout, so the right `.env` is read wherever you call them from
+(prod: `~/lumi/prod/app/lumi-server`, dev: `~/development/lumi/lumi-server`). **Never run `./lumi`
+(in-process) and `./lumi-server` on the same instance at once** — two brains on one memory.
 
 ## The CLI
 
@@ -75,7 +76,7 @@ until the brain moves into the server (**v2.5**) — in client mode they're swit
 
 | You see | Meaning | Fix |
 |---|---|---|
-| `server unreachable at http://127.0.0.1:8765` | no server on that port | start it: `python -m cli serve` (or check `LUMI_SERVER_PORT`) |
+| `server unreachable at http://127.0.0.1:8765` | no server on that port | start it: `./lumi-server` (or check `LUMI_SERVER_PORT`) |
 | `the server rejected the token` | client and server `.env` differ | use the same `LUMI_SERVER_TOKEN` |
 | `Лілі is busy with another request` | one request at a time (e.g. the CLI ran during a turn) | try again |
 | `LUMI_SERVER_TOKEN is not set` | no token in `.env` | add one (Setup step 2) |

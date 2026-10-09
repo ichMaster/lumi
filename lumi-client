@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# The TUI as a CLIENT of ./lumi-server (v2.2) — the same chat + commands, no core in this process.
+# Start ./lumi-server first; both read the same .env (LUMI_SERVER_PORT + LUMI_SERVER_TOKEN). Usage: ./lumi-client
+cd "$(dirname "$0")" && LUMI_SERVER=on exec uv run --all-extras python -m tui "$@"
