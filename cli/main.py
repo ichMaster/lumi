@@ -120,7 +120,8 @@ def main(argv: list[str] | None = None, *, client: Any = None,
         if args.cmd == "think":  # v2.4: the thought is also pushed to every listening client
             outcome = api.run_directive(" ".join(["%think!", *args.topic]))
             if outcome.thought is None:
-                print("(no thought came — is the thought-stream on on the server? LUMI_THOUGHTS)", file=out)
+                print("(no thought came this time — the model returned nothing, or the thought-stream is off on "
+                      "the server: LUMI_THOUGHTS; the server log says which)", file=out)
             else:
                 print(f"💭 {outcome.thought.text}", file=out)
             return 0

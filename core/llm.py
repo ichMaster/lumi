@@ -179,6 +179,35 @@ def _gemini_can_disable_thinking(model: str | None) -> bool:
 # headroom so the answer is never starved.
 _GEMINI_THINKING_HEADROOM = 8192
 
+
+def _gemini_empty_reason(resp: object) -> str:
+    """Why a Gemini response carries no answer text — for the log: the finish (or prompt-block) reason and
+    how much it spent thinking. The candidate itself has nothing to show."""
+    if not isinstance(resp, dict):
+        return "no response"
+    cands = resp.get("candidates") or []
+    finish = (cands[0].get("finishReason") if cands else None) or (resp.get("promptFeedback") or {}).get("blockReason")
+    thoughts = (resp.get("usageMetadata") or {}).get("thoughtsTokenCount") or 0
+    return f"finish {finish or '?'}, thinking {thoughts} tokens"
+
+
+def _sum_stats(first: ResponseStats | None, second: ResponseStats | None) -> ResponseStats | None:
+    """Two calls of one logical request (a re-ask) as one ``ResponseStats`` — every token is counted."""
+    if first is None or second is None:
+        return second or first
+
+    def add(a: int | None, b: int | None) -> int | None:
+        return None if a is None and b is None else (a or 0) + (b or 0)
+
+    return ResponseStats(
+        model=second.model, latency_ms=first.latency_ms + second.latency_ms,
+        input_tokens=add(first.input_tokens, second.input_tokens),
+        output_tokens=add(first.output_tokens, second.output_tokens),
+        cache_read_tokens=add(first.cache_read_tokens, second.cache_read_tokens),
+        cache_write_tokens=add(first.cache_write_tokens, second.cache_write_tokens),
+        thinking=second.thinking,
+    )
+
 # v0.39 LUMI-153 fix: the strong "return ONLY a single JSON object" instruction makes Gemini encode a tool
 # call AS JSON text instead of a NATIVE functionCall (it never fires the tool). On tool rounds use this
 # variant, which separates the two clearly; the forced final round still uses the strong one + responseSchema.
@@ -2092,8 +2121,11 @@ class GeminiClient:
                 out += _GEMINI_THINKING_HEADROOM
         return out
 
-    def _generation_config(self, *, structured: bool, model: str | None = None) -> dict:
-        tc = self._thinking_config(model)
+    def _generation_config(self, *, structured: bool, model: str | None = None,
+                           no_thinking: bool = False) -> dict:
+        # no_thinking: a re-ask after an empty answer — thinking explicitly off where the model allows it
+        tc = ({"thinkingBudget": 0} if no_thinking and _gemini_can_disable_thinking(model)
+              else self._thinking_config(model))
         cfg: dict = {"maxOutputTokens": self._max_output_for(tc)}
         if structured:
             cfg["responseMimeType"] = "application/json"
@@ -2103,12 +2135,13 @@ class GeminiClient:
         return cfg
 
     def _body(self, system: str, messages: list[Message], *, structured: bool,
-              model: str | None = None, cache_prefix: str | None = None) -> dict:
+              model: str | None = None, cache_prefix: str | None = None, no_thinking: bool = False) -> dict:
         sys_text = system + (_JSON_STATE_INSTRUCTION if structured else "")
         body = {
             "systemInstruction": {"parts": [{"text": sys_text}]},
             "contents": _gemini_contents(messages),
-            "generationConfig": self._generation_config(structured=structured, model=model),
+            "generationConfig": self._generation_config(structured=structured, model=model,
+                                                        no_thinking=no_thinking),
             "safetySettings": _GEMINI_SAFETY,
         }
         return self._cache_wrap(body, sys_text, cache_prefix, model)
@@ -2203,11 +2236,28 @@ class GeminiClient:
         return wrapped
 
     def _create(self, system: str, messages: list[Message], model: str, *, structured: bool,
-                cache_prefix: str | None = None) -> dict:
-        body = self._body(system, messages, structured=structured, model=model, cache_prefix=cache_prefix)
+                cache_prefix: str | None = None, no_thinking: bool = False) -> dict:
+        body = self._body(system, messages, structured=structured, model=model, cache_prefix=cache_prefix,
+                          no_thinking=no_thinking)
         started = time.monotonic()
         resp = self._run(lambda: self._post(model, body))
         self._capture(resp, model, int((time.monotonic() - started) * 1000))
+        return resp
+
+    def _reask_empty(self, first: dict, system: str, messages: list[Message], model: str, *,
+                     structured: bool, cache_prefix: str | None) -> dict:
+        """Gemini sometimes ends a call with NO answer text: it thought, then stopped (about 1 in 5
+        2.5-flash thoughts in the 2026-10 prod log) or was cut off. Ask ONCE more — thinking off where the
+        model allows it (the flash family), so the answer comes straight out. Both calls count in
+        ``last_stats``; the reason is logged; never loops."""
+        first_stats, first_thinking = self.last_stats, self.last_thinking
+        _log.warning("Gemini %s returned no answer (%s) — asking once more", model, _gemini_empty_reason(first))
+        resp = self._create(system, messages, model, structured=structured, cache_prefix=cache_prefix,
+                            no_thinking=True)
+        if not self._text_of(resp):
+            _log.warning("Gemini %s returned no answer again (%s)", model, _gemini_empty_reason(resp))
+        self.last_stats = _sum_stats(first_stats, self.last_stats)
+        self.last_thinking = self.last_thinking or first_thinking
         return resp
 
     @staticmethod
@@ -2264,8 +2314,12 @@ class GeminiClient:
         if tools and tool_executor is not None:  # v0.39 LUMI-153 think-path tool-loop (text terminal)
             return self._loop(system, messages, model, tools, tool_executor, max_steps,
                               structured=False, cache_prefix=cache_prefix)
-        return _sanitize_reply(self._text_of(
-            self._create(system, messages, model, structured=False, cache_prefix=cache_prefix)))
+        resp = self._create(system, messages, model, structured=False, cache_prefix=cache_prefix)
+        text = self._text_of(resp)
+        if not text:  # thought, then said nothing — ask once more (a lost thought otherwise)
+            text = self._text_of(self._reask_empty(resp, system, messages, model, structured=False,
+                                                   cache_prefix=cache_prefix))
+        return _sanitize_reply(text)
 
     def reply_structured(
         self,
@@ -2282,7 +2336,11 @@ class GeminiClient:
         if tools and tool_executor is not None:  # v0.39 LUMI-153 function-calling loop
             return self._loop(system, messages, model, tools, tool_executor, max_steps,
                               structured=True, cache_prefix=cache_prefix)
-        text = self._text_of(self._create(system, messages, model, structured=True, cache_prefix=cache_prefix))
+        resp = self._create(system, messages, model, structured=True, cache_prefix=cache_prefix)
+        text = self._text_of(resp)
+        if not text:  # thought, then said nothing — ask once more before the '…' placeholder
+            text = self._text_of(self._reask_empty(resp, system, messages, model, structured=True,
+                                                   cache_prefix=cache_prefix))
         if not text:  # blocked/empty candidate → a graceful calm placeholder (the gate needs a reply)
             return dict(_GEMINI_BLOCKED_STATE)
         return _clean_state(parse_emotion_json(text))
@@ -2402,6 +2460,7 @@ class GeminiClient:
                 # Gemini 3.x sometimes "answers" inside its thinking and emits NO answer text (0 output
                 # tokens) — the turn used to end as the '…' placeholder with a ready reply in the think-box.
                 # Re-ask once in the forced final round (schema, no tools) before giving up.
+                _log.warning("Gemini %s streamed no answer — forcing the final round", model)
                 self.last_round_log.append(("empty", rstats))
                 force_final = True
                 continue
@@ -2570,10 +2629,12 @@ class GeminiClient:
                     self.last_round_log.append(("tool", rstats))
                     self._run_tool_round(contents, [{"functionCall": c} for c in salvaged], salvaged, tool_executor)
                     continue
-                if structured and not text.strip() and not final:
-                    # Gemini 3.x sometimes "answers" inside its thinking and emits NO answer text (0 output
-                    # tokens) — re-ask once in the forced final round (schema, no tools) instead of ending
-                    # the turn as the '…' placeholder with a ready reply sitting in the think-box.
+                if not text.strip() and not final:
+                    # Gemini sometimes "answers" inside its thinking and emits NO answer text (0 output
+                    # tokens) — re-ask once in the forced final round (no tools; the schema when
+                    # structured) instead of ending as the '…' placeholder / a lost thought.
+                    _log.warning("Gemini %s returned no answer (%s) — forcing the final round", model,
+                                 _gemini_empty_reason(resp))
                     self.last_round_log.append(("empty", rstats))
                     force_final = True
                     continue

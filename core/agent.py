@@ -1175,10 +1175,12 @@ class Core:
                 tools=t_tools, tool_executor=t_exec, max_steps=cap,
             ).strip()
         except Exception:  # noqa: BLE001 — thoughts are best-effort; never block
+            _thoughts_log.warning("%%%s failed — nothing recorded", kind, exc_info=True)
             return None
         _, raw = split_reasoning(raw)  # strip any <think>…</think> (the full backdrop's directive)
         parsed = parse_thought(raw)
         if parsed is None:
+            _thoughts_log.warning("%%%s came back empty — nothing recorded", kind)
             return None  # empty / malformed → record nothing (never corrupt the stream)
         text, emo = parsed
         if not directive.freeform:  # hard length cap; %prompt (freeform) runs as long as the task needs
