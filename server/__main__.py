@@ -45,6 +45,29 @@ def _refresh_world(core, cfg) -> None:
         log.warning("ambient snapshot failed", exc_info=True)
 
 
+def make_server(app, *, host: str, port: int):
+    """uvicorn, but the first Ctrl+C also ends every ``/v1/events`` stream (v2.4) — a listening client
+    must never hold the graceful stop open (uvicorn waits for open responses to finish first)."""
+    import uvicorn
+
+    bus = app.state.service.bus
+
+    class _Server(uvicorn.Server):
+        def handle_exit(self, sig, frame) -> None:
+            # no locks inside a signal handler: the bus is closed from a helper thread
+            threading.Thread(target=bus.close, daemon=True, name="lumi-events-close").start()
+            super().handle_exit(sig, frame)
+
+    return _Server(uvicorn.Config(app, host=host, port=port, log_level="warning"))
+
+
+def serve(app, *, host: str, port: int) -> None:  # pragma: no cover - the real signal loop
+    try:
+        make_server(app, host=host, port=port).run()
+    except KeyboardInterrupt:  # uvicorn re-raises the captured signal after a clean stop
+        pass
+
+
 def _background(name: str, fn) -> None:
     def run() -> None:
         try:
@@ -95,7 +118,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
 
     guard_single_brain(cfg, "server")  # one brain per memory: never alongside ./lumi on the same root
     try:
-        import uvicorn
+        import uvicorn  # noqa: F401 — fail early, with the hint, when the extra is missing
 
         from server.app import create_app
     except ImportError as exc:
@@ -111,14 +134,15 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     session = core.start_session()
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
                      on_new_session=lambda: _refresh_world(core, cfg))
+    service = app.state.service
     _background("world", lambda: _refresh_world(core, cfg))
-    _background("mood", core.ensure_mood)
+    _background("mood", lambda: (core.ensure_mood(), service.refresh_state()))  # v2.4: listeners hear it
     _background("backfill", core.ensure_backfill)
     log.info("serving on %s:%s (env=%s version=%s)", cfg.server_host, cfg.server_port, cfg.env, cfg.app_version)
     print(f"Lumi server on http://{cfg.server_host}:{cfg.server_port} "
           f"({cfg.env or 'no env'} v{cfg.app_version or '?'}) — Ctrl+C to stop", flush=True)
     try:
-        uvicorn.run(app, host=cfg.server_host, port=cfg.server_port, log_level="warning")
+        serve(app, host=cfg.server_host, port=cfg.server_port)
     finally:
         close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
 

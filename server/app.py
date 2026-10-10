@@ -9,6 +9,13 @@ v2.3: a turn can **stream** (``POST /v1/turn/stream`` → Server-Sent Events ``d
 thread that holds the lock to the end, results are kept by id, and a known id waits for / returns the stored
 result instead of running again — so a client retrying after a dropped stream never makes Лілі answer
 twice. The emotion contract is validated by the core on completion, as always (``done`` carries it).
+
+v2.4: the server **speaks first** — ``GET /v1/events`` is a long-lived SSE stream every client listens to:
+the current ``state`` first, then a ``turn`` event ``{emotion, intensity, theme}`` after every turn (the
+face signal over the wire — a theme *name*, never a face file) and ``state`` whenever the snapshot changes.
+The snapshot is taken by whoever holds the lock (a turn's runner, a command, a session switch), so it is
+never torn mid-turn. A request may name its client (``X-Lumi-Client``); the events it causes carry that id
+as ``origin`` (``null`` for the server's own), so a client can tell its own echoes from the rest.
 """
 
 from __future__ import annotations
@@ -41,11 +48,96 @@ class TurnRequest(BaseModel):
 
 MAX_KEPT_TURNS = 32  # finished turns remembered by id (for retries after a dropped stream)
 _END = ("_end", None)
+EVENT_QUEUE_MAX = 256  # per listener; a full queue drops its oldest event — a slow client never stalls a turn
+HEARTBEAT_S = 15.0  # a ':' comment after this much silence keeps the stream honest (and cancellable)
+ORIGIN_MAX = 64  # an X-Lumi-Client id longer than this is cut
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
 def sse(event: str, data: dict[str, Any]) -> str:
     """One Server-Sent Event — ``data`` as one JSON line (newline-safe)."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def origin_of(header: str | None) -> str | None:
+    """The requesting client's id (``X-Lumi-Client``) as events carry it — ``None`` when not given."""
+    return (header or "").strip()[:ORIGIN_MAX] or None
+
+
+def _offer(sub: queue.Queue, item: Any) -> None:
+    """Put without ever blocking: a full queue loses its oldest item first."""
+    while True:
+        try:
+            sub.put_nowait(item)
+            return
+        except queue.Full:
+            try:
+                sub.get_nowait()
+            except queue.Empty:
+                pass
+
+
+class EventBus:
+    """v2.4: fan-out of the server's events to every ``/v1/events`` listener — one bounded queue each.
+
+    ``publish`` never blocks (a full queue drops its oldest event); ``close`` ends every stream — the
+    server's shutdown, so a listening client never holds a graceful stop open."""
+
+    def __init__(self, maxsize: int = EVENT_QUEUE_MAX) -> None:
+        self._maxsize = maxsize
+        self._subs: list[queue.Queue] = []
+        self._lock = threading.Lock()
+        self._closed = False
+
+    def subscribe(self) -> queue.Queue:
+        sub: queue.Queue = queue.Queue(maxsize=self._maxsize)
+        with self._lock:
+            if self._closed:
+                _offer(sub, _END)  # a listener arriving during shutdown ends at once
+            else:
+                self._subs.append(sub)
+        return sub
+
+    def unsubscribe(self, sub: queue.Queue) -> None:
+        with self._lock:
+            if sub in self._subs:
+                self._subs.remove(sub)
+
+    @property
+    def listeners(self) -> int:
+        with self._lock:
+            return len(self._subs)
+
+    def publish(self, event: str, data: dict[str, Any]) -> None:
+        with self._lock:
+            subs = list(self._subs)
+        for sub in subs:
+            _offer(sub, (event, data))
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+            subs, self._subs = self._subs, []
+        for sub in subs:
+            _offer(sub, _END)
+
+
+def event_frames(sub: queue.Queue, first: tuple[str, dict[str, Any]], *,
+                 heartbeat_s: float | None = None) -> Iterator[str]:
+    """The ``/v1/events`` body: ``first`` (the current state), then each published event as it comes, a
+    ``:`` heartbeat comment whenever ``heartbeat_s`` (default ``HEARTBEAT_S``) passes in silence; ends when
+    the bus closes."""
+    wait = HEARTBEAT_S if heartbeat_s is None else heartbeat_s
+    yield sse(*first)
+    while True:
+        try:
+            item = sub.get(timeout=wait)
+        except queue.Empty:
+            yield ": heartbeat\n\n"
+            continue
+        if item is _END:
+            return
+        yield sse(*item)
 
 
 class _TurnRecord:
@@ -86,6 +178,7 @@ def totals_dict(totals: Any) -> dict[str, int]:
 def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | None) -> dict[str, Any]:
     """Everything a client's status/stats lines read — one fetch per turn/command, not one per render."""
     emo = getattr(core, "last_emotion", None)
+    level, name = core.closeness_status()  # v2.4: the level by name only — the raw value stays internal
     return {
         "env": env, "version": version, "session_id": getattr(session, "id", None),
         "model": core.model, "provider": core.provider, "profile": core.profile,
@@ -99,6 +192,7 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
         "mood": core.mood, "theme": core.theme,
         "think_show": getattr(core, "think_show", "debug"),
         "stream_enabled": bool(getattr(core, "stream_enabled", False)),  # v2.3: the client streams when on
+        "closeness": {"level": level, "name": name},  # v2.4
     }
 
 
@@ -113,6 +207,8 @@ class _Service:
         self.lock = threading.Lock()
         self._turns: OrderedDict[str, _TurnRecord] = OrderedDict()  # v2.3: turn_id → record
         self._turns_lock = threading.Lock()
+        self.bus = EventBus()  # v2.4: the push channel
+        self.last_state = self.state()  # the last consistent snapshot — what a new listener starts from
 
     def state(self) -> dict[str, Any]:
         return state_snapshot(self.core, self.session, env=self.env, version=self.version)
@@ -121,8 +217,30 @@ class _Service:
         if not self.lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="busy")
 
+    # --- v2.4 pushes ------------------------------------------------------------------------------------
+    def publish_state(self, origin: str | None = None) -> dict[str, Any]:
+        """Snapshot the state and push it to every listener if it changed. The caller holds the lock, so
+        the snapshot is never taken mid-turn (v2.2 review #7). Returns the snapshot."""
+        snap = self.state()
+        changed, self.last_state = snap != self.last_state, snap
+        if changed:
+            self.bus.publish("state", {"origin": origin, "state": snap})
+        return snap
+
+    def refresh_state(self) -> None:
+        """Re-snapshot from outside a request (the mood computed at start) — after any turn in flight."""
+        with self.lock:
+            self.publish_state()
+
+    def _publish_state_quietly(self, origin: str | None) -> None:
+        try:
+            self.publish_state(origin)
+        except Exception:  # noqa: BLE001 — a failed push never keeps the lock or kills the runner
+            log.warning("publishing the state failed", exc_info=True)
+
     # --- v2.3 turns: one runner thread each, kept by id -------------------------------------------------
-    def begin_turn(self, req: TurnRequest, *, stream: bool) -> tuple[_TurnRecord, bool]:
+    def begin_turn(self, req: TurnRequest, *, stream: bool,
+                   origin: str | None = None) -> tuple[_TurnRecord, bool]:
         """The record for this turn and whether it is NEW. A known ``turn_id`` returns the existing record
         (running or done) without running anything; a new turn takes the lock (409 if another runs)."""
         with self._turns_lock:
@@ -133,7 +251,7 @@ class _Service:
             if req.turn_id:
                 self._turns[req.turn_id] = record
                 self._forget_old_turns()
-        threading.Thread(target=self._run_turn, args=(record, req, stream), daemon=True,
+        threading.Thread(target=self._run_turn, args=(record, req, stream, origin), daemon=True,
                          name="lumi-turn").start()
         return record, True
 
@@ -144,8 +262,9 @@ class _Service:
                 break  # never forget a running turn
             del self._turns[oldest_id]
 
-    def _run_turn(self, record: _TurnRecord, req: TurnRequest, stream: bool) -> None:
-        """The runner: owns the lock for the whole turn — a disconnecting client can't stop it midway."""
+    def _run_turn(self, record: _TurnRecord, req: TurnRequest, stream: bool, origin: str | None) -> None:
+        """The runner: owns the lock for the whole turn — a disconnecting client can't stop it midway.
+        Before letting go it pushes the turn's face state and the new snapshot (v2.4)."""
         try:
             hooks: dict[str, Any] = {}
             if stream:
@@ -154,7 +273,9 @@ class _Service:
                     "on_think_delta": lambda text: record.events.put(("think", {"text": text})),
                 }
             result = self.core.reply(req.text, self.session, images=req.images, **hooks)
-            record.result = self.turn_payload(result)
+            self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
+                                      "theme": self.core.theme, "origin": origin})
+            record.result = self.turn_payload(result, origin)
         except LLMError as exc:  # the model failed — a readable error, the session stays usable
             log.warning("turn failed: %s", exc)
             record.error = (502, f"model unavailable: {exc}")
@@ -162,16 +283,19 @@ class _Service:
             log.exception("turn failed")
             record.error = (500, "turn failed — see the server log")
         finally:
+            if record.result is None:
+                self._publish_state_quietly(origin)  # a failed turn may still have moved the state
             self.lock.release()
             record.done.set()
             record.events.put(_END)
 
-    def turn_payload(self, result: Any) -> dict[str, Any]:
+    def turn_payload(self, result: Any, origin: str | None = None) -> dict[str, Any]:
+        """The turn's outcome; its ``state`` is the snapshot just pushed (taken under the runner's lock)."""
         core = self.core
         return {
             "reply": result.reply, "emotion": result.emotion.value, "intensity": result.intensity,
             "thinking": getattr(core, "last_thinking", None), "intent": getattr(core, "last_intent", None),
-            "style": core.style, "stats": stats_dict(core.last_stats), "state": self.state(),
+            "style": core.style, "stats": stats_dict(core.last_stats), "state": self.publish_state(origin),
         }
 
 
@@ -201,22 +325,42 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
 
     @app.get("/v1/state", dependencies=guarded)
     def state() -> dict[str, Any]:
-        return service.state()
+        """The current state — fresh when idle; while a turn runs, the last consistent snapshot."""
+        if not service.lock.acquire(blocking=False):
+            return service.last_state
+        try:
+            return service.publish_state()
+        finally:
+            service.lock.release()
+
+    @app.get("/v1/events", dependencies=guarded)
+    def events() -> StreamingResponse:
+        """v2.4: the push channel (SSE) — the current ``state`` first, then ``turn`` / ``state`` as they
+        happen, ``:`` heartbeats in between; it ends only when the client leaves or the server stops."""
+
+        def body() -> Iterator[str]:
+            sub = service.bus.subscribe()  # before reading the state: nothing published in between is lost
+            try:
+                yield from event_frames(sub, ("state", {"origin": None, "state": service.last_state}))
+            finally:
+                service.bus.unsubscribe(sub)
+
+        return StreamingResponse(body(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
     @app.post("/v1/turn", dependencies=guarded)
-    def turn(req: TurnRequest) -> dict[str, Any]:
+    def turn(req: TurnRequest, x_lumi_client: str | None = Header(default=None)) -> dict[str, Any]:
         """A blocking turn — or, for a known ``turn_id``, the stored result of that turn (never a rerun)."""
-        record, _ = service.begin_turn(req, stream=False)
+        record, _ = service.begin_turn(req, stream=False, origin=origin_of(x_lumi_client))
         record.done.wait()
         if record.error is not None:
             raise HTTPException(status_code=record.error[0], detail=record.error[1])
         return record.result
 
     @app.post("/v1/turn/stream", dependencies=guarded)
-    def turn_stream(req: TurnRequest) -> StreamingResponse:
+    def turn_stream(req: TurnRequest, x_lumi_client: str | None = Header(default=None)) -> StreamingResponse:
         """A streamed turn as Server-Sent Events: ``delta``/``think`` while she answers, then exactly one
         ``done`` (the blocking payload) or ``error``. A known ``turn_id`` skips straight to its outcome."""
-        record, fresh = service.begin_turn(req, stream=True)
+        record, fresh = service.begin_turn(req, stream=True, origin=origin_of(x_lumi_client))
 
         def events() -> Iterator[str]:
             if fresh:
@@ -231,22 +375,22 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             else:
                 yield sse("done", record.result)
 
-        return StreamingResponse(events(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        return StreamingResponse(events(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
     @app.post("/v1/command", dependencies=guarded)
-    def command(req: CommandRequest) -> dict[str, Any]:
+    def command(req: CommandRequest, x_lumi_client: str | None = Header(default=None)) -> dict[str, Any]:
         service.acquire()
         try:
             result = run_command(service.core, service.session, req.line, confirmed=req.confirmed)
+            snap = service.publish_state(origin_of(x_lumi_client))  # e.g. /model-set, /style, /theme
         finally:
             service.lock.release()
         if result is None:
-            return {"handled": False, "result": None, "state": service.state()}
-        return {"handled": True, "result": asdict(result), "state": service.state()}
+            return {"handled": False, "result": None, "state": snap}
+        return {"handled": True, "result": asdict(result), "state": snap}
 
     @app.post("/v1/session/new", dependencies=guarded)
-    def new_session() -> dict[str, Any]:
+    def new_session(x_lumi_client: str | None = Header(default=None)) -> dict[str, Any]:
         service.acquire()
         try:
             try:
@@ -254,10 +398,11 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             except Exception:  # noqa: BLE001 — never block a new session on housekeeping
                 log.warning("ending the previous session failed", exc_info=True)
             service.session = service.core.start_session()
+            snap = service.publish_state(origin_of(x_lumi_client))
         finally:
             service.lock.release()
         if on_new_session is not None:
             threading.Thread(target=on_new_session, daemon=True, name="lumi-new-session").start()
-        return {"ok": True, "state": service.state()}
+        return {"ok": True, "state": snap}
 
     return app
