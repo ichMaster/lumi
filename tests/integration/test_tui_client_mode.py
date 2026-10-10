@@ -72,12 +72,29 @@ async def test_new_switches_the_server_session(tmp_path, client_env):
         assert server.state.service.session.id != before
 
 
-@pytest.mark.parametrize("line", ["%think", "/mode-set voice"])
+@pytest.mark.parametrize("line", ["/mode-set voice"])
 async def test_not_yet_features_say_so(tmp_path, client_env, line):
     app, _ = _setup(tmp_path)
     async with app.run_test() as pilot:
         await _submit(pilot, app, line, until=NOT_YET)
         assert any(NOT_YET in entry for entry in app.transcript)
+
+
+async def test_a_typed_directive_runs_on_the_server(tmp_path, client_env):
+    """v2.4: `%think!` in client mode — the thought comes back from the server's core, shown once."""
+    core = Core(llm=MockLLMClient("море пахне листям\nЕМОЦІЯ: tender",
+                                  states={"reply": "Радо!", "emotion": "joy", "intensity": 0.8}),
+                repository=JsonRepository(tmp_path / "server" / "s.json"), canon="Ти — Лілі.", model="m",
+                mood_enabled=False)
+    server = create_app(core, token=TOKEN, env="dev", version="2.4.0")
+    remote = RemoteCore("http://testserver", TOKEN, client=TestClient(server))
+    remote.connect()
+    app = LumiApp(remote)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "%think! про море", until="море пахне")
+        assert [line for line in app.transcript if "💭" in line] == ["💭 море пахне листям"]
+        assert core._repo.thoughts_since("2000-01-01")  # it landed in the server's diary
+        assert core.totals.turns == 0  # a thought, not a chat turn
 
 
 async def test_enabled_features_the_server_cant_host_are_announced(tmp_path, client_env):

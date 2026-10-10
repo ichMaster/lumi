@@ -120,6 +120,20 @@ def command_renderable(result: CommandResult) -> RenderableType:
     return Text(result.text, style=style)
 
 
+PUSHES_LOST = "⚠ lost the server's pushes — reconnecting…"  # v2.4: once per outage
+PUSHES_BACK = "✓ the server's pushes are back"
+
+
+class ServerEvent(Message):
+    """v2.4: one push from the server (``state`` / ``turn`` / ``thought`` / ``_offline`` / ``_online``),
+    posted from the listener thread and handled on the UI thread."""
+
+    def __init__(self, event: str, data: dict) -> None:
+        super().__init__()
+        self.event = event
+        self.data = data
+
+
 def env_badge(env: str | None, version: str | None) -> str:
     """The v2.1 status-line badge naming which Лілі this is — ``prod v2.1.0 · `` (bold red) / ``dev … · `` (dim).
 
@@ -452,6 +466,8 @@ class LumiApp(App[None]):
             self.set_interval(0.1, self._keep_input_live)  # your typing shows even under the reply's load
         if self._not_yet:  # v2.2: say once what this .env enables that the server doesn't host yet
             self.call_after_refresh(self._announce_not_yet)
+        if self._remote:  # v2.4: the status line + surfaced thoughts follow the server's pushes
+            self._core.listen(self._post_server_event)
         if cfg.mode_set == "voice":  # v1.6.2: start the live loop only AFTER the initial DOM is
             # attached — starting the worker synchronously in on_mount can race Textual's own
             # attachment of #history (a MountError if a key/device failure emits a line instantly).
@@ -482,6 +498,8 @@ class LumiApp(App[None]):
             pass
 
     def on_unmount(self) -> None:
+        if self._remote:
+            self._core.stop()  # v2.4: stop hearing pushes (never blocks)
         # Fallback for non-quit teardown (e.g. a crash): summarize if action_quit
         # didn't already (it nulls self._session once it has processed).
         if self._session is not None:
@@ -733,17 +751,24 @@ class LumiApp(App[None]):
             return
 
         # %directive (v0.12) — her mind acts, not a chat message. Unknown %name → falls through.
-        if self._remote and text.startswith("%"):  # v2.2: the thought-stream moves into the server in v2.5
-            self._emit_not_yet("%directives")
-            prompt.focus()
-            return
         if text.startswith("%") and self._session is not None:
             parsed = parse_directive(text)
             if parsed is not None:  # v0.33: surface the running act on the status line (not `requesting…`)
                 self._render_status(busy=thought_status_label(parsed.name))
-            outcome = self._core.run_directive(text, self._session)
+            if self._remote:  # v2.4: it runs on the server — off the UI thread, the input held meanwhile
+                self._set_busy(True)
+                try:
+                    outcome = await asyncio.to_thread(self._core.run_directive, text, self._session)
+                except LLMError as exc:
+                    self._set_busy(False)
+                    self._emit_server_error(exc)
+                    self._drain_input_queue()
+                    return
+                self._set_busy(False)
+            else:
+                outcome = self._core.run_directive(text, self._session)
             if outcome.is_directive:
-                if self._thought_surface:  # v0.33: a subtle chat-log meta line (off by default)
+                if self._thought_surface and parsed is not None:  # v0.33: a subtle chat-log meta line
                     line = thought_meta_line(parsed.name)
                     self._emit(line, Text(line, style="grey50"))
                 if outcome.mode == "open" and outcome.thought is not None:
@@ -755,6 +780,8 @@ class LumiApp(App[None]):
                 self._last_activity = self._core.clock()
                 prompt.focus()
                 self._render_status()  # reset to the ready status
+                self._render_stats()
+                self._drain_input_queue()  # v2.4 client mode: lines typed while it ran (no-op otherwise)
                 return
             self._render_status()  # not a fired directive → reset; falls through to chat
 
@@ -1487,6 +1514,42 @@ class LumiApp(App[None]):
         if self._remote:
             return self._core.command(line, confirmed=confirmed)
         return run_command(self._core, self._session, line, confirmed=confirmed)
+
+    def _post_server_event(self, event: str, data: dict) -> None:
+        """The push listener's callback (its own thread) → a message for the UI thread. Never blocks;
+        a push arriving while the app shuts down is dropped."""
+        try:
+            self.post_message(ServerEvent(event, data))
+        except RuntimeError:  # the loop is already closed
+            pass
+
+    def on_server_event(self, message: ServerEvent) -> None:
+        """v2.4: apply one push — the status line lives on ``state``; a surfaced thought shows as ``💭``
+        (the same line an in-process open thought gets); the push channel's outage is said once. A push
+        landing while the app shuts down is dropped (its widgets may already be gone)."""
+        if not self.is_running:
+            return
+        try:
+            self._apply_server_event(message.event, message.data)
+        except NoMatches:  # torn down under us
+            pass
+
+    def _apply_server_event(self, event: str, data: dict) -> None:
+        if event == "state":
+            if not self._busy:  # mid-turn the status shows the busy state; the turn's end re-renders it
+                self._render_status()
+            self._render_stats()
+        elif event == "thought" and data.get("text"):
+            body = f"💭 {data['text']}"
+            self._emit(body, Markdown(body))
+        elif event == "_offline":
+            self._connected = False
+            self._emit(PUSHES_LOST, Text(PUSHES_LOST, style=SYSTEM_COLOR))
+            self._render_status()
+        elif event == "_online":
+            self._connected = True
+            self._emit(PUSHES_BACK, Text(PUSHES_BACK, style=SYSTEM_COLOR))
+            self._render_status()
 
     def _emit_server_error(self, exc: Exception) -> None:
         """A client-mode server problem as one readable line (v2.2)."""

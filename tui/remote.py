@@ -2,15 +2,18 @@
 
 With ``LUMI_SERVER=on`` the TUI builds no core: this object stands in for it, implementing exactly what
 the TUI uses outside the command layer (the members ``tests/contract/test_remote_core_surface.py``
-pins). Turns, commands and session switches go over HTTP; the status/stats lines read a **state
-snapshot** refreshed after every call (never a request per render). Blocking only — streaming arrives in
-v2.3. What the server can't host yet raises :class:`NotInServerMode` (the TUI turns it into a line).
+pins). Turns, commands, typed ``%directives`` and session switches go over HTTP (a turn streams when the
+server does — v2.3); the status/stats lines read a **state snapshot** (never a request per render). v2.4:
+:meth:`RemoteCore.listen` hears the server's **pushes** (``/v1/events``) on a background thread — the
+snapshot then follows every change, wherever it came from, and surfaced thoughts arrive unasked. What the
+server can't host yet raises :class:`NotInServerMode` (the TUI turns it into a line).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import threading
 import uuid
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
@@ -27,6 +30,9 @@ from core.llm import LLMError, ResponseStats
 from core.repository import Thought
 
 NOT_YET = "not yet in server mode"
+CLIENT_HEADER = "X-Lumi-Client"  # v2.4: names this client — the events it causes come back with it as origin
+LISTEN_BACKOFF_S = (1.0, 30.0)  # reconnect delays for the push channel: doubling from the first to the cap
+LISTEN_READ_TIMEOUT_S = 45.0  # ~3 missed heartbeats (the server sends one per 15 s) → a dead stream
 log = logging.getLogger("lumi.client")
 
 
@@ -136,23 +142,43 @@ class RemoteCore:
     last_tool_calls: list = []
 
     def __init__(self, base_url: str, token: str, *, client: httpx.Client | None = None,
+                 events_client: httpx.Client | None = None,
                  clock: Callable[[], datetime] | None = None, timeout_s: float = 600.0) -> None:
+        """``events_client`` carries the long-lived ``/v1/events`` stream. By default it is a dedicated
+        client when this object builds its own; with an injected ``client`` (a test transport, which can't
+        stream) and no ``events_client`` there are no pushes — the client lives on responses alone."""
         self.base_url = base_url.rstrip("/")
         self._http = client or httpx.Client(
             base_url=self.base_url, timeout=httpx.Timeout(timeout_s, connect=3.0),
         )
+        self._events_http = events_client
+        if events_client is None and client is None:
+            self._events_http = httpx.Client(
+                base_url=self.base_url, timeout=httpx.Timeout(LISTEN_READ_TIMEOUT_S, connect=3.0),
+            )
         self._auth = {"Authorization": f"Bearer {token}"}
+        self.client_id = uuid.uuid4().hex[:12]  # v2.4: this client's name on the events it causes
         self.clock = clock or system_clock
         self._state: dict[str, Any] = {}
         self.last_thinking: str | None = None
         self.last_intent: str | None = None
+        self._listener: threading.Thread | None = None
+        self._stop_listening = threading.Event()
+        self._wake = threading.Event()  # cuts a reconnect wait short (a request just reached the server)
+        self._offline = False  # the push channel is down (a reconnect is pending)
+        self._events_response: httpx.Response | None = None
 
     # --- transport -----------------------------------------------------------------------------------
+    def _headers(self) -> dict[str, str]:
+        return {**self._auth, CLIENT_HEADER: self.client_id}
+
     def _call(self, method: str, path: str, *, auth: bool = True, **kw: Any) -> dict[str, Any]:
         try:
-            res = self._http.request(method, path, headers=self._auth if auth else None, **kw)
+            res = self._http.request(method, path, headers=self._headers() if auth else None, **kw)
         except httpx.TransportError as exc:  # refused / timed out / dropped
             raise ServerUnavailable(f"server unreachable at {self.base_url} ({type(exc).__name__})") from None
+        if self._offline:
+            self._wake.set()  # the server answers again — the push channel needn't wait out its backoff
         if res.status_code == 401:
             raise ServerAuthError("the server rejected the token — check LUMI_SERVER_TOKEN")
         if res.status_code == 409:
@@ -222,7 +248,7 @@ class RemoteCore:
         """Consume ``/v1/turn/stream``: deltas → the callbacks, ``done`` → the payload. Anything short of an
         outcome (a drop, a garbled frame, an early end, an older server) → :class:`_StreamBroken`."""
         try:
-            with self._http.stream("POST", "/v1/turn/stream", json=body, headers=self._auth) as res:
+            with self._http.stream("POST", "/v1/turn/stream", json=body, headers=self._headers()) as res:
                 if res.status_code == 401:
                     raise ServerAuthError("the server rejected the token — check LUMI_SERVER_TOKEN")
                 if res.status_code == 409:
@@ -273,6 +299,91 @@ class RemoteCore:
 
     def set_world_context(self, world: Any) -> None:  # the server takes its own ambient snapshot
         return None
+
+    # --- the push channel (v2.4) --------------------------------------------------------------------
+    def listen(self, on_event: Callable[[str, dict[str, Any]], None]) -> bool:
+        """Hear the server's pushes on a daemon thread: every ``state`` updates the snapshot, then each
+        event goes to ``on_event(event, data)`` — ``state`` / ``turn`` / ``thought`` (a thought this client
+        caused is skipped: it is rendered from its own response, never twice), plus ``_offline``
+        ``{detail}`` once per outage and ``_online`` when the stream is back (resynced by its first
+        ``state``). A drop reconnects with backoff; a server without the route (404) ends it quietly.
+        Returns whether a listener started (``False`` without an events transport, or when already on)."""
+        if self._events_http is None or self._listener is not None:
+            return False
+        self._stop_listening.clear()
+        self._listener = threading.Thread(target=self._listen_loop, args=(self._events_http, on_event),
+                                          daemon=True, name="lumi-events")
+        self._listener.start()
+        return True
+
+    def stop(self) -> None:
+        """Stop listening (the client is leaving) — never blocks: the open stream is closed under it."""
+        self._stop_listening.set()
+        self._wake.set()
+        res = self._events_response
+        if res is not None:
+            try:
+                res.close()
+            except Exception:  # noqa: BLE001 — best-effort; the thread is a daemon anyway
+                pass
+
+    def _listen_loop(self, http: httpx.Client, on_event: Callable[[str, dict[str, Any]], None]) -> None:
+        delay = LISTEN_BACKOFF_S[0]
+        while not self._stop_listening.is_set():
+            try:
+                with http.stream("GET", "/v1/events", headers=self._headers(),
+                                 timeout=httpx.Timeout(LISTEN_READ_TIMEOUT_S, connect=3.0)) as res:
+                    self._events_response = res  # so stop() can close it under the reading thread
+                    if res.status_code == 404:
+                        log.info("the server has no push channel (older than v2.4) — no pushes")
+                        return
+                    if res.status_code != 200:
+                        raise _StreamBroken(f"HTTP {res.status_code}")
+                    for event, data in parse_sse(self._lines_until_stopped(res)):
+                        if self._offline:
+                            self._offline = False
+                            self._deliver(on_event, "_online", {})
+                        delay = LISTEN_BACKOFF_S[0]
+                        self._on_push(event, data, on_event)
+                detail = "the server closed the push channel"
+            except (httpx.HTTPError, httpx.StreamError, MalformedStream, _StreamBroken) as exc:
+                detail = str(exc) or type(exc).__name__
+            except Exception as exc:  # noqa: BLE001 — the listener never dies of a surprise
+                log.warning("push channel failed", exc_info=True)
+                detail = type(exc).__name__
+            finally:
+                self._events_response = None
+            if self._stop_listening.is_set():
+                break
+            if not self._offline:
+                self._offline = True
+                log.info("push channel lost (%s) — reconnecting", detail)
+                self._deliver(on_event, "_offline", {"detail": detail})
+            self._wake.wait(delay)
+            self._wake.clear()
+            delay = min(delay * 2, LISTEN_BACKOFF_S[1])
+
+    def _lines_until_stopped(self, res: httpx.Response) -> Iterator[str]:
+        """The stream's lines — heartbeats included — until :meth:`stop`: a stopped listener ends at the next
+        line (≤ one heartbeat) even where closing the response can't interrupt a blocked read."""
+        for line in res.iter_lines():
+            if self._stop_listening.is_set():
+                return
+            yield line
+
+    def _on_push(self, event: str, data: dict[str, Any], on_event: Callable[[str, dict[str, Any]], None]) -> None:
+        if event == "state":
+            self._absorb(data)  # the snapshot follows the server, whoever changed it
+        elif event == "thought" and data.get("origin") == self.client_id:
+            return  # our own %directive — shown from its response
+        self._deliver(on_event, event, data)
+
+    @staticmethod
+    def _deliver(on_event: Callable[[str, dict[str, Any]], None], event: str, data: dict[str, Any]) -> None:
+        try:
+            on_event(event, data)
+        except Exception:  # noqa: BLE001 — a failing handler never kills the listener
+            log.warning("push handler failed for %r", event, exc_info=True)
 
     # --- her mind acts (v2.4: typed %directives run on the server) ------------------------------------
     def run_directive(self, raw: str, session: Any = None, **_: Any) -> DirectiveOutcome:

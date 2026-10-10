@@ -30,8 +30,9 @@ def test_remote_core_implements_the_whole_tui_surface():
 
 def test_the_surface_stays_small():
     # v2.2: with the commands in the layer, the TUI's own core surface is this handful (24 incl. the
-    # remote-only `command`). Growth here is a design signal — prefer the command layer.
-    assert len(_tui_core_surface()) <= 24
+    # remote-only `command`); v2.4 adds the remote-only push channel (`listen` / `stop`). Growth here is
+    # a design signal — prefer the command layer.
+    assert len(_tui_core_surface()) <= 26
 
 
 def test_client_mode_is_opt_in(monkeypatch):
