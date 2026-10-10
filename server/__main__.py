@@ -55,6 +55,33 @@ def _background(name: str, fn) -> None:
     threading.Thread(target=run, daemon=True, name=f"lumi-{name}").start()
 
 
+SHUTDOWN_WAIT_S = 30.0  # how long a stop waits for an in-flight turn before leaving the session open
+
+
+def close_session(service, *, wait_s: float = SHUTDOWN_WAIT_S) -> bool:
+    """Close the current session at shutdown — never while a turn is still inside the core.
+
+    A force stop (a second Ctrl+C) cancels the request, not the turn's runner thread, which keeps the
+    service lock until the turn is done. So take that lock first: wait up to ``wait_s`` for the in-flight
+    turn, then summarize + close. If it doesn't finish in time, leave the session open (logged) rather than
+    run ``end_session`` alongside it. Returns whether the session was closed."""
+    if not service.lock.acquire(blocking=False):
+        print(f"Waiting up to {wait_s:.0f}s for the turn in flight to finish (Ctrl+C again to leave now)…",
+              flush=True)
+        if not service.lock.acquire(timeout=wait_s):
+            log.warning("a turn was still running after %.0fs — the session is left open, not raced", wait_s)
+            return False
+    try:
+        service.core.end_session(service.session)  # the CURRENT one (/session/new may have replaced it)
+        log.info("stopped — session closed")
+        return True
+    except Exception:  # noqa: BLE001 — best-effort, like the TUI's quit
+        log.warning("closing the session failed", exc_info=True)
+        return False
+    finally:
+        service.lock.release()
+
+
 def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model); the app is tested directly
     from core.config import load_config
     from core.envguard import guard_entry
@@ -93,11 +120,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     try:
         uvicorn.run(app, host=cfg.server_host, port=cfg.server_port, log_level="warning")
     finally:
-        try:
-            core.end_session(app.state.service.session)  # the CURRENT one (/session/new may have replaced it)
-            log.info("stopped — session closed")
-        except Exception:  # noqa: BLE001 — best-effort, like the TUI's quit
-            log.warning("closing the session failed", exc_info=True)
+        close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
 
 
 if __name__ == "__main__":
