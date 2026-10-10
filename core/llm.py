@@ -2340,8 +2340,9 @@ class GeminiClient:
         contents = _gemini_contents(messages)
         acc: dict = {"input": 0, "output": 0, "cr": 0, "latency": 0, "think": []}
         self.last_round_log = []
+        force_final = False  # an empty answer round re-asks ONCE in the forced final round (see below)
         for step in range(max_steps + 1):
-            final = step >= max_steps
+            final = force_final or step >= max_steps
             sys_text = system + (_JSON_STATE_INSTRUCTION if final else _GEMINI_TOOL_JSON_INSTRUCTION)
             tc = self._thinking_config(model)
             gen: dict = {"maxOutputTokens": self._max_output_for(tc)}  # answer reserved above thinking
@@ -2358,7 +2359,7 @@ class GeminiClient:
                 body["tools"] = gtools
             body = self._cache_wrap(body, sys_text, cache_prefix, model)
             started = time.monotonic()
-            acc_text, emitted, think, calls, usage = "", 0, "", [], {}
+            acc_text, emitted, think, calls, call_parts, usage = "", 0, "", [], [], {}
             for chunk in self._post_stream(model, body):
                 if not isinstance(chunk, dict):
                     continue
@@ -2369,6 +2370,13 @@ class GeminiClient:
                         continue
                     if "functionCall" in p:
                         calls.append(p["functionCall"])
+                        # The WHOLE part goes back in the model turn: Gemini 3 attaches a `thoughtSignature`
+                        # to it and rejects the next round (HTTP 400) when the signature is missing — the
+                        # streamed loop used to rebuild bare {"functionCall": …} parts and lose it.
+                        call_parts.append(p)
+                    elif "thoughtSignature" in p and not p.get("text") and call_parts \
+                            and "thoughtSignature" not in call_parts[-1]:
+                        call_parts[-1] = {**call_parts[-1], "thoughtSignature": p["thoughtSignature"]}
                     elif p.get("text") and p.get("thought"):
                         think += p["text"]
                     elif p.get("text"):
@@ -2390,12 +2398,20 @@ class GeminiClient:
                 return _clean_state(hallucinated_state)
             if not calls and not final:  # salvage a text-encoded tool call (mirror _loop)
                 calls = _parse_tool_code(acc_text, {t["name"] for t in tools})
+            if not calls and not acc_text.strip() and not final:
+                # Gemini 3.x sometimes "answers" inside its thinking and emits NO answer text (0 output
+                # tokens) — the turn used to end as the '…' placeholder with a ready reply in the think-box.
+                # Re-ask once in the forced final round (schema, no tools) before giving up.
+                self.last_round_log.append(("empty", rstats))
+                force_final = True
+                continue
             if not calls:  # terminal — the answer round (reply already streamed)
                 self.last_round_log.append(("reply", rstats))
                 self._finalize(acc, model)
                 return _clean_state(parse_emotion_json(acc_text)) if acc_text.strip() else dict(_GEMINI_BLOCKED_STATE)
             self.last_round_log.append(("tool", rstats))
-            self._run_tool_round(contents, [{"functionCall": c} for c in calls], calls, tool_executor)
+            turn_parts = call_parts if call_parts else [{"functionCall": c} for c in calls]  # salvaged → bare
+            self._run_tool_round(contents, turn_parts, calls, tool_executor)
         self._finalize(acc, model)
         return dict(_GEMINI_BLOCKED_STATE)
 
@@ -2501,8 +2517,9 @@ class GeminiClient:
         contents = _gemini_contents(messages)
         acc: dict = {"input": 0, "output": 0, "cr": 0, "latency": 0, "think": []}
         self.last_round_log = []
+        force_final = False  # an empty answer round re-asks ONCE in the forced final round (see below)
         for step in range(max_steps + 1):
-            final = step >= max_steps
+            final = force_final or step >= max_steps
             # Tool rounds use the tool-aware JSON instruction (the strong "ONLY JSON" makes Gemini encode the
             # tool call as JSON instead of a native functionCall); the forced final round uses the strong
             # instruction + responseSchema. The think path sends no JSON instruction.
@@ -2552,6 +2569,13 @@ class GeminiClient:
                 if salvaged:
                     self.last_round_log.append(("tool", rstats))
                     self._run_tool_round(contents, [{"functionCall": c} for c in salvaged], salvaged, tool_executor)
+                    continue
+                if structured and not text.strip() and not final:
+                    # Gemini 3.x sometimes "answers" inside its thinking and emits NO answer text (0 output
+                    # tokens) — re-ask once in the forced final round (schema, no tools) instead of ending
+                    # the turn as the '…' placeholder with a ready reply sitting in the think-box.
+                    self.last_round_log.append(("empty", rstats))
+                    force_final = True
                     continue
                 # terminal — the answer round
                 self.last_round_log.append(("reply", rstats))
