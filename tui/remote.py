@@ -19,11 +19,12 @@ from typing import Any
 
 import httpx
 
-from core.agent import UsageTotals
+from core.agent import DirectiveOutcome, UsageTotals
 from core.clock import system_clock
 from core.commands import CommandResult
 from core.emotion import Emotion, EmotionState
 from core.llm import LLMError, ResponseStats
+from core.repository import Thought
 
 NOT_YET = "not yet in server mode"
 log = logging.getLogger("lumi.client")
@@ -273,12 +274,21 @@ class RemoteCore:
     def set_world_context(self, world: Any) -> None:  # the server takes its own ambient snapshot
         return None
 
-    # --- not yet (v2.5 moves the thought-stream + scheduler into the server) -------------------------
+    # --- her mind acts (v2.4: typed %directives run on the server) ------------------------------------
+    def run_directive(self, raw: str, session: Any = None, **_: Any) -> DirectiveOutcome:
+        """A typed ``%directive`` on the server, its outcome as the core's :class:`DirectiveOutcome` (``False``
+        → not a directive there: send the line as chat). An open thought also reaches every listener."""
+        res = self._call("POST", "/v1/directive", json={"line": raw})
+        self._absorb(res)
+        t = res.get("thought")
+        thought = None if not t else Thought(when=t["when"], kind=t["kind"], text=t["text"],
+                                             emotion=t["emotion"], seeds=(), user_id="")
+        return DirectiveOutcome(is_directive=bool(res.get("is_directive")), mode=res.get("mode"),
+                                thought=thought, saved_to=res.get("saved_to"))
+
+    # --- not yet (v2.5 moves the idle thought-stream + scheduler into the server) --------------------
     def tick_think(self, *args: Any, **kwargs: Any) -> Any:
         raise NotInServerMode(f"thoughts: {NOT_YET}")
-
-    def run_directive(self, *args: Any, **kwargs: Any) -> Any:
-        raise NotInServerMode(f"%directives: {NOT_YET}")
 
     # --- the status/stats lines (from the snapshot) --------------------------------------------------
     @property

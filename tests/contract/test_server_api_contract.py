@@ -31,6 +31,7 @@ def test_the_route_set_is_pinned(tmp_path):
         ("POST", "/v1/command"), ("POST", "/v1/session/new"),
         ("POST", "/v1/turn/stream"),  # v2.3: the streamed turn (SSE)
         ("GET", "/v1/events"),  # v2.4: the push channel (SSE)
+        ("POST", "/v1/directive"),  # v2.4: a typed %directive runs on the server
     }
 
 
@@ -153,3 +154,9 @@ def test_no_face_assets_ever_cross_the_api(tmp_path):
         assert marker not in raw
     theme = next(d for e, d in heard if e == "turn")["theme"]
     assert theme is None or ("/" not in theme and "." not in theme)
+
+
+def test_directive_shape_is_pinned(tmp_path):
+    res = _client(tmp_path).post("/v1/directive", json={"line": "%think!"}, headers=AUTH).json()
+    assert set(res) == {"is_directive", "mode", "thought", "saved_to", "state"}
+    assert res["thought"] is None or set(res["thought"]) == {"kind", "text", "emotion", "when"}

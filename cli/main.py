@@ -45,6 +45,8 @@ def _parser() -> argparse.ArgumentParser:
     profile = sub.add_parser("model-set", help="show / switch the model profile (/model-set)")
     profile.add_argument("name", nargs="?", default="")
     sub.add_parser("config", help="the instance's effective config (secrets masked)")
+    think = sub.add_parser("think", help="she thinks out loud (%%think!) — every connected client sees it")
+    think.add_argument("topic", nargs="*", help="what about (optional)")
     return p
 
 
@@ -114,6 +116,13 @@ def main(argv: list[str] | None = None, *, client: Any = None,
             return 0
         if args.cmd == "model-set":
             _print_result(api.command(f"/model-set {args.name}".strip()), out)
+            return 0
+        if args.cmd == "think":  # v2.4: the thought is also pushed to every listening client
+            outcome = api.run_directive(" ".join(["%think!", *args.topic]))
+            if outcome.thought is None:
+                print("(no thought came — is the thought-stream on on the server? LUMI_THOUGHTS)", file=out)
+            else:
+                print(f"💭 {outcome.thought.text}", file=out)
             return 0
     except LLMError as exc:  # down / rejected / busy / a model error — one readable line
         print(f"lumi: {exc}", file=err)

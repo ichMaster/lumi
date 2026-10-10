@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from core.agent import Core
+from core.agent import Core, DirectiveOutcome
 from core.commands import MOOD_PENDING, CommandResult
 from core.config import load_config
 from core.emotion import Emotion
@@ -107,12 +107,20 @@ def test_the_server_does_its_own_housekeeping(tmp_path):
     assert rc.ensure_mood() is None and rc.ensure_backfill() is None and rc.set_world_context({}) is None
 
 
-def test_the_thought_stream_is_not_yet_in_server_mode(tmp_path):
+def test_the_idle_thought_stream_is_not_yet_in_server_mode(tmp_path):
     rc, _ = _remote(tmp_path)
     with pytest.raises(NotInServerMode):
         rc.tick_think()
-    with pytest.raises(NotInServerMode):
-        rc.run_directive("%think", None)
+
+
+def test_a_typed_directive_runs_on_the_server(tmp_path):
+    """v2.4: the outcome comes back in the core's own shape, so the TUI's %directive path runs unchanged."""
+    rc, _ = _remote(tmp_path)
+    rc.connect()
+    out = rc.run_directive("%think!", None)
+    assert isinstance(out, DirectiveOutcome) and out.is_directive and out.mode == "open"
+    assert out.thought is not None and out.thought.text
+    assert rc.run_directive("%bogus", None).is_directive is False
 
 
 def test_client_mode_config_turns_off_and_names_what_the_server_cant_host(monkeypatch):

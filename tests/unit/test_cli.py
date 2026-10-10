@@ -133,3 +133,31 @@ def test_memory_clear_with_no_terminal_or_ctrl_c_cancels(tmp_path, interrupt):
 
     code, out, err = _run(["memory", "clear"], api, ask=ask)
     assert code == 0 and "Cancelled." in out and cleared == [] and "Traceback" not in err
+
+
+# --- v2.4: `think` — a thought fired from the CLI reaches every listening client ------------------------
+
+def _thinking_api(tmp_path, **kw):
+    core = Core(llm=MockLLMClient("хмари сьогодні пишуть листи\nЕМОЦІЯ: playful",
+                                  states={"reply": "так", "emotion": "calm", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="m",
+                mood_enabled=False, **kw)
+    app = create_app(core, token=TOKEN, env="dev", version="2.4.0")
+    return RemoteCore("http://testserver", TOKEN, client=TestClient(app)), app
+
+
+def test_think_prints_the_thought_and_every_listener_receives_it(tmp_path):
+    api, app = _thinking_api(tmp_path)
+    tui = app.state.service.bus.subscribe()  # a connected TUI
+    code, out, _ = _run(["think", "про", "хмари"], api)
+    assert code == 0 and out.strip() == "💭 хмари сьогодні пишуть листи"
+    event, data = tui.get_nowait()
+    assert event == "thought" and data["text"] == "хмари сьогодні пишуть листи" and data["kind"] == "think"
+
+
+def test_think_with_the_thought_stream_off_says_so(tmp_path):
+    api, app = _thinking_api(tmp_path, thoughts_enabled=False)
+    tui = app.state.service.bus.subscribe()
+    code, out, _ = _run(["think"], api)
+    assert code == 0 and "LUMI_THOUGHTS" in out
+    assert tui.empty()  # nothing to push

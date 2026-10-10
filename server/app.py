@@ -15,7 +15,8 @@ the current ``state`` first, then a ``turn`` event ``{emotion, intensity, theme}
 face signal over the wire — a theme *name*, never a face file) and ``state`` whenever the snapshot changes.
 The snapshot is taken by whoever holds the lock (a turn's runner, a command, a session switch), so it is
 never torn mid-turn. A request may name its client (``X-Lumi-Client``); the events it causes carry that id
-as ``origin`` (``null`` for the server's own), so a client can tell its own echoes from the rest.
+as ``origin`` (``null`` for the server's own), so a client can tell its own echoes from the rest. Typed
+``%directives`` run here too (``POST /v1/directive``) and an open thought is pushed as ``thought``.
 """
 
 from __future__ import annotations
@@ -153,6 +154,21 @@ class _TurnRecord:
 class CommandRequest(BaseModel):
     line: str
     confirmed: bool = False
+
+
+class DirectiveRequest(BaseModel):
+    line: str  # a typed %directive, e.g. "%think! про море"
+
+
+def directive_payload(outcome: Any) -> dict[str, Any]:
+    """A ``DirectiveOutcome`` as JSON — the thought's own fields only (its originating user stays inside)."""
+    thought = outcome.thought
+    return {
+        "is_directive": outcome.is_directive, "mode": outcome.mode, "saved_to": outcome.saved_to,
+        "thought": None if thought is None else {
+            "kind": thought.kind, "text": thought.text, "emotion": thought.emotion, "when": thought.when,
+        },
+    }
 
 
 def stats_dict(stats: Any) -> dict[str, Any] | None:
@@ -388,6 +404,26 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         if result is None:
             return {"handled": False, "result": None, "state": snap}
         return {"handled": True, "result": asdict(result), "state": snap}
+
+    @app.post("/v1/directive", dependencies=guarded)
+    def directive(req: DirectiveRequest, x_lumi_client: str | None = Header(default=None)) -> dict[str, Any]:
+        """v2.4: a typed ``%directive`` runs here, one at a time like a turn. An **open** thought is pushed
+        to every listener as ``thought``; a silent one only lands in her diary. Not a known directive →
+        ``is_directive: false`` (the client sends the line as chat, as in-process)."""
+        origin = origin_of(x_lumi_client)
+        service.acquire()
+        try:
+            outcome = service.core.run_directive(req.line, service.session)
+            payload = directive_payload(outcome)
+            if outcome.is_directive and outcome.mode == "open" and payload["thought"] is not None:
+                service.bus.publish("thought", {**payload["thought"], "origin": origin})
+            snap = service.publish_state(origin)
+        except Exception:  # think() is best-effort already; anything else is one readable line
+            log.exception("directive failed")
+            raise HTTPException(status_code=500, detail="directive failed — see the server log") from None
+        finally:
+            service.lock.release()
+        return {**payload, "state": snap}
 
     @app.post("/v1/session/new", dependencies=guarded)
     def new_session(x_lumi_client: str | None = Header(default=None)) -> dict[str, Any]:
