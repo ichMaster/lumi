@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 2.3.0 (2026-10-10)
+---------------------------
+- LUMI-216: the streamed turn — POST /v1/turn/stream (Server-Sent Events: delta/think, then one done or error; the emotion validated on completion) + an idempotent turn_id on both turn routes: a retry returns the stored outcome, a client disconnect never stops a turn or leaks the lock; state gains stream_enabled.
+- LUMI-217: the TUI client streams — RemoteCore feeds the SSE deltas into the TUI's v1.4 callbacks (the TUI unchanged); a drop / garbled frame / stream without an outcome falls back by the same turn_id — Лілі never answers twice.
+- LUMI-218: streaming in docs/SERVER_SETUP.md.
+- fix(llm): Gemini 3 tool turns no longer end as '…' — the streamed tool loop keeps the thoughtSignature (no more HTTP 400 + a blocking restart that re-ran the web lookup), and an answer left only in thinking is re-asked once in the forced final round (in-process too).
+- fix(server): shutdown closes the session only after an in-flight turn finishes (code review #1).
+
 Version 2.2.0 (2026-10-10)
 ---------------------------
 - LUMI-211: the command layer — the 15 core-state slash commands move into core/commands.py (run_command → CommandResult{text, kind, confirm, turn}); one implementation any client renders, the in-process TUI output unchanged (semantic kinds keep the exact look).

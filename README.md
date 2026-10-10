@@ -12,6 +12,12 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.3 — The live turn.** In client mode Лілі **streams** again: the server sends each turn as Server-Sent
+Events and `./lumi-client` grows the reply and fills the think-box live, exactly like the in-process TUI. Every
+turn has its own id, so a dropped or garbled stream is recovered by asking for that same turn — she never
+answers twice. Also: Gemini 3 tool turns no longer end as `…` (a lost thought signature; an answer left only in
+her thinking) — fixed for the in-process TUI too (LUMI-216..218).
+
 **2.2 — Server & client.** Лілі can run as a **server** — `./lumi-server` (FastAPI over the core, a client
 token, localhost) — with the **TUI as a client** (`./lumi-client`) and a small **CLI** (`./lumi-cli status`,
 `memory show`, `model`, `config`). The slash commands became a **command layer in the core** (one
