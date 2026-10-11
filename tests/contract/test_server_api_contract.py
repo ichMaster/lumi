@@ -134,7 +134,7 @@ def test_the_push_event_set_and_shapes(tmp_path):
     client = _client(tmp_path)
     heard = _heard(client, lambda: client.post("/v1/turn", json={"text": "?"},
                                                headers={**AUTH, "X-Lumi-Client": "c-9"}))
-    assert {e for e, _ in heard} <= {"state", "turn", "thought"}
+    assert {e for e, _ in heard} <= {"state", "turn", "thought", "message"}
     assert heard[0] == ("state", {"origin": None, "state": heard[0][1]["state"]})  # the listener's start
     turn = next(d for e, d in heard if e == "turn")
     assert set(turn) == {"emotion", "intensity", "theme", "origin"}  # the face signal — nothing more
@@ -160,3 +160,44 @@ def test_directive_shape_is_pinned(tmp_path):
     res = _client(tmp_path).post("/v1/directive", json={"line": "%think!"}, headers=AUTH).json()
     assert set(res) == {"is_directive", "mode", "thought", "saved_to", "state"}
     assert res["thought"] is None or set(res["thought"]) == {"kind", "text", "emotion", "when"}
+
+
+# --- v2.5: the server's own acts ----------------------------------------------------------------------------
+
+def test_a_client_request_waits_for_the_servers_own_act_not_409(tmp_path):
+    import threading
+    import time
+
+    client = _client(tmp_path)
+    service = client.app.state.service
+    held = threading.Event()
+
+    def act():
+        with service.background():  # the brain host's lock for a scheduled act
+            held.set()
+            time.sleep(0.2)
+
+    threading.Thread(target=act).start()
+    assert held.wait(2)
+    assert client.post("/v1/command", json={"line": "/mood"}, headers=AUTH).status_code == 200
+
+
+def test_a_spoken_message_shape_is_pinned(tmp_path):
+    import dataclasses
+
+    from core.config import load_config
+    from server.brain import BrainHost
+
+    client = _client(tmp_path)
+    service = client.app.state.service
+    sub = service.bus.subscribe()
+    host = BrainHost(service, dataclasses.replace(load_config(load_env=False), scheduler=False))
+    with service.background():
+        host._spoken_turn("(seed)", source="thought")
+    events = []
+    while not sub.empty():
+        events.append(sub.get_nowait())
+    message = next(d for e, d in events if e == "message")
+    assert set(message) == {"role", "text", "source", "emotion", "intensity", "origin"}
+    assert message["role"] == "lili" and message["source"] in {"client", "telegram", "thought", "nudge"}
+    assert message["origin"] is None and message["emotion"] in {e.value for e in Emotion}

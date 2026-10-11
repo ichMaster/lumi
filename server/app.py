@@ -28,6 +28,7 @@ import secrets
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
 from typing import Any
 
@@ -52,6 +53,7 @@ _END = ("_end", None)
 EVENT_QUEUE_MAX = 256  # per listener; a full queue drops its oldest event — a slow client never stalls a turn
 HEARTBEAT_S = 15.0  # a ':' comment after this much silence keeps the stream honest (and cancellable)
 ORIGIN_MAX = 64  # an X-Lumi-Client id longer than this is cut
+BG_WAIT_S = 300.0  # v2.5: how long a client request waits for the server's own act (a scheduled thought…)
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
@@ -221,6 +223,8 @@ class _Service:
         self.env = env
         self.version = version
         self.lock = threading.Lock()
+        self._bg = False  # v2.5: the lock is held by the server's own act (the brain host), not a client
+        self.last_input = core.clock()  # v2.5: the last real input (a client turn / directive, a Telegram line)
         self._turns: OrderedDict[str, _TurnRecord] = OrderedDict()  # v2.3: turn_id → record
         self._turns_lock = threading.Lock()
         self.bus = EventBus()  # v2.4: the push channel
@@ -230,8 +234,25 @@ class _Service:
         return state_snapshot(self.core, self.session, env=self.env, version=self.version)
 
     def acquire(self) -> None:
-        if not self.lock.acquire(blocking=False):
-            raise HTTPException(status_code=409, detail="busy")
+        """A client request's turn at the lock: at once; or — while the server's own act holds it (v2.5) —
+        after that act, bounded by ``BG_WAIT_S``; another client's request → ``409 busy`` (one at a time)."""
+        if self.lock.acquire(blocking=False):
+            return
+        if self._bg and self.lock.acquire(timeout=BG_WAIT_S):
+            return
+        raise HTTPException(status_code=409, detail="busy")
+
+    @contextmanager
+    def background(self) -> Iterator[None]:
+        """v2.5: the lock for the server's own act (a scheduled thought, a Telegram turn): it waits for a
+        client turn to finish; a client request arriving meanwhile waits for it instead of getting 409."""
+        self.lock.acquire()
+        self._bg = True
+        try:
+            yield
+        finally:
+            self._bg = False
+            self.lock.release()
 
     # --- v2.4 pushes ------------------------------------------------------------------------------------
     def publish_state(self, origin: str | None = None) -> dict[str, Any]:
@@ -245,7 +266,7 @@ class _Service:
 
     def refresh_state(self) -> None:
         """Re-snapshot from outside a request (the mood computed at start) — after any turn in flight."""
-        with self.lock:
+        with self.background():
             self.publish_state()
 
     def _publish_state_quietly(self, origin: str | None) -> None:
@@ -258,15 +279,25 @@ class _Service:
     def begin_turn(self, req: TurnRequest, *, stream: bool,
                    origin: str | None = None) -> tuple[_TurnRecord, bool]:
         """The record for this turn and whether it is NEW. A known ``turn_id`` returns the existing record
-        (running or done) without running anything; a new turn takes the lock (409 if another runs)."""
+        (running or done) without running anything; a new turn takes the lock — 409 while another client's
+        request runs, a wait while the server's own act does (v2.5; never inside the registry lock)."""
         with self._turns_lock:
             if req.turn_id and req.turn_id in self._turns:
                 return self._turns[req.turn_id], False
-            self.acquire()  # 409 while a different turn / command runs
+            got = self.lock.acquire(blocking=False)
+            if not got and not self._bg:
+                raise HTTPException(status_code=409, detail="busy")
+        if not got and not self.lock.acquire(timeout=BG_WAIT_S):  # the server's own act — wait it out
+            raise HTTPException(status_code=409, detail="busy")
+        with self._turns_lock:
+            if req.turn_id and req.turn_id in self._turns:  # registered while we waited — never run twice
+                self.lock.release()
+                return self._turns[req.turn_id], False
             record = _TurnRecord()
             if req.turn_id:
                 self._turns[req.turn_id] = record
                 self._forget_old_turns()
+        self.last_input = self.core.clock()  # a client turn is real input (the idle triggers' anchor)
         threading.Thread(target=self._run_turn, args=(record, req, stream, origin), daemon=True,
                          name="lumi-turn").start()
         return record, True
@@ -413,6 +444,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         origin = origin_of(x_lumi_client)
         service.acquire()
         try:
+            service.last_input = service.core.clock()  # a typed directive is real input too
             outcome = service.core.run_directive(req.line, service.session)
             payload = directive_payload(outcome)
             if outcome.is_directive and outcome.mode == "open" and payload["thought"] is not None:

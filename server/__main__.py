@@ -3,8 +3,8 @@
 Order matters: the token is checked first (the server never runs open), then the v2.1 env guard (the
 server opens the data root), then the core. The ambient snapshot, today's mood and the recall backfill
 run in the background — exactly what the in-process TUI does at mount — so serving starts at once. On
-shutdown the current session is closed (its summary + facts). The scheduler, ticks, thought-stream and
-the Telegram bridge do not run here yet (v2.5).
+shutdown the current session is closed (its summary + facts). From v2.5 the brain host runs her time here
+too — the scheduler, the fast tick, the idle think / nudge (``server/brain.py``).
 """
 
 from __future__ import annotations
@@ -155,15 +155,20 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
                      on_new_session=lambda: _refresh_world(core, cfg))
     service = app.state.service
+    from server.brain import BrainHost
+
+    brain = BrainHost(service, cfg)  # v2.5: her scheduled and idle acts run here, client or not
     _background("world", lambda: _refresh_world(core, cfg))
     _background("mood", lambda: (core.ensure_mood(), service.refresh_state()))  # v2.4: listeners hear it
     _background("backfill", core.ensure_backfill)
     log.info("serving on %s:%s (env=%s version=%s)", cfg.server_host, cfg.server_port, cfg.env, cfg.app_version)
     print(f"Lumi server on http://{cfg.server_host}:{cfg.server_port} "
           f"({cfg.env or 'no env'} v{cfg.app_version or '?'}) — Ctrl+C to stop", flush=True)
+    brain.start()
     try:
         serve(app, host=cfg.server_host, port=cfg.server_port)
     finally:
+        brain.stop()
         close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
 
 
