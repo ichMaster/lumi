@@ -52,10 +52,16 @@ def make_server(app, *, host: str, port: int):
 
     bus = app.state.service.bus
 
+    def on_exit() -> None:
+        bus.close()  # end every events stream (v2.4)
+        brain = getattr(app.state, "brain", None)
+        if brain is not None:
+            brain.request_stop()  # v2.5 review #1: her host starts no new act once the stop begins
+
     class _Server(uvicorn.Server):
         def handle_exit(self, sig, frame) -> None:
-            # no locks inside a signal handler: the bus is closed from a helper thread
-            threading.Thread(target=bus.close, daemon=True, name="lumi-events-close").start()
+            # no locks inside a signal handler: the work is done from a helper thread
+            threading.Thread(target=on_exit, daemon=True, name="lumi-exit").start()
             super().handle_exit(sig, frame)
 
     return _Server(uvicorn.Config(app, host=host, port=port, log_level="warning"))
@@ -172,7 +178,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     service = app.state.service
     from server.brain import BrainHost
 
-    brain = BrainHost(service, cfg)  # v2.5: her scheduled and idle acts run here, client or not
+    brain = app.state.brain = BrainHost(service, cfg)  # v2.5: her acts run here, client or not
     _background("world", lambda: _refresh_world(core, cfg))
     _background("mood", lambda: (core.ensure_mood(), service.refresh_state()))  # v2.4: listeners hear it
     _background("backfill", core.ensure_backfill)

@@ -26,7 +26,8 @@ from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.schedule import load_schedule
 from core.scheduler import Scheduler, TickService, graduates, is_loud, scheduled_text, spoken_seed
 from core.thoughts import parse_directive
-from state.bus import drain_inbox_records, mirror_reply, mirror_thought
+from state import fifo
+from state.bus import mirror_reply, mirror_thought
 
 log = logging.getLogger("lumi.brain")
 
@@ -92,6 +93,8 @@ class BrainHost:
         if self._scheduler is None or self._service.lock.locked():
             return
         for entry in self._scheduler.due_now(now, last_input=self._service.last_input):
+            if self._stop.is_set():
+                return  # stopping — no new act (review v2.5 #1)
             self._run_scheduled(entry)
 
     def catch_up(self, now: datetime) -> None:
@@ -99,6 +102,8 @@ class BrainHost:
         if self._scheduler is None:
             return
         for entry in self._scheduler.catch_up(now, catchup_h=self._cfg.sched_catchup_h):
+            if self._stop.is_set():
+                return
             self._run_scheduled(entry)
 
     def fast_tick(self) -> None:
@@ -107,18 +112,24 @@ class BrainHost:
 
     def idle_tick(self, now: datetime) -> None:
         """The legacy idle mechanisms (the scheduler off): the v0.4 nudge, then the v0.12 think."""
-        if self._service.lock.locked():
+        if self._service.lock.locked() or self._stop.is_set():
             return
         self._maybe_nudge(now)
         self._maybe_think(now)
 
     def inbox_tick(self, now: datetime) -> None:
         """Run each unread inbox line as a turn — never while a turn holds the lock (the next beat
-        re-checks). The pointer advances as the lines are read, as in-process."""
+        re-checks). The pointer moves **per line, after its turn** (review v2.5 #1): a line the host never
+        reached — it was asked to stop — waits for the next start instead of being lost (a hard kill mid-turn
+        may answer that line twice; never zero times)."""
         if self._inbox is None or self._service.lock.locked():
             return
-        for record in drain_inbox_records(self._inbox, self._inbox.with_suffix(".pos")):
+        pos = self._inbox.with_suffix(".pos")
+        for record in fifo.read_since(self._inbox, fifo.load_pointer(pos)):
+            if self._stop.is_set():
+                return  # stopping — no new act; the rest stays unread
             self._inbox_turn(record)
+            fifo.save_pointer(pos, record["id"])
 
     # --- the acts ---------------------------------------------------------------------------------------
     def _inbox_turn(self, record: dict) -> None:
@@ -238,8 +249,12 @@ class BrainHost:
                  self._scheduler is not None, self._think, bool(self._nudges), self._inbox is not None)
         return True
 
+    def request_stop(self) -> None:
+        """Start no new act (the first Ctrl+C) — the one in flight finishes on its own."""
+        self._stop.set()
+
     def stop(self, wait_s: float = 2.0) -> None:
         """Stop beating (an act in flight finishes on its own; the session close waits for the lock)."""
-        self._stop.set()
+        self.request_stop()
         if self._thread is not None:
             self._thread.join(wait_s)
