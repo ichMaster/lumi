@@ -13,8 +13,8 @@ from core.brainlock import guard_single_brain
 from core.config import load_config
 from core.envguard import guard_entry
 from core.llm import LLMError
+from state.bus import make_photo_sink
 from tui.app import LumiApp
-from tui.bridge import make_photo_sink
 
 
 def _setup_logging(cfg) -> None:

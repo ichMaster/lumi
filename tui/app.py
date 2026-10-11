@@ -55,7 +55,7 @@ from core.repository import Session
 from core.schedule import load_schedule
 from core.thoughts import parse_directive
 from core.worldcontext import fetch_world_context
-from tui.bridge import (
+from state.bus import (
     drain_inbox_records,
     mirror_reply,
     mirror_thought,
@@ -430,7 +430,7 @@ class LumiApp(App[None]):
             self.set_interval(30, self._maybe_think)
         # v0.42: the in-TUI scheduler — fires %directives on a clock via run_directive (no bus, no daemon).
         if cfg.scheduler:
-            from tui.scheduler import (  # imported lazily (only when scheduler on)
+            from core.scheduler import (  # imported lazily (only when scheduler on)
                 Scheduler,
                 TickService,
             )
@@ -1120,9 +1120,9 @@ class LumiApp(App[None]):
                 return  # not due / capped / off / nothing made — silent ones end here
             self._last_think_ts = now  # rate-limit the think only (never resets the nudge's idle)
             if thought.spoken:  # she speaks first, grounded in the thought (the hidden self-turn)
-                seed = (f"(ти щойно подумала: «{thought.text}» — напиши йому перша, "
-                        "коротко поділись цим або почни з цього розмову)")
-                await self._run_turn(seed, hidden=True)
+                from core.scheduler import spoken_seed
+
+                await self._run_turn(spoken_seed(thought.text), hidden=True)
         finally:
             self._think_busy = False
 
@@ -1149,20 +1149,19 @@ class LumiApp(App[None]):
         """The `%directive` text to fire for a schedule entry. A `seeds` row picks a **random** line from
         its file (a %directive menu, no immediate repeat — the migrated in-app A-menu; re-read each fire so
         edits to the file take effect live); otherwise `%{directive} {topic}`."""
-        if entry.seeds:
-            lines = load_nudges(entry.seeds)  # skips comments/blanks; each line is a %directive
-            if not lines:
-                return ""
-            idx = pick_nudge_index(len(lines), self._sched_seed_idx.get(entry.id, -1))
-            self._sched_seed_idx[entry.id] = idx
-            return lines[idx]
-        return f"%{entry.directive}" + (f" {entry.topic}" if entry.topic else "")
+        from core.scheduler import scheduled_text
+
+        return scheduled_text(entry, self._sched_seed_idx)
 
     async def _run_scheduled(self, entries: list) -> None:
         """Run scheduled directives one at a time off-thread through the `%`-router. A directive records
         a `Thought` silently; an outward one (`%share`, a pushing `%brief`) reaches the outbox via its own
         tool. Placeholders in the topic resolve at fire time inside `run_directive`→`resolve`."""
-        from tui.scheduler import graduates  # local import (module loads only when scheduler on)
+        from core.scheduler import (  # loads only when the scheduler is on
+            graduates,
+            is_loud,
+            spoken_seed,
+        )
 
         self._sched_busy = True
         try:
@@ -1191,15 +1190,13 @@ class LumiApp(App[None]):
                 # v0.42: a scheduled muse surfaces only when it's "loud" — the row asks (`show = true`)
                 # or the fired seed is open (a `%name!` line). A silent row (show=false, no `!`) is
                 # recorded only (→ /thoughts + her next reply), never shown, never spoken.
-                loud = entry.show or outcome.mode == "open"
+                loud = is_loud(entry, outcome.mode)
                 # An idle-muse (%think/%wonder) graduates a FRACTION of its loud fires to a spoken turn —
                 # she speaks first (subsuming the v0.4 nudge). A genuine ~ratio random draw per fire (a
                 # monotonic seed used to make the first ~20 all graduate — the every-15-min flood).
                 if (loud and self._session is not None
                         and graduates(fired_name, random.randint(0, 99), self._thoughts_spoken_ratio)):
-                    seed = (f"(ти щойно подумала: «{outcome.thought.text}» — напиши йому перша, "
-                            "коротко поділись цим або почни з цього розмову)")
-                    await self._run_turn(seed, hidden=True)
+                    await self._run_turn(spoken_seed(outcome.thought.text), hidden=True)
                 # otherwise, if loud, show the 💭 line (the same a typed %catchup! shows)
                 elif loud:
                     body = f"💭 {outcome.thought.text}"
