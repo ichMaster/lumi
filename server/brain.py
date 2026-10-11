@@ -1,7 +1,9 @@
-"""The brain host (v2.5 LUMI-224) — her time inside ``./lumi-server``.
+"""The brain host (v2.5 LUMI-224/225) — her time inside ``./lumi-server``.
 
 What the in-process TUI runs on its timers, the server runs on one background thread: the v0.42 scheduler
-(+ its startup catch-up), the fast tick, and — when the scheduler is off — the legacy idle think / nudge.
+(+ its startup catch-up), the fast tick, — when the scheduler is off — the legacy idle think / nudge, and
+the v0.13 file bus: inbox lines (Telegram, dictation) become turns, her replies go to the outbox (the
+Telegram daemons run beside the server on the same data root; the server is the single outbox writer).
 Every act takes the service's lock as **the server's own act** (``_Service.background``): it waits for a
 client turn, and a client request arriving meanwhile waits for it (never interleaved, never a ``409``).
 
@@ -24,6 +26,7 @@ from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.schedule import load_schedule
 from core.scheduler import Scheduler, TickService, graduates, is_loud, scheduled_text, spoken_seed
 from core.thoughts import parse_directive
+from state.bus import drain_inbox_records, mirror_reply, mirror_thought
 
 log = logging.getLogger("lumi.brain")
 
@@ -56,6 +59,8 @@ class BrainHost:
         self._nudge_idx = self._think_seed_idx = -1
         self._think_n = 0
         self._last_nudge = self._last_think = now
+        # The inbox is drained when the Telegram bridge or dictation feeds it (as in-process).
+        self._inbox = cfg.inbox_path if (cfg.bridge or cfg.dictation) else None
         self._due = {"sched": now, "fast": now, "idle": now}
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -63,7 +68,7 @@ class BrainHost:
     @property
     def active(self) -> bool:
         """Whether anything is hosted (all proactive flags off → the host does nothing)."""
-        return bool(self._scheduler or self._nudges or self._think)
+        return bool(self._scheduler or self._nudges or self._think or self._inbox)
 
     # --- the beat --------------------------------------------------------------------------------------
     def tick(self, now: datetime) -> None:
@@ -78,6 +83,8 @@ class BrainHost:
         elif now >= self._due["idle"] and (self._nudges or self._think):
             self._due["idle"] = now + timedelta(seconds=IDLE_EVERY_S)
             self.idle_tick(now)
+        if self._inbox is not None:
+            self.inbox_tick(now)  # every beat (the TUI polls each second)
 
     def scheduler_tick(self, now: datetime) -> None:
         """Fire every due schedule entry — never while a turn holds the lock (the next beat re-checks, as the
@@ -105,7 +112,33 @@ class BrainHost:
         self._maybe_nudge(now)
         self._maybe_think(now)
 
+    def inbox_tick(self, now: datetime) -> None:
+        """Run each unread inbox line as a turn — never while a turn holds the lock (the next beat
+        re-checks). The pointer advances as the lines are read, as in-process."""
+        if self._inbox is None or self._service.lock.locked():
+            return
+        for record in drain_inbox_records(self._inbox, self._inbox.with_suffix(".pos")):
+            self._inbox_turn(record)
+
     # --- the acts ---------------------------------------------------------------------------------------
+    def _inbox_turn(self, record: dict) -> None:
+        """One inbox line → a turn; her reply → the outbox (never the line itself — no echo)."""
+        source = "voice" if record.get("source") == "voice" else "telegram"
+        service = self._service
+        with service.background():
+            try:
+                service.last_input = self._clock()  # a Telegram / dictated line is real input
+                service.publish_message("user", record["text"], source)
+                state = self._core.reply(record["text"], service.session)
+                service.mirror(mirror_reply, state)
+                service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
+                                             "theme": self._core.theme, "origin": None})
+                service.publish_message("lili", state.reply, source, state=state)
+            except Exception:  # noqa: BLE001 — one bad line never stops the bus
+                log.exception("inbox turn failed")
+            finally:
+                service._publish_state_quietly(None)
+
     def _run_scheduled(self, entry: Any) -> None:
         text = scheduled_text(entry, self._seed_idx)
         if not text:  # a seeds row whose file is empty/missing → nothing to fire
@@ -121,6 +154,8 @@ class BrainHost:
                         self._spoken_turn(spoken_seed(thought.text), source="thought")
                     else:
                         self._push_thought(thought)
+                        if self._cfg.sched_show_to_outbox:  # a shown thought reaches Telegram / the voicer
+                            self._service.mirror(mirror_thought, thought.text, thought.emotion)
             except Exception:  # noqa: BLE001 — a scheduled act never takes the host down
                 log.exception("scheduled %s failed", name)
             finally:
@@ -171,11 +206,10 @@ class BrainHost:
         """She speaks first: a hidden self-turn (the seed is never shown), her reply pushed as a ``message``
         with the face event. The caller holds the lock."""
         state = self._core.reply(seed, self._service.session)
-        bus = self._service.bus
-        bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
-                             "theme": self._core.theme, "origin": None})
-        bus.publish("message", {"role": "lili", "text": state.reply, "source": source,
-                                "emotion": state.emotion.value, "intensity": state.intensity, "origin": None})
+        self._service.mirror(mirror_reply, state)  # she speaks first in Telegram too
+        self._service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
+                                           "theme": self._core.theme, "origin": None})
+        self._service.publish_message("lili", state.reply, source, state=state)
 
     def _push_thought(self, thought: Any) -> None:
         self._service.bus.publish("thought", {"kind": thought.kind, "text": thought.text,
@@ -200,8 +234,8 @@ class BrainHost:
 
         self._thread = threading.Thread(target=run, daemon=True, name="lumi-brain")
         self._thread.start()
-        log.info("brain host on (scheduler=%s idle_think=%s nudge=%s)",
-                 self._scheduler is not None, self._think, bool(self._nudges))
+        log.info("brain host on (scheduler=%s idle_think=%s nudge=%s inbox=%s)",
+                 self._scheduler is not None, self._think, bool(self._nudges), self._inbox is not None)
         return True
 
     def stop(self, wait_s: float = 2.0) -> None:

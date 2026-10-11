@@ -65,7 +65,7 @@ def test_frames_are_sse_and_silence_becomes_a_heartbeat_comment():
     assert next(frames) == 'event: state\ndata: {"origin": null, "state": {"mood": "тихо"}}\n\n'
     assert next(frames) == ": heartbeat\n\n"  # nothing published — a comment keeps the line alive
     bus.publish("turn", {"emotion": "calm"})
-    assert next(frames) == 'event: turn\ndata: {"emotion": "calm"}\n\n'
+    assert next(frames) == f'event: turn\nid: {bus.boot}-1\ndata: {{"emotion": "calm"}}\n\n'  # v2.5: SSE ids
     bus.close()
     assert list(frames) == []
 

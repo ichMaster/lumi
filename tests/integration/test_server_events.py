@@ -81,10 +81,12 @@ def test_a_turn_pushes_its_face_then_the_new_state(tmp_path):
     replies = []
     [heard] = _listen(client, lambda: replies.append(client.post("/v1/turn", json={"text": "привіт"}, headers=ME)))
     kinds = [e for e, _ in heard]
-    assert kinds == ["state", "turn", "state"]
+    assert kinds == ["state", "turn", "message", "message", "state"]  # v2.5: the conversation lines too
     turn = heard[1][1]
     assert turn == {"emotion": "joy", "intensity": 0.8, "theme": turn["theme"], "origin": "tui-1"}
-    pushed = heard[2][1]
+    assert [(d["role"], d["text"], d["source"]) for _, d in heard[2:4]] == [
+        ("user", "привіт", "client"), ("lili", "Радо!", "client")]
+    pushed = heard[4][1]
     assert pushed["origin"] == "tui-1" and pushed["state"]["totals"]["turns"] == 1
     assert replies[0].json()["state"] == pushed["state"]  # the reply's snapshot IS the pushed one
 
@@ -136,7 +138,7 @@ def test_a_failed_turn_pushes_no_face_and_frees_the_lock(tmp_path):
 def test_every_listener_hears_the_turn(tmp_path):
     client, _ = _client(tmp_path)
     heard = _listen(client, lambda: client.post("/v1/turn", json={"text": "?"}, headers=ME), listeners=2)
-    assert [e for e, _ in heard[0]] == [e for e, _ in heard[1]] == ["state", "turn", "state"]
+    assert [e for e, _ in heard[0]] == [e for e, _ in heard[1]] == ["state", "turn", "message", "message", "state"]
 
 
 def test_mid_turn_the_state_is_the_last_consistent_snapshot(tmp_path):

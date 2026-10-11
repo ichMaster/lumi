@@ -199,5 +199,35 @@ def test_a_spoken_message_shape_is_pinned(tmp_path):
         events.append(sub.get_nowait())
     message = next(d for e, d in events if e == "message")
     assert set(message) == {"role", "text", "source", "emotion", "intensity", "origin"}
-    assert message["role"] == "lili" and message["source"] in {"client", "telegram", "thought", "nudge"}
+    assert message["role"] == "lili" and message["source"] in {"client", "telegram", "voice", "thought", "nudge"}
     assert message["origin"] is None and message["emotion"] in {e.value for e in Emotion}
+
+
+def test_conversation_events_carry_ids_and_replay_to_a_fresh_listener(tmp_path):
+    client = _client(tmp_path)
+    client.post("/v1/turn", json={"text": "?"}, headers={**AUTH, "X-Lumi-Client": "c-1"})
+    heard_raw: dict = {}
+
+    def listen():
+        heard_raw["text"] = client.get("/v1/events", headers=AUTH).text
+
+    import threading
+    import time
+
+    bus = client.app.state.service.bus
+    t = threading.Thread(target=listen)
+    t.start()
+    deadline = time.monotonic() + 5
+    while bus.listeners == 0:
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    bus.close()
+    t.join(5)
+    frames = [f for f in heard_raw["text"].strip().split("\n\n") if f.startswith("event:")]
+    messages = [f for f in frames if f.startswith("event: message")]
+    assert len(messages) == 2  # the turn's two lines, replayed — what happened before this listener came
+    for frame in messages:
+        fields = dict(line.split(": ", 1) for line in frame.splitlines())
+        assert fields["id"].startswith(f"{bus.boot}-")  # SSE ids: <boot>-<seq>
+        data = json.loads(fields["data"])
+        assert data["replay"] is True and data["source"] == "client" and data["origin"] == "c-1"

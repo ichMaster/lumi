@@ -26,10 +26,12 @@ import logging
 import queue
 import secrets
 import threading
-from collections import OrderedDict
+import uuid
+from collections import OrderedDict, deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -38,6 +40,7 @@ from pydantic import BaseModel
 
 from core.commands import run_command
 from core.llm import LLMError
+from state.bus import mirror_reply, mirror_user
 
 log = logging.getLogger("lumi.server")
 
@@ -54,12 +57,33 @@ EVENT_QUEUE_MAX = 256  # per listener; a full queue drops its oldest event — a
 HEARTBEAT_S = 15.0  # a ':' comment after this much silence keeps the stream honest (and cancellable)
 ORIGIN_MAX = 64  # an X-Lumi-Client id longer than this is cut
 BG_WAIT_S = 300.0  # v2.5: how long a client request waits for the server's own act (a scheduled thought…)
+REPLAY_MAX = 50  # v2.5: the conversation events a fresh listener gets first — what happened meanwhile
+_REPLAYABLE = ("message", "thought")
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
-def sse(event: str, data: dict[str, Any]) -> str:
-    """One Server-Sent Event — ``data`` as one JSON line (newline-safe)."""
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+def sse(event: str, data: dict[str, Any], eid: str | None = None) -> str:
+    """One Server-Sent Event — ``data`` as one JSON line (newline-safe); ``eid`` → its ``id:`` (v2.5)."""
+    head = f"event: {event}\n" + (f"id: {eid}\n" if eid else "")
+    return f"{head}data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@dataclass(frozen=True)
+class Outbox:
+    """v2.5: the file bus the server writes in server mode — it is the single outbox writer then."""
+
+    path: Path
+    mirror_user: bool = False  # the Telegram bridge is on: your client lines go to Telegram too
+
+
+class _Item(tuple):
+    """One queued event: unpacks as the v2.4 ``(event, data)`` pair, its SSE id (``eid``) and sequence number
+    riding along (v2.5)."""
+
+    def __new__(cls, event: str, data: dict[str, Any], eid: str | None = None, seq: int = 0) -> _Item:
+        item = super().__new__(cls, (event, data))
+        item.eid, item.seq = eid, seq
+        return item
 
 
 def origin_of(header: str | None) -> str | None:
@@ -84,21 +108,39 @@ class EventBus:
     """v2.4: fan-out of the server's events to every ``/v1/events`` listener — one bounded queue each.
 
     ``publish`` never blocks (a full queue drops its oldest event); ``close`` ends every stream — the
-    server's shutdown, so a listening client never holds a graceful stop open."""
+    server's shutdown, so a listening client never holds a graceful stop open. v2.5: every event gets an
+    SSE id ``<boot>-<seq>``, and the last ``REPLAY_MAX`` conversation events (``message`` / ``thought``) are
+    kept for listeners that ask for a replay — what happened meanwhile, or what a dropped stream missed."""
 
-    def __init__(self, maxsize: int = EVENT_QUEUE_MAX) -> None:
+    def __init__(self, maxsize: int = EVENT_QUEUE_MAX, replay_max: int = REPLAY_MAX) -> None:
         self._maxsize = maxsize
         self._subs: list[queue.Queue] = []
         self._lock = threading.Lock()
         self._closed = False
+        self.boot = uuid.uuid4().hex[:8]  # another boot's id → the listener starts over (the whole buffer)
+        self._seq = 0
+        self._replay: deque[_Item] = deque(maxlen=replay_max)
 
-    def subscribe(self) -> queue.Queue:
+    def _seq_after(self, last_event_id: str | None) -> int:
+        """The sequence a resuming listener saw last — 0 (replay everything) for none / another boot."""
+        boot, _, seq = (last_event_id or "").partition("-")
+        return int(seq) if boot == self.boot and seq.isdigit() else 0
+
+    def subscribe(self, *, replay: bool = False, last_event_id: str | None = None) -> queue.Queue:
+        """A listener's queue. With ``replay`` it starts with the conversation events after ``last_event_id``
+        (all kept ones for a fresh listener), flagged ``replay: true`` — atomic with ``publish``, so nothing
+        is missed and nothing comes twice."""
         sub: queue.Queue = queue.Queue(maxsize=self._maxsize)
         with self._lock:
             if self._closed:
                 _offer(sub, _END)  # a listener arriving during shutdown ends at once
-            else:
-                self._subs.append(sub)
+                return sub
+            if replay:
+                after = self._seq_after(last_event_id)
+                for item in self._replay:
+                    if item.seq > after:
+                        _offer(sub, _Item(item[0], {**item[1], "replay": True}, item.eid, item.seq))
+            self._subs.append(sub)
         return sub
 
     def unsubscribe(self, sub: queue.Queue) -> None:
@@ -112,10 +154,13 @@ class EventBus:
             return len(self._subs)
 
     def publish(self, event: str, data: dict[str, Any]) -> None:
-        with self._lock:
-            subs = list(self._subs)
-        for sub in subs:
-            _offer(sub, (event, data))
+        with self._lock:  # one order for every listener (and the replay buffer)
+            self._seq += 1
+            item = _Item(event, data, f"{self.boot}-{self._seq}", self._seq)
+            if event in _REPLAYABLE:
+                self._replay.append(item)
+            for sub in self._subs:
+                _offer(sub, item)
 
     def close(self) -> None:
         with self._lock:
@@ -140,7 +185,7 @@ def event_frames(sub: queue.Queue, first: tuple[str, dict[str, Any]], *,
             continue
         if item is _END:
             return
-        yield sse(*item)
+        yield sse(item[0], item[1], getattr(item, "eid", None))
 
 
 class _TurnRecord:
@@ -217,8 +262,10 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
 class _Service:
     """The one core + its current session, behind one lock."""
 
-    def __init__(self, core: Any, session: Any, *, env: str | None, version: str | None) -> None:
+    def __init__(self, core: Any, session: Any, *, env: str | None, version: str | None,
+                 outbox: Outbox | None = None) -> None:
         self.core = core
+        self.outbox = outbox  # v2.5: the file bus the server writes (Telegram / the voicer), or None
         self.session = session
         self.env = env
         self.version = version
@@ -268,6 +315,25 @@ class _Service:
         """Re-snapshot from outside a request (the mood computed at start) — after any turn in flight."""
         with self.background():
             self.publish_state()
+
+    def mirror(self, write: Callable[..., Any], *args: Any) -> None:
+        """Write to the outbox (v2.5) — best-effort: a full disk never fails a turn. The caller holds the
+        lock, so the server stays the single, ordered writer."""
+        if self.outbox is None:
+            return
+        try:
+            write(self.outbox.path, *args)
+        except OSError:
+            log.warning("outbox write failed", exc_info=True)
+
+    def publish_message(self, role: str, text: str, source: str, *, state: Any = None,
+                        origin: str | None = None) -> None:
+        """v2.5: one conversation line as a ``message`` event (a hidden seed is never one)."""
+        data: dict[str, Any] = {"role": role, "text": text, "source": source}
+        if state is not None:
+            data.update(emotion=state.emotion.value, intensity=state.intensity)
+        data["origin"] = origin
+        self.bus.publish("message", data)
 
     def _publish_state_quietly(self, origin: str | None) -> None:
         try:
@@ -319,9 +385,14 @@ class _Service:
                     "on_delta": lambda text: record.events.put(("delta", {"text": text})),
                     "on_think_delta": lambda text: record.events.put(("think", {"text": text})),
                 }
+            if self.outbox is not None and self.outbox.mirror_user:
+                self.mirror(mirror_user, req.text)  # your line → Telegram first, as in-process keyboard turns
             result = self.core.reply(req.text, self.session, images=req.images, **hooks)
+            self.mirror(mirror_reply, result)
             self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
                                       "theme": self.core.theme, "origin": origin})
+            self.publish_message("user", req.text, "client", origin=origin)
+            self.publish_message("lili", result.reply, "client", state=result, origin=origin)
             record.result = self.turn_payload(result, origin)
         except LLMError as exc:  # the model failed — a readable error, the session stays usable
             log.warning("turn failed: %s", exc)
@@ -347,14 +418,16 @@ class _Service:
 
 
 def create_app(core: Any, *, token: str, session: Any = None, env: str | None = None,
-               version: str | None = None, on_new_session: Callable[[], None] | None = None) -> FastAPI:
+               version: str | None = None, on_new_session: Callable[[], None] | None = None,
+               outbox: Outbox | None = None) -> FastAPI:
     """The v1 app around an injected core (a mock model in tests). ``token`` is required.
 
     ``on_new_session`` runs in the background after ``/v1/session/new`` (the ambient re-snapshot, as the
     TUI's ``/new`` always did) — best-effort, never delaying the response."""
     if not token:
         raise ValueError("LUMI_SERVER_TOKEN is required to serve")
-    service = _Service(core, session if session is not None else core.start_session(), env=env, version=version)
+    service = _Service(core, session if session is not None else core.start_session(), env=env, version=version,
+                       outbox=outbox)
     expected = f"Bearer {token}".encode()
     # No interactive docs / schema endpoints: the API is private to its own clients.
     app = FastAPI(title="Lumi", version=version or "dev", docs_url=None, redoc_url=None, openapi_url=None)
@@ -381,12 +454,15 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             service.lock.release()
 
     @app.get("/v1/events", dependencies=guarded)
-    def events() -> StreamingResponse:
-        """v2.4: the push channel (SSE) — the current ``state`` first, then ``turn`` / ``state`` as they
-        happen, ``:`` heartbeats in between; it ends only when the client leaves or the server stops."""
+    def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:
+        """v2.4: the push channel (SSE) — the current ``state`` first, then events as they happen, ``:``
+        heartbeats in between; it ends only when the client leaves or the server stops. v2.5: after the
+        state comes the replay — the conversation a fresh listener missed (or, with ``Last-Event-ID``, what
+        a dropped stream missed)."""
 
         def body() -> Iterator[str]:
-            sub = service.bus.subscribe()  # before reading the state: nothing published in between is lost
+            # subscribe before reading the state: nothing published in between is lost
+            sub = service.bus.subscribe(replay=True, last_event_id=last_event_id)
             try:
                 yield from event_frames(sub, ("state", {"origin": None, "state": service.last_state}))
             finally:

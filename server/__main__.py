@@ -92,6 +92,21 @@ def port_free(host: str, port: int) -> bool:
     return True
 
 
+def outbox_of(cfg):
+    """v2.5: the outbox the server writes — when the Telegram bridge or the voicer wants it (as in-process);
+    with the bridge on, your client lines go to Telegram too."""
+    from server.app import Outbox
+
+    return Outbox(cfg.outbox_path, mirror_user=cfg.bridge) if (cfg.bridge or cfg.voice) else None
+
+
+def telegram_sink_of(cfg):
+    """The v0.24 ``send_image`` sink — a photo record in the server's outbox (bridge + image on), else None."""
+    from state.bus import make_photo_sink
+
+    return make_photo_sink(cfg.outbox_path) if (cfg.bridge and cfg.image) else None
+
+
 SHUTDOWN_WAIT_S = 30.0  # how long a stop waits for an in-flight turn before leaving the session open
 
 
@@ -148,12 +163,12 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
 
     _setup_logging(cfg)
     try:
-        core = build_core(config=cfg)
+        core = build_core(config=cfg, telegram_sink=telegram_sink_of(cfg))
     except LLMError as exc:
         raise SystemExit(f"{exc}\nSet the model key in .env (see .env.example).") from exc
     session = core.start_session()
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
-                     on_new_session=lambda: _refresh_world(core, cfg))
+                     on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg))
     service = app.state.service
     from server.brain import BrainHost
 
