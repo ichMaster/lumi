@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 2.5.0 (2026-10-12)
+---------------------------
+- LUMI-223: her clock and her bus are host-neutral — core/scheduler.py (the scheduler, the fast tick, the shared act decisions) and state/bus.py (the file bus) moved out of tui/ (the old modules re-export); in-process unchanged.
+- LUMI-224: the brain host — ./lumi-server runs her time with no client attached: the scheduler (+ the startup catch-up, day caps, quiet hours), the fast tick, the legacy idle think/nudge; her acts take the turn lock as the server's own — a client request waits for one instead of getting 409.
+- LUMI-225: Telegram beside the server — the server drains the inbox into turns and is the single outbox writer (replies, spoken thoughts, shown thoughts, client turns mirrored, send_image); every conversation line is a `message` event; SSE ids + a 50-event replay: opening the client shows what happened meanwhile, a reconnect resumes without repeats.
+- LUMI-226: the TUI client draws the server's conversation (📱 Telegram lines, her replies, your lines from another window) and the replay ("· while you were away ·"); only voice mode / the voicer / dictation remain "not yet".
+- LUMI-227: the server and Telegram guides for v2.5 (+ a quick-check schedule recipe).
+- fix(server): after the stop her host starts no new act, and an unreached Telegram line waits for the next start (code review #1).
+- fix(server): the startup mood runs as the server's own act — never beside a turn (code review #2; closes v2.4 #3).
+- fix(server): the idle think/nudge read their idle anchor inside the lock (code review #3).
+
 Version 2.4.0 (2026-10-11)
 ---------------------------
 - LUMI-219: the push channel — GET /v1/events (Server-Sent Events): the current state first, a turn event {emotion, intensity, theme} after every turn, state pushed on change, heartbeats; snapshots taken under the turn lock (never torn); state gains closeness {level, name}; X-Lumi-Client becomes the events' origin; no face asset ever crosses the API; the server's first Ctrl+C ends every listener's stream.

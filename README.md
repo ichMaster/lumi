@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.5 — The brain moves.** Her time now lives in `./lumi-server`: the scheduler, the idle think / nudge and the
+Telegram bridge run inside it with no window open — start the server and the two Telegram daemons, and she
+thinks on schedule, answers in Telegram and reaches out first. `./lumi-client` is a pure window: open it and
+it shows what happened while it was closed (`· while you were away ·`), then everything live; a dropped
+connection picks up without repeating a line. While she runs one of her own acts, your message waits for it
+instead of bouncing as busy. Voice mode, the voicer and dictation stay in-process for now; `./lumi` still runs
+everything as before (LUMI-223..227).
+
 **2.4 — The server speaks first.** `./lumi-client` now listens on a **push channel**: the status line follows
 changes made anywhere (another terminal's `./lumi-cli model …`), and a thought she has out loud reaches every
 client unasked — `./lumi-cli think про море` shows up in the TUI as `💭 …`. Typed `%directives` work in client
