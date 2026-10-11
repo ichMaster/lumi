@@ -126,9 +126,11 @@ def test_a_typed_directive_runs_on_the_server(tmp_path):
 def test_client_mode_config_turns_off_and_names_what_the_server_cant_host(monkeypatch):
     for key, value in {"LUMI_BRIDGE": "on", "LUMI_SCHEDULER": "on", "LUMI_MODE_SET": "voice"}.items():
         monkeypatch.setenv(key, value)
+    for key in ("LUMI_DICTATION", "LUMI_VOICE"):  # hermetic: another test may have loaded a real .env
+        monkeypatch.delenv(key, raising=False)
     cfg, was_on = client_mode_config(load_config(load_env=False))
-    assert {"Telegram bridge", "scheduler", "voice mode"} <= set(was_on)
-    assert not cfg.bridge and not cfg.scheduler and cfg.mode_set == "text"
+    assert was_on == ["voice mode"]  # v2.5: the bridge + scheduler run on the server — no "not yet" for them
+    assert not cfg.bridge and not cfg.scheduler and cfg.mode_set == "text"  # …and never in the client
     assert not cfg.thoughts and not cfg.idle_nudge and not cfg.voice and not cfg.dictation
 
 

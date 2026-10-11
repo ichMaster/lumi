@@ -17,8 +17,9 @@ from core.config import load_config
 from core.llm import MockLLMClient
 from server.__main__ import make_server
 from server.app import create_app
+from state import fifo
 from state.local_store import JsonRepository
-from tui.app import PUSHES_BACK, PUSHES_LOST, LumiApp
+from tui.app import PUSHES_BACK, PUSHES_LOST, REPLAY_NOTE, LumiApp
 from tui.remote import RemoteCore
 
 TOKEN = "push-test-token"
@@ -139,3 +140,47 @@ async def test_a_stopped_server_is_said_once_and_a_new_one_picked_up(tmp_path, c
             assert app._connected
         finally:
             _stop(second)
+
+
+# --- v2.5 LUMI-226: the conversation the server produced, live and meanwhile ------------------------------------
+
+def _bridge_host(live, tmp_path):
+    import dataclasses
+
+    from server.brain import BrainHost
+
+    cfg = dataclasses.replace(load_config(load_env=False), bridge=True, inbox_path=tmp_path / "inbox.jsonl",
+                              outbox_path=tmp_path / "outbox.jsonl", scheduler=False, thoughts=False,
+                              idle_nudge=False)
+    return BrainHost(live.app.state.service, cfg)
+
+
+async def test_a_telegram_exchange_on_the_server_shows_in_the_client(live, client_env, tmp_path):
+    host = _bridge_host(live, tmp_path)
+    app = _tui(live.url)
+    async with app.run_test() as pilot:
+        await _until(pilot, _listening(live))
+        fifo.append(tmp_path / "inbox.jsonl", "привіт з телеграму", source="telegram")
+        await asyncio.to_thread(host.inbox_tick, host._clock())
+        await _until(pilot, lambda: any("Радо!" in line for line in app.transcript))
+        assert "📱 Telegram: привіт з телеграму" in app.transcript
+        assert REPLAY_NOTE not in app.transcript  # live — not a replay
+
+
+async def test_opening_the_client_shows_what_happened_meanwhile_once(live, client_env, tmp_path):
+    from server.app import _END, _offer
+
+    host = _bridge_host(live, tmp_path)
+    fifo.append(tmp_path / "inbox.jsonl", "привіт, поки тебе не було", source="telegram")
+    host.inbox_tick(host._clock())  # no client connected yet
+    app = _tui(live.url)
+    async with app.run_test() as pilot:
+        await _until(pilot, lambda: any("Радо!" in line for line in app.transcript))
+        assert app.transcript.count(REPLAY_NOTE) == 1
+        assert app.transcript[app.transcript.index(REPLAY_NOTE) + 1] == "📱 Telegram: привіт, поки тебе не було"
+        bus = live.app.state.service.bus
+        _offer(bus._subs[0], _END)  # the stream drops (the server ends it) — the client reconnects…
+        await _until(pilot, lambda: PUSHES_BACK in app.transcript)
+        await pilot.pause(0.3)
+        assert sum("поки тебе не було" in line for line in app.transcript) == 1  # …and resumes: nothing twice
+        assert app.transcript.count(REPLAY_NOTE) == 1

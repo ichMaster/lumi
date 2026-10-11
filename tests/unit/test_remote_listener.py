@@ -170,3 +170,42 @@ def test_every_request_names_this_client():
     rc.refresh()
     rc.command("/mood")
     assert seen == [rc.client_id, rc.client_id] and len(rc.client_id) == 12
+
+
+# --- v2.5: SSE ids, resume, own conversation lines ------------------------------------------------------------
+
+def test_frames_carry_their_ids():
+    from tui.remote import parse_sse, parse_sse_frames
+
+    raw = ["event: message", "id: b00t-7", 'data: {"text": "так"}', "", "event: state", 'data: {"state": {}}', ""]
+    assert list(parse_sse_frames(raw)) == [("message", {"text": "так"}, "b00t-7"), ("state", {"state": {}}, None)]
+    assert list(parse_sse(raw)) == [("message", {"text": "так"}), ("state", {"state": {}})]  # the v2.3 pairs
+
+
+def test_a_reconnect_resumes_after_the_last_id_it_saw():
+    server = _Server([
+        ("stream", [b'event: message\nid: b00t-3\ndata: {"role": "lili", "text": "1", "origin": null}\n\n'],
+         "drop"),
+        ("stream", [_sse("state", '{"origin": null, "state": {}}')], "hang"),
+    ])
+    rc = _remote(server)
+    heard: list = []
+    rc.listen(lambda e, d: heard.append(e))
+    _until(lambda: heard[-1:] == ["state"])
+    rc.stop()
+    assert "Last-Event-ID" not in server.requests[0].headers  # a fresh listener asks for the whole replay
+    assert server.requests[1].headers["Last-Event-ID"] == "b00t-3"  # the resume — nothing shown twice
+
+
+def test_its_own_conversation_lines_are_skipped():
+    server = _Server([])
+    rc = _remote(server)
+    server.connections.append(("stream", [
+        _sse("message", f'{{"role": "user", "text": "моє", "source": "client", "origin": "{rc.client_id}"}}'),
+        _sse("message", '{"role": "user", "text": "з телеграму", "source": "telegram", "origin": null}'),
+    ], "hang"))
+    heard: list = []
+    rc.listen(lambda e, d: heard.append(d.get("text")))
+    _until(lambda: len(heard) == 1)
+    rc.stop()
+    assert heard == ["з телеграму"]

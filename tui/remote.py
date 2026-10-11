@@ -44,27 +44,29 @@ class _StreamBroken(Exception):
     """The stream failed before its outcome — the turn is fetched by its id the blocking way."""
 
 
-def parse_sse(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Server-Sent Events → ``(event, data)`` frames (v2.3). ``:`` comments and unknown fields are ignored,
-    multi-line ``data`` is joined, a blank line ends a frame; data that isn't JSON → :class:`MalformedStream`."""
+def parse_sse_frames(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any], str | None]]:
+    """Server-Sent Events → ``(event, data, id)`` frames (v2.5: the ``id`` field; ``None`` when absent).
+    ``:`` comments and unknown fields are ignored, multi-line ``data`` is joined, a blank line ends a frame;
+    data that isn't JSON → :class:`MalformedStream`."""
     event: str | None = None
+    eid: str | None = None
     data: list[str] = []
 
-    def frame() -> tuple[str, dict[str, Any]]:
+    def frame() -> tuple[str, dict[str, Any], str | None]:
         try:
             payload = json.loads("\n".join(data)) if data else {}
         except ValueError:
             raise MalformedStream(f"bad data in a {event or 'message'!r} frame") from None
         if not isinstance(payload, dict):
             raise MalformedStream(f"non-object data in a {event or 'message'!r} frame")
-        return event or "message", payload
+        return event or "message", payload, eid
 
     for raw in lines:
         line = raw.rstrip("\r")
         if not line:
             if event is not None or data:
                 yield frame()
-            event, data = None, []
+            event, eid, data = None, None, []
             continue
         if line.startswith(":"):
             continue
@@ -72,10 +74,18 @@ def parse_sse(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any]]]:
         value = value[1:] if value.startswith(" ") else value
         if field == "event":
             event = value
+        elif field == "id":
+            eid = value or None
         elif field == "data":
             data.append(value)
     if event is not None or data:  # a last frame without its blank line
         yield frame()
+
+
+def parse_sse(lines: Iterable[str]) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Server-Sent Events → ``(event, data)`` frames (v2.3) — :func:`parse_sse_frames` without the ids."""
+    for event, data, _ in parse_sse_frames(lines):
+        yield event, data
 
 
 class ServerUnavailable(LLMError):
@@ -94,13 +104,13 @@ class NotInServerMode(RuntimeError):
     """A feature the v2.2 server doesn't host yet (the thought-stream, the scheduler — v2.5)."""
 
 
-# What a client can't host in v2.2 — (config field, its off value, the name the client shows). The server
-# takes these over in v2.5 (the brain moves); until then a client turns them off and says so once.
+# What the server hosts from v2.5 (the brain moved) — off in the client, silently: it runs over there.
+_SERVER_HOSTS: tuple[tuple[str, Any], ...] = (
+    ("bridge", False), ("scheduler", False), ("thoughts", False), ("idle_nudge", False),
+)
+# What a client can't host yet — (config field, its off value, the name the client shows): it needs the local
+# mic and speakers next to the core (revisited after v2.6); a client turns them off and says so once.
 _CLIENT_OFF: tuple[tuple[str, Any, str], ...] = (
-    ("bridge", False, "Telegram bridge"),
-    ("scheduler", False, "scheduler"),
-    ("thoughts", False, "thought-stream"),
-    ("idle_nudge", False, "idle nudges"),
     ("voice", False, "voicer"),
     ("dictation", False, "dictation"),
     ("mode_set", "text", "voice mode"),
@@ -108,9 +118,11 @@ _CLIENT_OFF: tuple[tuple[str, Any, str], ...] = (
 
 
 def client_mode_config(cfg: Any) -> tuple[Any, list[str]]:
-    """The client's config with the not-yet-hosted features off + the names of those this .env had on."""
+    """The client's config with everything the client must not run off — what the server hosts (silently) and
+    what isn't hosted yet — + the names of the not-yet ones this .env had on."""
     was_on = [name for field, off, name in _CLIENT_OFF if getattr(cfg, field) != off]
-    return replace(cfg, **{field: off for field, off, _ in _CLIENT_OFF}), was_on
+    off = {field: value for field, value in _SERVER_HOSTS} | {field: value for field, value, _ in _CLIENT_OFF}
+    return replace(cfg, **off), was_on
 
 
 @dataclass(frozen=True)
@@ -167,6 +179,7 @@ class RemoteCore:
         self._wake = threading.Event()  # cuts a reconnect wait short (a request just reached the server)
         self._offline = False  # the push channel is down (a reconnect is pending)
         self._events_response: httpx.Response | None = None
+        self._last_event_id: str | None = None  # v2.5: a reconnect resumes after it (no line twice)
 
     # --- transport -----------------------------------------------------------------------------------
     def _headers(self) -> dict[str, str]:
@@ -331,7 +344,10 @@ class RemoteCore:
         delay = LISTEN_BACKOFF_S[0]
         while not self._stop_listening.is_set():
             try:
-                with http.stream("GET", "/v1/events", headers=self._headers(),
+                headers = self._headers()
+                if self._last_event_id:  # v2.5: resume — the server replays only what this listener missed
+                    headers["Last-Event-ID"] = self._last_event_id
+                with http.stream("GET", "/v1/events", headers=headers,
                                  timeout=httpx.Timeout(LISTEN_READ_TIMEOUT_S, connect=3.0)) as res:
                     self._events_response = res  # so stop() can close it under the reading thread
                     if res.status_code == 404:
@@ -339,12 +355,14 @@ class RemoteCore:
                         return
                     if res.status_code != 200:
                         raise _StreamBroken(f"HTTP {res.status_code}")
-                    for event, data in parse_sse(self._lines_until_stopped(res)):
+                    for event, data, eid in parse_sse_frames(self._lines_until_stopped(res)):
                         if self._offline:
                             self._offline = False
                             self._deliver(on_event, "_online", {})
                         delay = LISTEN_BACKOFF_S[0]
                         self._on_push(event, data, on_event)
+                        if eid:
+                            self._last_event_id = eid
                 detail = "the server closed the push channel"
             except (httpx.HTTPError, httpx.StreamError, MalformedStream, _StreamBroken) as exc:
                 detail = str(exc) or type(exc).__name__
@@ -374,8 +392,8 @@ class RemoteCore:
     def _on_push(self, event: str, data: dict[str, Any], on_event: Callable[[str, dict[str, Any]], None]) -> None:
         if event == "state":
             self._absorb(data)  # the snapshot follows the server, whoever changed it
-        elif event == "thought" and data.get("origin") == self.client_id:
-            return  # our own %directive — shown from its response
+        elif event in ("thought", "message") and data.get("origin") == self.client_id:
+            return  # our own %directive / turn — shown from its response
         self._deliver(on_event, event, data)
 
     @staticmethod

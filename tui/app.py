@@ -47,7 +47,7 @@ from core.commands import (  # v2.2 (LUMI-211): the command layer; the constants
 )
 from core.config import load_config
 from core.emoji import EmojiRenderer, load_emoji_map
-from core.emotion import EmotionState, LogRenderer
+from core.emotion import Emotion, EmotionState, LogRenderer
 from core.images import image_block, media_type_for
 from core.llm import LLMError
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
@@ -122,6 +122,7 @@ def command_renderable(result: CommandResult) -> RenderableType:
 
 PUSHES_LOST = "⚠ lost the server's pushes — reconnecting…"  # v2.4: once per outage
 PUSHES_BACK = "✓ the server's pushes are back"
+REPLAY_NOTE = "· while you were away ·"  # v2.5: introduces the replayed conversation (once per batch)
 
 
 class ServerEvent(Message):
@@ -277,6 +278,7 @@ class LumiApp(App[None]):
         # v2.2 (LUMI-213): client mode — `core` is a tui.remote.RemoteCore over the server API.
         self._remote: bool = bool(getattr(core, "is_remote", False))
         self._not_yet: list[str] = []  # features this .env enables that the server can't host yet
+        self._replaying = False  # v2.5: inside a replayed batch (its note is shown once)
         self._session = session
         # Plain-text mirror of the conversation (for tests + simplicity).
         self.transcript: list[str] = []
@@ -1532,6 +1534,10 @@ class LumiApp(App[None]):
             pass
 
     def _apply_server_event(self, event: str, data: dict) -> None:
+        replayed = bool(data.get("replay"))  # v2.5: what happened while this window was away
+        if replayed and not self._replaying:
+            self._emit(REPLAY_NOTE, Text(REPLAY_NOTE, style=THINKING_COLOR))
+        self._replaying = replayed
         if event == "state":
             if not self._busy:  # mid-turn the status shows the busy state; the turn's end re-renders it
                 self._render_status()
@@ -1539,6 +1545,8 @@ class LumiApp(App[None]):
         elif event == "thought" and data.get("text"):
             body = f"💭 {data['text']}"
             self._emit(body, Markdown(body))
+        elif event == "message" and data.get("text"):
+            self._show_pushed_message(data)
         elif event == "_offline":
             self._connected = False
             self._emit(PUSHES_LOST, Text(PUSHES_LOST, style=SYSTEM_COLOR))
@@ -1547,6 +1555,25 @@ class LumiApp(App[None]):
             self._connected = True
             self._emit(PUSHES_BACK, Text(PUSHES_BACK, style=SYSTEM_COLOR))
             self._render_status()
+
+    def _show_pushed_message(self, data: dict) -> None:
+        """A conversation line the server produced (v2.5) — drawn as in-process: a Telegram or dictated line,
+        your line from another window, her reply with the emotion emoji. (Own lines never arrive here.)"""
+        text, source = data["text"], data.get("source")
+        if data.get("role") == "user":
+            if source == "telegram":
+                self._say(TELEGRAM_LABEL, text, TELEGRAM_COLOR)
+            elif source == "voice":
+                self._say(VOICE_LABEL, text, VOICE_COLOR)
+            else:
+                self._say(USER_LABEL, text, USER_COLOR)
+            return
+        try:
+            emotion = Emotion(data.get("emotion") or "calm")
+        except ValueError:
+            emotion = Emotion("calm")
+        state = EmotionState(reply=text, emotion=emotion, intensity=float(data.get("intensity") or 0.5))
+        self._say_markdown(f"{LILI_LABEL} {self._emoji.glyph(state)}", text, LILI_COLOR)
 
     def _emit_server_error(self, exc: Exception) -> None:
         """A client-mode server problem as one readable line (v2.2)."""

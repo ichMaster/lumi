@@ -98,13 +98,15 @@ async def test_a_typed_directive_runs_on_the_server(tmp_path, client_env):
 
 
 async def test_enabled_features_the_server_cant_host_are_announced(tmp_path, client_env):
+    client_env.setenv("LUMI_DICTATION", "on")
     client_env.setenv("LUMI_BRIDGE", "on")
     app, _ = _setup(tmp_path)
     async with app.run_test() as pilot:
         for _ in range(20):
             await pilot.pause()
-        assert any("Telegram bridge" in line and NOT_YET in line for line in app.transcript)
-        assert app._bridge is False  # off in the client
+        assert any("dictation" in line and NOT_YET in line for line in app.transcript)
+        assert not any("Telegram bridge" in line for line in app.transcript)  # v2.5: the server hosts it
+        assert app._bridge is False and app._dictation is False  # both off in the client
 
 
 async def test_a_server_that_drops_mid_session_is_a_readable_line(tmp_path, client_env):
