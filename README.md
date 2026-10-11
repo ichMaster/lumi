@@ -12,6 +12,16 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.4 — The server speaks first.** `./lumi-client` now listens on a **push channel**: the status line follows
+changes made anywhere (another terminal's `./lumi-cli model …`), and a thought she has out loud reaches every
+client unasked — `./lumi-cli think про море` shows up in the TUI as `💭 …`. Typed `%directives` work in client
+mode again (they run on the server); every turn pushes her face state `{emotion, intensity, theme}` for the
+face clients to come — a theme name, never a face file. A lost server is said once and picked up again by
+itself; stopping the server no longer waits for connected clients. Also: an empty Gemini answer is asked once
+more instead of silently losing the thought (one in five prod thoughts was lost), today's mood is computed
+once when the server's start and the first turn race, and a taken port is refused before anything starts
+(LUMI-219..222).
+
 **2.3 — The live turn.** In client mode Лілі **streams** again: the server sends each turn as Server-Sent
 Events and `./lumi-client` grows the reply and fills the think-box live, exactly like the in-process TUI. Every
 turn has its own id, so a dropped or garbled stream is recovered by asking for that same turn — she never

@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 2.4.0 (2026-10-11)
+---------------------------
+- LUMI-219: the push channel — GET /v1/events (Server-Sent Events): the current state first, a turn event {emotion, intensity, theme} after every turn, state pushed on change, heartbeats; snapshots taken under the turn lock (never torn); state gains closeness {level, name}; X-Lumi-Client becomes the events' origin; no face asset ever crosses the API; the server's first Ctrl+C ends every listener's stream.
+- LUMI-220: typed %directives run on the server — POST /v1/directive; an open thought is pushed to every client; ./lumi-cli think [topic].
+- LUMI-221: the TUI client lives on pushes — a background listener (reconnect with backoff, one line per outage, resync), the status line follows changes made anywhere, thoughts fired elsewhere arrive as 💭, %directives work in client mode again.
+- LUMI-222: pushes in docs/SERVER_SETUP.md.
+- fix(llm): an empty Gemini answer is asked once more instead of being lost (21% of prod thoughts were silently empty); both calls counted, the reason logged.
+- fix(core): today's mood is computed once when the startup mood and the first turn race (code review #1).
+- fix(server): a taken port is refused before the core is built — no banner, no model call (code review #2).
+
 Version 2.3.0 (2026-10-10)
 ---------------------------
 - LUMI-216: the streamed turn — POST /v1/turn/stream (Server-Sent Events: delta/think, then one done or error; the emotion validated on completion) + an idempotent turn_id on both turn routes: a retry returns the stored outcome, a client disconnect never stops a turn or leaks the lock; state gains stream_enabled.
