@@ -113,6 +113,14 @@ def telegram_sink_of(cfg):
     return make_photo_sink(cfg.outbox_path) if (cfg.bridge and cfg.image) else None
 
 
+def startup_mood(service) -> None:
+    """Today's mood at start, as the server's own act (review v2.5 #2): it never runs beside a turn or one of
+    her acts (the shared model client's thinking flag can't flip under one), and listeners hear the result."""
+    with service.background():
+        service.core.ensure_mood()
+        service.publish_state()
+
+
 SHUTDOWN_WAIT_S = 30.0  # how long a stop waits for an in-flight turn before leaving the session open
 
 
@@ -180,7 +188,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
 
     brain = app.state.brain = BrainHost(service, cfg)  # v2.5: her acts run here, client or not
     _background("world", lambda: _refresh_world(core, cfg))
-    _background("mood", lambda: (core.ensure_mood(), service.refresh_state()))  # v2.4: listeners hear it
+    _background("mood", lambda: startup_mood(service))  # her own act — never beside a turn
     _background("backfill", core.ensure_backfill)
     log.info("serving on %s:%s (env=%s version=%s)", cfg.server_host, cfg.server_port, cfg.env, cfg.app_version)
     print(f"Lumi server on http://{cfg.server_host}:{cfg.server_port} "

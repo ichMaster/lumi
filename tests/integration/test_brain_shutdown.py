@@ -7,6 +7,7 @@ think/nudge read their idle anchor inside the lock. Driven interleavings; mock m
 """
 
 import dataclasses
+import threading
 import time
 from datetime import UTC, datetime
 
@@ -86,3 +87,22 @@ def test_the_first_ctrl_c_also_asks_the_brain_to_stop(tmp_path):
     while not host._stop.is_set():
         assert time.monotonic() < deadline
         time.sleep(0.01)
+
+
+# --- #2: the startup mood never runs beside a turn ----------------------------------------------------------
+
+def test_the_startup_mood_is_the_servers_own_act(tmp_path):
+    from server.__main__ import startup_mood
+
+    app, core, cfg = _setup(tmp_path)
+    service = app.state.service
+    seen: list = []
+    core.ensure_mood = lambda: seen.append(service._bg)  # what the lock looked like while the mood ran
+    service.lock.acquire()  # a client turn is running
+    t = threading.Thread(target=startup_mood, args=(service,))
+    t.start()
+    time.sleep(0.1)
+    assert seen == []  # it waited for the turn…
+    service.lock.release()
+    t.join(2)
+    assert seen == [True]  # …then ran holding the lock as the server's own act
