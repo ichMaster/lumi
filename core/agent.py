@@ -565,6 +565,9 @@ class Core:
         self._mood_enabled = mood_enabled
         self._mood_log_path = mood_log_path  # the full reading is appended here (readable)
         self._mood: MoodState | None = None
+        # One mood call at a time: a racing caller (the server's startup mood vs the first turn) waits and
+        # reuses the reading instead of rolling a second, different one (code review v2.4 #1).
+        self._mood_lock = threading.RLock()
         # v0.11 face themes: the mood picks one per day; the signal carries it. Off → default/None.
         self._theme_descriptions = theme_descriptions or {}
         self._default_theme = default_theme
@@ -1846,6 +1849,13 @@ class Core:
         today = self._clock().strftime("%Y-%m-%d")
         if self._mood and self._mood.date == today:
             return  # already computed for this local day; a turn keeps its mood
+        with self._mood_lock:  # single-flight: a second caller waits here, then finds today's mood
+            if self._mood and self._mood.date == today:
+                return
+            self._compute_mood(today)
+
+    def _compute_mood(self, today: str) -> None:
+        """Today's reading (logged, or a fresh mood call) → ``self._mood`` — under ``_mood_lock``."""
         # v0.8: compute today's body rhythms (exact, deterministic) and merge them in.
         bio_line: str | None = None
         cycle_line: str | None = None
