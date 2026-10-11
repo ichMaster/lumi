@@ -116,7 +116,7 @@ they're switched off and the TUI says "not yet in server mode":
 | `the server rejected the token` | client and server `.env` differ | use the same `LUMI_SERVER_TOKEN` |
 | `Лілі is busy with another request` | one request at a time (e.g. the CLI ran during a turn) | try again |
 | `LUMI_SERVER_TOKEN is not set` | no token in `.env` | add one (Setup step 2) |
-| `address already in use` (server start) | another server holds the port | stop it, or give this instance its own port |
+| `Port 8766 … is already in use by another server` (server start) | another process holds the port (`lsof -nP -iTCP:<port> -sTCP:LISTEN` names it) | stop it, or give this instance its own `LUMI_SERVER_PORT` |
 | `another brain already runs on this data root` | `./lumi` or `./lumi-server` already runs on this instance | stop it — or, for a running server, use `./lumi-client` |
 
 Logs: the server writes `<data root>/lumi.log` (as the in-process TUI did); a client writes
