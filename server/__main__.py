@@ -78,6 +78,20 @@ def _background(name: str, fn) -> None:
     threading.Thread(target=run, daemon=True, name=f"lumi-{name}").start()
 
 
+def port_free(host: str, port: int) -> bool:
+    """Whether ``host:port`` can be bound right now — the way uvicorn binds (``SO_REUSEADDR``)."""
+    import socket
+
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
 SHUTDOWN_WAIT_S = 30.0  # how long a stop waits for an in-flight turn before leaving the session open
 
 
@@ -117,6 +131,12 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     from core.brainlock import guard_single_brain
 
     guard_single_brain(cfg, "server")  # one brain per memory: never alongside ./lumi on the same root
+    if not port_free(cfg.server_host, cfg.server_port):  # review v2.4 #2: before the core — no model call
+        raise SystemExit(
+            f"Port {cfg.server_port} on {cfg.server_host} is already in use by another server. "
+            f"Find it: lsof -nP -iTCP:{cfg.server_port} -sTCP:LISTEN — stop it, or give this instance "
+            "its own LUMI_SERVER_PORT."
+        )
     try:
         import uvicorn  # noqa: F401 — fail early, with the hint, when the extra is missing
 

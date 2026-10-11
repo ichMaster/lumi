@@ -86,3 +86,43 @@ def test_a_failing_end_session_still_releases_the_lock():
     svc = _Service(boom)
     assert sm.close_session(svc, wait_s=1) is False
     assert svc.lock.acquire(blocking=False)
+
+
+# --- code review v2.4 #2: a taken port is refused before the core (no model call, no banner) -------------
+
+def _taken_port():
+    import socket
+
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    holder.bind(("127.0.0.1", 0))
+    holder.listen(1)
+    return holder, holder.getsockname()[1]
+
+
+def test_port_free_sees_a_listener():
+    holder, port = _taken_port()
+    try:
+        assert sm.port_free("127.0.0.1", port) is False
+    finally:
+        holder.close()
+    assert sm.port_free("127.0.0.1", port) is True
+
+
+def test_a_taken_port_is_refused_before_the_core_is_built(monkeypatch):
+    import dataclasses
+
+    holder, port = _taken_port()
+    cfg = dataclasses.replace(load_config(load_env=False), server_token="t", server_host="127.0.0.1",
+                              server_port=port)
+    monkeypatch.setattr("core.config.load_config", lambda: cfg)
+    monkeypatch.setattr("core.envguard.guard_entry", lambda c: None)
+    monkeypatch.setattr("core.brainlock.guard_single_brain", lambda c, role: None)
+    built: list = []
+    monkeypatch.setattr("core.agent.build_core", lambda **kw: built.append(kw))
+    try:
+        with pytest.raises(SystemExit) as exc:
+            sm.main()
+    finally:
+        holder.close()
+    assert f"Port {port}" in str(exc.value) and "already in use" in str(exc.value)
+    assert built == []  # refused before the core — no startup model calls
