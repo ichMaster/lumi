@@ -9,6 +9,7 @@ think/nudge read their idle anchor inside the lock. Driven interleavings; mock m
 import dataclasses
 import threading
 import time
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from core.agent import Core
@@ -106,3 +107,42 @@ def test_the_startup_mood_is_the_servers_own_act(tmp_path):
     service.lock.release()
     t.join(2)
     assert seen == [True]  # …then ran holding the lock as the server's own act
+
+
+# --- #3: the idle anchor is read inside the lock ------------------------------------------------------------
+
+def _turn_finishes_while_waiting(service):
+    real = service.background
+
+    @contextmanager
+    def background():
+        with real():
+            service.last_input = NOW  # a client turn that held the lock just finished — you just spoke
+            yield
+
+    service.background = background
+
+
+def test_the_idle_think_reads_a_fresh_anchor(tmp_path):
+    app, core, cfg = _setup(tmp_path, thoughts=True, bridge=False)
+    core._thoughts_interval_s = 60
+    service = app.state.service
+    service.last_input = datetime(2026, 10, 11, 11, 0, tzinfo=UTC)  # silent for an hour…
+    host = BrainHost(service, cfg, clock=lambda: NOW)
+    host._last_think = service.last_input
+    _turn_finishes_while_waiting(service)
+    host.idle_tick(NOW)
+    assert core._repo.thoughts_since("2000-01-01") == []  # …but you just spoke: no spontaneous thought
+
+
+def test_the_idle_nudge_reads_a_fresh_anchor(tmp_path):
+    nudges = tmp_path / "nudges.md"
+    nudges.write_text("Привіт, ти тут?\n", encoding="utf-8")
+    app, core, cfg = _setup(tmp_path, idle_nudge=True, nudge_path=nudges, idle_seconds=60, bridge=False)
+    service = app.state.service
+    service.last_input = datetime(2026, 10, 11, 11, 0, tzinfo=UTC)
+    host = BrainHost(service, cfg, clock=lambda: NOW)
+    host._last_nudge = service.last_input
+    _turn_finishes_while_waiting(service)
+    host.idle_tick(NOW)
+    assert core.totals.turns == 0  # no opener right after you spoke

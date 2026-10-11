@@ -173,13 +173,17 @@ class BrainHost:
                 self._service._publish_state_quietly(None)  # her acts cost tokens / may move the mood
 
     def _maybe_nudge(self, now: datetime) -> None:
-        if not self._nudges or not proactive_due(self._service.last_input, self._last_nudge, now,
-                                                 self._cfg.idle_seconds, self._cfg.quiet_hours):
+        if not self._nudges:
             return
-        self._last_nudge = now
-        self._nudge_idx = pick_nudge_index(len(self._nudges), self._nudge_idx)
-        opener = self._nudges[self._nudge_idx]
         with self._service.background():
+            # the idle anchor is read inside the lock — a turn that just ended moved it (review v2.5 #3)
+            now = self._clock()
+            if not proactive_due(self._service.last_input, self._last_nudge, now, self._cfg.idle_seconds,
+                                 self._cfg.quiet_hours):
+                return
+            self._last_nudge = now
+            self._nudge_idx = pick_nudge_index(len(self._nudges), self._nudge_idx)
+            opener = self._nudges[self._nudge_idx]
             try:
                 self._spoken_turn(opener, source="nudge")
             except Exception:  # noqa: BLE001
@@ -199,8 +203,9 @@ class BrainHost:
             parsed = parse_directive(self._think_seeds[self._think_seed_idx])
             if parsed is not None:
                 kind, topic = parsed.name, parsed.topic
-        anchor = max(self._service.last_input, self._last_think)
         with self._service.background():
+            now = self._clock()  # read inside the lock — a turn that just ended moved the anchor (review #3)
+            anchor = max(self._service.last_input, self._last_think)
             try:
                 thought = self._core.tick_think(self._service.session, anchor, now, rng_seed=self._think_n,
                                                 kind=kind, topic=topic)
