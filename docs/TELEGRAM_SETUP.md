@@ -17,13 +17,19 @@ Telegram ─┴─► inbox.jsonl ─► [ TUI = brain ] ─► core.reply ─�
           daemon 1 (telegram→inbox)  (store)               daemon 2 (outbox→telegram)
 ```
 
-You run **three processes**: the **TUI** + **daemon 1** (inbound) + **daemon 2** (outbound).
+You run **three processes**: the **brain** + **daemon 1** (inbound) + **daemon 2** (outbound).
+
+**v2.5 — the brain can be the server.** The brain is whichever runs on the data root: the in-process TUI
+(`./lumi`), **or** `./lumi-server` — then the server drains the inbox, answers and writes the outbox, with no
+window open at all, and `./lumi-client` shows the conversation when you open it (including what happened
+while it was closed). The daemons don't care which: they only read/write the same `inbox.jsonl` /
+`outbox.jsonl`. Never both brains at once — the second refuses ("another brain already runs…").
 
 **Two facts to keep in mind:**
-- The **TUI must be running** for replies — it's the brain. With it down, daemon 1 keeps buffering
-  into `inbox.jsonl`; nothing answers until the TUI is back.
+- **The brain must be running** for replies. With it down, daemon 1 keeps buffering into `inbox.jsonl`;
+  nothing answers until the brain is back.
 - This is the **single-owner** bot: the Telegram user *is* the owner, one relationship, one session.
-  Multi-user / always-on belong to the v2.1/v2.3 server.
+  Multi-user belongs to v4.
 
 ---
 L
@@ -101,9 +107,10 @@ If instead you see `✗`, it names the cause: token not set / wrong format, empt
 Open three terminals (or `tmux` panes) at the repo root:
 
 ```bash
-./lumi                               # 1) the TUI (the brain) — keep it focused/open
-uv run python -m telegram.inbound    # 2) daemon 1: Telegram → inbox
-uv run python -m telegram.outbound   # 3) daemon 2: outbox → Telegram
+./lumi                               # 1) the brain: the in-process TUI — keep it open
+                                     #    …or ./lumi-server (v2.5): no window needed; ./lumi-client to look
+./lumi-telegram-inbound              # 2) daemon 1: Telegram → inbox
+./lumi-telegram-outbound             # 3) daemon 2: outbox → Telegram
 ```
 
 Each daemon should log an `… up: …` line on start (in its terminal and `.lumi/telegram-*.log`); if

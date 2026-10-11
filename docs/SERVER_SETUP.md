@@ -1,4 +1,4 @@
-# Server & client — running Лілі as a server (v2.2–v2.4)
+# Server & client — running Лілі as a server (v2.2–v2.5)
 
 From v2.2 Лілі can run as a **server** (her brain: the core, her memory, the model calls) with the
 **TUI as a client** talking to it over a local HTTP API, plus a small **CLI** to manage it. The in-process
@@ -21,6 +21,9 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
   the client and the think-box fills live, as in the in-process TUI.
 - **The server speaks first (v2.4).** Every client also listens on a push channel: the status line follows
   the server wherever a change came from, and a thought she has out loud reaches every client unasked.
+- **Her time lives in the server (v2.5).** The scheduler, the idle think / nudge and the Telegram bridge run
+  inside `./lumi-server` — with no client attached. The TUI is a window: open it and it shows what happened
+  meanwhile.
 
 ## Setup (once per instance)
 
@@ -96,15 +99,51 @@ reconnecting…` — and keeps retrying (1 s, then doubling up to 30 s; any turn
 retries at once). When the server is back: `✓ the server's pushes are back`, and the status line resyncs.
 Stopping the server with Ctrl+C no longer waits for connected clients to leave.
 
+## Her time on the server (v2.5)
+
+`./lumi-server` hosts what the in-process TUI used to run on its timers, from the same `.env`:
+
+- **the scheduler** (`LUMI_SCHEDULER`, `core/schedule.toml`): her scheduled acts fire on time (with the
+  startup catch-up, the day caps and quiet hours as before); a shown thought is pushed as `💭`, a thought that
+  turns into words is a message from her;
+- **the idle think / nudge** when the scheduler is off (`LUMI_THOUGHTS`, `LUMI_IDLE_NUDGE`);
+- **the Telegram bridge** (`LUMI_BRIDGE`): run the two daemons beside the server — same data root, no TUI:
+
+```bash
+./lumi-server                 # the brain
+./lumi-telegram-inbound       # Telegram → inbox
+./lumi-telegram-outbound      # outbox → Telegram
+./lumi-client                 # optional — a window onto her
+```
+
+**When you open the client** it shows what happened while it was closed — the recent conversation (Telegram
+turns, what she said first, her shown thoughts), introduced by `· while you were away ·`, then everything
+live. A dropped connection picks up where it left off (nothing shows twice); a server restart starts fresh
+(a new session). Your own lines from another window appear too.
+
+**One at a time, still:** while she runs one of her own acts (a long news read, say), your message waits for
+it instead of bouncing as busy.
+
+**A quick check without waiting an hour** — point the server at a test schedule:
+
+```bash
+cat > /tmp/lumi-quick.toml <<'TOML'
+[[schedule]]
+directive = "think"
+every = "2m"
+show = true
+TOML
+LUMI_SCHEDULE_PATH=/tmp/lumi-quick.toml LUMI_SCHED_SHOW_TO_OUTBOX=on ./lumi-server
+```
+
+Within two minutes a thought arrives in Telegram (and in the client, if one is open). Restart without the
+variables to go back to her real schedule.
+
 ## What client mode doesn't do yet
 
-These stay in the **in-process** TUI until the brain moves into the server (**v2.5**) — in client mode
-they're switched off and the TUI says "not yet in server mode":
-
-- the **idle thought-stream** — idle thoughts and the scheduler (typed `%directives` already work, above);
-- the **Telegram bridge** — keep running Telegram against the in-process instance meanwhile;
-- the **voice mode** (`/mode-set voice`), the **voicer** and **dictation** (they need the local mic and
-  speakers next to the core — revisited after v2.6).
+The **voice mode** (`/mode-set voice`), the **voicer** and **dictation** need the local mic and speakers next
+to the core — they stay in the in-process TUI (revisited after v2.6); in client mode they're switched off and
+the TUI says "not yet in server mode".
 
 `LUMI_SERVER=off ./lumi` always gives you the full in-process Лілі.
 
