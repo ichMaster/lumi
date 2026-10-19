@@ -156,7 +156,7 @@ async def test_a_server_back_with_another_token_is_said_once_and_not_retried(tmp
             lines = app.transcript
             rejected = [i for i, line in enumerate(lines) if "rejected the token" in line]
             assert len(rejected) == 1 and rejected[0] == len(lines) - 1  # said once, and nothing after it
-            assert not app._connected
+            assert not app._connected and PUSHES_BACK not in lines  # v2.6: a stopping server is never "back"
         finally:
             _stop(second)
 

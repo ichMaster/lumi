@@ -1,0 +1,20 @@
+# Lumi — one instance's Telegram daemon 2 (outbox.jsonl → Telegram), %i = prod | dev (v2.6, LUMI-230).
+# Runs beside lumi-server@%i (the server is the single outbox writer) and stops with it.
+# No secret lives here: the bot token stays in ~/lumi/%i/.env. Guide: docs/LINUX_DEPLOY.md.
+
+[Unit]
+Description=Lumi Telegram outbound (%i)
+PartOf=lumi-server@%i.service
+After=lumi-server@%i.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/lumi/%i/app
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/lumi/%i/app/lumi-telegram-outbound
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=lumi-server@%i.service

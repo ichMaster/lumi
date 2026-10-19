@@ -154,6 +154,12 @@ class EventBus:
         with self._lock:
             return len(self._subs)
 
+    @property
+    def closed(self) -> bool:
+        """Whether the server is stopping (v2.6: a new listener is turned away, never handed a last state)."""
+        with self._lock:
+            return self._closed
+
     def publish(self, event: str, data: dict[str, Any]) -> None:
         with self._lock:  # one order for every listener (and the replay buffer)
             self._seq += 1
@@ -486,10 +492,16 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             # subscribe before reading the state: nothing published in between is lost
             sub = service.bus.subscribe(replay=True, last_event_id=last_event_id)
             try:
+                if service.bus.closed:  # stopped since the check below — no last state frame either
+                    return
                 yield from event_frames(sub, ("state", {"origin": None, "state": service.last_state}))
             finally:
                 service.bus.unsubscribe(sub)
 
+        # v2.6: while the server stops (it still accepts for a moment after the streams are closed) a reconnecting
+        # client is turned away — handed a last state, it would read the stop as "the pushes are back".
+        if service.bus.closed:
+            raise HTTPException(status_code=503, detail="the server is stopping")
         return StreamingResponse(body(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
     @app.post("/v1/turn", dependencies=guarded)

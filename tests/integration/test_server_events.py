@@ -208,3 +208,12 @@ def test_a_listening_client_never_holds_the_graceful_stop_open(tmp_path):
     assert not serving.is_alive()  # stopped although a client was listening
     listener.join(2)
     assert heard == {"first": "event: state", "ended": True}
+
+
+def test_a_listener_arriving_while_the_server_stops_is_turned_away(tmp_path):
+    """v2.6: after the stop closed the streams, a reconnect gets 503 and no state — never a false "back"."""
+    client, _ = _client(tmp_path)
+    client.app.state.service.bus.close()  # what the first Ctrl+C / systemctl stop does
+    res = client.get("/v1/events", headers=AUTH)
+    assert res.status_code == 503 and "stopping" in res.json()["detail"]
+    assert "event: state" not in res.text

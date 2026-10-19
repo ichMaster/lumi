@@ -1,0 +1,21 @@
+# Lumi — one instance's Telegram daemon 1 (Telegram → inbox.jsonl), %i = prod | dev (v2.6, LUMI-230).
+# Runs beside lumi-server@%i (the server drains the inbox into turns) and stops with it.
+# One consumer per bot: never run it while another machine polls the same bot token.
+# No secret lives here: the bot token and the allowlist stay in ~/lumi/%i/.env. Guide: docs/LINUX_DEPLOY.md.
+
+[Unit]
+Description=Lumi Telegram inbound (%i)
+PartOf=lumi-server@%i.service
+After=lumi-server@%i.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/lumi/%i/app
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/lumi/%i/app/lumi-telegram-inbound
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=lumi-server@%i.service

@@ -1,0 +1,24 @@
+# Lumi — one instance's server (%i = prod | dev) on the always-on Linux box (v2.6, LUMI-230).
+# A user unit: copy to ~/.config/systemd/user/, then `loginctl enable-linger` so it runs without a login.
+# Layout: ~/lumi/%i/{app,.env,data} — the checkout, its .env (found by walking up from app/core/), her memory.
+# No secret lives here: the token and the keys stay in ~/lumi/%i/.env. Guide: docs/LINUX_DEPLOY.md.
+
+[Unit]
+Description=Lumi server (%i)
+# Retry for ever: right after a boot the box's Tailscale address may not exist yet (the bind fails, exit 1).
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/lumi/%i/app
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/lumi/%i/app/lumi-server
+Restart=on-failure
+RestartSec=5
+# 78 (EX_CONFIG) = a refusal only .env fixes — no token, a refused bind, a port another service holds.
+RestartPreventExitStatus=78
+# A stop closes her session (a summary + facts — model calls) exactly like Ctrl+C: give it time.
+TimeoutStopSec=300
+
+[Install]
+WantedBy=default.target

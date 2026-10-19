@@ -9,11 +9,28 @@ too — the scheduler, the fast tick, the idle think / nudge (``server/brain.py`
 
 from __future__ import annotations
 
+import errno
 import ipaddress
 import logging
+import signal
+import sys
 import threading
 
 log = logging.getLogger("lumi.server")
+
+EX_CONFIG = 78  # v2.6: sysexits' EX_CONFIG — the unit's RestartPreventExitStatus, so a refusal never loops
+
+
+class ConfigRefusal(SystemExit):
+    """A refusal only an edit of ``.env`` fixes (no token, a refused bind, a taken port) — the message on stderr,
+    exit status 78, so systemd leaves the unit failed instead of restarting it every few seconds (v2.6)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(EX_CONFIG)
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
 
 
 def _setup_logging(cfg) -> None:
@@ -68,7 +85,16 @@ def make_server(app, *, host: str, port: int):
     return _Server(uvicorn.Config(app, host=host, port=port, log_level="warning"))
 
 
+def term_as_interrupt() -> None:
+    """v2.6: ``systemctl stop`` (SIGTERM) shuts her down like Ctrl+C. uvicorn re-raises a captured signal after
+    its graceful stop with the previous handler restored; SIGTERM's default would kill the process before
+    ``main``'s ``finally`` (brain stop + the session close: summary, facts). Handled as SIGINT, the re-raise is
+    the ``KeyboardInterrupt`` :func:`serve` already swallows."""
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+
+
 def serve(app, *, host: str, port: int) -> None:  # pragma: no cover - the real signal loop
+    term_as_interrupt()
     try:
         make_server(app, host=host, port=port).run()
     except KeyboardInterrupt:  # uvicorn re-raises the captured signal after a clean stop
@@ -113,18 +139,48 @@ def bind_problem(host: str) -> str | None:
     return None
 
 
-def port_free(host: str, port: int) -> bool:
-    """Whether ``host:port`` can be bound right now — the way uvicorn binds (``SO_REUSEADDR``)."""
+def bind_error(host: str, port: int) -> OSError | None:
+    """Why ``host:port`` can't be bound right now — the way uvicorn binds (``SO_REUSEADDR``) — or ``None``."""
     import socket
 
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            sock.bind((host, port))
-        except OSError:
-            return False
-    return True
+            sock.bind((host.strip("[]"), port))
+        except OSError as exc:
+            return exc
+    return None
+
+
+def port_free(host: str, port: int) -> bool:
+    """Whether ``host:port`` can be bound right now."""
+    return bind_error(host, port) is None
+
+
+def _listener_hint(port: int) -> str:
+    """How to find what holds a port on this OS (the box is Linux, where ``lsof`` is often missing)."""
+    if sys.platform.startswith("linux"):
+        return f"ss -ltnp 'sport = :{port}'"
+    return f"lsof -nP -iTCP:{port} -sTCP:LISTEN"
+
+
+def check_port(host: str, port: int) -> None:
+    """Refuse a port this instance can't take (review v2.4 #2: before the core — no model call). v2.6: a port
+    another service holds is a configuration refusal (exit 78 — systemd doesn't restart it in a loop); an
+    address not on this machine yet (the box just booted, Tailscale isn't up) is a plain failure, so systemd
+    retries until it is."""
+    err = bind_error(host, port)
+    if err is None:
+        return
+    if err.errno == errno.EADDRNOTAVAIL:
+        raise SystemExit(f"{host} is not an address of this machine (yet) — is Tailscale/the LAN up? "
+                         "Under systemd the server retries until it is.")
+    raise ConfigRefusal(
+        f"Port {port} on {host} is already in use by another server ({err.strerror or err}). "
+        f"Find it: {_listener_hint(port)} — stop it, or give this instance its own LUMI_SERVER_PORT "
+        "(and the clients the same)."
+    )
 
 
 def outbox_of(cfg):
@@ -183,20 +239,15 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
 
     cfg = load_config()
     if not cfg.server_token:
-        raise SystemExit("LUMI_SERVER_TOKEN is not set — the server never runs without a client token "
-                         "(see .env.example).")
+        raise ConfigRefusal("LUMI_SERVER_TOKEN is not set — the server never runs without a client token "
+                            "(see .env.example).")
     if problem := bind_problem(cfg.server_host):  # v2.6: LAN/Tailscale only — refused before anything runs
-        raise SystemExit(problem)
+        raise ConfigRefusal(problem)
     guard_entry(cfg)  # v2.1: refuse before touching the data root
     from core.brainlock import guard_single_brain
 
     guard_single_brain(cfg, "server")  # one brain per memory: never alongside ./lumi on the same root
-    if not port_free(cfg.server_host, cfg.server_port):  # review v2.4 #2: before the core — no model call
-        raise SystemExit(
-            f"Port {cfg.server_port} on {cfg.server_host} is already in use by another server. "
-            f"Find it: lsof -nP -iTCP:{cfg.server_port} -sTCP:LISTEN — stop it, or give this instance "
-            "its own LUMI_SERVER_PORT."
-        )
+    check_port(cfg.server_host, cfg.server_port)  # before the core — no model call
     try:
         import uvicorn  # noqa: F401 — fail early, with the hint, when the extra is missing
 
@@ -233,4 +284,8 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ConfigRefusal as refusal:  # the message for the operator (journalctl), then EX_CONFIG
+        print(refusal.message, file=sys.stderr, flush=True)
+        raise SystemExit(EX_CONFIG) from None

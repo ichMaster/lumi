@@ -17,7 +17,7 @@ def test_no_token_refuses_before_the_guard_or_the_core(monkeypatch):
     monkeypatch.setattr("core.envguard.guard_entry", lambda cfg: touched.append("guard"))
     with pytest.raises(SystemExit) as exc:
         sm.main()
-    assert "LUMI_SERVER_TOKEN" in str(exc.value)
+    assert "LUMI_SERVER_TOKEN" in str(exc.value) and exc.value.code == sm.EX_CONFIG  # v2.6: no restart loop
     assert touched == []  # the guard (and so the data root) is never reached without a token
 
 
@@ -125,6 +125,7 @@ def test_a_taken_port_is_refused_before_the_core_is_built(monkeypatch):
     finally:
         holder.close()
     assert f"Port {port}" in str(exc.value) and "already in use" in str(exc.value)
+    assert exc.value.code == sm.EX_CONFIG  # v2.6: another service holds it — systemd must not loop on it
     assert built == []  # refused before the core — no startup model calls
 
 
@@ -160,4 +161,54 @@ def test_a_refused_bind_stops_before_the_guard_or_the_core(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         sm.main()
     assert "0.0.0.0" in str(exc.value) and "every interface" in str(exc.value)
+    assert exc.value.code == sm.EX_CONFIG
     assert touched == []  # refused before the data root and the core — nothing ran
+
+
+# --- v2.6 (LUMI-230): under systemd — a taken port never loops, a missing address retries, SIGTERM = Ctrl+C ----
+
+
+def test_an_address_not_on_this_machine_yet_is_a_retryable_failure(monkeypatch):
+    import errno
+
+    monkeypatch.setattr(sm, "bind_error", lambda h, p: OSError(errno.EADDRNOTAVAIL, "Can't assign requested address"))
+    with pytest.raises(SystemExit) as exc:
+        sm.check_port("100.101.102.103", 8766)
+    assert not isinstance(exc.value, sm.ConfigRefusal)  # exit 1 → systemd restarts until Tailscale is up
+    assert "not an address of this machine" in str(exc.value)
+
+
+def test_a_port_another_service_holds_is_a_config_refusal_with_this_os_hint(monkeypatch):
+    import errno
+
+    monkeypatch.setattr(sm, "bind_error", lambda h, p: OSError(errno.EADDRINUSE, "Address already in use"))
+    for platform, hint in (("linux", "ss -ltnp 'sport = :8765'"), ("darwin", "lsof -nP -iTCP:8765")):
+        monkeypatch.setattr(sm.sys, "platform", platform)
+        with pytest.raises(sm.ConfigRefusal) as exc:
+            sm.check_port("100.101.102.103", 8765)
+        assert exc.value.code == sm.EX_CONFIG and hint in str(exc.value)
+
+
+def test_bind_error_names_why():
+    import errno
+
+    holder, port = _taken_port()
+    try:
+        assert sm.bind_error("127.0.0.1", port).errno == errno.EADDRINUSE
+    finally:
+        holder.close()
+    assert sm.bind_error("127.0.0.1", port) is None
+
+
+def test_sigterm_is_handled_like_ctrl_c():
+    import os
+    import signal
+
+    previous = signal.getsignal(signal.SIGTERM)
+    try:
+        sm.term_as_interrupt()
+        with pytest.raises(KeyboardInterrupt):  # serve() swallows it, so main()'s finally closes the session
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(1)  # the handler runs at the next bytecode; never reached
+    finally:
+        signal.signal(signal.SIGTERM, previous)
