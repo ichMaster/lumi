@@ -76,7 +76,8 @@ def main(argv: list[str] | None = None, *, client: Any = None,
     args = _parser().parse_args(argv)
     cfg = load_config()
     if args.cmd == "serve":
-        from server.__main__ import main as serve
+        # prints a refusal, then exits 78 (code review v2.6 #2)
+        from server.__main__ import run as serve
 
         serve()
         return 0

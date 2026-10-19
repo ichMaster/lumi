@@ -284,9 +284,16 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
         close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """The server's one entry point — ``python -m server`` and ``./lumi-cli serve`` alike. A configuration refusal
+    prints its message for the operator (the terminal, or the unit's journal) and exits 78 (EX_CONFIG) — a bare
+    ``SystemExit(78)`` reaching the top would exit silently (v2.6 code review #2)."""
     try:
         main()
-    except ConfigRefusal as refusal:  # the message for the operator (journalctl), then EX_CONFIG
+    except ConfigRefusal as refusal:
         print(refusal.message, file=sys.stderr, flush=True)
         raise SystemExit(EX_CONFIG) from None
+
+
+if __name__ == "__main__":
+    run()

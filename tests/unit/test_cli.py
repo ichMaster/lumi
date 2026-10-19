@@ -161,3 +161,13 @@ def test_think_with_the_thought_stream_off_says_so(tmp_path):
     code, out, _ = _run(["think"], api)
     assert code == 0 and "LUMI_THOUGHTS" in out
     assert tui.empty()  # nothing to push
+
+
+def test_serve_says_why_it_refuses_instead_of_exiting_silently(monkeypatch, capsys, env_only):
+    """v2.6 code review #2: a configuration refusal is exit 78 for systemd — and still a readable line."""
+    monkeypatch.delenv("LUMI_SERVER_TOKEN", raising=False)
+    monkeypatch.setattr("core.config.load_config", lambda: load_config(load_env=False))
+    with pytest.raises(SystemExit) as exc:
+        main(["serve"])
+    assert exc.value.code == 78
+    assert "LUMI_SERVER_TOKEN is not set" in capsys.readouterr().err

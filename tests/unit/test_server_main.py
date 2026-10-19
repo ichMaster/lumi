@@ -212,3 +212,15 @@ def test_sigterm_is_handled_like_ctrl_c():
             time.sleep(1)  # the handler runs at the next bytecode; never reached
     finally:
         signal.signal(signal.SIGTERM, previous)
+
+
+def test_run_prints_a_refusal_then_exits_78(monkeypatch, capsys):
+    """v2.6 code review #2: the one entry point (`python -m server`, `./lumi-cli serve`) never exits silently."""
+    import dataclasses
+
+    cfg = dataclasses.replace(load_config(load_env=False), server_token="t", server_host="0.0.0.0")
+    monkeypatch.setattr("core.config.load_config", lambda: cfg)
+    with pytest.raises(SystemExit) as exc:
+        sm.run()
+    assert exc.value.code == sm.EX_CONFIG and not isinstance(exc.value, sm.ConfigRefusal)  # a plain exit 78
+    assert "listens on every interface" in capsys.readouterr().err
