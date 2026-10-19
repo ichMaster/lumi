@@ -97,7 +97,7 @@ For the "scheduled thought" check later, turn the scheduler on as in
 ```bash
 mkdir -p ~/lumi/prod && cd ~/lumi/prod
 git clone https://github.com/ichMaster/lumi.git app
-git -C app checkout v2.6.0                         # a release tag — prod only ever runs a tag
+git -C app checkout "$(git -C app tag --sort=-v:refname | head -1)"   # the latest release tag — prod only runs a tag
 (cd app && uv sync --frozen --all-extras)
 cp app/.env.example .env && chmod 600 .env
 mkdir -p ~/lumi/prod/data                          # stays EMPTY until the v2.7 migration
