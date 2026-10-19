@@ -44,7 +44,7 @@ Authoring guide (not a design spec): [docs/CANON_SPEC.md](docs/CANON_SPEC.md) �
 
 Operator guide (not a design spec): [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) — the v2.2 server + TUI client + CLI (per-instance port + token, what client mode can't do yet, troubleshooting).
 
-Operator guide (not a design spec): [docs/LINUX_DEPLOY.md](docs/LINUX_DEPLOY.md) — the v2.6 always-on Linux box: the `deploy/systemd/` user units per instance (server + both Telegram daemons), free ports checked first (`ss -ltnp`), LAN/Tailscale only, the Mac as a client, prod migrated to the box on 2026-10-20 (the Mac prod its client); containers replace the units in v2.8, monitoring, troubleshooting, the DoD checklist.
+Operator guide (not a design spec): [docs/LINUX_DEPLOY.md](docs/LINUX_DEPLOY.md) — the v2.6 always-on Linux box: the `deploy/systemd/` user units per instance (server + both Telegram daemons), free ports checked first (`ss -ltnp`), LAN/Tailscale only, the Mac as a client, prod migrated to the box on 2026-10-20 (the Mac prod its client; the migration steps + the way back), the v2.7 **Deploys** section (`scripts/deploy_agent.py` on a timer: a green `main` → dev, `confirm <tag>` → prod, smoke + automatic rollback, `status` / `rollback dev|prod`); containers replace the units in v2.8, monitoring, troubleshooting, the DoD checklist.
 
 Operator guide (not a design spec): [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) — how to connect, run, and **monitor** the v0.13 Telegram bridge (BotFather token + allowlist, the 3 processes, the `inbox`/`outbox` file-bus pending checks, troubleshooting).
 
@@ -92,7 +92,7 @@ Python, **Anthropic SDK — Claude Haiku (v0.1); more models (Claude tiers / Ope
 /web            # later (v3.4): web client (chat, portrait/animation, voice toggle, dictation, gallery/canvas) + admin panel (v3.5); Image/Animation renderers + asset packs
 /voice          # later (v0.14+): shared TTS adapter + local voicer (v0.14); shared STT adapter + local dictator (v0.21); reused by web voice (v4.2) / web dictation (v4.4)
 /mcp            # later (v5.2+): MCP client + web_search (v5.2), world-context/knowledge (v5.3), image/music generators (v6.3/v6.5); untrusted-content handling
-/deploy         # v2.6: systemd user units for the Linux box (server + Telegram daemons per instance); v2.8: the Docker image + compose per instance (the units retired)
+/deploy         # v2.6: systemd user units for the Linux box (server + Telegram daemons per instance); v2.7: + lumi-deploy.service/.timer (the deploy agent, scripts/deploy_agent.py); v2.8: the Docker image + compose per instance (the units retired)
 /admin          # later (v2.10): the admin panel — a container, FastAPI + static UI over both instances (health, services, usage, logs; settings v2.11)
 /state          # repository implementation + local storage (JSON/SQLite) + gallery files (v6), keyed by user_id
 /tests          # pytest: unit, contract, integration; mock model + fakes

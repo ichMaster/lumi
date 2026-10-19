@@ -5,12 +5,26 @@ real memory. The working tree stays **dev** — test data, free to break. This i
 install prod once, migrate her memory once, then update / roll back with one script. The design is in
 [ROADMAP §v2.1](../specification/ROADMAP.md) and [ARCHITECTURE §Configuration](../specification/ARCHITECTURE.md).
 
-> **Prod moved to the Linux box on 2026-10-20** (v2.6.0, the box's `~/lumi/prod` — [LINUX_DEPLOY.md](LINUX_DEPLOY.md)).
-> This Mac prod is now its **client** (`.env`: `LUMI_SERVER=on` + the box's host/port/token, so `./lumi` talks to the
-> box) and its `data/` is the untouched **fallback** (+ `backups/data-20261020-0116-v2.1.1-premove.tar.gz`, a copy
-> also on the box). **Rollback:** stop the box's prod services, restore `.env.bak-premove-20261020-0118` here, start
-> the Mac prod and its Telegram daemons (never both bots' pollers at once). The rest of this guide describes the Mac
-> prod as it ran from v2.1 to v2.6.
+> **Prod moved to the Linux box on 2026-10-20** (v2.1.1 on the Mac → v2.6.0 in the box's `~/lumi/prod`; the steps in
+> [LINUX_DEPLOY §3](LINUX_DEPLOY.md)).
+>
+> - **What moved:** the whole data root — the store (18 844 messages, 2 951 facts, 372 summaries, 4 543 thoughts),
+>   27 913 vectors, the journal, her files, the bus files and pointers, the logs, `env-marker` — as one archive,
+>   `data-20261020-0116-v2.1.1-premove.tar.gz` (~290 MB): here in `~/lumi/prod/backups/`, and on the box in
+>   `~/lumi/backups/`. Her `.env` was copied too and given the box's `LUMI_HOME`, host, port and a new token.
+> - **This Mac prod is now a client:** its `.env` has `LUMI_SERVER=on` + the box's prod host/port/token, so
+>   `~/lumi/prod/app/lumi` talks to the box. Its `data/` is the untouched **fallback**; its Telegram daemons never
+>   start again (the box polls the prod bot).
+> - **Prod code moves only by a confirmed tag through the box's deploy agent** (v2.7): a release waits until
+>   `deploy_agent.py confirm vA.B.C`, then deploys with a smoke and an automatic rollback; `deploy_agent.py rollback
+>   prod` is the one-command rollback ([LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md)). `prod_update.py` below now only
+>   moves this Mac client's checkout.
+> - **Back to the Mac** (if the box fails her): stop the box's prod services, copy the box's `~/lumi/prod/data`
+>   back here if it is newer than the fallback (it is, after any conversation), restore
+>   `~/lumi/prod/.env.bak-premove-20261020-0118`, start the Mac prod and its Telegram daemons — never both machines'
+>   pollers at once.
+>
+> The rest of this guide describes the Mac prod as it ran from v2.1 to v2.6.
 
 ## The 30-second model
 

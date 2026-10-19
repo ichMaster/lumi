@@ -12,7 +12,7 @@ box's settings but not exercised there yet.
 | Instance | Where | How it runs | Code | Status |
 |---|---|---|---|---|
 | **prod** — her real memory | Linux box `slate-server` (192.168.1.197), `~/lumi/prod` | systemd user services: `lumi-server@prod` (port 8765), `lumi-telegram-inbound@prod`, `lumi-telegram-outbound@prod` | tag `v2.6.0` | ✅ since **2026-10-20 01:19** — moved from the Mac (messages, vectors, facts, summaries, thoughts all present) |
-| **dev** — test data | Linux box `slate-server` (192.168.1.197), `~/lumi/dev` | systemd user services: `lumi-server@dev`, `lumi-telegram-inbound@dev`, `lumi-telegram-outbound@dev` | `v2-dev` (2.5.1 + the v2.6 work) | ✅ since 2026-10-19 23:07 |
+| **dev** — test data | Linux box `slate-server` (192.168.1.197), `~/lumi/dev` | systemd user services: `lumi-server@dev`, `lumi-telegram-inbound@dev`, `lumi-telegram-outbound@dev` | `v2-dev` (2.6.0 + its review fixes); from the v2.7 install it **follows `main`** through the deploy agent | ✅ since 2026-10-19 23:07 |
 | **Mac prod** | Mac, `~/lumi/prod` | a **client** of the box's prod (`.env`: `LUMI_SERVER=on`) — `~/lumi/prod/app/lumi` talks to the box; its local `data/` is the untouched **fallback** (+ the pre-move archive in `backups/`) | `v2.6.0` | ✅ — never start its Telegram daemons again (the box polls the prod bot) |
 | **Mac dev tree** | `./lumi-client`, `./lumi-cli` → `192.168.1.197:8766` (the box's dev) | the TUI/CLI over the API (LAN, ufw rule for 192.168.1.0/24) | `v2-dev` | ✅ seen |
 
@@ -32,6 +32,9 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | `systemctl stop` closes her session (summary + facts), like Ctrl+C | ✅ | set | the v2.6 fix (LUMI-230); a manual DoD check still to run on the box |
 | Restart on failure; a taken port / a bad bind refused without a restart loop | ✅ | set | v2.6 (exit 78) |
 | Reachable only from the LAN | ✅ | seen | bind 192.168.1.197 + ufw `8765:8766` from 192.168.1.0/24 |
+| **CI** — ruff + pytest on every push / pull request (GitHub Actions, no secret) | ✅ | seen | v2.7 (LUMI-233), green on Linux since 2026-10-20 |
+| **The deploy agent** — a green `main` → dev by itself; a release tag → prod after `confirm`; smoke + automatic rollback; `rollback dev\|prod` in one command | 🗓 | — | v2.7 (LUMI-235) — written and tested; installed on the box with the v2.7 rollout (LUMI-237). Guide: [LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md) |
+| **The bounded turn** — one 180 s deadline per turn across the stream, the fallback and the retries; a stuck turn ends with a readable line | 🗓 | — | v2.7 (LUMI-234) — in `v2-dev`; reaches dev with the merge into `main`, prod with `v2.7.0` |
 
 ## Her features through the server
 
@@ -55,7 +58,9 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 
 1. **Gemini 3.1 Pro preview is slow and sometimes times out** (Google-side; 2026-10-17/19). Turns take 1–4 min, and
    a turn can hang up to ~8 min (a streaming timeout → a blocking call with retries) while your input waits in the
-   queue. Workaround: `/model gemini:gemini-2.5-flash` (faster, shallower). The hang fix is **not scheduled yet**.
+   queue. Workaround: `/model gemini:gemini-2.5-flash` (faster, shallower). **Fixed in v2.7** (LUMI-234): a turn
+   ends at 180 s with "the model didn't answer within 3 minutes — try again, or switch to a faster one with
+   /model", and a line typed meanwhile waits at most that long — live on the box once v2.7 is deployed.
 2. **Gemini 2.5 Flash sometimes returns an empty answer** for a thought — re-asked automatically; an occasional
    `%learn came back empty` remains.
 3. A replayed thought in the client once showed a stray `ЕМОЦІЯ: thoughtfulthoughtful 0.7лагідна` tail — the stored
@@ -68,7 +73,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | Phase | What changes on the server |
 |---|---|
 | **v2.6** | ✅ released 2026-10-20 (`v2.6.0`) — the dev instance on the box, the Mac as its client |
-| **v2.7** | deploy pipelines — a pull-based agent on the box: a push to `main` → dev, a release tag + the owner's confirmation → prod; CI (ruff + pytest); a bounded turn (no ~8-min hang). **Prod already moved** (2026-10-20) |
+| **v2.7** | **in progress** — CI ✅ live; the deploy agent (a green `main` → dev, a confirmed tag → prod, smoke + rollback) and the bounded turn are written and reach the box with the v2.7 rollout. **Prod already moved** (2026-10-20) |
 | **v2.8** | Lumi in **Docker** — one image (GHCR, like matrix-agora), a compose project per instance; the systemd units retired |
 | **v2.9** | settings move from `.env` to `settings.yaml` + `secrets.yaml` under one schema |
 | **v2.10** | the admin panel — watch: prod + dev health, uptime, containers, tokens / cost / latency, logs |
@@ -94,6 +99,7 @@ curl -s http://192.168.1.197:8766/v1/health                 # from the Mac: {"ok
 ./lumi-cli status                                           # model, session, today's mood + theme
 ssh slate-server 'systemctl --user status "lumi-*@dev"'     # the three services
 ssh slate-server 'tail -f ~/lumi/dev/data/lumi.log'         # her log
+ssh slate-server 'python3 ~/lumi/deploy/deploy_agent.py status'   # the pipeline (from the v2.7 install)
 ```
 
 Guides: [LINUX_DEPLOY.md](LINUX_DEPLOY.md) (the box), [SERVER_SETUP.md](SERVER_SETUP.md) (the server and clients),
