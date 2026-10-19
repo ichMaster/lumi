@@ -1,0 +1,10 @@
+# v2.7 (LUMI-235) — runs lumi-deploy.service every 5 minutes (and once, 3 minutes after the box boots).
+[Unit]
+Description=Lumi deploy agent, every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

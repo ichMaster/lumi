@@ -1,0 +1,13 @@
+# v2.7 (LUMI-235) — one step of the pull-based deploy agent: dev follows a green `main`, prod a confirmed tag.
+# Installed by `python3 ~/lumi/dev/app/scripts/deploy_agent.py install`, which copies the agent to ~/lumi/deploy/
+# first, so it never runs from a checkout it is updating. Started by lumi-deploy.timer; the log is
+# ~/lumi/deploy/deploy.log (and `journalctl --user -u lumi-deploy`).
+[Unit]
+Description=Lumi deploy agent (one step)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env python3 %h/lumi/deploy/deploy_agent.py tick
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+TimeoutStartSec=900

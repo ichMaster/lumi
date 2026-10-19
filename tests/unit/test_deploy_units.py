@@ -1,9 +1,10 @@
-"""The box's systemd units (v2.6, LUMI-230) — templated per instance, restartable, secret-free.
+"""The box's systemd units (v2.6, LUMI-230; the deploy agent's v2.7, LUMI-235) — secret-free.
 
-The units are copied to the Linux box by hand (docs/LINUX_DEPLOY.md); this pins what the guide relies on:
-each one is an ``%i``-templated user unit under ``~/lumi/%i/``, runs a repo script that exists, restarts on a
+The instance units are copied to the Linux box by hand (docs/LINUX_DEPLOY.md); this pins what the guide relies
+on: each one is an ``%i``-templated user unit under ``~/lumi/%i/``, runs a repo script that exists, restarts on a
 failure but never loops on a configuration refusal (exit 78), gives a stop time to close her session, and
-carries no secret. No systemd is needed — the files are parsed as INI.
+carries no secret. The deploy agent's service + timer run the agent's own copy (``~/lumi/deploy/``), never a
+checkout it updates. No systemd is needed — the files are parsed as INI.
 """
 
 import configparser
@@ -18,6 +19,7 @@ from server.__main__ import EX_CONFIG
 ROOT = Path(__file__).resolve().parents[2]
 UNITS = ROOT / "deploy" / "systemd"
 NAMES = ("lumi-server@.service", "lumi-telegram-inbound@.service", "lumi-telegram-outbound@.service")
+DEPLOY = ("lumi-deploy.service", "lumi-deploy.timer")
 _SECRET = re.compile(r"(TOKEN|KEY|SECRET|PASSWORD)\s*=|[A-Za-z0-9_-]{32,}", re.IGNORECASE)
 
 
@@ -28,8 +30,8 @@ def _unit(name: str) -> configparser.ConfigParser:
     return parser
 
 
-def test_the_unit_set_is_exactly_the_three():
-    assert sorted(p.name for p in UNITS.glob("*.service")) == sorted(NAMES)
+def test_the_unit_set_is_the_three_instance_units_plus_the_deploy_agent():
+    assert sorted(p.name for p in UNITS.iterdir()) == sorted(NAMES + DEPLOY)
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -44,7 +46,7 @@ def test_each_unit_is_templated_and_runs_a_repo_script(name):
     assert unit["Unit"]["StartLimitIntervalSec"] == "0"  # keeps retrying while the box's address comes up
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", NAMES + DEPLOY)
 def test_no_unit_carries_a_secret_or_a_machine_path(name):
     text = (UNITS / name).read_text(encoding="utf-8")
     for line in text.splitlines():
@@ -67,3 +69,14 @@ def test_the_bridge_daemons_live_and_stop_with_their_server(name):
     assert unit["Unit"]["PartOf"] == "lumi-server@%i.service"
     assert unit["Unit"]["After"] == "lumi-server@%i.service"
     assert unit["Install"]["WantedBy"] == "lumi-server@%i.service"
+
+
+def test_the_deploy_agent_runs_its_own_copy_on_a_timer():
+    svc = _unit("lumi-deploy.service")["Service"]
+    assert svc["Type"] == "oneshot"
+    assert svc["ExecStart"].split() == ["/usr/bin/env", "python3", "%h/lumi/deploy/deploy_agent.py", "tick"]
+    assert "/app/" not in svc["ExecStart"]  # never from an instance checkout it updates
+    assert "%h/.local/bin" in svc["Environment"]  # uv, where its installer puts it
+    assert int(svc["TimeoutStartSec"]) >= 300 + 90 + 60  # a server stop + the health wait + the stable minute
+    timer = _unit("lumi-deploy.timer")
+    assert timer["Timer"]["OnUnitActiveSec"] == "5min" and timer["Install"]["WantedBy"] == "timers.target"
