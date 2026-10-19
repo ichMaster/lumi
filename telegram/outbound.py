@@ -18,6 +18,7 @@ from pathlib import Path
 
 from core.emoji import BUILTIN, emoji_for
 from core.emotion import DEFAULT_EMOTION, Emotion, EmotionState
+from core.stopsignal import sigterm_as_interrupt
 from state import fifo
 from viewer.face import face_for
 
@@ -322,6 +323,7 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
                 log.info("sent %d reply(ies) (ids %d..%d) → %d chat(s)", len(group), group[0]["id"], last["id"], len(chats))
             await asyncio.sleep(1)
 
+    sigterm_as_interrupt()  # v2.6: `systemctl stop` stops it like Ctrl+C — "stopped", the session closed, exit 0
     try:
         asyncio.run(_main())
     except KeyboardInterrupt:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core.stopsignal import sigterm_as_interrupt
 from state import fifo
 
 
@@ -152,6 +153,7 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
                         log.warning("ignored non-allowlisted id=%s", msg.from_user.id)
                     inbound.receive(u.update_id, msg.from_user.id, text)
 
+    sigterm_as_interrupt()  # v2.6: `systemctl stop` stops it like Ctrl+C — "stopped", the session closed, exit 0
     try:
         asyncio.run(_main())
     except KeyboardInterrupt:

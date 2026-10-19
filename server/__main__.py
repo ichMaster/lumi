@@ -12,7 +12,6 @@ from __future__ import annotations
 import errno
 import ipaddress
 import logging
-import signal
 import sys
 import threading
 
@@ -90,7 +89,9 @@ def term_as_interrupt() -> None:
     its graceful stop with the previous handler restored; SIGTERM's default would kill the process before
     ``main``'s ``finally`` (brain stop + the session close: summary, facts). Handled as SIGINT, the re-raise is
     the ``KeyboardInterrupt`` :func:`serve` already swallows."""
-    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    from core.stopsignal import sigterm_as_interrupt
+
+    sigterm_as_interrupt()
 
 
 def serve(app, *, host: str, port: int) -> None:  # pragma: no cover - the real signal loop
