@@ -60,8 +60,8 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
    `%learn came back empty` remains.
 3. A replayed thought in the client once showed a stray `ЕМОЦІЯ: thoughtfulthoughtful 0.7лагідна` tail — the stored
    thought is clean; **to investigate**.
-4. ~~**Prod (Mac, v2.1.1) lacks the dev fixes**~~ — resolved 2026-10-20: prod runs v2.6.0 on the box. — the Markdown `**ТЕМА:**` parse and the cut-off-mood retry (v2.5.1),
-   the startup mood double call (v2.4), the server-side fixes of v2.2–v2.6. They reach prod with the v2.7 move.
+4. ~~Prod (Mac, v2.1.1) lacked the dev fixes~~ — **resolved 2026-10-20**: prod runs v2.6.0 on the box, with the
+   v2.5.1 mood fixes, the v2.4 single mood call and every server fix of v2.2–v2.6.
 
 ## Planned
 
