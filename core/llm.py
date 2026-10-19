@@ -17,8 +17,10 @@ import html
 import json
 import logging
 import re
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
 
@@ -543,6 +545,20 @@ class LLMError(RuntimeError):
     """
 
 
+# v2.7 (v2.6 review #4): one budget for all of a turn's model calls — the stream, the blocking fallback, the retries.
+# Behind a degraded model a turn used to wait 120 s + 3 × 120 s (~8 min) while the client's next line waited too.
+TURN_DEADLINE_S = 180.0
+HTTP_TIMEOUT_S = 120.0  # the ceiling of a single request; inside a turn it shrinks to what is left of the budget
+
+
+class TurnDeadlineExceeded(LLMError):
+    """A turn's model calls ran past :data:`TURN_DEADLINE_S` — it ends with a readable line instead of hanging."""
+
+    def __init__(self) -> None:
+        super().__init__(f"the model didn't answer within {TURN_DEADLINE_S / 60:g} minutes — try again, or switch "
+                         "to a faster one with /model")
+
+
 @runtime_checkable
 class LLMClient(Protocol):
     """The seam the core depends on. Backends implement ``reply`` + ``reply_structured``."""
@@ -635,20 +651,26 @@ def _call_with_retries(
     retries: int,
     backoff: float,
     is_retryable: Callable[[BaseException], bool],
+    deadline: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> _T:
     """Call ``fn`` with a bounded retry on retryable errors; never hang.
 
     Retries up to ``retries`` extra times on errors ``is_retryable`` accepts,
     sleeping ``backoff * attempt`` between tries; otherwise re-raises at once.
-    Factored out so the retry policy is unit-testable without the SDK.
+    With a ``deadline`` (a ``clock()`` instant — v2.7, a turn's budget) it never sleeps or retries past it: the
+    last error is re-raised instead. Factored out so the retry policy is unit-testable without the SDK.
     """
     for attempt in range(retries + 1):
         try:
             return fn()
         except Exception as exc:  # noqa: BLE001 — re-raised below
             if is_retryable(exc) and attempt < retries:
-                if backoff:
-                    time.sleep(backoff * (attempt + 1))
+                wait = backoff * (attempt + 1)
+                if deadline is not None and clock() + wait >= deadline:
+                    raise  # no time left for another try
+                if wait:
+                    time.sleep(wait)
                 continue
             raise
     # Unreachable: the loop either returns or raises.
@@ -2037,9 +2059,16 @@ class GeminiClient:
         _transport: Callable[[str, dict, dict], dict] | None = None,
         _cache_transport: Callable[[str, str, dict, dict | None], dict] | None = None,
         _stream_transport: Callable[[str, dict, dict], object] | None = None,
+        turn_deadline_s: float = TURN_DEADLINE_S,
+        _clock: Callable[[], float] | None = None,
     ) -> None:
         if not api_key and _transport is None and _stream_transport is None:
             raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
+        # v2.7: a turn's deadline lives per thread — thoughts and housekeeping share this client from other threads
+        # and keep their own (no) budget. ``_clock`` is injectable so a test drives a "hang" without waiting.
+        self._turn_deadline_s = turn_deadline_s
+        self._clock = _clock or time.monotonic
+        self._tl = threading.local()
         self._key = api_key or ""
         self._max_tokens = max_tokens
         self._effort = effort  # v0.39 LUMI-154 → a thinking budget when thinking is on
@@ -2069,15 +2098,44 @@ class GeminiClient:
         self._cache_fallback_logged = False      # log "→ implicit" once per session, not per turn
         self.last_cache_event: str | None = None  # "created"/"recreated:<cause>"/"fallback:<cause>" (LUMI-187)
 
+    # --- v2.7: one deadline per turn (v2.6 review #4) ----------------------------------------------------------
+    @contextmanager
+    def _turn(self) -> Iterator[None]:
+        """Start a turn's budget on this thread — reentrant: the blocking fallback inside a streamed turn keeps the
+        outer budget instead of getting a fresh one."""
+        if getattr(self._tl, "deadline", None) is not None:
+            yield
+            return
+        self._tl.deadline = self._clock() + self._turn_deadline_s
+        try:
+            yield
+        finally:
+            self._tl.deadline = None
+
+    def _remaining(self) -> float | None:
+        """Seconds left of this thread's turn, or ``None`` outside a turn (a thought, housekeeping)."""
+        deadline = getattr(self._tl, "deadline", None)
+        return None if deadline is None else deadline - self._clock()
+
+    def _timeout(self) -> float:
+        """A request's timeout: the ceiling, shrunk to what is left of the turn; past the deadline → the turn ends."""
+        left = self._remaining()
+        if left is None:
+            return HTTP_TIMEOUT_S
+        if left <= 0:
+            raise TurnDeadlineExceeded()
+        return min(HTTP_TIMEOUT_S, left)
+
     def _post(self, model: str, body: dict) -> dict:
         url = self._ENDPOINT.format(model=model) + f"?key={self._key}"
         headers = {"Content-Type": "application/json"}
+        timeout = self._timeout()  # checked first — a spent turn never sends another request
         if self._transport is not None:
             return self._transport(url, headers, body)
         import urllib.request  # stdlib HTTP path; imported only when actually calling out
 
         req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
-        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — fixed Gemini host
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fixed Gemini host
             return json.loads(resp.read())
 
     def _thinking_config(self, model: str | None = None) -> dict | None:
@@ -2332,6 +2390,21 @@ class GeminiClient:
         tool_executor: Callable[[str, dict], str | dict] | None = None,
         max_steps: int = 8,
     ) -> dict:
+        with self._turn():  # v2.7: one deadline for the whole turn
+            return self._reply_structured(system, messages, model, cache_prefix, tools=tools,
+                                          tool_executor=tool_executor, max_steps=max_steps)
+
+    def _reply_structured(
+        self,
+        system: str,
+        messages: list[Message],
+        model: str,
+        cache_prefix: str | None = None,
+        *,
+        tools: list[dict] | None = None,
+        tool_executor: Callable[[str, dict], str | dict] | None = None,
+        max_steps: int = 8,
+    ) -> dict:
         self.last_cache_event = None  # v1.3: reset per turn; _cache_ref only sets it on a real event
         if tools and tool_executor is not None:  # v0.39 LUMI-153 function-calling loop
             return self._loop(system, messages, model, tools, tool_executor, max_steps,
@@ -2360,26 +2433,41 @@ class GeminiClient:
         """v1.4: stream ``streamGenerateContent`` (SSE), decoding the growing ``reply`` field out of the
         accumulating ``responseSchema`` JSON. **Tool turns also stream** (v1.10): the loop runs its rounds,
         a tool-call round shows nothing (a function call isn't prose), and the **answer round streams** the
-        reply. Any streaming error degrades to the blocking path — the turn never dies."""
+        reply. Any streaming error degrades to the blocking path — the turn never dies. v2.7: the whole turn —
+        the stream, that fallback and its retries — shares one deadline; once it is spent the turn ends with a
+        readable :class:`TurnDeadlineExceeded` instead of starting the fallback."""
         self.last_cache_event = None
-        if tools and tool_executor is not None:
+        with self._turn():
+            if tools and tool_executor is not None:
+                try:
+                    return self._loop_stream(system, messages, model, tools, tool_executor, max_steps,
+                                             on_delta, cache_prefix)
+                except TurnDeadlineExceeded:
+                    raise
+                except Exception:  # noqa: BLE001 — degrade to the blocking loop, never a failed turn
+                    self._raise_if_spent()
+                    _log.warning("Gemini tool-loop streaming failed → blocking loop", exc_info=True)
+                    return _emit_blocking(
+                        self._loop(system, messages, model, tools, tool_executor, max_steps,
+                                   structured=True, cache_prefix=cache_prefix),
+                        on_delta,
+                    )
             try:
-                return self._loop_stream(system, messages, model, tools, tool_executor, max_steps,
-                                         on_delta, cache_prefix)
-            except Exception:  # noqa: BLE001 — degrade to the blocking loop, never a failed turn
-                _log.warning("Gemini tool-loop streaming failed → blocking loop", exc_info=True)
+                return self._stream_single(system, messages, model, cache_prefix, on_delta)
+            except TurnDeadlineExceeded:
+                raise
+            except Exception:  # noqa: BLE001 — degrade to blocking, never a failed turn
+                self._raise_if_spent()
+                _log.warning("Gemini streaming failed → blocking reply", exc_info=True)
                 return _emit_blocking(
-                    self._loop(system, messages, model, tools, tool_executor, max_steps,
-                               structured=True, cache_prefix=cache_prefix),
-                    on_delta,
+                    self.reply_structured(system, messages, model, cache_prefix), on_delta
                 )
-        try:
-            return self._stream_single(system, messages, model, cache_prefix, on_delta)
-        except Exception:  # noqa: BLE001 — degrade to blocking, never a failed turn
-            _log.warning("Gemini streaming failed → blocking reply", exc_info=True)
-            return _emit_blocking(
-                self.reply_structured(system, messages, model, cache_prefix), on_delta
-            )
+
+    def _raise_if_spent(self) -> None:
+        """No blocking fallback once the turn's budget is gone (v2.7) — the stream already used it up."""
+        left = self._remaining()
+        if left is not None and left <= 0:
+            raise TurnDeadlineExceeded()
 
     def _loop_stream(
         self, system: str, messages: list[Message], model: str,
@@ -2478,6 +2566,7 @@ class GeminiClient:
         """Yield partial ``GenerateContentResponse`` dicts from the SSE stream. Uses the injected
         ``_stream_transport`` (tests) or stdlib ``urllib`` reading ``data:`` lines (``alt=sse``)."""
         headers = {"Content-Type": "application/json"}
+        self._timeout()  # a spent turn never opens another stream (v2.7)
         if self._stream_transport is not None:
             return self._stream_transport(self._STREAM_ENDPOINT.format(model=model), headers, body)
         return self._sse_lines(model, body, headers)
@@ -2487,8 +2576,11 @@ class GeminiClient:
 
         url = self._STREAM_ENDPOINT.format(model=model) + f"?alt=sse&key={self._key}"
         req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers=headers)
-        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310 — fixed Gemini host
+        with urllib.request.urlopen(req, timeout=self._timeout()) as resp:  # noqa: S310 — fixed Gemini host
             for raw in resp:
+                left = self._remaining()  # a trickling stream can't outlive the turn either (v2.7)
+                if left is not None and left <= 0:
+                    raise TurnDeadlineExceeded()
                 line = raw.decode("utf-8").strip()
                 if line.startswith("data:"):
                     payload = line[5:].strip()
@@ -2703,10 +2795,15 @@ class GeminiClient:
                 retries=self._retries,
                 backoff=self._backoff,
                 is_retryable=lambda exc: type(exc).__name__ in self._RETRYABLE_NAMES,
+                deadline=getattr(self._tl, "deadline", None),  # v2.7: never retry past the turn's budget
+                clock=self._clock,
             )
         except LLMError:
             raise
         except Exception as exc:  # noqa: BLE001 — wrap any API/network failure as LLMError (never hang)
+            left = self._remaining()
+            if left is not None and left <= 0:
+                raise TurnDeadlineExceeded() from exc  # the turn's budget ran out — say so, plainly
             raise LLMError(f"Gemini call failed: {exc}") from exc
 
 
