@@ -11,10 +11,10 @@ box's settings but not exercised there yet.
 
 | Instance | Where | How it runs | Code | Status |
 |---|---|---|---|---|
-| **prod** — her real memory | Mac, `~/lumi/prod` | in-process TUI + the two Telegram daemons + the viewer, each in its own terminal | v2.1.1 | ✅ — moves to the box in 🗓 **v2.7** |
+| **prod** — her real memory | Linux box `slate-server` (192.168.1.197), `~/lumi/prod` | systemd user services: `lumi-server@prod` (port 8765), `lumi-telegram-inbound@prod`, `lumi-telegram-outbound@prod` | tag `v2.6.0` | ✅ since **2026-10-20 01:19** — moved from the Mac (messages, vectors, facts, summaries, thoughts all present) |
 | **dev** — test data | Linux box `slate-server` (192.168.1.197), `~/lumi/dev` | systemd user services: `lumi-server@dev`, `lumi-telegram-inbound@dev`, `lumi-telegram-outbound@dev` | `v2-dev` (2.5.1 + the v2.6 work) | ✅ since 2026-10-19 23:07 |
-| **prod on the box** | `~/lumi/prod` on the box | — (the unit templates are installed; no checkout, no data) | — | 🗓 **v2.7** (the one-time migration) |
-| **Mac as a client** | `./lumi-client`, `./lumi-cli` → `192.168.1.197:8766` | the TUI/CLI over the API (LAN, ufw rule for 192.168.1.0/24) | `v2-dev` | ✅ seen |
+| **Mac prod** | Mac, `~/lumi/prod` | a **client** of the box's prod (`.env`: `LUMI_SERVER=on`) — `~/lumi/prod/app/lumi` talks to the box; its local `data/` is the untouched **fallback** (+ the pre-move archive in `backups/`) | `v2.6.0` | ✅ — never start its Telegram daemons again (the box polls the prod bot) |
+| **Mac dev tree** | `./lumi-client`, `./lumi-cli` → `192.168.1.197:8766` (the box's dev) | the TUI/CLI over the API (LAN, ufw rule for 192.168.1.0/24) | `v2-dev` | ✅ seen |
 
 The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports are 8765 (prod) and 8766 (dev).
 
@@ -60,7 +60,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
    `%learn came back empty` remains.
 3. A replayed thought in the client once showed a stray `ЕМОЦІЯ: thoughtfulthoughtful 0.7лагідна` tail — the stored
    thought is clean; **to investigate**.
-4. **Prod (Mac, v2.1.1) lacks the dev fixes** — the Markdown `**ТЕМА:**` parse and the cut-off-mood retry (v2.5.1),
+4. ~~**Prod (Mac, v2.1.1) lacks the dev fixes**~~ — resolved 2026-10-20: prod runs v2.6.0 on the box. — the Markdown `**ТЕМА:**` parse and the cut-off-mood retry (v2.5.1),
    the startup mood double call (v2.4), the server-side fixes of v2.2–v2.6. They reach prod with the v2.7 move.
 
 ## Planned
@@ -68,7 +68,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | Phase | What changes on the server |
 |---|---|
 | **v2.6** | ✅ released 2026-10-20 (`v2.6.0`) — the dev instance on the box, the Mac as its client |
-| **v2.7** | deploy pipelines (push → dev, tag + approval → prod); **prod moves to the box** — the Mac prod is stopped and kept as the fallback |
+| **v2.7** | deploy pipelines — a pull-based agent on the box: a push to `main` → dev, a release tag + the owner's confirmation → prod; CI (ruff + pytest); a bounded turn (no ~8-min hang). **Prod already moved** (2026-10-20) |
 | **v2.8** | settings move from `.env` to `settings.yaml` + `secrets.yaml` under one schema |
 | **v2.9** | the admin panel — watch: prod + dev health, uptime, daemons, tokens / cost / latency, logs |
 | **v2.10** | the admin panel — configure: settings editor, write-only secrets, rollback, audit, alerts through a dedicated **admin bot** |
@@ -81,7 +81,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | What | Status |
 |---|---|
 | `.env` as the settings file | 🗑 replaced by `settings.yaml` + `secrets.yaml` in **v2.8** (still read for one more release, then dropped) |
-| Prod running in-process on the Mac | 🗑 retired at the **v2.7** migration (kept stopped as the fallback). `./lumi` in-process stays available for dev |
+| Prod running in-process on the Mac | 🗑 **retired 2026-10-20** — the Mac prod is a client, its `data/` the fallback. `./lumi` in-process stays available for dev |
 | "Switch model / config; restart" as part of the v4.4 user admin | 🗑 moved into the **v2.9–v2.10** panel |
 | The voicer / dictator apps next to a remote server | not deprecated, **not scheduled**: no phase brings them to the server; Telegram voice in/out and later web voice/dictation (v5.2/v5.4) take their place |
 
