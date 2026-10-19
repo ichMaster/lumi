@@ -126,3 +126,38 @@ def test_a_taken_port_is_refused_before_the_core_is_built(monkeypatch):
         holder.close()
     assert f"Port {port}" in str(exc.value) and "already in use" in str(exc.value)
     assert built == []  # refused before the core — no startup model calls
+
+
+# --- v2.6 (LUMI-228): LAN/Tailscale only — a wildcard or public bind is refused --------------------------
+
+
+@pytest.mark.parametrize("host", [
+    "127.0.0.1", "localhost", "LOCALHOST", "::1", "[::1]", "10.0.0.5", "172.16.3.4", "172.31.255.1",
+    "192.168.1.20", "100.101.102.103", "100.64.0.1", "fd7a:115c:a1e0::1", "fc00::5",
+])
+def test_lan_tailscale_and_loopback_binds_pass(host):
+    assert sm.bind_problem(host) is None
+
+
+@pytest.mark.parametrize(("host", "why"), [
+    ("0.0.0.0", "every interface"), ("::", "every interface"), ("", "empty"), ("  ", "empty"),
+    ("8.8.8.8", "public"), ("172.32.0.1", "public"), ("100.128.0.1", "public"), ("2001:4860::8888", "public"),
+    ("lumi-box", "hostname"), ("lumi-box.tail1234.ts.net", "hostname"),
+])
+def test_wildcard_public_and_hostname_binds_are_refused(host, why):
+    problem = sm.bind_problem(host)
+    assert problem is not None and why in problem and "LAN or Tailscale IP" in problem
+
+
+def test_a_refused_bind_stops_before_the_guard_or_the_core(monkeypatch):
+    import dataclasses
+
+    cfg = dataclasses.replace(load_config(load_env=False), server_token="t", server_host="0.0.0.0")
+    monkeypatch.setattr("core.config.load_config", lambda: cfg)
+    touched: list = []
+    monkeypatch.setattr("core.envguard.guard_entry", lambda c: touched.append("guard"))
+    monkeypatch.setattr("core.agent.build_core", lambda **kw: touched.append("core"))
+    with pytest.raises(SystemExit) as exc:
+        sm.main()
+    assert "0.0.0.0" in str(exc.value) and "every interface" in str(exc.value)
+    assert touched == []  # refused before the data root and the core — nothing ran

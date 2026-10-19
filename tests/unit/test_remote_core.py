@@ -144,3 +144,42 @@ def test_a_non_lumi_answer_on_the_port_is_unavailable_not_a_traceback():
         rc.connect()
     with pytest.raises(ServerUnavailable):
         rc.command("/mood")  # an LLMError — the TUI's command path shows it as a readable line
+
+
+# --- v2.6 (LUMI-228): the server is another machine ----------------------------------------------------
+
+
+@pytest.mark.parametrize(("host", "port", "url"), [
+    ("100.101.102.103", 8766, "http://100.101.102.103:8766"),
+    ("lumi-box", 8765, "http://lumi-box:8765"),
+    ("fd7a:115c:a1e0::1", 8765, "http://[fd7a:115c:a1e0::1]:8765"),
+    ("[::1]", 8765, "http://[::1]:8765"),
+])
+def test_server_url_names_the_box(host, port, url):
+    from types import SimpleNamespace
+
+    from tui.remote import server_url
+
+    assert server_url(SimpleNamespace(server_host=host, server_port=port)) == url
+
+
+def test_a_client_talks_to_a_server_on_another_host(tmp_path):
+    base = "http://100.101.102.103:8766"
+    rc = RemoteCore(base, TOKEN, client=TestClient(_server(tmp_path), base_url=base))
+    rc.connect()
+    state = rc.reply("Привіт", rc.start_session())
+    assert state.reply == "Радо!" and rc.base_url == base and rc.totals.turns == 1
+
+
+def test_the_failures_name_the_server_they_tried(tmp_path):
+    base = "http://100.101.102.103:8766"
+    rc = RemoteCore(base, "nope", client=TestClient(_server(tmp_path), base_url=base))
+    with pytest.raises(ServerAuthError, match=r"at http://100\.101\.102\.103:8766 rejected the token"):
+        rc.connect()
+
+    def refuse(request):
+        raise httpx.ConnectError("refused", request=request)
+
+    down = RemoteCore(base, TOKEN, client=httpx.Client(transport=httpx.MockTransport(refuse), base_url=base))
+    with pytest.raises(ServerUnavailable, match=r"unreachable at http://100\.101\.102\.103:8766"):
+        down.connect()

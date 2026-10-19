@@ -209,3 +209,15 @@ def test_its_own_conversation_lines_are_skipped():
     _until(lambda: len(heard) == 1)
     rc.stop()
     assert heard == ["з телеграму"]
+
+
+def test_a_rejected_token_ends_the_listener_with_one_line():
+    server = _Server([("status", 401), ("stream", [_sse("state", '{"origin": null, "state": {}}')], "hang")])
+    rc = _remote(server)
+    heard: list = []
+    assert rc.listen(lambda e, d: heard.append((e, d)))
+    _until(lambda: not rc._listener.is_alive())  # it stopped on its own — no reconnect loop
+    time.sleep(0.1)  # longer than the (patched) backoff: a retry would have shown by now
+    assert [e for e, _ in heard] == ["_auth"]
+    assert "rejected the token" in heard[0][1]["detail"] and "http://lumi" in heard[0][1]["detail"]
+    assert len(server.requests) == 1  # never asked again

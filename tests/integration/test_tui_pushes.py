@@ -42,12 +42,12 @@ def _wait(cond, timeout=5.0):
         time.sleep(0.01)
 
 
-def _serve(tmp_path, port=0):
+def _serve(tmp_path, port=0, token=TOKEN):
     core = Core(llm=MockLLMClient(f"{THOUGHT}\nЕМОЦІЯ: playful",
                                   states={"reply": "Радо!", "emotion": "joy", "intensity": 0.8}),
                 repository=JsonRepository(tmp_path / "server" / "s.json"), canon="Ти — Лілі.", model="m",
                 mood_enabled=False, styles={"warm": "тепло"})
-    app = create_app(core, token=TOKEN, env="dev", version="2.4.0")
+    app = create_app(core, token=token, env="dev", version="2.4.0")
     server = make_server(app, host="127.0.0.1", port=port)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -141,6 +141,24 @@ async def test_a_stopped_server_is_said_once_and_a_new_one_picked_up(tmp_path, c
         finally:
             _stop(second)
 
+
+async def test_a_server_back_with_another_token_is_said_once_and_not_retried(tmp_path, client_env):
+    first = _serve(tmp_path)
+    app = _tui(first.url)
+    async with app.run_test() as pilot:
+        await _until(pilot, _listening(first))
+        _stop(first)
+        await _until(pilot, lambda: PUSHES_LOST in app.transcript)
+        second = _serve(tmp_path, port=first.port, token="another-token")  # restarted with a new .env token
+        try:
+            await _until(pilot, lambda: any("rejected the token" in line for line in app.transcript))
+            await pilot.pause(0.3)  # several backoffs' worth — a retry would add a second line
+            lines = app.transcript
+            rejected = [i for i, line in enumerate(lines) if "rejected the token" in line]
+            assert len(rejected) == 1 and rejected[0] == len(lines) - 1  # said once, and nothing after it
+            assert not app._connected
+        finally:
+            _stop(second)
 
 # --- v2.5 LUMI-226: the conversation the server produced, live and meanwhile ------------------------------------
 

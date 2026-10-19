@@ -9,6 +9,7 @@ too — the scheduler, the fast tick, the idle think / nudge (``server/brain.py`
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import threading
 
@@ -84,6 +85,34 @@ def _background(name: str, fn) -> None:
     threading.Thread(target=run, daemon=True, name=f"lumi-{name}").start()
 
 
+# v2.6: where the server may listen — loopback, the home LAN (RFC 1918) and Tailscale (its CGNAT 100.64.0.0/10
+# and its IPv6 ULA, inside fc00::/7). Never a wildcard or a public address: no exposure beyond LAN/Tailscale.
+_BIND_NETS = tuple(ipaddress.ip_network(n) for n in (
+    "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "::1/128", "fc00::/7",
+))
+_BIND_FIX = "bind the box's LAN or Tailscale IP (or 127.0.0.1)"
+
+
+def bind_problem(host: str) -> str | None:
+    """Why the server must not listen on ``host`` (v2.6), or ``None`` when it may — ``localhost``, loopback,
+    a LAN (RFC 1918) or Tailscale (100.64.0.0/10, IPv6 ULA) address. A wildcard, a public address or any
+    other hostname is refused: the server is reachable over LAN/Tailscale only, never from the internet."""
+    name = (host or "").strip()
+    if name.lower() == "localhost":
+        return None
+    try:
+        ip = ipaddress.ip_address(name.strip("[]"))
+    except ValueError:
+        if not name:
+            return f"LUMI_SERVER_HOST is empty — {_BIND_FIX}."
+        return f"LUMI_SERVER_HOST={name} is a hostname — {_BIND_FIX} as an address."
+    if ip.is_unspecified:
+        return f"LUMI_SERVER_HOST={name} listens on every interface — {_BIND_FIX} instead."
+    if not any(ip in net for net in _BIND_NETS):
+        return f"LUMI_SERVER_HOST={name} is a public address — {_BIND_FIX}; never expose her to the internet."
+    return None
+
+
 def port_free(host: str, port: int) -> bool:
     """Whether ``host:port`` can be bound right now — the way uvicorn binds (``SO_REUSEADDR``)."""
     import socket
@@ -156,6 +185,8 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     if not cfg.server_token:
         raise SystemExit("LUMI_SERVER_TOKEN is not set — the server never runs without a client token "
                          "(see .env.example).")
+    if problem := bind_problem(cfg.server_host):  # v2.6: LAN/Tailscale only — refused before anything runs
+        raise SystemExit(problem)
     guard_entry(cfg)  # v2.1: refuse before touching the data root
     from core.brainlock import guard_single_brain
 

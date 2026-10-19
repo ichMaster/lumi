@@ -51,11 +51,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _client_from_config(cfg: Any) -> Any:
-    from tui.remote import RemoteCore  # the v1 API client (shared with the TUI client mode)
+    from tui.remote import (  # the v1 API client (shared with the TUI client mode)
+        RemoteCore,
+        server_url,
+    )
 
     if not cfg.server_token:
         raise SystemExit("LUMI_SERVER_TOKEN is not set — the CLI uses the server's token from .env.")
-    return RemoteCore(f"http://{cfg.server_host}:{cfg.server_port}", cfg.server_token)
+    return RemoteCore(server_url(cfg), cfg.server_token)
 
 
 def _print_result(result: Any, out) -> None:

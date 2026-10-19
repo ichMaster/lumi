@@ -126,8 +126,9 @@ REPLAY_NOTE = "· while you were away ·"  # v2.5: introduces the replayed conve
 
 
 class ServerEvent(Message):
-    """v2.4: one push from the server (``state`` / ``turn`` / ``thought`` / ``_offline`` / ``_online``),
-    posted from the listener thread and handled on the UI thread."""
+    """v2.4: one push from the server (``state`` / ``turn`` / ``thought`` / ``_offline`` / ``_online``; v2.6
+    ``_auth`` — the token was rejected, the listener stopped), posted from the listener thread and handled on
+    the UI thread."""
 
     def __init__(self, event: str, data: dict) -> None:
         super().__init__()
@@ -1554,6 +1555,11 @@ class LumiApp(App[None]):
         elif event == "_online":
             self._connected = True
             self._emit(PUSHES_BACK, Text(PUSHES_BACK, style=SYSTEM_COLOR))
+            self._render_status()
+        elif event == "_auth":  # v2.6: the token was rejected — the listener stopped, no retries
+            self._connected = False
+            line = f"⚠ {data.get('detail') or 'the server rejected the token'} — no pushes until a restart"
+            self._emit(line, Text(line, style=SYSTEM_COLOR))
             self._render_status()
 
     def _show_pushed_message(self, data: dict) -> None:

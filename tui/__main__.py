@@ -57,12 +57,12 @@ def _setup_client_logging(cfg) -> None:
 
 def _run_client(cfg) -> None:
     """v2.2 client mode (LUMI_SERVER=on): no core, no env guard, no data root — the server is the brain."""
-    from tui.remote import RemoteCore, ServerAuthError, ServerUnavailable
+    from tui.remote import RemoteCore, ServerAuthError, ServerUnavailable, server_url
 
     if not cfg.server_token:
         raise SystemExit("LUMI_SERVER=on needs LUMI_SERVER_TOKEN — the same token the server uses.")
     _setup_client_logging(cfg)
-    core = RemoteCore(f"http://{cfg.server_host}:{cfg.server_port}", cfg.server_token)
+    core = RemoteCore(server_url(cfg), cfg.server_token)  # v2.6: the server may be another machine
     try:
         core.connect()
     except ServerAuthError as exc:  # the server is up — the tokens differ

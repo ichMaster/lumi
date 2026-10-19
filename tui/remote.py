@@ -117,6 +117,15 @@ _CLIENT_OFF: tuple[tuple[str, Any, str], ...] = (
 )
 
 
+def server_url(cfg: Any) -> str:
+    """The URL a client dials (v2.6): ``http://<LUMI_SERVER_HOST>:<LUMI_SERVER_PORT>``. On the Mac the host is the
+    box running the server (its Tailscale IP or MagicDNS name); an IPv6 literal is bracketed."""
+    host = str(cfg.server_host).strip()
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"http://{host}:{cfg.server_port}"
+
+
 def client_mode_config(cfg: Any) -> tuple[Any, list[str]]:
     """The client's config with everything the client must not run off — what the server hosts (silently) and
     what isn't hosted yet — + the names of the not-yet ones this .env had on."""
@@ -185,6 +194,10 @@ class RemoteCore:
     def _headers(self) -> dict[str, str]:
         return {**self._auth, CLIENT_HEADER: self.client_id}
 
+    def _rejected(self) -> str:
+        """The wrong-token line — it names the server it tried (v2.6: the server may be another machine)."""
+        return f"the server at {self.base_url} rejected the token — check LUMI_SERVER_TOKEN"
+
     def _call(self, method: str, path: str, *, auth: bool = True, **kw: Any) -> dict[str, Any]:
         try:
             res = self._http.request(method, path, headers=self._headers() if auth else None, **kw)
@@ -193,7 +206,7 @@ class RemoteCore:
         if self._offline:
             self._wake.set()  # the server answers again — the push channel needn't wait out its backoff
         if res.status_code == 401:
-            raise ServerAuthError("the server rejected the token — check LUMI_SERVER_TOKEN")
+            raise ServerAuthError(self._rejected())
         if res.status_code == 409:
             raise ServerBusy("Лілі is busy with another request — try again")
         if res.status_code >= 400:
@@ -263,7 +276,7 @@ class RemoteCore:
         try:
             with self._http.stream("POST", "/v1/turn/stream", json=body, headers=self._headers()) as res:
                 if res.status_code == 401:
-                    raise ServerAuthError("the server rejected the token — check LUMI_SERVER_TOKEN")
+                    raise ServerAuthError(self._rejected())
                 if res.status_code == 409:
                     raise ServerBusy("Лілі is busy with another request — try again")
                 if res.status_code == 404:
@@ -319,7 +332,8 @@ class RemoteCore:
         event goes to ``on_event(event, data)`` — ``state`` / ``turn`` / ``thought`` (a thought this client
         caused is skipped: it is rendered from its own response, never twice), plus ``_offline``
         ``{detail}`` once per outage and ``_online`` when the stream is back (resynced by its first
-        ``state``). A drop reconnects with backoff; a server without the route (404) ends it quietly.
+        ``state``). A drop reconnects with backoff; a server without the route (404) ends it quietly; a
+        rejected token (401) ends it with one ``_auth`` ``{detail}`` (v2.6 — retrying can't fix a token).
         Returns whether a listener started (``False`` without an events transport, or when already on)."""
         if self._events_http is None or self._listener is not None:
             return False
@@ -352,6 +366,11 @@ class RemoteCore:
                     self._events_response = res  # so stop() can close it under the reading thread
                     if res.status_code == 404:
                         log.info("the server has no push channel (older than v2.4) — no pushes")
+                        return
+                    if res.status_code == 401:  # v2.6: a wrong token never heals by retrying — say it once, stop
+                        detail = self._rejected()
+                        log.warning("push channel: %s", detail)
+                        self._deliver(on_event, "_auth", {"detail": detail})
                         return
                     if res.status_code != 200:
                         raise _StreamBroken(f"HTTP {res.status_code}")
