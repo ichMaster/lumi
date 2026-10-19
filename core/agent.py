@@ -96,6 +96,7 @@ from core.mood import (
     load_natal,
     mood_request,
     reading_from_log,
+    reading_is_complete,
     split_resolution,
     split_theme,
     strip_theme,
@@ -160,6 +161,8 @@ _EMOTION_VALUES = frozenset(e.value for e in Emotion)
 
 # The full daily mood reading is logged here (only the resolution rides in the prompt).
 _mood_log = logging.getLogger("lumi.mood")
+# A fresh mood call cut off before its РЕЗОЛЮЦІЯ / ТЕМА close is retried once (v2.5.1).
+_MOOD_ATTEMPTS = 2
 
 # Every recorded thought is logged here (the v0.3 logged tier) — never persisted to long-term memory.
 _thoughts_log = logging.getLogger("lumi.thoughts")
@@ -1876,16 +1879,9 @@ class Core:
         # logged for today (same resolution, same face theme) instead of a new call that re-rolls both.
         reading = self._logged_mood_reading(today)
         fresh = reading is None
+        complete = True
         if fresh:
-            try:
-                system, msgs = mood_request(
-                    self._natal, today, biorhythms=bio_line, cycle=cycle_line,
-                    themes=self._theme_descriptions or None,  # v0.11: also pick a face theme
-                    thoughts=self._recent_thoughts_text() if self._thoughts_enabled else None,  # v0.12
-                )
-                reading = self._housekeeping_reply(system, msgs, kind="mood").strip()
-            except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
-                return
+            reading, complete = self._fresh_mood_reading(today, bio_line, cycle_line)
         if not reading:
             return
         # v0.11: pull the «ТЕМА: …» pick (validated against the manifest, else default/None) and
@@ -1899,6 +1895,11 @@ class Core:
         if not fresh:
             return  # restored from today's log — already logged, nothing to append
         _mood_log.info("mood %s:\n%s", today, reading, extra={"date": today})
+        if not complete:
+            # Held for today in memory, but kept OUT of the mood log: a restart then makes a fresh
+            # call instead of restoring a cut-off reading for the whole day (v2.5.1).
+            _mood_log.warning("mood %s: the reading is incomplete after a retry — not logged", today)
+            return
         if self._mood_log_path is not None:  # also persist the full reading, readable
             try:
                 self._mood_log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1906,6 +1907,36 @@ class Core:
                     f.write(f"\n\n===== {today} =====\n{reading}\n")
             except OSError:
                 pass  # best-effort; never block a turn on logging
+
+    def _fresh_mood_reading(
+        self, today: str, bio_line: str | None, cycle_line: str | None,
+    ) -> tuple[str, bool]:
+        """A fresh mood call → ``(reading, complete)``; ``("", False)`` on a model failure.
+
+        A reading cut off before its «РЕЗОЛЮЦІЯ» / «ТЕМА» close (a slow or degraded model call) gets
+        **one** retry; when that is incomplete too, the longer of the two is returned (v2.5.1).
+        """
+        try:
+            system, msgs = mood_request(
+                self._natal, today, biorhythms=bio_line, cycle=cycle_line,
+                themes=self._theme_descriptions or None,  # v0.11: also pick a face theme
+                thoughts=self._recent_thoughts_text() if self._thoughts_enabled else None,  # v0.12
+            )
+        except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
+            return "", False
+        want_theme = bool(self._theme_descriptions)
+        best = ""
+        for attempt in range(_MOOD_ATTEMPTS):
+            try:
+                reading = self._housekeeping_reply(system, msgs, kind="mood").strip()
+            except Exception:  # noqa: BLE001 — mood is best-effort; never block a turn
+                break
+            if reading_is_complete(reading, want_theme=want_theme):
+                return reading, True
+            if attempt + 1 < _MOOD_ATTEMPTS:
+                _mood_log.warning("mood %s: the reading is incomplete (no РЕЗОЛЮЦІЯ/ТЕМА) — retrying", today)
+            best = max(best, reading, key=len)
+        return best, False
 
     def _turn_tools(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
         """Assemble this turn's bounded-loop tools + a **name-routing** executor — the v0.19/v0.20 file

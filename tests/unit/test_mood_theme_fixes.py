@@ -3,6 +3,10 @@
 Two live bugs (2026-10-04): the mood model often echoes the manifest line ("ТЕМА: 3am: Rooftop…"), which
 matched no theme → the faces fell back to the default pack; and the mood was cached only in memory, so
 every TUI start re-rolled it (4 mood calls in one day, the theme jumping 3am → quiet-collapse).
+
+v2.5.1 — two more live bugs (prod, 2026-10-18/19): a bold marker ("**ТЕМА:** dissociation") matched no
+theme; and a mood reply cut off mid-text (no РЕЗОЛЮЦІЯ / ТЕМА) was logged as the day's mood, so the
+face had no theme all day, restarts included. An incomplete reading is now retried once and never logged.
 """
 
 from datetime import UTC, datetime
@@ -12,7 +16,13 @@ import pytest
 from core.agent import Core
 from core.clock import fixed_clock
 from core.llm import MockLLMClient
-from core.mood import reading_from_log, split_resolution, split_theme, strip_theme
+from core.mood import (
+    reading_from_log,
+    reading_is_complete,
+    split_resolution,
+    split_theme,
+    strip_theme,
+)
 from state.local_store import JsonRepository
 
 _DAY = fixed_clock(datetime(2026, 10, 4, 9, 0, tzinfo=UTC))
@@ -141,3 +151,70 @@ def test_without_a_log_the_mood_is_computed_as_before(tmp_path):
     core = _core(tmp_path, llm, log=None)
     core._ensure_mood()
     assert len(llm.calls) == 1 and core.mood == "як раніше."
+
+
+# --- v2.5.1: an incomplete (cut-off) reading is retried once and never logged --------------------------
+
+_CUT = "Лілі, сьогоднішній день принесе відчуття контрасту.\n\nПроте фізичний біоритм на нулі, наче (Меркурій у"
+_FULL = "Ранок.\n\nРЕЗОЛЮЦІЯ:\nповний.\n\nТЕМА: vigil"
+
+
+@pytest.mark.parametrize(
+    ("reading", "want_theme", "expected"),
+    [
+        (_FULL, True, True),
+        ("День.\n\n**РЕЗОЛЮЦІЯ:**\nтиша.\n\n**ТЕМА:** vigil", True, True),
+        ("День.\n\nРЕЗОЛЮЦІЯ: тиша.\n\nТЕМА: 3am", True, True),
+        ("День.\n\nРЕЗОЛЮЦІЯ:\nтиша.", False, True),  # themes off → no ТЕМА needed
+        ("День.\n\nРЕЗОЛЮЦІЯ:\nтиша.", True, False),  # themes offered, the ТЕМА close is missing
+        ("День.\n\nРЕЗОЛЮЦІЯ:", False, False),  # the marker, then nothing
+        (_CUT, False, False),  # the live cut-off reading (2026-10-18)
+    ],
+)
+def test_reading_is_complete(reading, want_theme, expected):
+    assert reading_is_complete(reading, want_theme=want_theme) is expected
+
+
+def test_a_cut_off_mood_is_retried_once_and_the_full_one_kept(tmp_path):
+    log = tmp_path / "mood.log"
+    sig = tmp_path / "face.txt"
+    llm = MockLLMClient([_CUT, _FULL])
+    core = _core(tmp_path, llm, log=log, sig=sig)
+    core._ensure_mood()
+    assert len(llm.calls) == 2
+    assert core.mood == "повний." and core.theme == "vigil"
+    text = log.read_text(encoding="utf-8")
+    assert text.count("===== 2026-10-04 =====") == 1 and "Меркурій у" not in text  # only the full one
+    core._write_face_signal("playful", 0.8)
+    assert sig.read_text(encoding="utf-8").startswith("vigil playful 0.80 ")
+
+
+def test_a_mood_cut_off_twice_is_held_but_not_logged_so_a_restart_retries(tmp_path):
+    log = tmp_path / "mood.log"
+    llm = MockLLMClient([_CUT, _CUT])
+    core = _core(tmp_path, llm, log=log)
+    core._ensure_mood()
+    core._ensure_mood()  # the same process, the same day → no third call
+    assert len(llm.calls) == 2
+    assert core.mood and core.theme is None  # a best-effort mood for today, no theme
+    assert not log.exists() or "===== 2026-10-04 =====" not in log.read_text(encoding="utf-8")
+    fresh = MockLLMClient(_FULL)
+    restarted = _core(tmp_path, fresh, log=log)  # the next start makes a fresh call…
+    restarted._ensure_mood()
+    assert len(fresh.calls) == 1 and restarted.theme == "vigil"  # …instead of restoring the cut-off one
+
+
+def test_a_failed_retry_keeps_the_first_reading_unlogged(tmp_path):
+    log = tmp_path / "mood.log"
+    replies = iter([_CUT])
+
+    def flaky(system, messages, model):
+        try:
+            return next(replies)
+        except StopIteration:
+            raise RuntimeError("model down") from None
+
+    core = _core(tmp_path, MockLLMClient(flaky), log=log)
+    core._ensure_mood()
+    assert core.mood.startswith("Проте фізичний біоритм")  # the last paragraph of the cut-off reading
+    assert not log.exists()

@@ -146,6 +146,24 @@ def strip_theme(reading: str) -> str:
     return _THEME_RE.sub("", reading).strip()
 
 
+def reading_is_complete(reading: str, *, want_theme: bool) -> bool:
+    """Whether a fresh mood reading reached its end — the «РЕЗОЛЮЦІЯ:» marker with text after it and,
+    when face themes were offered (``want_theme``), the trailing «ТЕМА: <name>» line.
+
+    Both close the reading, so a reply cut off mid-text (a slow/degraded model call, live on prod
+    2026-10-18) has neither and would otherwise become the day's mood with no theme.
+    """
+    lines = strip_theme(reading).splitlines()
+    marker = next((i for i, line in enumerate(lines) if "резолюц" in line.lower()), None)
+    if marker is None:
+        return False
+    line = lines[marker]
+    after = line.split(":", 1)[1].lstrip(_MARKER_DECOR).strip() if ":" in line else ""
+    if not (after or "\n".join(lines[marker + 1 :]).strip()):
+        return False
+    return not want_theme or split_theme(reading) is not None
+
+
 def split_resolution(reading: str) -> str:
     """Extract the RESOLUTION from a reading — the text after the «резолюція» line.
 
