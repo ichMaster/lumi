@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.6 — Remote: the Linux deploy.** Her server runs on the always-on Linux box (`slate-server`, the same box as
+matrix-agora) as systemd user services — the server and both Telegram daemons per instance (`deploy/systemd/`) —
+and the Mac's `./lumi-client` / `./lumi-cli` talk to it over the LAN. The server binds LAN/Tailscale only (a
+wildcard or public bind is refused), `systemctl stop` closes her session like Ctrl+C, a taken port fails cleanly
+instead of looping, `/image` and `/web` follow the server's settings, and `/latency` shows the network hop. The dev
+instance lives there now; prod moves in v2.7. Guides: [docs/LINUX_DEPLOY.md](docs/LINUX_DEPLOY.md),
+[docs/SERVER_STATUS.md](docs/SERVER_STATUS.md) (LUMI-228..232).
+
 **2.5.1 — Mood & face fixes.** Her face theme survives a Markdown-dressed mood (`**ТЕМА:** dissociation` →
 `dissociation`), and a mood reply cut off mid-text (no `РЕЗОЛЮЦІЯ` / `ТЕМА`) is retried once and never logged
 as the day's mood — so a slow model call no longer leaves her without a portrait for the whole day.

@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 2.6.0 (2026-10-20)
+---------------------------
+- LUMI-228: the server leaves localhost safely — a wildcard, public or hostname bind is refused (loopback, LAN, Tailscale only); one server_url for the TUI client and the CLI; every failure names the server it tried; a rejected token on the push channel is said once, never retried (v2.4 review #5).
+- LUMI-229: the client asks the server — GET /v1/state adds features {image, web_lookup}, both turn routes add timing {pre_ms, llm_ms, post_ms, total_ms, server_ms}; /image and /web follow the server's settings (v2.2 review #8); /latency shows NETWORK client↔server; a contract test pins that a client reads the server only through the API.
+- LUMI-230: systemd user units for the Linux box (deploy/systemd — the server + both Telegram daemons per instance); systemctl stop closes her session like Ctrl+C (uvicorn's SIGTERM re-raise used to kill the server first); a configuration refusal exits 78 (no restart loop), an address not up yet is retried; /v1/events answers 503 while the server stops (no false "pushes are back").
+- LUMI-231: docs/LINUX_DEPLOY.md — the box step by step (free ports first, the LAN schema + ufw like matrix-agora, ffmpeg, the prod unit left stopped until v2.7); docs/SERVER_STATUS.md — what works on the server, what doesn't, what is planned or deprecated.
+- LUMI-232: the dev instance lives on the box (slate-server, 192.168.1.197) as systemd services; the Mac is its client.
+- fix(telegram): the daemons stop on systemctl stop like on Ctrl+C — no more failed units, no resent reply (code review #1).
+- fix(server): ./lumi-cli serve prints a configuration refusal instead of exiting silently (code review #2).
+- roadmap: v2.7 gains the prod migration to the box; the admin panel is planned as v2.8–v2.10 (the pywebview client moves to v2.11).
+
 Version 2.5.1 (2026-10-19)
 ---------------------------
 - fix(mood): a Markdown-wrapped marker ("**ТЕМА:** dissociation", "**ТЕМА**: …", "## ТЕМА: …", "**РЕЗОЛЮЦІЯ:**") is parsed — the day keeps its face theme instead of the flat placeholder pack, and the resolution has no stray "**" (live on prod, 2026-10-19).
