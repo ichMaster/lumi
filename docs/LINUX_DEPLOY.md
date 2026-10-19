@@ -42,7 +42,7 @@ Tailscale address instead (`tailscale ip -4`, 100.x.y.z) — one address per ins
 On the **box**:
 
 ```bash
-sudo apt install git curl                               # or your distro's equivalent
+sudo apt install git curl ffmpeg                        # ffmpeg: her Telegram voice replies (LUMI_TELEGRAM_VOICE)
 curl -LsSf https://astral.sh/uv/install.sh | sh         # uv → ~/.local/bin (the units' PATH has it)
 sudo loginctl enable-linger "$USER"                     # user services run without a login, start at boot
 ```
@@ -222,6 +222,7 @@ A stop waits up to 300 s (`TimeoutStopSec`) for the session close — it makes m
 | Mac: `server unreachable at http://192.168.1.197:8766` (a timeout) | ufw has no rule for the port, the service is down, or the port differs | the ufw rule (step 1); `systemctl --user status lumi-server@dev`; compare ports |
 | Mac: `the server at … rejected the token` | the Mac's token isn't this instance's | copy the box instance's `LUMI_SERVER_TOKEN` |
 | TUI: `… rejected the token — no pushes until a restart` | the server restarted with another token | fix the token, restart the client |
+| no replies in Telegram, `telegram-outbound.log` repeats `No such file or directory: 'ffmpeg'` | voice replies are on (`LUMI_TELEGRAM_VOICE`) and the box has no ffmpeg — the same message is retried for ever | `sudo apt install ffmpeg` (the daemon sends the backlog by itself), or turn the voice replies off |
 | no Telegram messages arrive, `telegram-inbound.log` shows a *Conflict* (another getUpdates) | another machine polls the same bot | stop the other daemons (step 5) |
 | the env guard refuses (`prod runs from a dirty or untagged checkout`, a marker mismatch) | prod checkout not on a tag / the wrong data root | see [PROD_SETUP §When the guard refuses](PROD_SETUP.md) |
 
