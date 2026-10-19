@@ -86,7 +86,8 @@ Mac browser ── LAN ──► lumi-admin (on the box, :8767, its own admin to
 - **Audit log** — every admin action (when, which instance, what changed — never a secret value) in
   `~/lumi/admin/audit.jsonl`, shown in the panel.
 - **Alerts** — a failing prod check or a unit that enters `failed` sends the owner one Telegram message (and one when
-  it recovers), rate-limited.
+  it recovers), rate-limited — through a **dedicated admin bot** (its own BotFather token in the admin's own
+  `secrets.yaml`, the owner's chat only), never through her prod or dev bot: alerts never mix with her conversation.
 
 ## Rules
 
@@ -104,7 +105,10 @@ Mac browser ── LAN ──► lumi-admin (on the box, :8767, its own admin to
 - TLS, public exposure, security scans — **v4.1**.
 - Editing her canon or other authored texts in the panel — not planned (they stay in the repo).
 
+## Decisions
+
+- **Alerts go through a dedicated admin bot** (owner, 2026-10-20) — not the prod bot.
+
 ## Open questions (owner)
 
-- Alerts: a separate admin bot, or the prod bot?
 - Should the Mac's dev tree also be visible in the panel (as a third, local instance), or only the box's two?

@@ -46,7 +46,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | Tools — files (sandbox), Wikipedia, news (Guardian), web lookup, journal, date | ✅ | set | her files now live on the box: `~/lumi/dev/data/files` |
 | `/image` — you show her a picture | ✅ | set | the client sends the file; follows the **server's** `LUMI_IMAGE` (v2.6) |
 | Image generation | ⚠️ | set | the PNG is saved on the box and reaches you **only through Telegram**; not shown on the Mac — 🗓 inline in the window in **v2.11** |
-| **Her portrait in the viewer window (Mac)** | ❌ | — | the server writes `face.txt` on the box (no display) and the TUI client ignores the face state it receives. **Proposed for v2.6:** the client writes a local `face.txt` from the pushed `turn` event, so the existing viewer works with a server. Full face-in-the-window: 🗓 **v2.11** (pywebview). **Must land before v2.7**, or prod loses the portrait when it moves |
+| **Her portrait in the viewer window (Mac)** | ❌ | — | the server writes `face.txt` on the box (no display) and the TUI client ignores the face state it receives. **Owner decision (2026-10-20): no interim fix** — her portrait follows a remote server in the 🗓 **v2.11** window (pywebview). Until then the Mac viewer doesn't follow a server — **prod included after the v2.7 move**; her face photos still reach Telegram |
 | Voice mode (`/mode-set voice`, realtime) | ❌ | — | needs the mic and speakers next to the core; the client says "not yet in server mode". No v2 phase — the remote voice path is to be revisited after v2.6; the roadmap's answer is web voice (🗓 **v5.2**). Telegram voice in/out covers it meanwhile |
 | The voicer (her replies spoken on the Mac's speakers) | ❌ | — | same as voice mode — unscheduled in v2; 🗓 web voice **v5.2**; Telegram voice replies meanwhile |
 | Dictation (the Mac mic → her inbox) | ❌ | — | same — unscheduled in v2; 🗓 web dictation **v5.4**; Telegram voice messages meanwhile |
@@ -67,12 +67,12 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 
 | Phase | What changes on the server |
 |---|---|
-| **v2.6** (in progress) | the owner's DoD checks on the box, then release 2.6.0; proposed: the client-side face signal (above) |
+| **v2.6** | ✅ released 2026-10-20 (`v2.6.0`) — the dev instance on the box, the Mac as its client |
 | **v2.7** | deploy pipelines (push → dev, tag + approval → prod); **prod moves to the box** — the Mac prod is stopped and kept as the fallback |
 | **v2.8** | settings move from `.env` to `settings.yaml` + `secrets.yaml` under one schema |
 | **v2.9** | the admin panel — watch: prod + dev health, uptime, daemons, tokens / cost / latency, logs |
-| **v2.10** | the admin panel — configure: settings editor, write-only secrets, rollback, audit, Telegram alerts |
-| **v2.11** | the pywebview client — chat + her face + inline pictures in one window |
+| **v2.10** | the admin panel — configure: settings editor, write-only secrets, rollback, audit, alerts through a dedicated **admin bot** |
+| **v2.11** | the pywebview client — chat + her face + inline pictures in one window; **the portrait follows the server again** |
 | **v4.1–v4.4** | TLS and security scans, multi-user, the web UI, user admin (extending the v2.9 panel) |
 | **v5.1 / v5.2 / v5.4** | the web face, web voice, web dictation |
 
