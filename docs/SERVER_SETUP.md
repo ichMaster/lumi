@@ -11,7 +11,7 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 ```
  TUI client  ──┐   Authorization: Bearer <LUMI_SERVER_TOKEN>
  CLI        ───┼──► http://127.0.0.1:<LUMI_SERVER_PORT>/v1/…  ──►  python -m server  ──►  core + data root
- (pywebview — v2.8)                                                 (one core · one session · one request at a time)
+ (pywebview — v2.11)                                                (one core · one session · one request at a time)
 ```
 
 - **The server owns everything stateful**: her memory (the data root), the model calls, the session. A
@@ -89,7 +89,7 @@ requests. Over it arrive:
   updates by itself;
 - **thoughts out loud** — a `%think!` (or any open `%directive`) fired from anywhere shows in every client
   as `💭 …`; the client that fired it shows it once, from its own answer;
-- **her face state after every turn** — `{emotion, intensity, theme}` — for the face clients to come (v2.8).
+- **her face state after every turn** — `{emotion, intensity, theme}` — for the face clients to come (v2.11).
   Only a theme *name* crosses the API, never a face file.
 
 **Typed `%directives` work in client mode again** — they run on the server (`%think!`, `%wonder`,

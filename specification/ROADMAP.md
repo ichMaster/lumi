@@ -960,7 +960,7 @@ recreate. **No paid calls** (the probe is a manual dev script, not CI).
 
 ## v2 — Client/server split: her brain on the server, the TUI a thin client
 
-Split Лілі into a **server** (wrapping `core`) and a thin **TUI client** — one user, one session, one connection — then move the server onto the always-on home **Linux box**, the Mac TUI connecting over the network. Pulled out of the old server-platform version into its own version because the win is immediate and structural: everything that today lives *in the TUI because the TUI is the only brain* — the v0.42 scheduler, the fast tick (needs/inner-life time), the thought-stream triggers — moves into the server process, so on an always-on host **her time finally flows continuously**; the Telegram daemons + file bus deploy beside the server, so Telegram stops needing a running TUI at all. Mac-local peripherals (voicer/dictator speakers+mic, the viewer window, the v1.6 in-TUI voice mode) stay client-side; **voice mode over the remote split is explicitly deferred** (mic and brain sit on different machines — revisit after this version). The core does not change — the server is a thin transport over the same `reply(...)` contract; access stays **closed** (a client token, LAN/Tailscale only — no public exposure); the platform growth (security hardening, multi-user, web, admin) remains **v4**. Built as a **ladder of releasable steps** — prod & dev split (v2.1) → the skeleton (v2.2) → the live turn (v2.3) → pushes & state (v2.4) → the brain moves (v2.5) → the Linux deploy (v2.6) → the deployment pipelines (v2.7) → the pywebview client (v2.8) — after any step everything still runs, just not everything has moved yet; more phases may follow as the split settles. Depends on: v0 (core, memory, user-scoping, the emotion contract), v1 (streaming — the API must carry it).
+Split Лілі into a **server** (wrapping `core`) and a thin **TUI client** — one user, one session, one connection — then move the server onto the always-on home **Linux box**, the Mac TUI connecting over the network. Pulled out of the old server-platform version into its own version because the win is immediate and structural: everything that today lives *in the TUI because the TUI is the only brain* — the v0.42 scheduler, the fast tick (needs/inner-life time), the thought-stream triggers — moves into the server process, so on an always-on host **her time finally flows continuously**; the Telegram daemons + file bus deploy beside the server, so Telegram stops needing a running TUI at all. Mac-local peripherals (voicer/dictator speakers+mic, the viewer window, the v1.6 in-TUI voice mode) stay client-side; **voice mode over the remote split is explicitly deferred** (mic and brain sit on different machines — revisit after this version). The core does not change — the server is a thin transport over the same `reply(...)` contract; access stays **closed** (a client token, LAN/Tailscale only — no public exposure); the platform growth (security hardening, multi-user, web, admin) remains **v4**. Built as a **ladder of releasable steps** — prod & dev split (v2.1) → the skeleton (v2.2) → the live turn (v2.3) → pushes & state (v2.4) → the brain moves (v2.5) → the Linux deploy (v2.6) → the deployment pipelines (v2.7) → settings as files (v2.8) → the admin panel: watch (v2.9) → the admin panel: configure (v2.10) → the pywebview client (v2.11) — after any step everything still runs, just not everything has moved yet; more phases may follow as the split settles. Depends on: v0 (core, memory, user-scoping, the emotion contract), v1 (streaming — the API must carry it).
 
 ### v2.1 — Prod & dev: two Лілі, one codebase
 
@@ -982,7 +982,7 @@ Today the daily Лілі runs from the very folder being developed — one carel
 
 **Goal:** the smallest split that runs daily — a server process wrapping `core`, the TUI in **client mode** against it, and a CLI to manage it; one machine, one user, one session, **blocking turns**.
 
-A server process wraps `core` and exposes `reply(...)` + the slash commands over a local HTTP API behind the **client token**. The commands first become a **command layer in the core** (`core/commands.py`, LUMI-211 — the owner's decision): each returns a `CommandResult` (text + a semantic kind + the confirm/turn protocols) that any client renders, so the TUI now and the pywebview client (v2.8) later share one implementation; the in-process TUI maps each kind to the exact look it always had, so command output stays unchanged too. The TUI gains `LUMI_SERVER=on` — same widgets, turns and commands over the API, no in-process `core`; **off (default) → the in-process path, byte-identical (pinned)**. Turns are **blocking only** (the `LUMI_STREAM=off` path that already exists) — streaming and pushes arrive in v2.3–v2.4. Features the server mode can't host yet (the scheduler, the Telegram bridge, voice, dictation) **degrade to a readable "not yet in server mode" line** (the TUI rule) instead of breaking; in-process mode keeps them all.
+A server process wraps `core` and exposes `reply(...)` + the slash commands over a local HTTP API behind the **client token**. The commands first become a **command layer in the core** (`core/commands.py`, LUMI-211 — the owner's decision): each returns a `CommandResult` (text + a semantic kind + the confirm/turn protocols) that any client renders, so the TUI now and the pywebview client (v2.11) later share one implementation; the in-process TUI maps each kind to the exact look it always had, so command output stays unchanged too. The TUI gains `LUMI_SERVER=on` — same widgets, turns and commands over the API, no in-process `core`; **off (default) → the in-process path, byte-identical (pinned)**. Turns are **blocking only** (the `LUMI_STREAM=off` path that already exists) — streaming and pushes arrive in v2.3–v2.4. Features the server mode can't host yet (the scheduler, the Telegram bridge, voice, dictation) **degrade to a readable "not yet in server mode" line** (the TUI rule) instead of breaking; in-process mode keeps them all.
 
 **Tasks:**
 - The command layer: the core-state slash commands move into `core/commands.py` (`run_command` → `CommandResult`); the client-bound ones (`/mode-set`, `/web`, `/image`, `/new`) stay in the clients.
@@ -1008,9 +1008,9 @@ A socket channel beside the HTTP endpoints; the v1.4 streaming seam feeds it; th
 
 ### v2.4 — Pushes & state: the API a face can live on
 
-**Goal:** the server can **speak first** and **describe her state** — everything a richer client (v2.8) will need, proven on the TUI client first.
+**Goal:** the server can **speak first** and **describe her state** — everything a richer client (v2.11) will need, proven on the TUI client first.
 
-Proactive turns push over the socket (a surfaced thought reaches the connected client unasked — the v6.2 open-loop mechanism's local ancestor); a **state event** rides each turn — `{emotion, intensity, theme}` — and mood resolution / closeness level / style are **pushed on change**. The face stays a **client-side** concern (local packs, v2.8) — **no face files ever cross the API**. Depends on: v2.3.
+Proactive turns push over the socket (a surfaced thought reaches the connected client unasked — the v6.2 open-loop mechanism's local ancestor); a **state event** rides each turn — `{emotion, intensity, theme}` — and mood resolution / closeness level / style are **pushed on change**. The face stays a **client-side** concern (local packs, v2.11) — **no face files ever cross the API**. Depends on: v2.3.
 
 **DoD:** a surfaced thought arrives unasked in the TUI client; every turn carries the state event; the status line in client mode updates from pushes alone.
 
@@ -1048,16 +1048,65 @@ GitHub Actions on top of the existing CI (ruff + pytest): a deploy job reaches t
 
 **Tests:** the smoke script itself (against a local mock-model server); workflow files linted; contract — the deploy path contains no step that writes into a data root; a migration-check script verified against a fixture data root (the store, vectors, mood log and env-marker all found and readable after the copy). **No paid calls and no prod data in CI.**
 
-### v2.8 — pywebview client: chat + face in one window
+### v2.8 — Settings as files: `.env` → YAML, one schema
+
+**Goal:** every setting of an instance lives in readable, validated **YAML files** described by **one typed schema** — the foundation the admin panel (v2.9–v2.10) reads and writes.
+
+Today each instance is a ~28 KB `.env` (about 205 `LUMI_*` knobs + 9 API keys) plus the authored `core/models.toml` and `core/schedule.toml`. They move to `~/lumi/<instance>/settings.yaml` (every non-secret knob, grouped) + `secrets.yaml` (`0600` — the API keys, the bot token, the server token); the dev tree keeps both at the repo root, gitignored. One schema names each setting's key, type, default, group, description, `secret` and `restart` flags, allowed values and its `LUMI_*` alias; the loader, the example files, `lumi-cli` and the panel all read it. Precedence: default < YAML < the process environment (a `LUMI_*` variable still wins — tests, systemd overrides, emergency hatches); `.env` stays readable for one release as a deprecated layer, then goes. The TOMLs become `core/models.yaml` / `core/schedule.yaml`, overridable per instance. Design: [ADMIN_PANEL.md](features/ADMIN_PANEL.md). Depends on: v2.7 (both instances on the box).
+
+**Tasks:**
+- The settings schema (one typed model over every knob) + a YAML loader with the precedence above; readable validation errors naming the key and the allowed values.
+- `settings.example.yaml` + `secrets.example.yaml` generated from the schema (replacing `.env.example`); `core/models.yaml`, `core/schedule.yaml` (the TOMLs converted, instance overrides allowed).
+- `scripts/env_to_settings.py` — `.env` → `settings.yaml` + `secrets.yaml`, a dry-run diff first, unknown keys reported, the old file kept as `.env.migrated`.
+- `lumi-cli config get | set | validate` (secrets masked on every output); the env guard, the bind guard and every `LUMI_*` consumer read through the new loader.
+- Docs: the operator guides switch from `.env` to the YAML files.
+
+**DoD:** both instances on the box run from `settings.yaml` + `secrets.yaml` with no `.env`; a setting changed with `lumi-cli config set` is validated (a wrong value refused with the allowed ones) and takes effect after a restart; no secret appears in any CLI output or log; the dev tree runs the same way.
+
+**Tests:** unit — the precedence (default < YAML < env), every field's validation, the migration (a fixture `.env` → the two files, unknown keys reported); contract — the schema ↔ the example files ↔ the loader (every field documented, every example key known, no secret in `settings.yaml`); the existing config tests pass through the new loader.
+
+### v2.9 — The admin panel: watch
+
+**Goal:** **one web panel** on the box shows **both instances, prod and dev** — health, uptime, daemons, tokens, cost and latency — and can start, stop and restart their services.
+
+A separate process, `lumi-admin.service` (one per box), runs from the prod checkout behind the v2.6 bind guard on its own port (8767) with its own admin token and a ufw rule for the home subnet; an instance registry (`~/lumi/admin/admin.yaml`) names each instance's root, server URL and units. It **never runs the core and never writes a data root**: it reads the ledgers and logs, asks each server over its API, and drives the units through `systemctl --user`. The UI is static HTML/JS + a FastAPI JSON API (the matrix-agora panel pattern; charts as inline SVG), an instance switcher, prod in red. Pages: **Overview** (up/down, version, uptime + restarts, model, today's mood + theme and whether it completed, turns today, errors in 24 h, data-root size; the box's uptime/disk/load/memory); **Health checks** (named checks green/amber/red with history — server health, state, the mood complete, the last model call and recent model failures/timeouts, the Telegram daemons + bus pointer lag, the scheduler's last firing vs due, disk, the env marker — polled every minute, **no paid call**: a "probe the model" button is opt-in); **Daemons** (the units per instance: state, since, restarts; start/stop/restart/enable, prod behind a typed confirmation); **Usage** (tokens and estimated cost per day/model/kind from `cache-log.jsonl` + `usage-ledger.jsonl`, cache hits, turn latency median/p95 with PRE/MODEL/POST, the slowest calls; prices from a machine-readable `core/pricing.yaml`); **Logs** (tail + filter `lumi.log`, the daemons' logs, each unit's journal). Design: [ADMIN_PANEL.md](features/ADMIN_PANEL.md). Depends on: v2.8.
+
+**Tasks:**
+- `admin/` — the FastAPI app + the static UI; the instance registry; the admin token; the bind guard; `deploy/systemd/lumi-admin.service`.
+- Readers over the data roots (read-only): the ledgers → usage/cost/latency aggregates; the logs → errors and model failures; `schedule.state`, the bus pointers, today's mood.
+- The health-check runner (every minute, `health.jsonl` history) and the check set above.
+- A systemd seam (`status`/`start`/`stop`/`restart`/`enable` per unit) — the real `systemctl --user` on the box, a fake in tests; prod actions need a typed confirmation.
+- `core/pricing.yaml` from `docs/MODEL_PRICING.md`; the operator section in `docs/LINUX_DEPLOY.md` (install, port, ufw, token).
+
+**DoD:** from the Mac, the panel shows prod and dev side by side — health checks, uptime, today's tokens and cost, latency; a stopped dev unit is seen and started from the panel; a prod restart asks for the confirmation and then happens; a failing check (e.g. the dev server stopped) turns red within a minute and back to green after; the panel never writes a data root and makes no paid call.
+
+**Tests:** unit — the ledger aggregates (tokens, cost, latency percentiles) over fixture JSONL, each health check over fixture state, the prod-confirmation rule; integration — the admin API over a fake systemd runner and two fixture instances; contract — the admin token on every route, no write path into a data root, no secret in any response. The browser UI is a manual DoD check.
+
+### v2.10 — The admin panel: configure
+
+**Goal:** every setting of either instance is **changed from the panel** — validated, shown as a diff, applied with the restart it needs, reversible — with prod guarded and secrets write-only.
+
+The **settings editor** generates forms from the v2.8 schema, group by group (the current value, the default, the description, "needs a restart"); a save is validated, shown as a diff and applied atomically, restarting what needs it; prod adds a typed confirmation. **Secrets are write-only**: the panel shows set/unset and the last four characters, sets/rotates/clears them, and the API never returns one. **History & rollback**: each apply keeps the previous file (`~/lumi/<instance>/config-history/`), one click restores it. **Schedule & model profiles** are edited as the instance's overrides. **Promote dev → prod** copies a setting tried on dev (diff + confirmation). An **audit log** records every admin action (never a secret value). **Alerts**: a failing prod check or a failed unit sends the owner one Telegram message, and one when it recovers (rate-limited). Design: [ADMIN_PANEL.md](features/ADMIN_PANEL.md). Depends on: v2.9.
+
+**Tasks:**
+- The editor (schema-driven forms, validation, the diff, the atomic write + the needed restart); the secrets editor (write-only, masked).
+- The config history + one-click rollback; the schedule and model-profile editors; promote dev → prod.
+- The audit log (`~/lumi/admin/audit.jsonl`) and its page; the alerts (Telegram, rate-limited, recovery notice).
+
+**DoD:** a dev setting changed in the panel takes effect (the restart done for you) and is rolled back with one click; a prod change shows its diff, asks for the confirmation and applies; a rotated secret works and is never shown again; every action is in the audit log without a secret value; stopping prod's server sends one Telegram alert and its restart one recovery message.
+
+**Tests:** unit — the diff, the atomic write, the history/rollback, the secret masking, the alert rate limit; integration — an edit → validate → apply → restart through the fake systemd runner, a rollback, a dev → prod promotion; contract — no secret ever in an API response or the audit log, an invalid value never reaches a file.
+
+### v2.11 — pywebview client: chat + face in one window
 
 **Goal:** a second thin client of the v2 server — a native desktop window (pywebview/WebKit) that for the first time joins the **chat and her face in one window**, consuming exactly the API v2.3–v2.4 proved on the TUI client.
 
 Two layers, no Лілі logic in either: a **tiny Python shell** (`webview/main.py` — reads the server URL + client token from `.env`, opens the window, hands the token to the page) and a **static UI** (`webview/ui/` — `index.html` + `app.js` + `style.css`, no bundler, no node) that speaks WS/HTTP **directly to the server**. The UI renders the streamed reply, a collapsible think-box, the status line (mood / closeness / style), v0.24 `send_image` photos inline, and markdown. **The face stays local, beside the client** (like the v0.7 viewer today): the client ships/points at its own `faces/` pack, the v2.4 state event carries **`{emotion, intensity, theme}`**, and the **Python shell picks the portrait with the existing `viewer.face.face_for`** over the local pack (the v0.11 wardrobe/no-repeat logic reused as a module, never ported to JS) and hands the file to the page; no face assets ever cross the network, and the `face.txt` viewer stays untouched as the fallback. **Strategic seed:** `webview/ui/` is lifted into the v4.3 web client later — only serving and auth change. Boundaries: voice/dictation stay in the TUI client (`sounddevice` is its process); the TUI remains a full peer client; `pywebview` is an optional dependency; off by default (it is just "which client you launch" — the server does not know or care). Depends on: v2.4.
 
-**Sub-phases (each releasable as `2.8.x`):**
+**Sub-phases (each releasable as `2.11.x`):**
 
-- **v2.8.1 — The chat.** The shell + the page: connect with the token, send a turn, render the streamed reply + proactive pushes, slash commands pass through as today, reconnect cleanly; errors degrade to a readable line (the TUI rule).
-- **v2.8.2 — The face & state panel.** The portrait + emotion caption beside the chat (the v2.4 state event → the shell's local `face_for` pick), the status fields from the on-change pushes, the think-box, inline photos.
+- **v2.11.1 — The chat.** The shell + the page: connect with the token, send a turn, render the streamed reply + proactive pushes, slash commands pass through as today, reconnect cleanly; errors degrade to a readable line (the TUI rule).
+- **v2.11.2 — The face & state panel.** The portrait + emotion caption beside the chat (the v2.4 state event → the shell's local `face_for` pick), the status fields from the on-change pushes, the think-box, inline photos.
 
 **Tasks:**
 - `webview/main.py` — the window shell: config + token from `.env`, the local faces pack path, the `face_for` pick per state event; no API of its own.
@@ -1408,7 +1457,7 @@ Add the **admin panel** — an admin-only web UI: manage users and the allowlist
 - Admin-only web panel; an `admin` role distinct from a regular user.
 - User/allowlist management; issue/revoke invite codes; per-user `share_consent` toggle.
 - View and clear a user's memory; purge a user's shared-layer contributions (§v5.3).
-- Switch model/canon + config; restart.
+- Users, consent and memory join the **v2.9–v2.10 admin panel** (settings, restarts, health and usage are already there) — one panel, not a second one.
 
 **DoD:** the admin manages users, access, consent, memory, and config entirely from the panel; non-admins cannot reach it.
 
