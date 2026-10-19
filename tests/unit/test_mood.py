@@ -50,6 +50,12 @@ def test_split_resolution_handles_an_inline_marker():
     assert split_resolution("розклад\n\nРЕЗОЛЮЦІЯ: підсумок дня") == "підсумок дня"
 
 
+def test_split_resolution_drops_markdown_around_the_marker():
+    assert split_resolution("розклад\n\n**РЕЗОЛЮЦІЯ:**\nпідсумок дня") == "підсумок дня"
+    assert split_resolution("розклад\n\n**РЕЗОЛЮЦІЯ:** підсумок дня") == "підсумок дня"
+    assert split_resolution("розклад\n\n## РЕЗОЛЮЦІЯ:\nпідсумок дня") == "підсумок дня"
+
+
 def test_load_natal_skips_comments(tmp_path):
     f = tmp_path / "natal.md"
     f.write_text("# коментар\nСонце в Рибах\n", encoding="utf-8")

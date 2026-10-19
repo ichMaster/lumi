@@ -43,8 +43,12 @@ class MoodState:
     theme: str | None = None  # v0.11 face theme the mood chose for the day (None → default)
 
 
-# The face-theme line the mood call appends ("ТЕМА: <name>") — parsed out, never injected.
-_THEME_RE = re.compile(r"(?im)^[ \t]*тема[ \t]*:[ \t]*(.+?)[ \t]*$")
+# The face-theme line the mood call appends ("ТЕМА: <name>") — parsed out, never injected. The model
+# sometimes dresses the marker in Markdown ("**ТЕМА:** x", "**ТЕМА**: x", "## ТЕМА: x", "- ТЕМА: x"), so
+# leading list/heading/emphasis marks and emphasis around the colon are allowed (2026-10-19 live bug).
+_THEME_RE = re.compile(r"(?im)^[ \t]*[-*_#>•·]*[ \t]*тема[ \t*_]*:[ \t*_]*(.+?)[ \t]*$")
+# Markdown marks that may wrap the «РЕЗОЛЮЦІЯ:» marker ("**РЕЗОЛЮЦІЯ:** …") — dropped from the text after it.
+_MARKER_DECOR = " \t*_#"
 # A theme NAME is a folder slug (``3am``, ``quiet-collapse``) — the leading slug of the ТЕМА value. The
 # model often echoes the whole manifest line ("ТЕМА: 3am: Rooftop loneliness…") or decorates the name.
 _THEME_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")
@@ -152,8 +156,9 @@ def split_resolution(reading: str) -> str:
     for i, line in enumerate(lines):
         if "резолюц" in line.lower():
             # Handles both forms: marker inline ("РЕЗОЛЮЦІЯ: …") and marker on its
-            # own line/header with the text on the following lines.
-            after_colon = line.split(":", 1)[1].strip() if ":" in line else ""
+            # own line/header with the text on the following lines; a Markdown-wrapped
+            # marker ("**РЕЗОЛЮЦІЯ:**") leaves no stray "**" in front of the text.
+            after_colon = line.split(":", 1)[1].lstrip(_MARKER_DECOR).rstrip() if ":" in line else ""
             below = "\n".join(lines[i + 1 :]).strip().lstrip("-—*#:•· \n").strip()
             parts = [p for p in (after_colon, below) if p]
             if parts:

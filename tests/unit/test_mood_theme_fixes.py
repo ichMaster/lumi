@@ -12,7 +12,7 @@ import pytest
 from core.agent import Core
 from core.clock import fixed_clock
 from core.llm import MockLLMClient
-from core.mood import reading_from_log, split_theme
+from core.mood import reading_from_log, split_resolution, split_theme, strip_theme
 from state.local_store import JsonRepository
 
 _DAY = fixed_clock(datetime(2026, 10, 4, 9, 0, tzinfo=UTC))
@@ -41,10 +41,31 @@ def _core(tmp_path, llm, *, log=None, sig=None):
         ("ТЕМА: «im-fine» — посмішка", "im-fine"),
         ("Тема: calm-before.", "calm-before"),
         ("ТЕМА: немає", None),
+        ("**ТЕМА:** dissociation", "dissociation"),  # the live bug (2026-10-19): a bold marker
+        ("**ТЕМА**: vigil", "vigil"),
+        ("__ТЕМА:__ 3am", "3am"),
+        ("## ТЕМА: quiet-collapse", "quiet-collapse"),
+        ("- ТЕМА: drowning", "drowning"),
     ],
 )
 def test_split_theme_keeps_only_the_slug(line, expected):
     assert split_theme(f"День.\n\nРЕЗОЛЮЦІЯ:\nтиша.\n\n{line}") == expected
+
+
+def test_a_bold_theme_line_is_stripped_from_the_reading():
+    reading = "День.\n\n**РЕЗОЛЮЦІЯ:**\nтиша.\n\n**ТЕМА:** dissociation"
+    assert strip_theme(reading) == "День.\n\n**РЕЗОЛЮЦІЯ:**\nтиша."
+    assert split_resolution(strip_theme(reading)) == "тиша."  # no stray "**", no theme line
+
+
+def test_a_bold_marked_mood_still_themes_the_face(tmp_path):
+    sig = tmp_path / "face.txt"
+    reading = "День.\n\n**РЕЗОЛЮЦІЯ:**\nтиша.\n\n**ТЕМА:** vigil"
+    core = _core(tmp_path, MockLLMClient(reading), sig=sig)
+    core._ensure_mood()
+    assert core.theme == "vigil"
+    core._write_face_signal("playful", 0.8)
+    assert sig.read_text(encoding="utf-8").startswith("vigil playful 0.80 ")  # not the bare default line
 
 
 def test_echoed_description_still_themes_the_face(tmp_path):
