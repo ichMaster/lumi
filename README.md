@@ -12,6 +12,10 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.5.1 — Mood & face fixes.** Her face theme survives a Markdown-dressed mood (`**ТЕМА:** dissociation` →
+`dissociation`), and a mood reply cut off mid-text (no `РЕЗОЛЮЦІЯ` / `ТЕМА`) is retried once and never logged
+as the day's mood — so a slow model call no longer leaves her without a portrait for the whole day.
+
 **2.5 — The brain moves.** Her time now lives in `./lumi-server`: the scheduler, the idle think / nudge and the
 Telegram bridge run inside it with no window open — start the server and the two Telegram daemons, and she
 thinks on schedule, answers in Telegram and reaches out first. `./lumi-client` is a pure window: open it and

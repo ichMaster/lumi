@@ -1,6 +1,11 @@
 Lumi — Release notes
 ====================
 
+Version 2.5.1 (2026-10-19)
+---------------------------
+- fix(mood): a Markdown-wrapped marker ("**ТЕМА:** dissociation", "**ТЕМА**: …", "## ТЕМА: …", "**РЕЗОЛЮЦІЯ:**") is parsed — the day keeps its face theme instead of the flat placeholder pack, and the resolution has no stray "**" (live on prod, 2026-10-19).
+- fix(mood): a fresh mood reading cut off before its РЕЗОЛЮЦІЯ / ТЕМА close is retried once; if still incomplete it is held for the day but never written to mood.log, so the next start makes a fresh call instead of restoring it (live on prod, 2026-10-18).
+
 Version 2.5.0 (2026-10-12)
 ---------------------------
 - LUMI-223: her clock and her bus are host-neutral — core/scheduler.py (the scheduler, the fast tick, the shared act decisions) and state/bus.py (the file bus) moved out of tui/ (the old modules re-export); in-process unchanged.
