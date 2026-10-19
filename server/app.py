@@ -26,6 +26,7 @@ import logging
 import queue
 import secrets
 import threading
+import time
 import uuid
 from collections import OrderedDict, deque
 from collections.abc import Callable, Iterator
@@ -196,6 +197,7 @@ class _TurnRecord:
         self.events: queue.Queue = queue.Queue()
         self.result: dict[str, Any] | None = None
         self.error: tuple[int, str] | None = None
+        self.received: float | None = None  # v2.6: when the request arrived (monotonic) — the turn's server_ms
 
 
 class CommandRequest(BaseModel):
@@ -256,7 +258,23 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
         "think_show": getattr(core, "think_show", "debug"),
         "stream_enabled": bool(getattr(core, "stream_enabled", False)),  # v2.3: the client streams when on
         "closeness": {"level": level, "name": name},  # v2.4
+        # v2.6: what the SERVER can do — a client on another machine gates /image and /web on these, not its .env
+        "features": {"image": bool(getattr(core, "image_enabled", False)),
+                     "web_lookup": bool(getattr(core, "web_lookup_enabled", False))},
     }
+
+
+def turn_timing(core: Any, received: float | None) -> dict[str, Any] | None:
+    """The turn's stages on the server (v2.6) — the core's PRE / MODEL / POST and their total, plus ``server_ms``:
+    request received → outcome, any wait for her own act included. A client subtracts it from its own wall time
+    to see the network. ``None`` when the core kept no timing."""
+    timing = getattr(core, "last_turn_timing", None)
+    if not timing:
+        return None
+    out: dict[str, Any] = {k: timing.get(k) for k in ("pre_ms", "llm_ms", "post_ms", "total_ms")}
+    if received is not None:
+        out["server_ms"] = int((time.monotonic() - received) * 1000)
+    return out
 
 
 class _Service:
@@ -347,6 +365,7 @@ class _Service:
         """The record for this turn and whether it is NEW. A known ``turn_id`` returns the existing record
         (running or done) without running anything; a new turn takes the lock — 409 while another client's
         request runs, a wait while the server's own act does (v2.5; never inside the registry lock)."""
+        received = time.monotonic()  # v2.6: server_ms counts from here — a wait for her own act included
         with self._turns_lock:
             if req.turn_id and req.turn_id in self._turns:
                 return self._turns[req.turn_id], False
@@ -360,6 +379,7 @@ class _Service:
                 self.lock.release()
                 return self._turns[req.turn_id], False
             record = _TurnRecord()
+            record.received = received
             if req.turn_id:
                 self._turns[req.turn_id] = record
                 self._forget_old_turns()
@@ -393,7 +413,7 @@ class _Service:
                                       "theme": self.core.theme, "origin": origin})
             self.publish_message("user", req.text, "client", origin=origin)
             self.publish_message("lili", result.reply, "client", state=result, origin=origin)
-            record.result = self.turn_payload(result, origin)
+            record.result = self.turn_payload(result, origin, received=record.received)
         except LLMError as exc:  # the model failed — a readable error, the session stays usable
             log.warning("turn failed: %s", exc)
             record.error = (502, f"model unavailable: {exc}")
@@ -407,13 +427,15 @@ class _Service:
             record.done.set()
             record.events.put(_END)
 
-    def turn_payload(self, result: Any, origin: str | None = None) -> dict[str, Any]:
+    def turn_payload(self, result: Any, origin: str | None = None, *, received: float | None = None) -> dict[str, Any]:
         """The turn's outcome; its ``state`` is the snapshot just pushed (taken under the runner's lock)."""
         core = self.core
         return {
             "reply": result.reply, "emotion": result.emotion.value, "intensity": result.intensity,
             "thinking": getattr(core, "last_thinking", None), "intent": getattr(core, "last_intent", None),
-            "style": core.style, "stats": stats_dict(core.last_stats), "state": self.publish_state(origin),
+            "style": core.style, "stats": stats_dict(core.last_stats),
+            "timing": turn_timing(core, received),  # v2.6: the client's /latency sees the network hop
+            "state": self.publish_state(origin),
         }
 
 

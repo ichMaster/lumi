@@ -179,3 +179,53 @@ async def test_a_successful_command_restores_online_after_a_blip(tmp_path, clien
         assert "offline" in app._status_text()
         await _submit(pilot, app, "/mood", until=MOOD_PENDING)
         assert "offline" not in app._status_text()  # the answered command brought it back
+
+
+# --- v2.6 (LUMI-229): the client follows the server's features; /latency shows the network ----------------
+
+
+def _setup_with(tmp_path, **features):
+    core = Core(llm=MockLLMClient(states={"reply": "Радо!", "emotion": "joy", "intensity": 0.8}),
+                repository=JsonRepository(tmp_path / "server" / "s.json"),
+                canon="Ти — Лілі.", model="claude-haiku-4-5-20251001", **features)
+    remote = RemoteCore("http://testserver", TOKEN, client=TestClient(create_app(core, token=TOKEN, env="dev")))
+    remote.connect()
+    return LumiApp(remote)
+
+
+@pytest.mark.parametrize("line", ["/image ~/no-such.png", "/web погода у Львові"])
+async def test_a_feature_off_on_the_server_is_off_here(tmp_path, client_env, line):
+    client_env.setenv("LUMI_IMAGE", "on")  # this client's .env says on…
+    client_env.setenv("LUMI_WEB_LOOKUP", "on")
+    app = _setup_with(tmp_path)  # …the server has both off
+    said: list[str] = []
+    async with app.run_test() as pilot:
+        app.notify = lambda message, **kw: said.append(str(message))
+        await _submit(pilot, app, line)
+    assert len(said) == 1 and "off on the server" in said[0]
+
+
+async def test_a_feature_on_the_server_is_on_here(tmp_path, client_env):
+    client_env.delenv("LUMI_IMAGE", raising=False)  # this client's .env leaves vision off…
+    app = _setup_with(tmp_path, image_enabled=True)  # …the server has it on
+    said: list[str] = []
+    async with app.run_test() as pilot:
+        app.notify = lambda message, **kw: said.append(str(message))
+        await _submit(pilot, app, "/image ~/no-such-picture.png")
+    assert not any("Vision is off" in s for s in said)  # past the gate (the missing file is its own notice)
+
+
+async def test_latency_in_client_mode_shows_the_network(tmp_path, client_env):
+    app = _setup_with(tmp_path)
+    async with app.run_test() as pilot:
+        await _submit(pilot, app, "привіт", until="Радо!")
+        await _submit(pilot, app, "/latency", until="NETWORK client↔server")
+    out = "\n".join(app.transcript)
+    assert "turn latency" in out and "NETWORK client↔server: last" in out and "/1 turns" in out
+
+
+def test_in_process_latency_has_no_network_line(tmp_path, client_env):
+    core = Core(llm=MockLLMClient("ок"), repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m")
+    app = LumiApp(core)
+    assert app._remote is False and app._network_latency_line() is None  # /latency in-process is unchanged
+    assert app._feature_on("image", True) is True and app._feature_on("image", False) is False  # its own .env

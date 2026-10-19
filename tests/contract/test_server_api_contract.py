@@ -49,7 +49,10 @@ def test_only_health_is_open(tmp_path):
 
 def test_turn_carries_the_emotion_contract(tmp_path):
     res = _client(tmp_path).post("/v1/turn", json={"text": "?"}, headers=AUTH).json()
-    assert set(res) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "state"}
+    assert set(res) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "timing", "state"}
+    # v2.6: the turn's stages on the server + server_ms (received → outcome) — a remote client's network hop
+    assert set(res["timing"]) == {"pre_ms", "llm_ms", "post_ms", "total_ms", "server_ms"}
+    assert res["timing"]["server_ms"] >= 0
     assert isinstance(res["reply"], str) and res["reply"]
     assert res["emotion"] in {e.value for e in Emotion}
     assert 0.0 <= res["intensity"] <= 1.0
@@ -63,8 +66,10 @@ def test_state_shape_is_pinned(tmp_path):
         "mood", "theme", "think_show",
         "stream_enabled",  # v2.3
         "closeness",  # v2.4
+        "features",  # v2.6: what the server can do — a remote client gates /image and /web on it
     }
     assert set(state["closeness"]) == {"level", "name"}  # the level by name — never the raw value
+    assert state["features"] == {"image": False, "web_lookup": False}  # a bare core: both off
     assert set(state["totals"]) == {
         "turns", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "latency_ms",
     }
@@ -94,7 +99,8 @@ def test_the_stream_event_set_and_done_shape(tmp_path):
     assert {e for e, _ in events} <= {"delta", "think", "done", "error"}
     assert events[-1][0] == "done" and [e for e, _ in events].count("done") == 1  # exactly one outcome
     done = events[-1][1]
-    assert set(done) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "state"}
+    assert set(done) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "timing", "state"}
+    assert "server_ms" in done["timing"]  # v2.6: the streamed outcome carries it too
 
 
 def test_a_known_turn_id_never_runs_twice(tmp_path):

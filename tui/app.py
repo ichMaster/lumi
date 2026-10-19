@@ -845,8 +845,9 @@ class LumiApp(App[None]):
 
         Reads the file you point at (any path you own), attaches it as a multimodal block on the turn,
         and lets her reply. Gated by ``LUMI_IMAGE``; a non-image / missing file shows a notice."""
-        if not self._image_enabled:
-            self.notify("Vision is off — set LUMI_IMAGE=on to share images.", severity="warning", timeout=3)
+        if not self._feature_on("image", self._image_enabled):
+            where = "on the server — set LUMI_IMAGE=on in its .env" if self._remote else "— set LUMI_IMAGE=on"
+            self.notify(f"Vision is off {where} to share images.", severity="warning", timeout=3)
             return
         parts = text[len("/image"):].strip().split(None, 1)
         path = parts[0].strip() if parts else ""
@@ -1432,8 +1433,9 @@ class LumiApp(App[None]):
         """``/web <query>`` (v0.27, aliases ``/search`` ``/w``) — fire **one** live web lookup; Лілі answers
         from it in her own voice. The sibling of ``/recall`` (reads her memory) — this reads the **web** for
         this turn, via the v0.27 ``web_lookup`` tool. Gated by ``LUMI_WEB_LOOKUP`` (+ ``GEMINI_API_KEY``)."""
-        if not self._web_lookup_enabled:
-            self.notify("Web lookup is off — set LUMI_WEB_LOOKUP=on (+ GEMINI_API_KEY).",
+        if not self._feature_on("web_lookup", self._web_lookup_enabled):
+            where = " on the server — set it in its .env" if self._remote else ""
+            self.notify(f"Web lookup is off{where} — LUMI_WEB_LOOKUP=on (+ GEMINI_API_KEY).",
                         severity="warning", timeout=3)
             return
         query = text.split(None, 1)[1].strip() if " " in text else ""
@@ -1503,8 +1505,11 @@ class LumiApp(App[None]):
             await self._run_turn(result.turn, mirror_input=True)
             return
         name = line.strip().split(" ", 1)[0]
-        if name == "/latency" and result.kind == "meta" and (voice := self._voice_latency_line()):
-            result = replace(result, text=f"{result.text}\n{voice}")  # the spoken turns' local stages
+        if name == "/latency" and result.kind == "meta":
+            # the spoken turns' local stages; v2.6: in client mode, the client↔server time too
+            local = [s for s in (self._voice_latency_line(), self._network_latency_line()) if s]
+            if local:
+                result = replace(result, text="\n".join([result.text, *local]))
         self._show_command_result(result)
         if name in ("/style", "/model", "/model-set"):
             self._render_status()  # the status bar shows the style / model / profile
@@ -1602,6 +1607,21 @@ class LumiApp(App[None]):
             self.notify(result.text, severity="warning", timeout=3)
             return
         self._emit(result.text, command_renderable(result))
+
+    def _feature_on(self, name: str, local: bool) -> bool:
+        """v2.6: in client mode a feature is on when the SERVER has it (its snapshot), not this client's .env —
+        the server may be another machine; in-process the local flag decides, as before."""
+        return bool(self._core.features.get(name)) if self._remote else local
+
+    def _network_latency_line(self) -> str | None:
+        """v2.6: the client↔server time for `/latency` in client mode — this window's wall time minus the
+        server's own, per turn — or None (in-process, or before the first turn)."""
+        if not self._remote:
+            return None
+        s = self._core.network_summary()
+        if not s:
+            return None
+        return f"NETWORK client↔server: last {s['last']} ms · median {s['median']} ms /{s['n']} turns"
 
     def _voice_latency_line(self) -> str | None:
         """The spoken turns' median stages for `/latency` (v1.6.3 LUMI-206) — TUI-local, or None."""

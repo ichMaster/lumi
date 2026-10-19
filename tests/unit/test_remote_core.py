@@ -183,3 +183,41 @@ def test_the_failures_name_the_server_they_tried(tmp_path):
     down = RemoteCore(base, TOKEN, client=httpx.Client(transport=httpx.MockTransport(refuse), base_url=base))
     with pytest.raises(ServerUnavailable, match=r"unreachable at http://100\.101\.102\.103:8766"):
         down.connect()
+
+
+# --- v2.6 (LUMI-229): what the server can do, and the network between --------------------------------
+
+
+def test_network_hop_is_wall_minus_the_servers_own_time():
+    from tui.remote import network_hop_ms
+
+    assert network_hop_ms(250, {"total_ms": 180, "server_ms": 200}) == 50
+    assert network_hop_ms(150, {"server_ms": 200}) == 0  # clocks never make it negative
+    assert network_hop_ms(250, {"total_ms": 180}) is None  # an older server: no server_ms, no sample
+    assert network_hop_ms(250, None) is None
+
+
+def test_summarize_hops_last_median_n():
+    from tui.remote import summarize_hops
+
+    assert summarize_hops([]) is None
+    assert summarize_hops([40, 10, 30]) == {"last": 30, "median": 30, "n": 3}
+
+
+def test_features_come_from_the_servers_snapshot(tmp_path):
+    core = Core(llm=MockLLMClient(states={"reply": "так", "emotion": "calm", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m",
+                image_enabled=True, web_lookup_enabled=False)
+    rc = RemoteCore("http://testserver", TOKEN, client=TestClient(create_app(core, token=TOKEN)))
+    rc.connect()
+    assert rc.features == {"image": True, "web_lookup": False}  # the server's config, not this client's
+
+
+def test_each_turn_adds_a_network_sample(tmp_path):
+    rc, _ = _remote(tmp_path)
+    rc.connect()
+    assert rc.network_summary() is None
+    rc.reply("раз", rc.start_session())
+    rc.reply("два", rc.start_session())
+    summary = rc.network_summary()
+    assert summary["n"] == 2 and summary["last"] >= 0 and summary["median"] >= 0

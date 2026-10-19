@@ -795,6 +795,16 @@ class Core:
         return self._think_show
 
     @property
+    def image_enabled(self) -> bool:
+        """Whether vision is on here (``LUMI_IMAGE``) — a client on another machine asks the server (v2.6)."""
+        return self._image_enabled
+
+    @property
+    def web_lookup_enabled(self) -> bool:
+        """Whether the live web lookup is on here (``LUMI_WEB_LOOKUP``) — read by a remote client (v2.6)."""
+        return self._web_lookup_enabled
+
+    @property
     def model_aliases(self) -> dict[str, tuple[str, str]]:
         """The configured ``/model`` aliases (alias → (provider, model)); a copy (v0.37)."""
         return dict(self._model_aliases)

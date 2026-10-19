@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import uuid
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -33,7 +35,26 @@ NOT_YET = "not yet in server mode"
 CLIENT_HEADER = "X-Lumi-Client"  # v2.4: names this client — the events it causes come back with it as origin
 LISTEN_BACKOFF_S = (1.0, 30.0)  # reconnect delays for the push channel: doubling from the first to the cap
 LISTEN_READ_TIMEOUT_S = 45.0  # ~3 missed heartbeats (the server sends one per 15 s) → a dead stream
+NETWORK_WINDOW = 20  # v2.6: /latency's network hop is the median over this many recent turns
 log = logging.getLogger("lumi.client")
+
+
+def network_hop_ms(wall_ms: int, timing: dict[str, Any] | None) -> int | None:
+    """The client↔server time of one turn (v2.6): this client's wall time minus the server's own ``server_ms``
+    (received → outcome). ``None`` when the server sent no timing (an older server); never negative."""
+    server_ms = (timing or {}).get("server_ms")
+    if server_ms is None:
+        return None
+    return max(0, int(wall_ms) - int(server_ms))
+
+
+def summarize_hops(hops: Iterable[int]) -> dict[str, int] | None:
+    """``{last, median, n}`` over the recorded hops, or ``None`` before the first one."""
+    values = list(hops)
+    if not values:
+        return None
+    ordered = sorted(values)
+    return {"last": values[-1], "median": ordered[len(ordered) // 2], "n": len(values)}
 
 
 class MalformedStream(ValueError):
@@ -189,6 +210,7 @@ class RemoteCore:
         self._offline = False  # the push channel is down (a reconnect is pending)
         self._events_response: httpx.Response | None = None
         self._last_event_id: str | None = None  # v2.5: a reconnect resumes after it (no line twice)
+        self._hops: deque[int] = deque(maxlen=NETWORK_WINDOW)  # v2.6: recent client↔server times (ms)
 
     # --- transport -----------------------------------------------------------------------------------
     def _headers(self) -> dict[str, str]:
@@ -256,6 +278,7 @@ class RemoteCore:
         body: dict[str, Any] = {"text": user_text, "turn_id": uuid.uuid4().hex}
         if images:
             body["images"] = images
+        started = time.monotonic()  # v2.6: this client's wall time for the turn → the network hop
         res: dict[str, Any] | None = None
         if on_delta is not None and self.stream_enabled:
             try:
@@ -264,6 +287,9 @@ class RemoteCore:
                 log.info("stream broke (%s) — fetching turn %s the blocking way", exc, body["turn_id"])
         if res is None:
             res = self._call("POST", "/v1/turn", json=body)
+        hop = network_hop_ms(int((time.monotonic() - started) * 1000), res.get("timing"))
+        if hop is not None:
+            self._hops.append(hop)
         self._absorb(res)
         self.last_thinking = res.get("thinking")
         self.last_intent = res.get("intent")
@@ -471,6 +497,17 @@ class RemoteCore:
     def stream_enabled(self) -> bool:
         """v2.3: stream when the server's core does (``LUMI_STREAM`` on the server) — the TUI branches on it."""
         return bool(self._state.get("stream_enabled"))
+
+    @property
+    def features(self) -> dict[str, bool]:
+        """v2.6: what the SERVER can do (``/image`` → vision, ``/web`` → the live lookup) — from its snapshot,
+        never this client's ``.env`` (the server may be another machine with another config)."""
+        f = self._state.get("features") or {}
+        return {"image": bool(f.get("image")), "web_lookup": bool(f.get("web_lookup"))}
+
+    def network_summary(self) -> dict[str, int] | None:
+        """v2.6: the client↔server time over the recent turns (``{last, median, n}`` in ms), for ``/latency``."""
+        return summarize_hops(self._hops)
 
     @property
     def think_show(self) -> str:
