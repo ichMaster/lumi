@@ -5,6 +5,10 @@ real memory. The working tree stays **dev** — test data, free to break. This i
 install prod once, migrate her memory once, then update / roll back with one script. The design is in
 [ROADMAP §v2.1](../specification/ROADMAP.md) and [ARCHITECTURE §Configuration](../specification/ARCHITECTURE.md).
 
+> **Prod moves to the Linux box in v2.7, not before.** v2.6 installs the box's prod unit with an empty data root
+> and leaves it stopped ([LINUX_DEPLOY.md](LINUX_DEPLOY.md)); this Mac prod keeps running her real memory until
+> the v2.7 migration copies it over — then the Mac prod is stopped and kept untouched as the fallback.
+
 ## The 30-second model
 
 ```

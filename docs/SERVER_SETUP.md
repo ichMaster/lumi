@@ -33,7 +33,8 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
    ```bash
    LUMI_SERVER_TOKEN=<a long random string>   # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
    LUMI_SERVER_PORT=8765                      # prod 8765 · dev 8766 — never the same port for both
-   # LUMI_SERVER_HOST=127.0.0.1               # localhost only (the default) — no exposure until v2.6
+   # LUMI_SERVER_HOST=127.0.0.1               # localhost (the default); on the Linux box its Tailscale/LAN IP —
+                                              # docs/LINUX_DEPLOY.md (never 0.0.0.0 or a public address: refused)
    ```
 
    The token is a secret: never commit it, never paste it into logs or chats. The server refuses to start
@@ -145,7 +146,13 @@ The **voice mode** (`/mode-set voice`), the **voicer** and **dictation** need th
 to the core — they stay in the in-process TUI (revisited after v2.6); in client mode they're switched off and
 the TUI says "not yet in server mode".
 
+`/image` and `/web` follow the **server's** `.env` (`LUMI_IMAGE`, `LUMI_WEB_LOOKUP`) from v2.6 — the server may be
+another machine, so the client asks it instead of reading its own.
+
 `LUMI_SERVER=off ./lumi` always gives you the full in-process Лілі.
+
+**On another machine (v2.6).** The server can run on the always-on Linux box as systemd services, the Mac TUI a
+client over LAN/Tailscale: [LINUX_DEPLOY.md](LINUX_DEPLOY.md).
 
 ## When something's wrong
 
@@ -155,7 +162,8 @@ the TUI says "not yet in server mode".
 | `the server rejected the token` | client and server `.env` differ | use the same `LUMI_SERVER_TOKEN` |
 | `Лілі is busy with another request` | one request at a time (e.g. the CLI ran during a turn) | try again |
 | `LUMI_SERVER_TOKEN is not set` | no token in `.env` | add one (Setup step 2) |
-| `Port 8766 … is already in use by another server` (server start) | another process holds the port (`lsof -nP -iTCP:<port> -sTCP:LISTEN` names it) | stop it, or give this instance its own `LUMI_SERVER_PORT` |
+| `Port 8766 … is already in use by another server` (server start, exit 78) | another process holds the port (the line names the finder: `lsof -nP -iTCP:<port> -sTCP:LISTEN` on the Mac, `ss -ltnp 'sport = :<port>'` on Linux) | stop it, or give this instance its own `LUMI_SERVER_PORT` (and its clients the same) |
+| `LUMI_SERVER_HOST=… listens on every interface` / `is a public address` / `is a hostname` | the server binds LAN/Tailscale only (v2.6) | use `127.0.0.1`, a LAN IP or the Tailscale IP |
 | `another brain already runs on this data root` | `./lumi` or `./lumi-server` already runs on this instance | stop it — or, for a running server, use `./lumi-client` |
 
 Logs: the server writes `<data root>/lumi.log` (as the in-process TUI did); a client writes
