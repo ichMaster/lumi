@@ -108,7 +108,5 @@ Mac browser ── LAN ──► lumi-admin (on the box, :8767, its own admin to
 ## Decisions
 
 - **Alerts go through a dedicated admin bot** (owner, 2026-10-20) — not the prod bot.
-
-## Open questions (owner)
-
-- Should the Mac's dev tree also be visible in the panel (as a third, local instance), or only the box's two?
+- **The panel shows only the box's instances — prod and dev on the server** (owner, 2026-10-20). The Mac's dev tree
+  is not an instance of the panel; it stays a local working copy.
