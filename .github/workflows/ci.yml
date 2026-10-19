@@ -1,0 +1,31 @@
+# CI (v2.7, LUMI-233) — the project's two gates on Linux for every push and pull request: ruff + pytest.
+# The model, TTS, STT and every web service are mocked in the suite: no secret, no key, no paid call here.
+# The v2.7 deploy agent on the box deploys only a commit whose checks here are green.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install (the exact lock, every extra)
+        run: uv sync --frozen --all-extras
+      - name: Lint
+        run: uv run ruff check .
+      - name: Tests
+        run: uv run pytest -q

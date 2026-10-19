@@ -14,8 +14,10 @@ def test_synth_tone_length_and_format():
 
 
 def test_silent_no_op_when_no_backend(monkeypatch):
-    # Non-macOS + this build has no pygame.mixer → no backend; must never raise.
+    # Non-macOS + no pygame.mixer → no backend; must never raise. The mixer is made unimportable here rather than
+    # assumed absent: a Linux box (or CI runner) may well have one (v2.7 — the suite runs on Linux too).
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setitem(sys.modules, "pygame.mixer", None)
     player = SoundPlayer()
     assert player.ensure() is False
     player.send()
