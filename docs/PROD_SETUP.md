@@ -5,9 +5,12 @@ real memory. The working tree stays **dev** — test data, free to break. This i
 install prod once, migrate her memory once, then update / roll back with one script. The design is in
 [ROADMAP §v2.1](../specification/ROADMAP.md) and [ARCHITECTURE §Configuration](../specification/ARCHITECTURE.md).
 
-> **Prod moves to the Linux box in v2.7, not before.** v2.6 installs the box's prod unit with an empty data root
-> and leaves it stopped ([LINUX_DEPLOY.md](LINUX_DEPLOY.md)); this Mac prod keeps running her real memory until
-> the v2.7 migration copies it over — then the Mac prod is stopped and kept untouched as the fallback.
+> **Prod moved to the Linux box on 2026-10-20** (v2.6.0, the box's `~/lumi/prod` — [LINUX_DEPLOY.md](LINUX_DEPLOY.md)).
+> This Mac prod is now its **client** (`.env`: `LUMI_SERVER=on` + the box's host/port/token, so `./lumi` talks to the
+> box) and its `data/` is the untouched **fallback** (+ `backups/data-20261020-0116-v2.1.1-premove.tar.gz`, a copy
+> also on the box). **Rollback:** stop the box's prod services, restore `.env.bak-premove-20261020-0118` here, start
+> the Mac prod and its Telegram daemons (never both bots' pollers at once). The rest of this guide describes the Mac
+> prod as it ran from v2.1 to v2.6.
 
 ## The 30-second model
 

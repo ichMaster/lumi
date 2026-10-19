@@ -45,8 +45,8 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | Thoughts — `%think`, `%wonder`, `%catchup`, `%learn`, scheduled acts | ✅ | seen | spoken ones reach Telegram |
 | Tools — files (sandbox), Wikipedia, news (Guardian), web lookup, journal, date | ✅ | set | her files now live on the box: `~/lumi/dev/data/files` |
 | `/image` — you show her a picture | ✅ | set | the client sends the file; follows the **server's** `LUMI_IMAGE` (v2.6) |
-| Image generation | ⚠️ | set | the PNG is saved on the box and reaches you **only through Telegram**; not shown on the Mac — 🗓 inline in the window in **v2.11** |
-| **Her portrait in the viewer window (Mac)** | ❌ | — | the server writes `face.txt` on the box (no display) and the TUI client ignores the face state it receives. **Owner decision (2026-10-20): no interim fix** — her portrait follows a remote server in the 🗓 **v2.11** window (pywebview). Until then the Mac viewer doesn't follow a server — **prod included after the v2.7 move**; her face photos still reach Telegram |
+| Image generation | ⚠️ | set | the PNG is saved on the box and reaches you **only through Telegram**; not shown on the Mac — 🗓 inline in the window in **v2.12** |
+| **Her portrait in the viewer window (Mac)** | ❌ | — | the server writes `face.txt` on the box (no display) and the TUI client ignores the face state it receives. **Owner decision (2026-10-20): no interim fix** — her portrait follows a remote server in the 🗓 **v2.12** window (pywebview). Until then the Mac viewer doesn't follow a server — **prod included since the 2026-10-20 move**; her face photos still reach Telegram |
 | Voice mode (`/mode-set voice`, realtime) | ❌ | — | needs the mic and speakers next to the core; the client says "not yet in server mode". No v2 phase — the remote voice path is to be revisited after v2.6; the roadmap's answer is web voice (🗓 **v5.2**). Telegram voice in/out covers it meanwhile |
 | The voicer (her replies spoken on the Mac's speakers) | ❌ | — | same as voice mode — unscheduled in v2; 🗓 web voice **v5.2**; Telegram voice replies meanwhile |
 | Dictation (the Mac mic → her inbox) | ❌ | — | same — unscheduled in v2; 🗓 web dictation **v5.4**; Telegram voice messages meanwhile |
@@ -69,20 +69,22 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 |---|---|
 | **v2.6** | ✅ released 2026-10-20 (`v2.6.0`) — the dev instance on the box, the Mac as its client |
 | **v2.7** | deploy pipelines — a pull-based agent on the box: a push to `main` → dev, a release tag + the owner's confirmation → prod; CI (ruff + pytest); a bounded turn (no ~8-min hang). **Prod already moved** (2026-10-20) |
-| **v2.8** | settings move from `.env` to `settings.yaml` + `secrets.yaml` under one schema |
-| **v2.9** | the admin panel — watch: prod + dev health, uptime, daemons, tokens / cost / latency, logs |
-| **v2.10** | the admin panel — configure: settings editor, write-only secrets, rollback, audit, alerts through a dedicated **admin bot** |
-| **v2.11** | the pywebview client — chat + her face + inline pictures in one window; **the portrait follows the server again** |
-| **v4.1–v4.4** | TLS and security scans, multi-user, the web UI, user admin (extending the v2.9 panel) |
+| **v2.8** | Lumi in **Docker** — one image (GHCR, like matrix-agora), a compose project per instance; the systemd units retired |
+| **v2.9** | settings move from `.env` to `settings.yaml` + `secrets.yaml` under one schema |
+| **v2.10** | the admin panel — watch: prod + dev health, uptime, containers, tokens / cost / latency, logs |
+| **v2.11** | the admin panel — configure: settings editor, write-only secrets, rollback, audit, alerts through a dedicated **admin bot** |
+| **v2.12** | the pywebview client — chat + her face + inline pictures in one window; **the portrait follows the server again** |
+| **v4.1–v4.4** | TLS and security scans, multi-user, the web UI, user admin (extending the v2.10 panel) |
 | **v5.1 / v5.2 / v5.4** | the web face, web voice, web dictation |
 
 ## Deprecated or dropped
 
 | What | Status |
 |---|---|
-| `.env` as the settings file | 🗑 replaced by `settings.yaml` + `secrets.yaml` in **v2.8** (still read for one more release, then dropped) |
+| `.env` as the settings file | 🗑 replaced by `settings.yaml` + `secrets.yaml` in **v2.9** (still read for one more release, then dropped) |
 | Prod running in-process on the Mac | 🗑 **retired 2026-10-20** — the Mac prod is a client, its `data/` the fallback. `./lumi` in-process stays available for dev |
-| "Switch model / config; restart" as part of the v4.4 user admin | 🗑 moved into the **v2.9–v2.10** panel |
+| "Switch model / config; restart" as part of the v4.4 user admin | 🗑 moved into the **v2.10–v2.11** panel |
+| The v2.6 systemd user units | 🗑 retired by the **v2.8** Docker containers |
 | The voicer / dictator apps next to a remote server | not deprecated, **not scheduled**: no phase brings them to the server; Telegram voice in/out and later web voice/dictation (v5.2/v5.4) take their place |
 
 ## How to check

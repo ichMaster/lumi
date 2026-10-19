@@ -1,5 +1,8 @@
 # Linux deploy — Лілі always on (v2.6)
 
+> **Since 2026-10-20 prod runs on the box too** (migrated from the Mac at v2.6.0 — the Mac prod is its client, its
+> `data/` the fallback). From **v2.8** both instances run as Docker containers and this guide is rewritten for them.
+
 Run Лілі's server on the always-on home **Linux box** as systemd services, and talk to her from the Mac over
 **LAN/Tailscale**. This is the operator's guide: install, run, check, monitor, fix. The design is in
 [ROADMAP §v2.6](../specification/ROADMAP.md) and [ARCHITECTURE §Deployment and CI/CD](../specification/ARCHITECTURE.md);
@@ -234,5 +237,5 @@ A stop waits up to 300 s (`TimeoutStopSec`) for the session close — it makes m
 - **One token per instance**, secrets only in `~/lumi/<instance>/.env` (`chmod 600`), never in a unit file or a log.
 - **ufw admits the home subnet only**: `sudo ufw allow from 192.168.1.0/24 to any port 8765:8766 proto tcp`
   (step 1), beside agora's rules for :8008 / :8090.
-- Not here yet: her real memory on the box and the deploy pipelines (**v2.7**); TLS, public exposure and the
+- Not here yet: her real memory on the box and the deploy pipelines (**v2.7**), containers (**v2.8**); TLS, public exposure and the
   security scans (**v4.1**); voice mode, the voicer and dictation beside the server (revisited after v2.6).
