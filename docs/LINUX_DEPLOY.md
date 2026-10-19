@@ -8,9 +8,9 @@ the server itself in [SERVER_SETUP.md](SERVER_SETUP.md), the bridge in [TELEGRAM
 ## The 30-second model
 
 ```
-Mac (a client only)                          Linux box (always on, Tailscale)
+Mac (a client only)                          Linux box (always on) — 192.168.1.197 (ssh: slate-server)
 ./lumi-client ─┐                             ~/lumi/dev/{app,.env,data}
-./lumi-cli    ─┴── LAN / Tailscale ────────► lumi-server@dev  + lumi-telegram-inbound@dev / -outbound@dev
+./lumi-cli    ─┴── LAN (ufw: 192.168.1.0/24) ► lumi-server@dev  + lumi-telegram-inbound@dev / -outbound@dev
                                              ~/lumi/prod/{app,.env,data}
 ~/lumi/prod (v2.1.1, her real memory)        lumi-server@prod — installed, STOPPED, data root EMPTY
   keeps running on the Mac until v2.7
@@ -23,6 +23,10 @@ Mac (a client only)                          Linux box (always on, Tailscale)
   migration in **v2.7**; the box's prod unit is installed and left stopped with an empty data root.
 - **LAN/Tailscale only.** The server refuses to listen on `0.0.0.0`, `::`, a public address or a hostname — only
   loopback, a LAN (RFC 1918) or a Tailscale address (100.64.0.0/10). No TLS yet (v4.1): never port-forward it.
+- **The same box runs matrix-agora** (Matrix on :8008, its panel on :8090) and Lumi follows its pattern: bind the
+  box's **LAN address** and let **ufw** admit the home subnet only. On the LAN the Mac needs no Tailscale, and the
+  agora containers on the box can reach her too (they can't reach 127.0.0.1). Tailscale is optional, for away
+  from home.
 - The Mac never touches the box's disk: the client reads everything through the API.
 
 ---
@@ -31,11 +35,9 @@ Mac (a client only)                          Linux box (always on, Tailscale)
 
 ### 0. Prerequisites (once)
 
-On **both** machines: Tailscale up (`tailscale up`). On the box, note its address:
-
-```bash
-tailscale ip -4            # e.g. 100.101.102.103 — the address the server binds and the Mac dials
-```
+The box's **LAN address** is what the server binds and the Mac dials — here `192.168.1.197` (keep it fixed: a
+DHCP reservation on the router). Tailscale is optional: with it on **both** machines you may bind the box's
+Tailscale address instead (`tailscale ip -4`, 100.x.y.z) — one address per instance, the client dials the same one.
 
 On the **box**:
 
@@ -62,6 +64,14 @@ below — in the instance's `.env` **and** in the Mac client's `.env`.
 The server checks again at every start: a port another service holds is refused with the culprit's hint
 (`ss -ltnp 'sport = :<port>'`), exit **78** — the unit stays `failed` instead of restarting every few seconds.
 
+**Open the ports to the home subnet** (ufw is active on the box — without this rule the Mac's connection just
+times out, while the agora ports answer):
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 8765:8766 proto tcp
+sudo ufw status | grep -E '8765|8008'       # 8765:8766/tcp ALLOW 192.168.1.0/24 — beside agora's rules
+```
+
 ### 2. Install the dev instance
 
 ```bash
@@ -77,7 +87,7 @@ In `~/lumi/dev/.env` — copy your keys and settings over from the Mac dev `.env
 ```bash
 LUMI_HOME=~/lumi/dev/data
 LUMI_ENV=dev
-LUMI_SERVER_HOST=100.101.102.103      # the box's Tailscale IP (or its LAN IP) — never 0.0.0.0, never public
+LUMI_SERVER_HOST=192.168.1.197        # the box's LAN IP (or its Tailscale IP) — never 0.0.0.0, never public
 LUMI_SERVER_PORT=8766                 # from step 1
 LUMI_SERVER_TOKEN=<a new random one>  # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 LUMI_BRIDGE=on                        # the Telegram bridge beside the server
@@ -137,7 +147,7 @@ daemons** (the dev bot) — two pollers fight over the updates. The Mac prod kee
 In the `.env` the Mac client reads (the dev tree's `~/development/lumi/.env`):
 
 ```bash
-LUMI_SERVER_HOST=100.101.102.103      # the box — its Tailscale IP or MagicDNS name (e.g. lumi-box)
+LUMI_SERVER_HOST=192.168.1.197        # the box — the address its server binds (LAN, or Tailscale if you bound that)
 LUMI_SERVER_PORT=8766                 # the box's dev port
 LUMI_SERVER_TOKEN=<the box's dev token>
 ```
@@ -185,7 +195,7 @@ tail -f ~/lumi/dev/data/telegram-inbound.log ~/lumi/dev/data/telegram-outbound.l
 From the Mac:
 
 ```bash
-curl -s http://100.101.102.103:8766/v1/health           # {"ok": true, "env": "dev", "version": "…"} — open, no token
+curl -s http://192.168.1.197:8766/v1/health             # {"ok": true, "env": "dev", "version": "…"} — open, no token
 ./lumi-cli status                                        # the full picture, with the token
 ```
 
@@ -207,9 +217,9 @@ A stop waits up to 300 s (`TimeoutStopSec`) for the session close — it makes m
 | unit `failed`, journal: `LUMI_SERVER_HOST=0.0.0.0 listens on every interface` | a wildcard bind | set the box's Tailscale or LAN IP |
 | …`is a public address` / `is a hostname` | not LAN/Tailscale, or a name | use the IP from `tailscale ip -4` (or the LAN IP) |
 | unit `failed`, journal: `Port 8766 … is already in use … ss -ltnp 'sport = :8766'` | another service holds the port (exit 78, no restart) | stop it, or pick another free port — in the instance's `.env` **and** the Mac's |
-| journal repeats `… is not an address of this machine (yet)` | Tailscale is down or the IP changed | `tailscale up`; `tailscale ip -4`; it recovers by itself once the address exists |
+| journal repeats `… is not an address of this machine (yet)` | the box's LAN IP changed (no DHCP reservation) or Tailscale is down | fix the reservation / `tailscale up`; it recovers by itself once the address exists |
 | unit `failed`: `LUMI_SERVER_TOKEN is not set` | no token in the instance's `.env` | add one (step 2) |
-| Mac: `server unreachable at http://100.…:8766` | the box/service is down, Tailscale is off on the Mac, or the port differs | `systemctl --user status lumi-server@dev`; `tailscale status`; compare ports |
+| Mac: `server unreachable at http://192.168.1.197:8766` (a timeout) | ufw has no rule for the port, the service is down, or the port differs | the ufw rule (step 1); `systemctl --user status lumi-server@dev`; compare ports |
 | Mac: `the server at … rejected the token` | the Mac's token isn't this instance's | copy the box instance's `LUMI_SERVER_TOKEN` |
 | TUI: `… rejected the token — no pushes until a restart` | the server restarted with another token | fix the token, restart the client |
 | no Telegram messages arrive, `telegram-inbound.log` shows a *Conflict* (another getUpdates) | another machine polls the same bot | stop the other daemons (step 5) |
@@ -217,10 +227,11 @@ A stop waits up to 300 s (`TimeoutStopSec`) for the session close — it makes m
 
 ## Security & scope
 
-- **LAN/Tailscale only, enforced by the server.** Never forward the port on the router. Tailscale encrypts the
-  link; on a plain LAN the token crosses the wire in the clear — prefer Tailscale until TLS (v4.1).
+- **LAN/Tailscale only, enforced by the server.** Never forward the port on the router. On the home LAN the token
+  crosses the wire in the clear (no TLS until v4.1) — the same trust as agora's panel; bind the Tailscale address
+  instead when you want the link encrypted or reachable away from home.
 - **One token per instance**, secrets only in `~/lumi/<instance>/.env` (`chmod 600`), never in a unit file or a log.
-- With a host firewall (ufw), allow the ports only from Tailscale:
-  `sudo ufw allow in on tailscale0 to any port 8765:8766 proto tcp`.
+- **ufw admits the home subnet only**: `sudo ufw allow from 192.168.1.0/24 to any port 8765:8766 proto tcp`
+  (step 1), beside agora's rules for :8008 / :8090.
 - Not here yet: her real memory on the box and the deploy pipelines (**v2.7**); TLS, public exposure and the
   security scans (**v4.1**); voice mode, the voicer and dictation beside the server (revisited after v2.6).
