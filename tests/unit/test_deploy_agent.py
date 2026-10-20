@@ -555,6 +555,23 @@ def test_main_survives_a_hangup(tmp_path, monkeypatch):
         signal.signal(signal.SIGHUP, before)
 
 
+def test_an_error_status_is_kept_not_reported_as_silence(monkeypatch):
+    """Review #5: urllib raises on a 401 — the smoke must say "answered 401", not "answered nothing"."""
+    import io
+    import urllib.error
+
+    def refuse(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, io.BytesIO(b'{"detail":"unauthorized"}'))
+
+    def unreachable(req, timeout):
+        raise urllib.error.URLError("Connection refused")
+
+    monkeypatch.setattr(da.urllib.request, "urlopen", refuse)
+    assert da._http("http://192.168.1.197:8766/v1/state", {}) == (401, None)
+    monkeypatch.setattr(da.urllib.request, "urlopen", unreachable)
+    assert da._http("http://192.168.1.197:8766/v1/state", {}) == (0, None)
+
+
 def test_a_second_step_never_runs_alongside_a_running_one(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
     lock = tmp_path / "lumi" / "deploy" / "agent.lock"

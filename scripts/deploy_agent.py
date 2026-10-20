@@ -35,6 +35,7 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -170,6 +171,8 @@ def _http(url: str, headers: dict) -> tuple[int, object]:
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 — GitHub API / the LAN server
             return resp.status, json.loads(resp.read() or b"null")
+    except urllib.error.HTTPError as exc:  # an answer, just not a 2xx — keep its status (review #5: a 401)
+        return exc.code, None
     except Exception:  # noqa: BLE001 — a failed probe is "no answer", decided by the caller
         return 0, None
 
