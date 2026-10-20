@@ -45,6 +45,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 REPO = "ichMaster/lumi"
+IMAGE = "ghcr.io/ichmaster/lumi"  # deploy/compose/compose.yaml pulls it with the ref's tag
 INSTANCES = ("dev", "prod")
 HEALTH_WAIT_S = 90.0  # how long a restarted server may take to answer /v1/health
 STABLE_S = 60.0  # the services must still be active this long after the restart
@@ -430,6 +431,7 @@ class Agent:
             side.update(current=ref, previous=previous, previous_runs=previous_runs)
             last[instance] = {"ref": ref, "result": "ok", "at": started}
             self.log(f"{instance}: {ref} is live — the smoke is green")
+            self._prune(state)
             return True
         self.log(f"{instance}: {ref} failed the smoke — {'; '.join(reasons)} — back to {previous} ({previous_runs})")
         side.setdefault("bad", []).append(ref)
@@ -437,6 +439,18 @@ class Agent:
         if previous:
             self._go(instance, side, previous, previous_runs, ref)
         return False
+
+    def _prune(self, state: dict) -> None:
+        """Remove the Lumi images no instance runs or would roll back to (v2.8 review #3 — each new commit leaves
+        ~240 MB of layers). Kept: each instance's current and previous image. GHCR keeps every tag, and Docker
+        refuses to remove an image a container still uses."""
+        keep = {image_tag(ref) for instance in INSTANCES for ref in
+                (state.get(instance, {}).get("current"), state.get(instance, {}).get("previous")) if ref}
+        rc, out = self._run(["docker", "images", IMAGE, "--format", "{{.Tag}}"], None)
+        stale = sorted({tag for tag in out.split() if tag != "<none>" and tag not in keep}) if rc == 0 else []
+        if stale:
+            rc, _ = self._run(["docker", "image", "rm", *[f"{IMAGE}:{tag}" for tag in stale]], None)
+            self.log(f"superseded images {'removed' if rc == 0 else 'removed where unused'}: {', '.join(stale)}")
 
     # the commands
     def tick(self) -> None:
