@@ -150,6 +150,20 @@ def test_wildcard_public_and_hostname_binds_are_refused(host, why):
     assert problem is not None and why in problem and "LAN or Tailscale IP" in problem
 
 
+# --- v2.8 (LUMI-238): inside the image the wildcard is allowed — the publish rule decides the exposure ----------
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::"])
+def test_the_image_may_bind_every_interface(host):
+    assert sm.bind_problem(host, container=True) is None
+    assert "every interface" in sm.bind_problem(host)  # outside a container: still refused
+
+
+@pytest.mark.parametrize("host", ["8.8.8.8", "lumi-box", ""])
+def test_the_container_mode_opens_only_the_wildcard(host):
+    assert sm.bind_problem(host, container=True) is not None  # a public address or a name is still refused
+
+
 def test_a_refused_bind_stops_before_the_guard_or_the_core(monkeypatch):
     import dataclasses
 

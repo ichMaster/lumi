@@ -18,6 +18,7 @@ with a note. ``LUMI_ENV`` unset + an unmarked root → no effect at all (no mark
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
@@ -29,6 +30,20 @@ MARKER_NAME = "env-marker"
 OVERRIDE_ENV = "LUMI_ALLOW_DIRTY_PROD"
 _TRUTHY = {"1", "true", "on", "yes"}
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# v2.8 the container mode: the image sets LUMI_CONTAINER=1 and bakes its build ref into LUMI_BUILD (a release
+# tag ``vA.B.C`` for an image built from a tag, ``sha-<short>`` otherwise). Docker creates /.dockerenv in every
+# container, so the env var alone — set on a host by mistake — never switches a guard into container mode.
+CONTAINER_ENV = "LUMI_CONTAINER"
+BUILD_ENV = "LUMI_BUILD"
+DOCKERENV = Path("/.dockerenv")
+_RELEASE_BUILD = re.compile(r"^v\d+\.\d+\.\d+$")
+
+
+def in_container(environ: Mapping[str, str] | None = None, *, dockerenv: Path = DOCKERENV) -> bool:
+    """Whether this process runs inside the Lumi image: ``LUMI_CONTAINER`` set **and** Docker's ``/.dockerenv``."""
+    environ = os.environ if environ is None else environ
+    return (environ.get(CONTAINER_ENV) or "").strip().lower() in _TRUTHY and dockerenv.exists()
 _MAX_LISTED = 10  # dirty files named in a refusal before "…"
 
 
@@ -52,8 +67,12 @@ class Verdict:
     notes: tuple[str, ...] = ()  # non-blocking warnings (no git, the override in use)
 
 
-def check(env: str | None, marker: str | None, git: GitState, *, allow_dirty: bool = False) -> Verdict:
-    """The pure decision: may an instance named ``env`` open a root marked ``marker`` from this checkout?"""
+def check(env: str | None, marker: str | None, git: GitState, *, allow_dirty: bool = False,
+          container: bool = False, build: str | None = None) -> Verdict:
+    """The pure decision: may an instance named ``env`` open a root marked ``marker`` from this checkout?
+
+    v2.8: in a ``container`` there is no checkout to inspect — prod requires the image's baked ``build`` to be a
+    release tag (``vA.B.C``), the container twin of "a clean checkout at a tag"; the marker checks are unchanged."""
     reasons: list[str] = []
     notes: list[str] = []
     if marker == "prod" and env != "prod":
@@ -66,7 +85,11 @@ def check(env: str | None, marker: str | None, git: GitState, *, allow_dirty: bo
     if env == "prod":
         if allow_dirty:
             notes.append(f"{OVERRIDE_ENV} is set — the clean/tagged check for prod is bypassed")
-        if not git.available:
+        if container:
+            if not _RELEASE_BUILD.match(build or "") and not allow_dirty:
+                found = f"this image's build is {build!r}" if build else f"this image has no {BUILD_ENV}"
+                reasons.append(f"prod runs only released code — {found}, not a release tag (vA.B.C)")
+        elif not git.available:
             notes.append("no git checkout found — the clean/tagged check was skipped")
         else:
             problems: list[str] = []
@@ -139,6 +162,7 @@ def enforce(
     repo: Path = _REPO_ROOT,
     run: Runner = subprocess.run,
     environ: Mapping[str, str] | None = None,
+    dockerenv: Path = DOCKERENV,
 ) -> tuple[str, ...]:
     """Check ``cfg.env`` against the root's marker (+ git for prod); mark an unmarked root on success.
 
@@ -152,8 +176,10 @@ def enforce(
         return ()
     environ = os.environ if environ is None else environ
     allow_dirty = (environ.get(OVERRIDE_ENV) or "").strip().lower() in _TRUTHY
-    git = git_state(repo, run) if env == "prod" else GitState(available=False)
-    verdict = check(env, marker, git, allow_dirty=allow_dirty)
+    container = in_container(environ, dockerenv=dockerenv)  # v2.8: the image's build, not a checkout
+    git = git_state(repo, run) if env == "prod" and not container else GitState(available=False)
+    verdict = check(env, marker, git, allow_dirty=allow_dirty, container=container,
+                    build=(environ.get(BUILD_ENV) or "").strip() or None)
     if not verdict.ok:
         raise EnvGuardRefusal(format_refusal(verdict, root))
     if env is not None and marker is None:

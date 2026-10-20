@@ -120,10 +120,13 @@ _BIND_NETS = tuple(ipaddress.ip_network(n) for n in (
 _BIND_FIX = "bind the box's LAN or Tailscale IP (or 127.0.0.1)"
 
 
-def bind_problem(host: str) -> str | None:
+def bind_problem(host: str, *, container: bool = False) -> str | None:
     """Why the server must not listen on ``host`` (v2.6), or ``None`` when it may — ``localhost``, loopback,
     a LAN (RFC 1918) or Tailscale (100.64.0.0/10, IPv6 ULA) address. A wildcard, a public address or any
-    other hostname is refused: the server is reachable over LAN/Tailscale only, never from the internet."""
+    other hostname is refused: the server is reachable over LAN/Tailscale only, never from the internet.
+
+    v2.8: inside the Lumi image (``container``) the wildcard is allowed — the container's own interfaces are
+    private, and what reaches it is the compose publish rule's job (the box's LAN address only)."""
     name = (host or "").strip()
     if name.lower() == "localhost":
         return None
@@ -134,6 +137,8 @@ def bind_problem(host: str) -> str | None:
             return f"LUMI_SERVER_HOST is empty — {_BIND_FIX}."
         return f"LUMI_SERVER_HOST={name} is a hostname — {_BIND_FIX} as an address."
     if ip.is_unspecified:
+        if container:
+            return None
         return f"LUMI_SERVER_HOST={name} listens on every interface — {_BIND_FIX} instead."
     if not any(ip in net for net in _BIND_NETS):
         return f"LUMI_SERVER_HOST={name} is a public address — {_BIND_FIX}; never expose her to the internet."
@@ -236,13 +241,14 @@ def close_session(service, *, wait_s: float = SHUTDOWN_WAIT_S) -> bool:
 
 def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model); the app is tested directly
     from core.config import load_config
-    from core.envguard import guard_entry
+    from core.envguard import guard_entry, in_container
 
     cfg = load_config()
     if not cfg.server_token:
         raise ConfigRefusal("LUMI_SERVER_TOKEN is not set — the server never runs without a client token "
                             "(see .env.example).")
-    if problem := bind_problem(cfg.server_host):  # v2.6: LAN/Tailscale only — refused before anything runs
+    # v2.6: LAN/Tailscale only — refused before anything runs; v2.8: the image may bind every interface
+    if problem := bind_problem(cfg.server_host, container=in_container()):
         raise ConfigRefusal(problem)
     guard_entry(cfg)  # v2.1: refuse before touching the data root
     from core.brainlock import guard_single_brain

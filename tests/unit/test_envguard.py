@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from core.envguard import (
+    BUILD_ENV,
+    CONTAINER_ENV,
     MARKER_NAME,
     OVERRIDE_ENV,
     EnvGuardRefusal,
@@ -15,6 +17,7 @@ from core.envguard import (
     enforce,
     git_state,
     guard_entry,
+    in_container,
     read_marker,
     write_marker,
 )
@@ -195,3 +198,50 @@ def test_guard_entry_turns_a_refusal_into_a_readable_exit(tmp_path):
         guard_entry(_cfg(tmp_path, None))
     message = str(exc.value)
     assert "refusing to start" in message and str(tmp_path) in message and "belongs to prod" in message
+
+
+# --- v2.8 (LUMI-238): the container mode — the image's build stands in for the checkout ------------------------
+
+
+def test_in_container_needs_the_env_var_and_dockerenv(tmp_path):
+    dockerenv = tmp_path / ".dockerenv"
+    assert not in_container({CONTAINER_ENV: "1"}, dockerenv=dockerenv)  # set on a host by mistake → no
+    dockerenv.touch()
+    assert in_container({CONTAINER_ENV: "1"}, dockerenv=dockerenv)
+    assert not in_container({}, dockerenv=dockerenv)  # a container that isn't the Lumi image
+
+
+@pytest.mark.parametrize(("build", "ok"), [
+    ("v2.8.0", True), ("v10.0.12", True),
+    ("sha-b6a4ca6", False), ("edge", False), ("local", False), ("v2.8.0-rc1", False), (None, False),
+])
+def test_prod_in_a_container_runs_only_a_release_build(build, ok):
+    verdict = check("prod", "prod", NO_GIT, container=True, build=build)
+    assert verdict.ok is ok
+    if not ok:
+        assert "release tag (vA.B.C)" in verdict.reasons[0]
+    assert not any("no git checkout" in n for n in verdict.notes)  # not a missing checkout — an image
+
+
+def test_dev_in_a_container_runs_any_build():
+    assert check("dev", "dev", NO_GIT, container=True, build="sha-b6a4ca6").ok
+
+
+def test_the_override_and_the_markers_keep_their_meaning_in_a_container():
+    overridden = check("prod", "prod", NO_GIT, allow_dirty=True, container=True, build="sha-b6a4ca6")
+    assert overridden.ok and any(OVERRIDE_ENV in n for n in overridden.notes)
+    assert not check("dev", "prod", NO_GIT, container=True, build="v2.8.0").ok  # dev on her memory: still no
+    assert not check("prod", "dev", NO_GIT, container=True, build="v2.8.0").ok  # prod on test data: still no
+
+
+def test_enforce_in_a_container_reads_the_build_and_never_runs_git(tmp_path):
+    dockerenv = tmp_path / ".dockerenv"
+    dockerenv.touch()
+    run, repo = _FakeRun(), _repo(tmp_path / "repo")  # a checkout exists — the image's build still decides
+    data = tmp_path / "data"
+    with pytest.raises(EnvGuardRefusal, match="sha-b6a4ca6"):
+        enforce(_cfg(data, "prod"), repo=repo, run=run, dockerenv=dockerenv,
+                environ={CONTAINER_ENV: "1", BUILD_ENV: "sha-b6a4ca6"})
+    enforce(_cfg(data, "prod"), repo=repo, run=run, dockerenv=dockerenv,
+            environ={CONTAINER_ENV: "1", BUILD_ENV: "v2.8.0"})
+    assert run.calls == [] and read_marker(data) == "prod"

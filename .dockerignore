@@ -1,0 +1,19 @@
+# v2.8 (LUMI-238) — nothing secret, lived or local enters the image's build context.
+.git
+.github
+.env
+.env.*
+!.env.example
+.lumi
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.claude
+tests
+specification
+docs
+*.log
+*.tar.gz
