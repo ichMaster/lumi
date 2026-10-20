@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """v2.7 (LUMI-235) — the pull-based deploy agent: code reaches the Linux box by pipeline, not by hand.
+v2.8 (LUMI-241) — code arrives as **images**: each instance is a compose project (``deploy/compose/``).
 
 The repo is public, so nothing reaches *into* the box (no self-hosted runner, no deploy secret in GitHub): this agent,
 run every few minutes by a systemd user timer on the box, looks at GitHub itself.
 
-- **dev** follows ``main``: a new commit whose CI checks are all green (and that is ahead of what dev runs) is
-  checked out in ``~/lumi/dev/app``, synced, restarted and smoke-checked; a failed smoke rolls dev back to the
-  previous commit and marks the bad one.
+- **dev** follows ``main``: a new commit whose CI checks are all green (the image build among them) and that is
+  ahead of what dev runs is deployed as its image ``sha-<short>`` (``docker compose pull`` + ``up -d``) and
+  smoke-checked; a failed smoke goes back to what ran before and marks the bad commit.
 - **prod** follows release tags, **only after the owner's confirmation**: the newest ``vA.B.C`` waits until
-  ``confirm vA.B.C``; then the server is stopped and her data archived (``~/lumi/prod/backups/``, the
-  ``prod_update.py`` naming), and the same deploy → smoke → roll-back-on-failure.
+  ``confirm vA.B.C``; then its image is pulled, the server stopped and her data archived
+  (``~/lumi/prod/backups/``, the ``prod_update.py`` naming), and the same deploy → smoke → roll-back-on-failure.
+- **The v2.6 units are retired** by an instance's first container deploy (stopped + disabled, never deleted). Until
+  that deploy is superseded the way back is those units — their checkout still holds the code they ran, and no
+  image exists for a commit or tag older than the image workflow.
 - **Deploys move code, never data or settings** — the agent writes only its own state under ``~/lumi/deploy/`` and
   the prod archives beside the data root (``data/`` is only read, into the archive).
 
@@ -18,11 +22,11 @@ Commands::
     deploy_agent.py tick                 # the timer's step: dev, then prod
     deploy_agent.py confirm v2.7.0       # the owner's approval for prod (deploys it now)
     deploy_agent.py status               # what runs where, what waits, what failed
-    deploy_agent.py rollback dev|prod    # back to the previous commit / tag, one command
-    deploy_agent.py install              # copy this agent to ~/lumi/deploy/ + install and start the timer
+    deploy_agent.py rollback dev|prod    # back to what ran before (the previous image, or the units), one command
+    deploy_agent.py install              # copy this agent + the compose files to ~/lumi/deploy/, start the timer
 
 Stdlib only (the box's system Python runs it); every outside effect goes through an injectable runner, so the
-decisions and the deploy sequence are tested without git, systemd, uv or the network.
+decisions and the deploy sequence are tested without git, Docker, systemd or the network.
 """
 
 from __future__ import annotations
@@ -46,6 +50,9 @@ HEALTH_WAIT_S = 90.0  # how long a restarted server may take to answer /v1/healt
 STABLE_S = 60.0  # the services must still be active this long after the restart
 _RELEASE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 _LOG_TS = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+SERVICES = ("server", "telegram-inbound", "telegram-outbound")  # deploy/compose/compose.yaml
+# One line per container: its compose service, id, state and restart count (a restart keeps the id, bumps the count).
+_INSPECT = '{{index .Config.Labels "com.docker.compose.service"}} {{.Id}} {{.State.Status}} {{.RestartCount}}'
 
 Run = Callable[[list, Path | None], tuple[int, str]]
 Http = Callable[[str, dict], tuple[int, object]]
@@ -75,6 +82,16 @@ def ci_verdict(payload: object) -> str:
     if all(r.get("conclusion") in ("success", "skipped", "neutral") for r in runs):
         return "green"
     return "red"
+
+
+def image_tag(ref: str) -> str:
+    """The image a git ref runs as — CI's tags: a release tag is its own tag, a commit is ``sha-<7 chars>``."""
+    return ref if _RELEASE.match(ref) else f"sha-{ref[:7]}"
+
+
+def _units(instance: str) -> list[str]:
+    """The instance's v2.6 systemd units — the server first."""
+    return [f"lumi-server@{instance}", f"lumi-telegram-inbound@{instance}", f"lumi-telegram-outbound@{instance}"]
 
 
 def release_tags(tags: list[str]) -> list[str]:
@@ -145,10 +162,6 @@ def smoke_verdict(instance: str, health: object, expected_version: str, state_st
 
 
 # --- the outside world (replaced in tests) ----------------------------------------------------------------------
-def _uv() -> str:
-    return shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
-
-
 def _run(cmd: list, cwd: Path | None = None) -> tuple[int, str]:
     try:
         proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=900)
@@ -189,6 +202,8 @@ class Agent:
 
     # paths + state
     def app(self, instance: str) -> Path:
+        """The instance's git checkout — read for refs (``merge-base``, tags, ``VERSION``), run only by the v2.6
+        units (the way back from a first container deploy)."""
         return self.home / instance / "app"
 
     def _state_path(self) -> Path:
@@ -223,37 +238,73 @@ class Agent:
             return {}
 
     def _seed(self, state: dict) -> dict:
-        """Fill in what each instance runs today the first time the agent sees it (no deploy)."""
-        dev = state.setdefault("dev", {})
-        if not dev.get("current"):
-            rc, sha = self.git("dev", "rev-parse", "HEAD")
-            if rc == 0:
-                dev["current"] = sha.strip()
-        prod = state.setdefault("prod", {})
-        if not prod.get("current"):
-            rc, tag = self.git("prod", "describe", "--tags", "--exact-match")
-            if rc == 0:
-                prod["current"] = tag.strip()
+        """Fill in what each instance runs today the first time the agent sees it (no deploy): the ref from its
+        checkout, and whether it runs as the v2.6 units or as containers."""
+        for instance in INSTANCES:
+            side = state.setdefault(instance, {})
+            if not side.get("current"):
+                rc, ref = (self.git("dev", "rev-parse", "HEAD") if instance == "dev"
+                           else self.git("prod", "describe", "--tags", "--exact-match"))
+                if rc == 0:
+                    side["current"] = ref.strip()
+            if not side.get("runs"):
+                side["runs"] = "units" if self._enabled(_units(instance)[0]) else "containers"
         return state
 
-    # the deploy step
-    def _switch(self, instance: str, ref: str) -> bool:
-        """Stop the instance's server, check out ``ref``, sync, start it again (its Telegram daemons follow:
-        ``PartOf`` stops them, ``WantedBy`` starts them). Stopped **first** (v2.7 review #1): a running server must
-        never close her session over files and packages that already belong to another version."""
-        for cmd, cwd in (
-            (["systemctl", "--user", "stop", f"lumi-server@{instance}"], None),
-            (["git", "-C", str(self.app(instance)), "checkout", "--detach", ref], None),
-            ([_uv(), "sync", "--frozen", "--all-extras"], self.app(instance)),
-            (["systemctl", "--user", "start", f"lumi-server@{instance}"], None),
-        ):
-            rc, out = self._run(cmd, cwd)
-            if rc != 0:
-                self.log(f"{instance}: `{' '.join(cmd)}` failed: {out[-300:]}")
-                return False
-        return True
+    # the outside world, one command at a time
+    def _do(self, instance: str, cmd: list) -> bool:
+        rc, out = self._run(cmd, None)
+        if rc != 0:
+            self.log(f"{instance}: `{' '.join(map(str, cmd))}` failed: {out[-300:]}")
+        return rc == 0
 
-    def _smoke(self, instance: str, expected_version: str, since: str) -> list[str]:
+    def _compose(self, instance: str, ref: str, *args: str) -> list:
+        """``docker compose`` for this instance's project, its image pinned to ``ref``'s tag (the compose file has
+        no default tag, so every call names one)."""
+        compose = self.dir / "compose"
+        return ["env", f"LUMI_IMAGE_TAG={image_tag(ref)}", "docker", "compose",
+                "--env-file", str(compose / f"{instance}.env"), "-f", str(compose / "compose.yaml"), *args]
+
+    def _enabled(self, unit: str) -> bool:
+        rc, out = self._run(["systemctl", "--user", "is-enabled", unit], None)
+        return rc == 0 and out.strip() in ("enabled", "static", "linked")
+
+    def _stamp(self) -> str:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._now()))
+
+    # the switch
+    def _to_containers(self, instance: str, side: dict, ref: str) -> bool:
+        """Run ``ref``'s image. The first time, the v2.6 units are stopped and disabled before any container starts
+        (the port and the brain lock are then free); later, ``up -d`` recreates each container — the old one stops
+        (SIGTERM → her session close inside the old image) before the new one starts, so code never changes under
+        a running server."""
+        if side.get("runs") != "containers":
+            if not self._do(instance, ["systemctl", "--user", "disable", "--now", *_units(instance)]):
+                return False
+            side["runs"] = "containers"
+            self.log(f"{instance}: the v2.6 units are stopped and disabled — the containers take over")
+        return self._do(instance, self._compose(instance, ref, "up", "-d", "--remove-orphans"))
+
+    def _to_units(self, instance: str, side: dict, leaving: str) -> bool:
+        """Back to the v2.6 units — the way back from a first container deploy: the containers go, the units start
+        on their checkout, which still holds the code they ran."""
+        down = self._do(instance, self._compose(instance, leaving, "down"))
+        up = self._do(instance, ["systemctl", "--user", "enable", "--now", *_units(instance)])
+        side["runs"] = "units"
+        return down and up
+
+    def _go(self, instance: str, side: dict, ref: str, runs: str, leaving: str | None) -> bool:
+        return (self._to_units(instance, side, leaving or ref) if runs == "units"
+                else self._to_containers(instance, side, ref))
+
+    def _go_and_smoke(self, instance: str, side: dict, ref: str, runs: str, leaving: str | None) -> list[str]:
+        if not self._go(instance, side, ref, runs, leaving):
+            return ["the switch failed"]
+        since = self._stamp()  # after the start: the old server's shutdown lines don't count against the new
+        return self._smoke(instance, side, ref, self._expected_version(instance, ref), since)
+
+    # the smoke
+    def _smoke(self, instance: str, side: dict, ref: str, expected_version: str, since: str) -> list[str]:
         env = self._env(instance)
         host, port = env.get("LUMI_SERVER_HOST", "127.0.0.1"), env.get("LUMI_SERVER_PORT", "8765")
         base = f"http://{host}:{port}/v1"
@@ -267,23 +318,18 @@ class Agent:
             waited += 5.0
         token = env.get("LUMI_SERVER_TOKEN", "")  # read here, sent to the instance only, never logged
         state_status = self._http(f"{base}/state", {"Authorization": f"Bearer {token}"})[0] if health else 0
-        units = []
-        for unit in (f"lumi-server@{instance}", f"lumi-telegram-inbound@{instance}",
-                     f"lumi-telegram-outbound@{instance}"):
-            rc, enabled = self._run(["systemctl", "--user", "is-enabled", unit], None)
-            if rc == 0 and enabled.strip() in ("enabled", "static", "linked"):
-                units.append(unit)  # skip a unit this instance doesn't use
-        # Review #2: `Restart=on-failure` brings a crashed service back within seconds, so "active" a minute later
-        # proves nothing — each (re)start gets a new InvocationID; a changed one means it crashed meanwhile.
-        born = {unit: self._invocation(unit) for unit in units}
+        # Review #2: a crashed service is back within seconds (`Restart=on-failure` / `restart: unless-stopped`), so
+        # "running" a minute later proves nothing — what must not change is its identity: the container (id +
+        # restart count) or, for a unit, its InvocationID.
+        born = self._identities(instance, side, ref)
         self._sleep(STABLE_S)  # the services must stay up, not just start
+        now = self._identities(instance, side, ref)
         unsteady = []
-        for unit in units:
-            rc, active = self._run(["systemctl", "--user", "is-active", unit], None)
-            if active.strip() != "active":
-                unsteady.append(unit)
-            elif self._invocation(unit) != born[unit]:
-                unsteady.append(f"{unit} (restarted)")
+        for name, ident in born.items():
+            if not ident or not now.get(name):
+                unsteady.append(f"{name} (not running)")
+            elif now[name] != ident:
+                unsteady.append(f"{name} (restarted)")
         if health is not None and self._http(f"{base}/health", {})[0] != 200:
             health = None  # it answered at the start, not a minute later
         try:
@@ -293,30 +339,26 @@ class Agent:
         return smoke_verdict(instance, health, expected_version, state_status, unsteady,
                              errors_since(log_text, since))
 
-    def _invocation(self, unit: str) -> str:
-        return self._run(["systemctl", "--user", "show", "-p", "InvocationID", "--value", unit], None)[1].strip()
-
-    def _stamp(self) -> str:
-        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._now()))
-
-    def _backup(self, instance: str, running: str | None) -> bool:
-        """Stop the server (her session closes; nothing writes ``data/`` any more), then archive ``data/`` beside
-        it as ``backups/data-<YYYYmmdd-HHMM>-<running tag>.tar.gz`` — the ``prod_update.py`` naming, so a code
-        rollback can be paired with her data as it was under that tag. ``data/`` is only read."""
-        backups = self.home / instance / "backups"
-        stamp = time.strftime("%Y%m%d-%H%M", time.localtime(self._now()))
-        target = backups / f"data-{stamp}-{running or 'untagged'}.tar.gz"
-        backups.mkdir(parents=True, exist_ok=True)
-        for cmd in (["systemctl", "--user", "stop", f"lumi-server@{instance}"],
-                    ["tar", "-czf", str(target), "-C", str(self.home / instance), "data"]):
-            rc, out = self._run(cmd, None)
-            if rc != 0:
-                self.log(f"{instance}: `{' '.join(cmd)}` failed: {out[-300:]} — not deploying; starting it again")
-                target.unlink(missing_ok=True)
-                self._run(["systemctl", "--user", "start", f"lumi-server@{instance}"], None)
-                return False
-        self.log(f"{instance}: her data is archived → {target}")
-        return True
+    def _identities(self, instance: str, side: dict, ref: str) -> dict[str, str]:
+        """Each service that should run → who runs it now (``""`` when nothing does)."""
+        if side.get("runs") == "units":
+            names = [u for u in _units(instance) if self._enabled(u)]
+            found = {}
+            for unit in names:
+                _, active = self._run(["systemctl", "--user", "is-active", unit], None)
+                ident = self._run(["systemctl", "--user", "show", "-p", "InvocationID", "--value", unit], None)[1]
+                found[unit] = ident.strip() if active.strip() == "active" else ""
+            return found
+        found = dict.fromkeys(SERVICES, "")
+        rc, ids = self._run(self._compose(instance, ref, "ps", "-a", "-q"), None)
+        if rc != 0 or not ids.split():
+            return found
+        rc, out = self._run(["docker", "inspect", "--format", _INSPECT, *ids.split()], None)
+        for line in out.splitlines() if rc == 0 else []:
+            parts = line.split()
+            if len(parts) == 4 and parts[0] in found and parts[2] == "running":
+                found[parts[0]] = f"{parts[1]}/{parts[3]}"  # the container id / its restart count
+        return found
 
     def _expected_version(self, instance: str, ref: str) -> str:
         if instance == "prod":
@@ -324,37 +366,60 @@ class Agent:
         rc, version = self.git(instance, "show", f"{ref}:VERSION")
         return version.strip() if rc == 0 else ""
 
+    # the archive
+    def _backup(self, instance: str, side: dict, running: str | None) -> bool:
+        """Stop the server (her session closes; nothing writes ``data/`` any more), then archive ``data/`` beside
+        it as ``backups/data-<YYYYmmdd-HHMM>-<running tag>.tar.gz`` — the ``prod_update.py`` naming, so a code
+        rollback can be paired with her data as it was under that tag. ``data/`` is only read."""
+        backups = self.home / instance / "backups"
+        stamp = time.strftime("%Y%m%d-%H%M", time.localtime(self._now()))
+        target = backups / f"data-{stamp}-{running or 'untagged'}.tar.gz"
+        backups.mkdir(parents=True, exist_ok=True)
+        units = side.get("runs") == "units"
+        stop = (["systemctl", "--user", "stop", _units(instance)[0]] if units
+                else self._compose(instance, running or "", "stop", "server"))
+        start = (["systemctl", "--user", "start", _units(instance)[0]] if units
+                 else self._compose(instance, running or "", "start", "server"))
+        for cmd in (stop, ["tar", "-czf", str(target), "-C", str(self.home / instance), "data"]):
+            rc, out = self._run(cmd, None)
+            if rc != 0:
+                self.log(f"{instance}: `{' '.join(map(str, cmd))}` failed: {out[-300:]} — not deploying; "
+                         "starting it again")
+                target.unlink(missing_ok=True)
+                self._run(start, None)
+                return False
+        self.log(f"{instance}: her data is archived → {target}")
+        return True
+
+    # a deploy
     def deploy(self, state: dict, instance: str, ref: str) -> bool:
-        """Deploy ``ref`` to ``instance`` → smoke → keep it, or roll back to the previous ref and mark it bad."""
+        """Deploy ``ref``'s image to ``instance`` → smoke → keep it, or go back to what ran before (the previous
+        image, or the v2.6 units after a first container deploy) and mark ``ref`` bad."""
         side = state.setdefault(instance, {})
-        previous = side.get("current")
+        previous, previous_runs = side.get("current"), side.get("runs") or "units"
         started = self._stamp()
-        self.log(f"{instance}: deploying {ref} (was {previous})")
-        if instance == "prod" and not self._backup(instance, previous):
+        last = state.setdefault("last", {})
+        self.log(f"{instance}: deploying {ref} as {image_tag(ref)} (was {previous}, {previous_runs})")
+        if not self._do(instance, self._compose(instance, ref, "pull", "--quiet")):
+            last[instance] = {"ref": ref, "result": "not deployed: the image pull failed", "at": started}
+            return False  # nothing was stopped; the next tick tries again
+        if instance == "prod" and not self._backup(instance, side, previous):
             side.pop("confirmed", None)  # never stop prod again every 5 minutes — a fresh `confirm` retries
-            state.setdefault("last", {})[instance] = {
-                "ref": ref, "result": "not deployed: the data archive failed — fix it, then confirm again",
-                "at": started}
+            last[instance] = {"ref": ref, "result": "not deployed: the data archive failed — fix it, then confirm "
+                              "again", "at": started}
             return False
-        reasons = self._switch_and_smoke(instance, ref)
+        reasons = self._go_and_smoke(instance, side, ref, "containers", previous)
         if not reasons:
-            side.update(current=ref, previous=previous)
-            state.setdefault("last", {})[instance] = {"ref": ref, "result": "ok", "at": started}
+            side.update(current=ref, previous=previous, previous_runs=previous_runs)
+            last[instance] = {"ref": ref, "result": "ok", "at": started}
             self.log(f"{instance}: {ref} is live — the smoke is green")
             return True
-        self.log(f"{instance}: {ref} failed the smoke — {'; '.join(reasons)} — rolling back to {previous}")
+        self.log(f"{instance}: {ref} failed the smoke — {'; '.join(reasons)} — back to {previous} ({previous_runs})")
         side.setdefault("bad", []).append(ref)
-        state.setdefault("last", {})[instance] = {"ref": ref, "result": "rolled back: " + "; ".join(reasons),
-                                                  "at": started}
+        last[instance] = {"ref": ref, "result": "rolled back: " + "; ".join(reasons), "at": started}
         if previous:
-            self._switch(instance, previous)
+            self._go(instance, side, previous, previous_runs, ref)
         return False
-
-    def _switch_and_smoke(self, instance: str, ref: str) -> list[str]:
-        if not self._switch(instance, ref):
-            return ["the switch failed"]
-        since = self._stamp()  # after the start: the old server's shutdown lines don't count against the new
-        return self._smoke(instance, self._expected_version(instance, ref), since)
 
     # the commands
     def tick(self) -> None:
@@ -408,15 +473,23 @@ class Agent:
         self.save(state)
 
     def rollback(self, instance: str) -> bool:
+        """Back to what ran before, in one command — the previous image, or the v2.6 units right after the first
+        container deploy. It sticks: the rolled-back ref is marked bad (prod's needs a fresh ``confirm``)."""
         state = self._seed(self.load())
         side = state.setdefault(instance, {})
         previous, current = side.get("previous"), side.get("current")
         if not previous:
             self.log(f"{instance}: nothing to roll back to")
             return False
-        self.log(f"{instance}: rolling back {current} → {previous} (by hand)")
-        reasons = self._switch_and_smoke(instance, previous)
-        side.update(current=previous, previous=current)
+        runs_now, runs_then = side.get("runs") or "units", side.get("previous_runs")
+        if not runs_then:
+            # A v2.7 record: both refs ran as units, and the v2.8 agent never moves a checkout any more.
+            self.log(f"{instance}: {previous} ran before the containers — move the units' checkout by hand "
+                     "(docs/LINUX_DEPLOY.md, the way back)")
+            return False
+        self.log(f"{instance}: rolling back {current} ({runs_now}) → {previous} ({runs_then}) (by hand)")
+        reasons = self._go_and_smoke(instance, side, previous, runs_then, current)
+        side.update(current=previous, previous=current, previous_runs=runs_now)
         if current:
             side.setdefault("bad", []).append(current)  # the next tick must not redeploy it
         if instance == "prod":
@@ -431,7 +504,9 @@ class Agent:
         lines = []
         for instance in INSTANCES:
             side = state.get(instance, {})
-            lines.append(f"{instance}: {side.get('current') or '?'} (previous {side.get('previous') or '—'})"
+            current = side.get("current")
+            how = f"image {image_tag(current)}" if side.get("runs") == "containers" and current else "v2.6 units"
+            lines.append(f"{instance}: {current or '?'} ({how}; previous {side.get('previous') or '—'})"
                          + (f" · waiting: {side['waiting']}" if side.get("waiting") else "")
                          + (f" · bad: {', '.join(side['bad'])}" if side.get("bad") else ""))
             if (last := state.get("last", {}).get(instance)):
@@ -439,13 +514,15 @@ class Agent:
         return "\n".join(lines)
 
     def install(self, source: Path) -> None:
-        """Copy this agent out of the checkout it will update, install the timer, start it, seed the state."""
+        """Copy this agent and the compose files out of the checkout they will update, install the timer, start it,
+        seed the state."""
         self.dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, self.dir / "deploy_agent.py")
-        units = source.resolve().parents[1] / "deploy" / "systemd"
+        deploy = source.resolve().parents[1] / "deploy"
+        shutil.copytree(deploy / "compose", self.dir / "compose", dirs_exist_ok=True)
         self.systemd_dir.mkdir(parents=True, exist_ok=True)
         for name in ("lumi-deploy.service", "lumi-deploy.timer"):
-            shutil.copy2(units / name, self.systemd_dir / name)
+            shutil.copy2(deploy / "systemd" / name, self.systemd_dir / name)
         for cmd in (["systemctl", "--user", "daemon-reload"],
                     ["systemctl", "--user", "enable", "--now", "lumi-deploy.timer"]):
             rc, out = self._run(cmd, None)
@@ -456,18 +533,18 @@ class Agent:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="deploy_agent.py", description="Lumi's pull-based deploy agent (v2.7).")
+    p = argparse.ArgumentParser(prog="deploy_agent.py", description="Lumi's pull-based deploy agent (v2.7–v2.8).")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("tick", help="the timer's step: dev from main, prod from a confirmed tag")
     confirm = sub.add_parser("confirm", help="approve a release tag for prod (deploys it now)")
     confirm.add_argument("tag")
     sub.add_parser("status", help="what runs where, what waits, what failed")
-    rollback = sub.add_parser("rollback", help="back to the previous commit / tag")
+    rollback = sub.add_parser("rollback", help="back to what ran before: the previous image, or the units")
     rollback.add_argument("instance", choices=INSTANCES)
     sub.add_parser("install", help="copy the agent to ~/lumi/deploy/ and start its timer")
     args = p.parse_args(argv)
     # Review #3: `confirm` / `rollback` run over ssh and take minutes; a dropped session sends SIGHUP — the deploy
-    # must finish (or roll back) regardless, not die between the checkout and the start.
+    # must finish (or roll back) regardless, not die between the stop and the start.
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
     agent = Agent()
     lock = agent.dir / "agent.lock"

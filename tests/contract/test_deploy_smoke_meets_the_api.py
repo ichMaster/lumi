@@ -31,12 +31,11 @@ def _instance(home: Path, token: str) -> None:
 
 
 def _run(cmd, cwd=None):
-    if cmd[:3] == ["systemctl", "--user", "is-enabled"]:
-        return 0, "enabled"
-    if cmd[:3] == ["systemctl", "--user", "is-active"]:
-        return 0, "active"
-    if cmd[:3] == ["systemctl", "--user", "show"]:
-        return 0, "inv-1"
+    """The instance's three containers, steady across the stable minute (v2.8: the agent deploys images)."""
+    if cmd[0] == "env" and cmd[-3:] == ["ps", "-a", "-q"]:
+        return 0, "c1\nc2\nc3"
+    if cmd[:2] == ["docker", "inspect"]:
+        return 0, "server c1 running 0\ntelegram-inbound c2 running 0\ntelegram-outbound c3 running 0"
     raise AssertionError(cmd)
 
 
@@ -54,7 +53,7 @@ def _smoke(tmp_path, *, server_env="dev", server_version=_VERSION, server_token=
         return res.status_code, (res.json() if res.status_code == 200 else None)
 
     agent = Agent(home=home, run=_run, http=http, sleep=lambda s: None, now=lambda: 0.0, out=lambda s: None)
-    return agent._smoke("dev", _VERSION, "1970-01-01 00:00:00"), seen
+    return agent._smoke("dev", {"runs": "containers"}, "m2", _VERSION, "1970-01-01 00:00:00"), seen
 
 
 def test_a_healthy_server_passes_the_smoke(tmp_path):
