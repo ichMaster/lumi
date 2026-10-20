@@ -10,4 +10,4 @@ After=network-online.target
 Type=oneshot
 ExecStart=/usr/bin/env python3 %h/lumi/deploy/deploy_agent.py tick
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-TimeoutStartSec=900
+TimeoutStartSec=1800

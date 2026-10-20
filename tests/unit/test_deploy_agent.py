@@ -1,6 +1,6 @@
 """The pull-based deploy agent (v2.7, LUMI-235) — a green ``main`` reaches dev by itself, a release reaches prod
-only after the owner's ``confirm``, a failed smoke rolls back, a rollback is one command, and a deploy moves code
-only (never data or settings).
+only after the owner's ``confirm`` (her data archived first — owner decision 2026-10-20), a failed smoke rolls
+back, a rollback is one command, and a deploy moves code only (never data or settings).
 
 The decisions are pure and tested over fixtures; the runner is tested over a fake world (a fake command runner
 standing in for git/uv/systemctl and a fake HTTP standing in for GitHub and the instance's server) — no network,
@@ -112,8 +112,8 @@ class World:
     checkout runs, ``broken`` refs never come up."""
 
     def __init__(self, home: Path, *, main="m2", dev_head="m1", prod_tag="v2.6.0", tags=("v2.6.0",),
-                 ci="success", ancestors=("m1",), broken=(), versions=None) -> None:
-        self.home, self.main, self.tags, self.ci = home, main, list(tags), ci
+                 ci="success", ancestors=("m1",), broken=(), versions=None, tar_fails=False) -> None:
+        self.home, self.main, self.tags, self.ci, self.tar_fails = home, main, list(tags), ci, tar_fails
         self.ancestors, self.broken = set(ancestors), set(broken)
         self.head = {"dev": dev_head, "prod": prod_tag}
         self.versions = versions or {"m1": "2.6.0", "m2": "2.7.0", "m3": "2.7.1"}
@@ -151,9 +151,16 @@ class World:
                 return 0, ""
         if cmd[1:2] == ["sync"]:
             return 0, ""
+        if cmd[0] == "tar":
+            assert cmd[1] == "-czf" and cmd[3:] == ["-C", str(self.home / "prod"), "data"]
+            if self.tar_fails:
+                Path(cmd[2]).write_bytes(b"half")  # a partial archive, as a full disk leaves it
+                return 2, "tar: write error: No space left on device"
+            Path(cmd[2]).write_bytes(b"an archive")
+            return 0, ""
         if cmd[0] == "systemctl":
             verb = cmd[2]
-            if verb in ("restart", "daemon-reload", "enable"):
+            if verb in ("restart", "stop", "start", "daemon-reload", "enable"):
                 return 0, ""
             if verb == "is-enabled":
                 return 0, "enabled"
@@ -303,6 +310,42 @@ def test_a_failed_prod_smoke_rolls_back_to_the_previous_tag(world):
     assert world.checkouts("prod") == ["v2.7.0", "v2.6.0"]  # not retried on its own
 
 
+def test_a_prod_deploy_stops_her_and_archives_her_data_first(world):
+    world.main, world.tags = "m1", ["v2.6.0", "v2.7.0"]
+    agent, said = _agent(world)
+    agent.confirm("v2.7.0")
+    order = [("checkout" if c[0] == "git" else c[0] if c[0] == "tar" else c[2]) for c in world.cmds
+             if c[0] == "tar" or (c[0] == "git" and c[3] == "checkout")
+             or c[:3] in (["systemctl", "--user", "stop"], ["systemctl", "--user", "restart"])]
+    assert order == ["stop", "tar", "checkout", "restart"]  # her session closed, her data archived, then code
+    stamp = time.strftime("%Y%m%d-%H%M", time.localtime(NOW))
+    archive = world.home / "prod" / "backups" / f"data-{stamp}-v2.6.0.tar.gz"  # named after what ran
+    assert archive.is_file() and any(str(archive) in line for line in said)
+    assert world.head["prod"] == "v2.7.0"
+
+
+def test_a_dev_deploy_archives_nothing(world):
+    agent, _ = _agent(world)
+    agent.tick()
+    assert world.checkouts("dev") == ["m2"]
+    assert not any(c[0] == "tar" for c in world.cmds) and not (world.home / "dev" / "backups").exists()
+
+
+def test_a_failed_archive_leaves_prod_on_its_tag_and_running(world):
+    world.main, world.tags, world.tar_fails = "m1", ["v2.6.0", "v2.7.0"], True
+    agent, _ = _agent(world)
+    agent.confirm("v2.7.0")
+    assert world.checkouts("prod") == [] and world.head["prod"] == "v2.6.0"
+    assert ["systemctl", "--user", "start", "lumi-server@prod"] in world.cmds  # started again
+    assert list((world.home / "prod" / "backups").iterdir()) == []  # the partial archive removed
+    state = agent.load()
+    assert "confirmed" not in state["prod"] and "archive failed" in state["last"]["prod"]["result"]
+    stops = sum(c[:3] == ["systemctl", "--user", "stop"] for c in world.cmds)
+    agent.tick()  # the next step only waits — it doesn't stop her again every 5 minutes
+    assert sum(c[:3] == ["systemctl", "--user", "stop"] for c in world.cmds) == stops
+    assert agent.load()["prod"]["waiting"] == "v2.7.0"
+
+
 def test_rollback_prod_is_one_command_and_sticks(world):
     world.main, world.tags = "m1", ["v2.6.0", "v2.7.0"]
     agent, _ = _agent(world)
@@ -358,10 +401,15 @@ def test_the_github_probe_is_unauthenticated(world):
     assert gh and all("Authorization" not in h for h in gh)
 
 
+def _agents_own(rel: Path) -> bool:
+    """The agent's own files: its state dir and the prod archives beside the data root."""
+    return rel.parts[0] == "deploy" or rel.parts[:2] == ("prod", "backups")
+
+
 def _fingerprint(home: Path) -> dict[str, str]:
-    """Every file outside the agent's own ``deploy/`` dir → its hash."""
+    """Every file but the agent's own → its hash."""
     return {str(p.relative_to(home)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(home.rglob("*")) if p.is_file() and p.relative_to(home).parts[0] != "deploy"}
+            for p in sorted(home.rglob("*")) if p.is_file() and not _agents_own(p.relative_to(home))}
 
 
 def test_contract_a_deploy_and_a_rollback_move_code_only(world):
@@ -376,6 +424,8 @@ def test_contract_a_deploy_and_a_rollback_move_code_only(world):
     assert world.checkouts("dev") and world.checkouts("prod")  # code did move
     assert _fingerprint(world.home) == before  # data/ and .env untouched, byte for byte
     assert {p.name for p in (world.home / "deploy").iterdir()} <= {"state.json", "deploy.log"}
+    assert all(p.name.startswith("data-") and p.name.endswith(".tar.gz")
+               for p in (world.home / "prod" / "backups").iterdir())
 
 
 def test_install_copies_the_agent_out_of_the_checkout_and_starts_the_timer(world):

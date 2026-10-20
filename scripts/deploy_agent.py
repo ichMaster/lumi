@@ -8,8 +8,10 @@ run every few minutes by a systemd user timer on the box, looks at GitHub itself
   checked out in ``~/lumi/dev/app``, synced, restarted and smoke-checked; a failed smoke rolls dev back to the
   previous commit and marks the bad one.
 - **prod** follows release tags, **only after the owner's confirmation**: the newest ``vA.B.C`` waits until
-  ``confirm vA.B.C``; then the same deploy → smoke → roll-back-on-failure.
-- **Deploys move code, never data or settings** — the agent writes only its own state under ``~/lumi/deploy/``.
+  ``confirm vA.B.C``; then the server is stopped and her data archived (``~/lumi/prod/backups/``, the
+  ``prod_update.py`` naming), and the same deploy → smoke → roll-back-on-failure.
+- **Deploys move code, never data or settings** — the agent writes only its own state under ``~/lumi/deploy/`` and
+  the prod archives beside the data root (``data/`` is only read, into the archive).
 
 Commands::
 
@@ -145,7 +147,10 @@ def _uv() -> str:
 
 
 def _run(cmd: list, cwd: Path | None = None) -> tuple[int, str]:
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=900)
+    try:
+        proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        return 124, f"timed out after 900 s: {' '.join(map(str, cmd))}"
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
@@ -262,6 +267,28 @@ class Agent:
         return smoke_verdict(instance, health, expected_version, state_status, inactive,
                              errors_since(log_text, since))
 
+    def _stamp(self) -> str:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._now()))
+
+    def _backup(self, instance: str, running: str | None) -> bool:
+        """Stop the server (her session closes; nothing writes ``data/`` any more), then archive ``data/`` beside
+        it as ``backups/data-<YYYYmmdd-HHMM>-<running tag>.tar.gz`` — the ``prod_update.py`` naming, so a code
+        rollback can be paired with her data as it was under that tag. ``data/`` is only read."""
+        backups = self.home / instance / "backups"
+        stamp = time.strftime("%Y%m%d-%H%M", time.localtime(self._now()))
+        target = backups / f"data-{stamp}-{running or 'untagged'}.tar.gz"
+        backups.mkdir(parents=True, exist_ok=True)
+        for cmd in (["systemctl", "--user", "stop", f"lumi-server@{instance}"],
+                    ["tar", "-czf", str(target), "-C", str(self.home / instance), "data"]):
+            rc, out = self._run(cmd, None)
+            if rc != 0:
+                self.log(f"{instance}: `{' '.join(cmd)}` failed: {out[-300:]} — not deploying; starting it again")
+                target.unlink(missing_ok=True)
+                self._run(["systemctl", "--user", "start", f"lumi-server@{instance}"], None)
+                return False
+        self.log(f"{instance}: her data is archived → {target}")
+        return True
+
     def _expected_version(self, instance: str, ref: str) -> str:
         if instance == "prod":
             return ref.lstrip("v")
@@ -272,22 +299,33 @@ class Agent:
         """Deploy ``ref`` to ``instance`` → smoke → keep it, or roll back to the previous ref and mark it bad."""
         side = state.setdefault(instance, {})
         previous = side.get("current")
-        since = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._now()))
+        started = self._stamp()
         self.log(f"{instance}: deploying {ref} (was {previous})")
-        reasons = (self._smoke(instance, self._expected_version(instance, ref), since)
-                   if self._switch(instance, ref) else ["the switch failed"])
+        if instance == "prod" and not self._backup(instance, previous):
+            side.pop("confirmed", None)  # never stop prod again every 5 minutes — a fresh `confirm` retries
+            state.setdefault("last", {})[instance] = {
+                "ref": ref, "result": "not deployed: the data archive failed — fix it, then confirm again",
+                "at": started}
+            return False
+        reasons = self._switch_and_smoke(instance, ref)
         if not reasons:
             side.update(current=ref, previous=previous)
-            state.setdefault("last", {})[instance] = {"ref": ref, "result": "ok", "at": since}
+            state.setdefault("last", {})[instance] = {"ref": ref, "result": "ok", "at": started}
             self.log(f"{instance}: {ref} is live — the smoke is green")
             return True
         self.log(f"{instance}: {ref} failed the smoke — {'; '.join(reasons)} — rolling back to {previous}")
         side.setdefault("bad", []).append(ref)
         state.setdefault("last", {})[instance] = {"ref": ref, "result": "rolled back: " + "; ".join(reasons),
-                                                  "at": since}
+                                                  "at": started}
         if previous:
             self._switch(instance, previous)
         return False
+
+    def _switch_and_smoke(self, instance: str, ref: str) -> list[str]:
+        if not self._switch(instance, ref):
+            return ["the switch failed"]
+        since = self._stamp()  # after the restart: the old server's shutdown lines don't count against the new
+        return self._smoke(instance, self._expected_version(instance, ref), since)
 
     # the commands
     def tick(self) -> None:
@@ -346,10 +384,8 @@ class Agent:
         if not previous:
             self.log(f"{instance}: nothing to roll back to")
             return False
-        since = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._now()))
         self.log(f"{instance}: rolling back {current} → {previous} (by hand)")
-        reasons = (self._smoke(instance, self._expected_version(instance, previous), since)
-                   if self._switch(instance, previous) else ["the switch failed"])
+        reasons = self._switch_and_smoke(instance, previous)
         side.update(current=previous, previous=current)
         if current:
             side.setdefault("bad", []).append(current)  # the next tick must not redeploy it

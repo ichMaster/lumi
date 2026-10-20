@@ -16,8 +16,9 @@ install prod once, migrate her memory once, then update / roll back with one scr
 >   `~/lumi/prod/app/lumi` talks to the box. Its `data/` is the untouched **fallback**; its Telegram daemons never
 >   start again (the box polls the prod bot).
 > - **Prod code moves only by a confirmed tag through the box's deploy agent** (v2.7): a release waits until
->   `deploy_agent.py confirm vA.B.C`, then deploys with a smoke and an automatic rollback; `deploy_agent.py rollback
->   prod` is the one-command rollback ([LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md)). `prod_update.py` below now only
+>   `deploy_agent.py confirm vA.B.C`, then archives her data (the box's `~/lumi/prod/backups/`, the naming below)
+>   and deploys with a smoke and an automatic rollback; `deploy_agent.py rollback prod` is the one-command rollback
+>   ([LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md)). `prod_update.py` below now only
 >   moves this Mac client's checkout.
 > - **Back to the Mac** (if the box fails her): stop the box's prod services, copy the box's `~/lumi/prod/data`
 >   back here if it is newer than the fallback (it is, after any conversation), restore

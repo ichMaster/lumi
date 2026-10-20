@@ -251,16 +251,20 @@ v2-dev ── merge (fast-forward) ──► main ── CI green ──► the 
     older `main` is never deployed) is checked out (`git checkout --detach`), synced (`uv sync --frozen
     --all-extras`), restarted (`systemctl --user restart lumi-server@dev`) and smoke-checked. Red or unfinished CI
     → it waits.
-  - **prod** — the newest `vA.B.C` tag **waits for your confirmation**; then the same checkout → sync → restart →
-    smoke. It never moves prod to an older tag.
+  - **prod** — the newest `vA.B.C` tag **waits for your confirmation**; then the server is **stopped** (her session
+    closes) and her data **archived** — `~/lumi/prod/backups/data-<YYYYmmdd-HHMM>-<the tag that ran>.tar.gz`, the
+    `prod_update.py` naming (~290 MB, about a minute) — and then the same checkout → sync → restart → smoke. A failed
+    archive (a full disk) deploys nothing: prod is started again on its tag and the release waits for a fresh
+    `confirm`. It never moves prod to an older tag.
 - **The smoke** (no model is called): `/v1/health` answers as this instance (`env`) and the expected version (prod:
   the tag; dev: the commit's `VERSION`); `/v1/state` answers with the instance's token (read from its `.env`, never
   logged); the instance's enabled services are still `active` a minute later; no new `ERROR` line in
   `data/lumi.log` since the restart.
 - **A failed smoke rolls back** to the previous commit / tag at once and marks the failed one **bad** — it is never
   retried by itself (a newer commit is; a bad tag deploys again only after a fresh `confirm`).
-- **A deploy moves code only.** The agent never writes under a data root and never touches an `.env`; its own files
-  are `~/lumi/deploy/{deploy_agent.py,state.json,deploy.log,agent.lock}`. Settings changes are still yours (by hand
+- **A deploy moves code only.** The agent never writes under a data root (it only reads prod's, into the archive)
+  and never touches an `.env`; its own files are `~/lumi/deploy/{deploy_agent.py,state.json,deploy.log,agent.lock}`
+  and the archives in `~/lumi/prod/backups/` (never pruned — delete old ones by hand when the disk wants it). Settings changes are still yours (by hand
   until v2.9). A deploy **restarts** the instance — her session is closed (summary + facts) exactly like a stop.
 
 The commands (on the box, or from the Mac as `ssh slate-server 'python3 ~/lumi/deploy/deploy_agent.py …'`):
@@ -274,8 +278,16 @@ tail -f ~/lumi/deploy/deploy.log                       # every decision and depl
 ```
 
 A rollback **sticks**: the rolled-back commit or tag is marked bad, so the next tick doesn't redeploy it. To return
-prod to the newer tag, `confirm` it again. Code rollback only — her data stays as it is; if a release ever changes
-stored data, archive `~/lumi/prod/data` by hand before you `confirm` it ([PROD_SETUP §Roll back](PROD_SETUP.md)).
+prod to the newer tag, `confirm` it again. A rollback moves **code** only — her data stays as it is, which is right
+unless the newer release changed stored data badly. Then restore the archive taken when it was deployed (it is named
+after the tag you rolled back to):
+
+```bash
+systemctl --user stop lumi-deploy.timer lumi-server@prod
+cd ~/lumi/prod && mv data data.broken
+tar -xzf backups/data-<time>-v2.6.0.tar.gz -C ~/lumi/prod     # the newest archive labelled with the running tag
+systemctl --user start lumi-server@prod lumi-deploy.timer
+```
 
 **Pause the pipeline** (e.g. to work on the box by hand): `systemctl --user stop lumi-deploy.timer` — `start` it
 again afterwards.

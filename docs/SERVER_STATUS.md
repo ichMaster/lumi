@@ -33,7 +33,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | Restart on failure; a taken port / a bad bind refused without a restart loop | ✅ | set | v2.6 (exit 78) |
 | Reachable only from the LAN | ✅ | seen | bind 192.168.1.197 + ufw `8765:8766` from 192.168.1.0/24 |
 | **CI** — ruff + pytest on every push / pull request (GitHub Actions, no secret) | ✅ | seen | v2.7 (LUMI-233), green on Linux since 2026-10-20 |
-| **The deploy agent** — a green `main` → dev by itself; a release tag → prod after `confirm`; smoke + automatic rollback; `rollback dev\|prod` in one command | 🗓 | — | v2.7 (LUMI-235) — written and tested; installed on the box with the v2.7 rollout (LUMI-237). Guide: [LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md) |
+| **The deploy agent** — a green `main` → dev by itself; a release tag → prod after `confirm` (her data archived first); smoke + automatic rollback; `rollback dev\|prod` in one command | 🗓 | — | v2.7 (LUMI-235) — written and tested; installed on the box with the v2.7 rollout (LUMI-237). Guide: [LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md) |
 | **The bounded turn** — one 180 s deadline per turn across the stream, the fallback and the retries; a stuck turn ends with a readable line | 🗓 | — | v2.7 (LUMI-234) — in `v2-dev`; reaches dev with the merge into `main`, prod with `v2.7.0` |
 
 ## Her features through the server
