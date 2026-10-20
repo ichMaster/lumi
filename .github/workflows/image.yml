@@ -1,0 +1,76 @@
+# v2.8 (LUMI-239) — the Lumi image: built and smoke-tested on every push, published to GHCR from `main`
+# (`:edge` + `:sha-<short>`) and from a release tag (`:vA.B.C` + `:latest`). The workflow's own GITHUB_TOKEN
+# pushes — no other secret. The v2.7 deploy agent waits for every check run of a commit, so dev deploys a `main`
+# commit only once its image exists.
+name: Image
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - id: build
+        name: The build ref the guards read
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "ref=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/ichmaster/lumi
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: lumi:smoke
+          build-args: |
+            LUMI_BUILD=${{ steps.build.outputs.ref }}
+            LUMI_REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Container smoke
+        run: scripts/container_smoke.sh lumi:smoke
+      - name: Log in to GHCR
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            LUMI_BUILD=${{ steps.build.outputs.ref }}
+            LUMI_REVISION=${{ github.sha }}
+          cache-from: type=gha
