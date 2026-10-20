@@ -1,0 +1,41 @@
+# v2.8 (LUMI-240) — one Lumi instance (prod or dev) as three containers from one image: the server and both
+# Telegram daemons, sharing the instance's data root (the file bus needs one filesystem) and its settings (.env,
+# unchanged). The deploy agent runs it, always with an explicit image tag:
+#   LUMI_IMAGE_TAG=<tag> docker compose --env-file deploy/compose/<instance>.env -f deploy/compose/compose.yaml up -d
+# No default tag: a hand-run `up` never silently takes another image. Nothing secret lives in this file.
+name: lumi-${LUMI_INSTANCE:?pass --env-file deploy/compose/prod.env or dev.env}
+
+x-lumi: &lumi
+  image: ghcr.io/ichmaster/lumi:${LUMI_IMAGE_TAG:?the image tag is set by the deploy agent}
+  env_file:
+    - path: ${LUMI_INSTANCE_DIR:?pass --env-file deploy/compose/prod.env or dev.env}/.env
+      required: true
+  environment:                                   # what differs inside a container — wins over the .env
+    LUMI_HOME: /data
+    LUMI_SERVER_HOST: 0.0.0.0                    # the image's own interfaces; the publish rule decides exposure
+    LUMI_SERVER_PORT: ${LUMI_SERVER_PORT:?pass --env-file deploy/compose/prod.env or dev.env}
+    TZ: ${LUMI_TZ:-Europe/Kyiv}                  # her local day: the mood, quiet hours, the scheduler
+  volumes:
+    - ${LUMI_INSTANCE_DIR}/data:/data            # her memory stays on the host, owned by uid 1000
+  user: "1000:1000"
+  init: true                                     # tini as PID 1: SIGTERM reaches python, ffmpeg children are reaped
+  restart: unless-stopped
+  stop_grace_period: 300s                        # SIGTERM → her session close (summary + facts) → exit
+
+services:
+  server:
+    <<: *lumi
+    ports:
+      - "${LUMI_PUBLISH_HOST:?pass --env-file deploy/compose/prod.env or dev.env}:${LUMI_SERVER_PORT}:${LUMI_SERVER_PORT}"
+
+  telegram-inbound:
+    <<: *lumi
+    command: ["python", "-m", "telegram.inbound"]
+    healthcheck:
+      disable: true                              # no server in this container
+
+  telegram-outbound:
+    <<: *lumi
+    command: ["python", "-m", "telegram.outbound"]
+    healthcheck:
+      disable: true

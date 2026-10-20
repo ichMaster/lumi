@@ -73,3 +73,10 @@ def test_the_smoke_script_checks_health_and_a_clean_stop():
     assert "--init" in script  # as compose runs it (init: true)
     for key in re.findall(r"-e (\w+_KEY)=(\S+)", script):
         assert key[1] == "dummy"  # never a real key
+
+
+def test_the_compose_files_are_checked_before_the_build():
+    """v2.8 (LUMI-240): both instances resolve with a tag and refuse without one — on Docker's own parser."""
+    names = [s.get("name") for s in STEPS]
+    assert _step("Compose config")["run"] == "scripts/compose_check.sh"
+    assert names.index("Compose config") < names.index("Build")
