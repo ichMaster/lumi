@@ -120,10 +120,11 @@ def errors_since(log_text: str, since: str) -> int:
 
 
 def smoke_verdict(instance: str, health: object, expected_version: str, state_status: int,
-                  inactive: list[str], new_errors: int) -> list[str]:
-    """Why a deploy is not healthy (``[]`` = healthy): the server answers as this instance and version, its state
-    is readable with the instance's token, its services stay active, and no new error was logged since the
-    restart. No model is ever called (``/v1/health`` and ``/v1/state`` are free)."""
+                  unsteady: list[str], new_errors: int) -> list[str]:
+    """Why a deploy is not healthy (``[]`` = healthy): the server answers as this instance and version — at the
+    start and again a minute later — its state is readable with the instance's token, its services stay up the whole
+    minute (``unsteady``: not active, or restarted meanwhile), and no new error was logged since the start. No model
+    is ever called (``/v1/health`` and ``/v1/state`` are free)."""
     reasons: list[str] = []
     if not isinstance(health, dict) or not health.get("ok"):
         reasons.append("the server does not answer /v1/health")
@@ -134,8 +135,8 @@ def smoke_verdict(instance: str, health: object, expected_version: str, state_st
             reasons.append(f"the server runs {health.get('version')!r}, not {expected_version!r}")
         if state_status != 200:
             reasons.append(f"/v1/state answered {state_status or 'nothing'}")
-    if inactive:
-        reasons.append("not active: " + ", ".join(inactive))
+    if unsteady:
+        reasons.append("not up the whole minute: " + ", ".join(unsteady))
     if new_errors:
         reasons.append(f"{new_errors} new ERROR line(s) in lumi.log since the restart")
     return reasons
@@ -253,22 +254,34 @@ class Agent:
             waited += 5.0
         token = env.get("LUMI_SERVER_TOKEN", "")  # read here, sent to the instance only, never logged
         state_status = self._http(f"{base}/state", {"Authorization": f"Bearer {token}"})[0] if health else 0
-        self._sleep(STABLE_S)  # the services must stay up, not just start
-        inactive = []
+        units = []
         for unit in (f"lumi-server@{instance}", f"lumi-telegram-inbound@{instance}",
                      f"lumi-telegram-outbound@{instance}"):
             rc, enabled = self._run(["systemctl", "--user", "is-enabled", unit], None)
-            if rc != 0 or enabled.strip() not in ("enabled", "static", "linked"):
-                continue  # a unit this instance doesn't use
+            if rc == 0 and enabled.strip() in ("enabled", "static", "linked"):
+                units.append(unit)  # skip a unit this instance doesn't use
+        # Review #2: `Restart=on-failure` brings a crashed service back within seconds, so "active" a minute later
+        # proves nothing — each (re)start gets a new InvocationID; a changed one means it crashed meanwhile.
+        born = {unit: self._invocation(unit) for unit in units}
+        self._sleep(STABLE_S)  # the services must stay up, not just start
+        unsteady = []
+        for unit in units:
             rc, active = self._run(["systemctl", "--user", "is-active", unit], None)
             if active.strip() != "active":
-                inactive.append(unit)
+                unsteady.append(unit)
+            elif self._invocation(unit) != born[unit]:
+                unsteady.append(f"{unit} (restarted)")
+        if health is not None and self._http(f"{base}/health", {})[0] != 200:
+            health = None  # it answered at the start, not a minute later
         try:
             log_text = (self.home / instance / "data" / "lumi.log").read_text(encoding="utf-8", errors="replace")
         except OSError:
             log_text = ""
-        return smoke_verdict(instance, health, expected_version, state_status, inactive,
+        return smoke_verdict(instance, health, expected_version, state_status, unsteady,
                              errors_since(log_text, since))
+
+    def _invocation(self, unit: str) -> str:
+        return self._run(["systemctl", "--user", "show", "-p", "InvocationID", "--value", unit], None)[1].strip()
 
     def _stamp(self) -> str:
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._now()))

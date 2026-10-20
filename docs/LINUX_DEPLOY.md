@@ -259,7 +259,7 @@ v2-dev ── merge (fast-forward) ──► main ── CI green ──► the 
     `confirm`. It never moves prod to an older tag.
 - **The smoke** (no model is called): `/v1/health` answers as this instance (`env`) and the expected version (prod:
   the tag; dev: the commit's `VERSION`); `/v1/state` answers with the instance's token (read from its `.env`, never
-  logged); the instance's enabled services are still `active` a minute later; no new `ERROR` line in
+  logged); the instance's enabled services stay up the **whole** minute (still `active` and not restarted meanwhile — systemd would bring a crashed one back within seconds) and `/v1/health` still answers at its end; no new `ERROR` line in
   `data/lumi.log` since the restart.
 - **A failed smoke rolls back** to the previous commit / tag at once and marks the failed one **bad** — it is never
   retried by itself (a newer commit is; a bad tag deploys again only after a fresh `confirm`).

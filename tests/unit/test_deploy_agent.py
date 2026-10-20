@@ -101,8 +101,8 @@ def test_smoke_verdict_is_green_only_when_everything_holds():
     assert "env='prod'" in smoke_verdict("dev", _health("prod"), "2.7.0", 200, [], 0)[0]
     assert "'2.6.0'" in smoke_verdict("dev", _health(version="2.6.0"), "2.7.0", 200, [], 0)[0]
     assert smoke_verdict("dev", _health(), "2.7.0", 401, [], 0) == ["/v1/state answered 401"]
-    assert smoke_verdict("dev", _health(), "2.7.0", 200, ["lumi-telegram-inbound@dev"], 0) \
-        == ["not active: lumi-telegram-inbound@dev"]
+    assert smoke_verdict("dev", _health(), "2.7.0", 200, ["lumi-server@dev (restarted)"], 0) \
+        == ["not up the whole minute: lumi-server@dev (restarted)"]
     assert smoke_verdict("dev", _health(), "2.7.0", 200, [], 2) == ["2 new ERROR line(s) in lumi.log since the restart"]
 
 
@@ -112,9 +112,11 @@ class World:
     checkout runs, ``broken`` refs never come up."""
 
     def __init__(self, home: Path, *, main="m2", dev_head="m1", prod_tag="v2.6.0", tags=("v2.6.0",),
-                 ci="success", ancestors=("m1",), broken=(), versions=None, tar_fails=False) -> None:
+                 ci="success", ancestors=("m1",), broken=(), versions=None, tar_fails=False,
+                 late_crash=()) -> None:
         self.home, self.main, self.tags, self.ci, self.tar_fails = home, main, list(tags), ci, tar_fails
-        self.ancestors, self.broken = set(ancestors), set(broken)
+        self.ancestors, self.broken, self.late_crash = set(ancestors), set(broken), set(late_crash)
+        self.invocations: dict[str, int] = {}  # unit → how many times it was (re)started
         self.head = {"dev": dev_head, "prod": prod_tag}
         self.running = {"dev": True, "prod": True}
         self.moved_while_running: list[str] = []  # code that moved under a live server (review #1)
@@ -167,7 +169,13 @@ class World:
         if cmd[0] == "systemctl":
             verb = cmd[2]
             if verb in ("restart", "stop", "start") and "@" in cmd[3]:
-                self.running[cmd[3].split("@")[1]] = verb != "stop"
+                inst = cmd[3].split("@")[1]
+                self.running[inst] = verb != "stop"
+                if verb != "stop":  # the server and, PartOf/WantedBy, its daemons get new invocations
+                    for unit in self._units(inst):
+                        self.invocations[unit] = self.invocations.get(unit, 0) + 1
+            if verb == "show":
+                return 0, f"inv-{cmd[-1]}-{self.invocations.get(cmd[-1], 0)}"
             if verb in ("restart", "stop", "start", "daemon-reload", "enable"):
                 return 0, ""
             if verb == "is-enabled":
@@ -191,6 +199,18 @@ class World:
             return (200, {}) if headers.get("Authorization") == f"Bearer tok-{inst}" else (401, None)
         raise AssertionError(url)
 
+    @staticmethod
+    def _units(inst):
+        return [f"lumi-server@{inst}", f"lumi-telegram-inbound@{inst}", f"lumi-telegram-outbound@{inst}"]
+
+    def sleep(self, seconds):
+        """The stable minute passing: a ``late_crash`` checkout crashes and is restarted by systemd meanwhile."""
+        if seconds == da.STABLE_S:
+            for inst, ref in self.head.items():
+                if ref in self.late_crash:
+                    unit = f"lumi-server@{inst}"
+                    self.invocations[unit] = self.invocations.get(unit, 0) + 1
+
     def checkouts(self, inst):
         return [c[-1] for c in self.cmds if c[:1] == ["git"] and c[3] == "checkout" and f"/{inst}/" in c[2]]
 
@@ -205,7 +225,7 @@ def world(tmp_path):
 
 def _agent(world: World, **kw) -> tuple[Agent, list[str]]:
     said: list[str] = []
-    agent = Agent(home=world.home, run=world.run, http=world.http, sleep=lambda s: None, now=lambda: NOW,
+    agent = Agent(home=world.home, run=world.run, http=world.http, sleep=world.sleep, now=lambda: NOW,
                   out=said.append, systemd_dir=world.home.parent / "systemd", **kw)
     return agent, said
 
@@ -257,6 +277,32 @@ def test_a_failed_smoke_rolls_dev_back_and_marks_the_commit(world):
     world.main, world.ancestors = "m3", {"m1"}
     agent.tick()
     assert world.checkouts("dev") == ["m2", "m1", "m3"]  # a new commit is
+
+
+def test_a_crash_during_the_stable_minute_fails_the_smoke(world):
+    """Review #2: systemd restarts a crashed server within seconds — "active" a minute later isn't enough."""
+    world.late_crash = {"m2"}
+    agent, _ = _agent(world)
+    agent.tick()
+    assert world.checkouts("dev") == ["m2", "m1"]  # rolled back
+    assert "lumi-server@dev (restarted)" in agent.load()["last"]["dev"]["result"]
+
+
+def test_a_server_gone_by_the_end_of_the_minute_fails_the_smoke(world):
+    agent, _ = _agent(world)
+    answered: list[str] = []
+
+    def health_then_gone(url, headers):
+        if url.endswith("/health") and ":8766" in url:
+            answered.append(url)
+            if len(answered) > 1:
+                return 0, None  # answered at the start, silent a minute later
+        return World.http(world, url, headers)
+
+    agent._http = health_then_gone
+    agent.tick()
+    assert agent.load()["dev"]["current"] == "m1"
+    assert "does not answer /v1/health" in agent.load()["last"]["dev"]["result"]
 
 
 def test_dev_expects_the_version_of_the_commit_it_deployed(world):
