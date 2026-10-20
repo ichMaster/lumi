@@ -1,6 +1,18 @@
 Lumi — Release notes
 ====================
 
+Version 2.7.0 (2026-10-20)
+---------------------------
+- LUMI-233: CI — GitHub Actions run ruff + pytest on Linux for every push and pull request, with no secret; the deploy agent ships only a commit whose checks are green.
+- LUMI-234: the bounded turn — one 180 s deadline across the Gemini stream, the blocking fallback and the retries; a stuck turn ends with "the model didn't answer within 3 minutes — try again, or switch to a faster one with /model" instead of hanging ~8 minutes; a background thought keeps its own budget (v2.6 review #4).
+- LUMI-235: the pull-based deploy agent on the box (scripts/deploy_agent.py + lumi-deploy.timer) — a green main commit reaches dev by itself; the newest release tag reaches prod only after `deploy_agent.py confirm <tag>`, her data archived first (backups/data-<time>-<tag>.tar.gz); a smoke after every deploy (health as the instance and version, the state with its token, the services up the whole minute, no new ERROR) with an automatic rollback; `rollback dev|prod` in one command; `status`; code only, never data or settings.
+- LUMI-236: docs — LINUX_DEPLOY §Deploys and the prod migration as done (with the way back to the Mac), PROD_SETUP, SERVER_STATUS, ARCHITECTURE §Deployment.
+- LUMI-237: main caught up with v2-dev; the agent installed on the box; the first pipeline deploy of dev and a dev rollback rehearsed live.
+- fix(deploy): the server is stopped before any code moves — her session never closes over another version's files (code review #1).
+- fix(deploy): a crash during the smoke's stable minute fails the smoke — an auto-restarted service no longer passes (code review #2).
+- fix(deploy): a dropped ssh session no longer kills a manual confirm or rollback; the confirmation is saved first (code review #3).
+- test(deploy): the smoke checked against the real server API (code review #4); fix(deploy): an HTTP error status is kept — a stale token reads "answered 401" (code review #5).
+
 Version 2.6.0 (2026-10-20)
 ---------------------------
 - LUMI-228: the server leaves localhost safely — a wildcard, public or hostname bind is refused (loopback, LAN, Tailscale only); one server_url for the TUI client and the CLI; every failure names the server it tried; a rejected token on the push channel is said once, never retried (v2.4 review #5).

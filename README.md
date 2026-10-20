@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.7 — Pipelines.** Code reaches the box by pipeline, not by hand: CI runs ruff + pytest on every push, and a
+pull-based deploy agent on the box (`scripts/deploy_agent.py`, a systemd timer) deploys a green `main` to dev by
+itself and a release tag to prod only after `deploy_agent.py confirm <tag>` — her data archived first, a smoke after
+every deploy, an automatic rollback on failure, `rollback dev|prod` in one command; code only, never data or
+settings. Prod itself runs on the box since the 2026-10-20 migration (the Mac prod is its client). A stuck Gemini
+turn now ends at 180 s with a readable line instead of hanging ~8 minutes. Guide:
+[docs/LINUX_DEPLOY.md §Deploys](docs/LINUX_DEPLOY.md) (LUMI-233..237).
+
 **2.6 — Remote: the Linux deploy.** Her server runs on the always-on Linux box (`slate-server`, the same box as
 matrix-agora) as systemd user services — the server and both Telegram daemons per instance (`deploy/systemd/`) —
 and the Mac's `./lumi-client` / `./lumi-cli` talk to it over the LAN. The server binds LAN/Tailscale only (a
