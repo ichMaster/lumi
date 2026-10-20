@@ -56,6 +56,25 @@ def test_ci_verdict(runs, verdict):
     assert ci_verdict({"check_runs": runs} if runs is not None else None) == verdict
 
 
+def _run(name, status="completed", conclusion="success"):
+    return {"name": name, "status": status, "conclusion": conclusion if status == "completed" else None}
+
+
+@pytest.mark.parametrize(("runs", "verdict"), [
+    # merged into main, then v2-dev pushed again: the commit's v2-dev runs cancelled, its main runs passed
+    ([_run("gates", conclusion="cancelled"), _run("image", conclusion="cancelled"), _run("gates"), _run("image")],
+     "green"),
+    ([_run("gates"), _run("image", conclusion="cancelled")], "red"),  # the image never finished anywhere
+    ([_run("gates", conclusion="failure"), _run("gates")], "red"),  # a real failure on any ref stays red
+    ([_run("gates", conclusion="cancelled"), _run("gates", status="in_progress")], "pending"),
+    ([_run("gates"), _run("image", status="queued"), _run("image", conclusion="cancelled")], "pending"),
+    ([_run("gates", conclusion="timed_out"), _run("image", status="in_progress")], "red"),
+])
+def test_a_cancelled_twin_never_marks_a_commit_red(runs, verdict):
+    """Review #1: each check is judged by name; a cancelled run of one ref doesn't outvote a passed one."""
+    assert ci_verdict({"check_runs": runs}) == verdict
+
+
 def test_a_ref_runs_as_cis_image_tag():
     assert image_tag("v2.8.0") == "v2.8.0"  # a release is its own tag
     assert image_tag("b6a4ca692fe299014e0db805394ccb72f30a3e49") == "sha-b6a4ca6"  # metadata-action's type=sha

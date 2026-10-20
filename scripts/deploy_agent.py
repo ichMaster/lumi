@@ -72,16 +72,32 @@ def parse_env(text: str) -> dict[str, str]:
     return env
 
 
+_PASSED = ("success", "skipped", "neutral")
+
+
 def ci_verdict(payload: object) -> str:
-    """GitHub's check runs for a commit → ``green`` (all done and passing), ``red``, ``pending`` or ``none``."""
+    """GitHub's check runs for a commit → ``green``, ``red``, ``pending`` or ``none``.
+
+    A commit collects runs from every ref it was pushed to (``v2-dev``, then ``main``, a tag), and a newer push to a
+    ref cancels that ref's run in progress — so each check (by name) is judged on its own (v2.8 review #1): any
+    failure → red; a run still going → pending; otherwise green if one run of it passed (a cancelled twin doesn't
+    count against it); only cancelled → red."""
     runs = (payload or {}).get("check_runs") if isinstance(payload, dict) else None
     if not runs:
         return "none"
-    if any(r.get("status") != "completed" for r in runs):
-        return "pending"
-    if all(r.get("conclusion") in ("success", "skipped", "neutral") for r in runs):
-        return "green"
-    return "red"
+    by_name: dict[str, list[dict]] = {}
+    for run in runs:
+        by_name.setdefault(str(run.get("name")), []).append(run)
+    verdicts = set()
+    for same in by_name.values():
+        done = [r.get("conclusion") for r in same if r.get("status") == "completed"]
+        if any(c not in _PASSED and c != "cancelled" for c in done):
+            verdicts.add("red")
+        elif len(done) < len(same):
+            verdicts.add("pending")
+        else:
+            verdicts.add("green" if any(c in _PASSED for c in done) else "red")
+    return "red" if "red" in verdicts else "pending" if "pending" in verdicts else "green"
 
 
 def image_tag(ref: str) -> str:
