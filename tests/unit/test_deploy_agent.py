@@ -9,6 +9,7 @@ no systemd, no paid API.
 
 import fcntl
 import hashlib
+import signal
 import time
 from pathlib import Path
 
@@ -512,6 +513,46 @@ def test_install_copies_the_agent_out_of_the_checkout_and_starts_the_timer(world
     state = agent.load()
     assert state["dev"]["current"] == "m1" and state["prod"]["current"] == "v2.6.0"  # seeded, not deployed
     assert world.checkouts("dev") == [] and world.checkouts("prod") == []
+
+
+def test_a_dropped_session_never_breaks_the_output(monkeypatch):
+    """Review #3: the ssh session that ran `confirm` is gone — its stdout is a broken pipe."""
+    class Gone:
+        def write(self, _):
+            raise BrokenPipeError(32, "Broken pipe")
+
+        def flush(self):
+            raise BrokenPipeError(32, "Broken pipe")
+
+    monkeypatch.setattr("sys.stdout", Gone())
+    da._say("prod: deploying v2.7.0")  # no exception
+
+
+def test_the_confirmation_is_saved_before_the_deploy_starts(world):
+    world.main, world.tags = "m1", ["v2.6.0", "v2.7.0"]
+    agent, _ = _agent(world)
+    real_run = world.run
+
+    def killed_at_checkout(cmd, cwd=None):
+        if cmd[0] == "git" and cmd[3] == "checkout":
+            raise KeyboardInterrupt  # killed mid-deploy
+        return real_run(cmd, cwd)
+
+    agent._run = killed_at_checkout
+    with pytest.raises(KeyboardInterrupt):
+        agent.confirm("v2.7.0")
+    assert agent.load()["prod"]["confirmed"] == "v2.7.0"  # the next tick finishes the job
+
+
+def test_main_survives_a_hangup(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    before = signal.getsignal(signal.SIGHUP)
+    monkeypatch.setattr(da.Agent, "status", lambda self: "dev: m1")
+    try:
+        assert da.main(["status"]) == 0
+        assert signal.getsignal(signal.SIGHUP) == signal.SIG_IGN
+    finally:
+        signal.signal(signal.SIGHUP, before)
 
 
 def test_a_second_step_never_runs_alongside_a_running_one(tmp_path, monkeypatch, capsys):

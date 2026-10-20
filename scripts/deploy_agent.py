@@ -31,6 +31,7 @@ import argparse
 import json
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -155,6 +156,15 @@ def _run(cmd: list, cwd: Path | None = None) -> tuple[int, str]:
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
+def _say(line: str) -> None:
+    """Print for whoever asked — never fail when they're gone (review #3: a dropped ssh session closes stdout
+    mid-deploy). ``deploy.log`` stays the record."""
+    try:
+        print(line, flush=True)
+    except (OSError, ValueError):
+        pass
+
+
 def _http(url: str, headers: dict) -> tuple[int, object]:
     req = urllib.request.Request(url, headers={"User-Agent": "lumi-deploy-agent", **headers})
     try:
@@ -168,7 +178,7 @@ def _http(url: str, headers: dict) -> tuple[int, object]:
 class Agent:
     def __init__(self, *, home: Path | None = None, run: Run = _run, http: Http = _http,
                  sleep: Callable[[float], None] = time.sleep, now: Callable[[], float] = time.time,
-                 out: Callable[[str], None] = print, systemd_dir: Path | None = None) -> None:
+                 out: Callable[[str], None] = _say, systemd_dir: Path | None = None) -> None:
         self.home = Path(home or Path.home() / "lumi")
         self.dir = self.home / "deploy"
         self.systemd_dir = Path(systemd_dir or Path.home() / ".config" / "systemd" / "user")
@@ -390,6 +400,7 @@ class Agent:
         prod["confirmed"] = tag.strip()
         prod["bad"] = [t for t in prod.get("bad", []) if t != tag.strip()]  # an explicit re-approval
         self.log(f"prod: the owner confirmed {tag}")
+        self.save(state)  # recorded before the deploy starts — whatever happens next, the approval stands
         self._prod(state)
         self.save(state)
 
@@ -452,6 +463,9 @@ def main(argv: list[str] | None = None) -> int:
     rollback.add_argument("instance", choices=INSTANCES)
     sub.add_parser("install", help="copy the agent to ~/lumi/deploy/ and start its timer")
     args = p.parse_args(argv)
+    # Review #3: `confirm` / `rollback` run over ssh and take minutes; a dropped session sends SIGHUP — the deploy
+    # must finish (or roll back) regardless, not die between the checkout and the start.
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
     agent = Agent()
     lock = agent.dir / "agent.lock"
     agent.dir.mkdir(parents=True, exist_ok=True)
@@ -461,14 +475,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            print("another deploy step is running — try again in a minute")
+            _say("another deploy step is running — try again in a minute")
             return 1
         if args.cmd == "tick":
             agent.tick()
         elif args.cmd == "confirm":
             agent.confirm(args.tag)
         elif args.cmd == "status":
-            print(agent.status())
+            _say(agent.status())
         elif args.cmd == "rollback":
             return 0 if agent.rollback(args.instance) else 1
         elif args.cmd == "install":
