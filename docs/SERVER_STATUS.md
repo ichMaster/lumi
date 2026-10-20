@@ -34,6 +34,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 | Reachable only from the LAN | ✅ | seen | bind 192.168.1.197 + ufw `8765:8766` from 192.168.1.0/24 |
 | **CI** — ruff + pytest on every push / pull request (GitHub Actions, no secret) | ✅ | seen | v2.7 (LUMI-233), green on Linux since 2026-10-20 |
 | **The deploy agent** — a green `main` → dev by itself; a release tag → prod after `confirm` (her data archived first); smoke + automatic rollback; `rollback dev\|prod` in one command | ✅ | seen | v2.7 — installed 2026-10-20; dev deployed by itself twice, prod promoted to `v2.7.0` by `confirm`, both rollbacks rehearsed. Guide: [LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md) |
+| **Containers** — one image on GHCR (`ghcr.io/ichmaster/lumi`), a compose project per instance (`lumi-prod`, `lumi-dev`), the data root bind-mounted, the agent deploying image tags | 🗓 | — | v2.8 — the image, CI (build + container smoke + push), the compose files and the image-deploying agent are written; both instances move with the v2.8 rollout, the units retiring on each first container deploy. Guide: [LINUX_DEPLOY.md](LINUX_DEPLOY.md) |
 | **The bounded turn** — one 180 s deadline per turn across the stream, the fallback and the retries; a stuck turn ends with a readable line | ✅ | set | v2.7 (LUMI-234) — live on dev and prod since 2026-10-20 |
 
 ## Her features through the server
@@ -74,7 +75,7 @@ The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports
 |---|---|
 | **v2.6** | ✅ released 2026-10-20 (`v2.6.0`) — the dev instance on the box, the Mac as its client |
 | **v2.7** | ✅ released 2026-10-20 (`v2.7.0`) — CI, the deploy agent (a green `main` → dev, a confirmed tag → prod with a data archive, smoke + rollback), the bounded turn; prod moved to the box the same day |
-| **v2.8** | Lumi in **Docker** — one image (GHCR, like matrix-agora), a compose project per instance; the systemd units retired |
+| **v2.8** | **in progress** — Lumi in **Docker**: one image (GHCR, like matrix-agora), a compose project per instance, the agent deploying images; the systemd units retired by each instance's first container deploy |
 | **v2.9** | settings move from `.env` to `settings.yaml` + `secrets.yaml` under one schema |
 | **v2.10** | the admin panel — watch: prod + dev health, uptime, containers, tokens / cost / latency, logs |
 | **v2.11** | the admin panel — configure: settings editor, write-only secrets, rollback, audit, alerts through a dedicated **admin bot** |
