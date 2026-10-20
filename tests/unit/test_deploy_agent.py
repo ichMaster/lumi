@@ -116,6 +116,8 @@ class World:
         self.home, self.main, self.tags, self.ci, self.tar_fails = home, main, list(tags), ci, tar_fails
         self.ancestors, self.broken = set(ancestors), set(broken)
         self.head = {"dev": dev_head, "prod": prod_tag}
+        self.running = {"dev": True, "prod": True}
+        self.moved_while_running: list[str] = []  # code that moved under a live server (review #1)
         self.versions = versions or {"m1": "2.6.0", "m2": "2.7.0", "m3": "2.7.1"}
         self.cmds: list[list[str]] = []
         self.urls: list[tuple[str, dict]] = []
@@ -147,9 +149,13 @@ class World:
             if args[0] == "tag":
                 return 0, "\n".join(self.tags)
             if args[0] == "checkout":
+                if self.running[inst]:
+                    self.moved_while_running.append(inst)
                 self.head[inst] = args[-1]
                 return 0, ""
         if cmd[1:2] == ["sync"]:
+            if self.running[Path(cwd).parent.name]:
+                self.moved_while_running.append(Path(cwd).parent.name)
             return 0, ""
         if cmd[0] == "tar":
             assert cmd[1] == "-czf" and cmd[3:] == ["-C", str(self.home / "prod"), "data"]
@@ -160,6 +166,8 @@ class World:
             return 0, ""
         if cmd[0] == "systemctl":
             verb = cmd[2]
+            if verb in ("restart", "stop", "start") and "@" in cmd[3]:
+                self.running[cmd[3].split("@")[1]] = verb != "stop"
             if verb in ("restart", "stop", "start", "daemon-reload", "enable"):
                 return 0, ""
             if verb == "is-enabled":
@@ -186,8 +194,8 @@ class World:
     def checkouts(self, inst):
         return [c[-1] for c in self.cmds if c[:1] == ["git"] and c[3] == "checkout" and f"/{inst}/" in c[2]]
 
-    def restarts(self):
-        return [c[3] for c in self.cmds if c[:3] == ["systemctl", "--user", "restart"]]
+    def starts(self):
+        return [c[3] for c in self.cmds if c[:2] == ["systemctl", "--user"] and c[2] in ("start", "restart")]
 
 
 @pytest.fixture
@@ -206,7 +214,7 @@ def _agent(world: World, **kw) -> tuple[Agent, list[str]]:
 def test_tick_deploys_a_green_main_commit_to_dev_and_keeps_it(world):
     agent, _ = _agent(world)
     agent.tick()
-    assert world.checkouts("dev") == ["m2"] and world.restarts() == ["lumi-server@dev"]
+    assert world.checkouts("dev") == ["m2"] and world.starts() == ["lumi-server@dev"]
     sync = [c for c in world.cmds if c[1:2] == ["sync"]]
     assert sync == [[da._uv(), "sync", "--frozen", "--all-extras"]]
     state = agent.load()
@@ -222,7 +230,7 @@ def test_a_red_or_unfinished_ci_is_never_deployed(world, ci):
     world.ci = ci
     agent, _ = _agent(world)
     agent.tick()
-    assert world.checkouts("dev") == [] and world.restarts() == []
+    assert world.checkouts("dev") == [] and world.starts() == []
     assert "m2" in agent.load()["dev"]["waiting"]
 
 
@@ -239,7 +247,7 @@ def test_a_failed_smoke_rolls_dev_back_and_marks_the_commit(world):
     agent, said = _agent(world)
     agent.tick()
     assert world.checkouts("dev") == ["m2", "m1"]  # deployed, failed, back
-    assert world.restarts() == ["lumi-server@dev", "lumi-server@dev"]
+    assert world.starts() == ["lumi-server@dev", "lumi-server@dev"]
     state = agent.load()
     assert state["dev"]["current"] == "m1" and state["dev"]["bad"] == ["m2"]
     assert "rolled back" in state["last"]["dev"]["result"]
@@ -270,7 +278,7 @@ def test_a_new_error_in_the_log_since_the_restart_fails_the_smoke(world):
     real_run = world.run
 
     def run(cmd, cwd=None):
-        if cmd[:3] == ["systemctl", "--user", "restart"] and world.head["dev"] == "m2":
+        if cmd[:3] == ["systemctl", "--user", "start"] and world.head["dev"] == "m2":
             with (world.home / "dev" / "data" / "lumi.log").open("a") as f:  # the new server logs a failure
                 f.write(f"{STAMP},500 ERROR lumi.server: the store did not load\n")
         return real_run(cmd, cwd)
@@ -293,7 +301,7 @@ def test_a_new_tag_waits_for_confirm_then_deploys(world):
     agent.confirm("v2.6.1")  # not the released tag → still nothing
     assert world.checkouts("prod") == []
     agent.confirm("v2.7.0")
-    assert world.checkouts("prod") == ["v2.7.0"] and world.restarts() == ["lumi-server@prod"]
+    assert world.checkouts("prod") == ["v2.7.0"] and world.starts() == ["lumi-server@prod"]
     state = agent.load()
     assert state["prod"]["current"] == "v2.7.0" and state["prod"]["previous"] == "v2.6.0"
     assert "waiting" not in state["prod"]
@@ -316,12 +324,29 @@ def test_a_prod_deploy_stops_her_and_archives_her_data_first(world):
     agent.confirm("v2.7.0")
     order = [("checkout" if c[0] == "git" else c[0] if c[0] == "tar" else c[2]) for c in world.cmds
              if c[0] == "tar" or (c[0] == "git" and c[3] == "checkout")
-             or c[:3] in (["systemctl", "--user", "stop"], ["systemctl", "--user", "restart"])]
-    assert order == ["stop", "tar", "checkout", "restart"]  # her session closed, her data archived, then code
+             or c[:3] in (["systemctl", "--user", "stop"], ["systemctl", "--user", "start"])]
+    assert order == ["stop", "tar", "stop", "checkout", "start"]  # her session closed, data archived, then code
     stamp = time.strftime("%Y%m%d-%H%M", time.localtime(NOW))
     archive = world.home / "prod" / "backups" / f"data-{stamp}-v2.6.0.tar.gz"  # named after what ran
     assert archive.is_file() and any(str(archive) in line for line in said)
     assert world.head["prod"] == "v2.7.0"
+
+
+@pytest.mark.parametrize("step", ["deploy dev", "confirm prod", "failed smoke", "rollback dev", "rollback prod"])
+def test_code_never_moves_under_a_running_server(world, step):
+    """Review #1: the old server closes her session over its own files — stopped before checkout and sync."""
+    world.tags = ["v2.6.0", "v2.7.0"]
+    world.broken = {"m2"} if step == "failed smoke" else set()
+    agent, _ = _agent(world)
+    agent.tick()
+    if step == "confirm prod" or step == "rollback prod":
+        agent.confirm("v2.7.0")
+    if step.startswith("rollback"):
+        world.broken = set()
+        agent.rollback(step.split()[1])
+    assert world.checkouts("dev") or world.checkouts("prod")
+    assert world.moved_while_running == []
+    assert world.running == {"dev": True, "prod": True}  # and every instance is up again afterwards
 
 
 def test_a_dev_deploy_archives_nothing(world):

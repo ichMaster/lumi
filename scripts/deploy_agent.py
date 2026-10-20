@@ -224,11 +224,14 @@ class Agent:
 
     # the deploy step
     def _switch(self, instance: str, ref: str) -> bool:
-        """Check out ``ref`` and restart the instance's server (its Telegram daemons follow, ``PartOf``)."""
+        """Stop the instance's server, check out ``ref``, sync, start it again (its Telegram daemons follow:
+        ``PartOf`` stops them, ``WantedBy`` starts them). Stopped **first** (v2.7 review #1): a running server must
+        never close her session over files and packages that already belong to another version."""
         for cmd, cwd in (
+            (["systemctl", "--user", "stop", f"lumi-server@{instance}"], None),
             (["git", "-C", str(self.app(instance)), "checkout", "--detach", ref], None),
             ([_uv(), "sync", "--frozen", "--all-extras"], self.app(instance)),
-            (["systemctl", "--user", "restart", f"lumi-server@{instance}"], None),
+            (["systemctl", "--user", "start", f"lumi-server@{instance}"], None),
         ):
             rc, out = self._run(cmd, cwd)
             if rc != 0:
@@ -324,7 +327,7 @@ class Agent:
     def _switch_and_smoke(self, instance: str, ref: str) -> list[str]:
         if not self._switch(instance, ref):
             return ["the switch failed"]
-        since = self._stamp()  # after the restart: the old server's shutdown lines don't count against the new
+        since = self._stamp()  # after the start: the old server's shutdown lines don't count against the new
         return self._smoke(instance, self._expected_version(instance, ref), since)
 
     # the commands

@@ -248,12 +248,13 @@ v2-dev ── merge (fast-forward) ──► main ── CI green ──► the 
 - **The agent.** `lumi-deploy.timer` runs `~/lumi/deploy/deploy_agent.py tick` every 5 minutes. It reads GitHub
   itself (the repo is public: no runner in GitHub, no deploy secret anywhere, nothing reaches into the box):
   - **dev** — the newest `main` commit whose CI checks are **all green** and which **contains** what dev runs (so an
-    older `main` is never deployed) is checked out (`git checkout --detach`), synced (`uv sync --frozen
-    --all-extras`), restarted (`systemctl --user restart lumi-server@dev`) and smoke-checked. Red or unfinished CI
-    → it waits.
+    older `main` is deployed: the server is **stopped first** (her session closes over the code it runs), then the
+    commit is checked out (`git checkout --detach`), synced (`uv sync --frozen --all-extras`), the server started
+    (`systemctl --user start lumi-server@dev`, its Telegram daemons with it) and smoke-checked. Red or unfinished
+    CI → it waits.
   - **prod** — the newest `vA.B.C` tag **waits for your confirmation**; then the server is **stopped** (her session
     closes) and her data **archived** — `~/lumi/prod/backups/data-<YYYYmmdd-HHMM>-<the tag that ran>.tar.gz`, the
-    `prod_update.py` naming (~290 MB, about a minute) — and then the same checkout → sync → restart → smoke. A failed
+    `prod_update.py` naming (~290 MB, about a minute) — and then the same checkout → sync → start → smoke. A failed
     archive (a full disk) deploys nothing: prod is started again on its tag and the release waits for a fresh
     `confirm`. It never moves prod to an older tag.
 - **The smoke** (no model is called): `/v1/health` answers as this instance (`env`) and the expected version (prod:
