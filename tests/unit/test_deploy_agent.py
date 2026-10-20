@@ -344,6 +344,21 @@ def test_a_later_deploy_recreates_the_containers_and_never_touches_the_units(wor
     assert agent.load()["dev"]["previous_runs"] == "containers"
 
 
+def test_a_way_back_by_hand_is_noticed_before_the_next_deploy(world):
+    """Review #2: the owner went back to the units by hand (`compose down` + `enable --now`) and restarted the timer;
+    the state still says containers — the next deploy must retire the units again, not run into their port."""
+    agent, _ = _agent(world)
+    agent.tick()  # dev on sha-m2, units retired
+    world.run(agent._compose("dev", "m2", "down"))  # the guide's way back, by hand
+    world.run(["systemctl", "--user", "enable", "--now", *da._units("dev")])
+    assert world.runs["dev"] == ("units", "m1") and agent.load()["dev"]["runs"] == "containers"  # stale record
+    world.main, world.ancestors = "m3", {"m1", "m2"}
+    agent.tick()
+    assert world.runs["dev"] == ("containers", "sha-m3")
+    assert len(world.unit_calls("disable")) == 2  # retired again, because systemd said so
+    assert agent.load()["last"]["dev"]["result"] == "ok"
+
+
 @pytest.mark.parametrize("ci", ["failure", "in_progress"])
 def test_a_red_or_unfinished_ci_is_never_deployed(world, ci):
     world.ci = ci

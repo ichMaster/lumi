@@ -254,8 +254,10 @@ class Agent:
             return {}
 
     def _seed(self, state: dict) -> dict:
-        """Fill in what each instance runs today the first time the agent sees it (no deploy): the ref from its
-        checkout, and whether it runs as the v2.6 units or as containers."""
+        """Fill in what each instance runs: its ref the first time the agent sees it (from its checkout — no
+        deploy), and on **every** step whether it runs as the v2.6 units or as containers, read from systemd (review
+        #2: the owner may go back to the units by hand; a recorded value would then send the next deploy into the
+        port the units hold)."""
         for instance in INSTANCES:
             side = state.setdefault(instance, {})
             if not side.get("current"):
@@ -263,8 +265,7 @@ class Agent:
                            else self.git("prod", "describe", "--tags", "--exact-match"))
                 if rc == 0:
                     side["current"] = ref.strip()
-            if not side.get("runs"):
-                side["runs"] = "units" if self._enabled(_units(instance)[0]) else "containers"
+            side["runs"] = "units" if self._enabled(_units(instance)[0]) else "containers"
         return state
 
     # the outside world, one command at a time
