@@ -30,6 +30,7 @@ from collections import deque
 from collections.abc import Iterator
 
 from core.streaming import StreamTagFilter
+from core.voice_tags import speakable as tags_speakable
 from voice.tts import voice_settings_for
 
 ELEVEN_STREAM_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
@@ -153,7 +154,7 @@ class ElevenLabsStreamTTS:
         url = ELEVEN_STREAM_URL.format(voice_id=self.voice_id) + "?output_format=pcm_24000"
         headers = {"xi-api-key": self._api_key, "Content-Type": "application/json"}
         body = json.dumps({
-            "text": text, "model_id": self.model,
+            "text": tags_speakable(self.model, text), "model_id": self.model,  # v2.7.1: tags only where performed
             "voice_settings": {"stability": stability, "similarity_boost": 0.75, "style": style},
         }).encode()
         if self._opener is not None:

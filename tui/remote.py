@@ -181,6 +181,7 @@ class RemoteCore:
 
     is_remote = True
     last_compaction = None
+    last_speech = None  # v2.7.1: the server writes the outbox — the client never has her voice tags
     last_tool_calls: list = []
 
     def __init__(self, base_url: str, token: str, *, client: httpx.Client | None = None,

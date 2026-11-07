@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from core.voice_tags import speakable
+
 
 class TTS(Protocol):
     """The voice seam: text (+ optional emotion) → audio bytes."""
@@ -50,7 +52,7 @@ class ElevenLabsTTS:
         audio = client.text_to_speech.convert(
             voice_id=self.voice_id,
             model_id=self.model,
-            text=text,
+            text=speakable(self.model, text),  # v2.7.1: a tag only reaches a model that performs it
             voice_settings=VoiceSettings(stability=stability, similarity_boost=0.75, style=style),
         )
         return b"".join(audio)  # the SDK yields audio chunks

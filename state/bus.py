@@ -41,15 +41,16 @@ def set_listen_flag(flag_path: str | Path, on: bool) -> None:
     p.write_text("on" if on else "off", encoding="utf-8")
 
 
-def mirror_reply(outbox_path: str | Path, state: EmotionState) -> int:
+def mirror_reply(outbox_path: str | Path, state: EmotionState, speech: str | None = None) -> int:
     """Append Лілі's reply (``kind="lili"`` + her emotion) to the `outbox`; return the new id.
 
     Called once per turn at the point her reply is shown — keyboard, Telegram, or a spoken proactive
-    thought alike.
+    thought alike. v2.7.1: ``speech`` — the reply as written with her voice tags (``Core.last_speech``) —
+    rides as the record's ``speech`` field, for the voices only; ``text`` stays her words alone.
     """
     return fifo.append(
         outbox_path, state.reply, kind="lili",
-        emotion=state.emotion.value, intensity=state.intensity,
+        emotion=state.emotion.value, intensity=state.intensity, **({"speech": speech} if speech else {}),
     )
 
 

@@ -998,7 +998,7 @@ class LumiApp(App[None]):
             # turn: the v1.6.2 SpeechPipeline already spoke it live, so mirroring would double-speak
             # (the outbox voicer would replay the same reply a second time via a separate synth).
             if (self._bridge or self._voice) and register != "voice":
-                mirror_reply(self._outbox_path, state)
+                mirror_reply(self._outbox_path, state, getattr(self._core, "last_speech", None))
             if not hidden and self._sound_on:
                 self._sound.receive()  # her reply arrived (suppressed for the idle nudge)
         except Exception as exc:  # noqa: BLE001 — never crash the loop on a model error
