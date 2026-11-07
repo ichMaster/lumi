@@ -52,6 +52,7 @@ from core.closeness import (
 from core.config import (
     DEFAULT_COMPACTION_BATCH,
     DEFAULT_MEMORY_WINDOW,
+    DEFAULT_VOICE_TAGS_PATH,
     Config,
     ModelProfile,
     load_config,
@@ -154,6 +155,7 @@ from core.thoughts import (
     truncate_thought,
 )
 from core.user import DEFAULT_USER_ID
+from core.voice_tags import VoiceTagStreamFilter, renders_tags, split_tags
 from core.worldcontext import WorldContext, ambient_line
 
 # The locked base-9 emotion set, used to validate a generated thought's emotion (v0.12).
@@ -526,8 +528,13 @@ class Core:
         cache_log_path: Path | None = None,
         cache_report_path: Path | None = None,
         cache_monitor: bool = False,
+        voice_tags: str | None = None,  # v2.7.1: her palette (core/voice_tags.md) when her voice performs tags
     ) -> None:
         self._llm = llm
+        # v2.7.1: on (her palette text) → she may write ElevenLabs audio tags; they are split off the reply
+        # (shown/stored without them) and kept in `last_speech` for the voice. None → off, byte-identical.
+        self._voice_tags = (voice_tags or "").strip() or None
+        self.last_speech: str | None = None  # the reply as written, tags and all — only when it had tags
         self._repo = repository
         self._canon = canon
         # v0.38 Inner Voice: the think-phase instruction appended to the canon — the generic
@@ -1613,6 +1620,9 @@ class Core:
             from core.journal import JOURNAL_DIRECTIVE
 
             canon = f"{canon}\n\n{JOURNAL_DIRECTIVE}"
+        # v2.7.1: her voice performs audio tags — the palette verified for it (core/voice_tags.md).
+        if self._voice_tags:
+            canon = f"{canon}\n\n{self._voice_tags}"
         return build_system_prompt(
             canon,
             summaries=summaries,
@@ -2435,12 +2445,15 @@ class Core:
         leaking a half-tag. Returns the **same** raw structured dict as ``reply_structured`` (the emotion
         is resolved/validated on the completed result — the contract is unchanged)."""
         filt = StreamTagFilter()
+        vfilt = VoiceTagStreamFilter() if self._voice_tags else None  # v2.7.1: no voice tag on the screen
         think_seen = 0
         _t_stream = time.monotonic()  # ≈ the model-call start (this runs right after _t_llm in reply())
 
         def _on_delta(chunk: str) -> None:
             nonlocal think_seen
             shown = filt.feed(chunk)
+            if vfilt is not None and shown:
+                shown = vfilt.feed(shown)
             if shown:
                 if self.last_ttft_ms is None:  # the first VISIBLE symbol → time-to-first-symbol
                     self.last_ttft_ms = int((time.monotonic() - _t_stream) * 1000)
@@ -2454,6 +2467,8 @@ class Core:
             on_delta=_on_delta, tools=tools, tool_executor=tool_executor, max_steps=self._tool_max_steps,
         )
         tail = filt.flush()
+        if vfilt is not None:
+            tail = vfilt.feed(tail) + vfilt.flush()
         if tail:
             on_delta(tail)
         if on_think_delta is not None and len(filt.think) > think_seen:
@@ -2600,6 +2615,13 @@ class Core:
             self.last_style = tag_style
         # Strip a leading [date-time] the model may echo from the timestamped history.
         reply_text = strip_leading_stamp(reply_text)
+        # v2.7.1: her voice tags — the speech keeps them for the voice; the text everything else sees doesn't.
+        self.last_speech = None
+        if self._voice_tags:
+            reply_text, speech = split_tags(reply_text)
+            if speech != reply_text:
+                self.last_speech = speech
+                reply_text = reply_text or "…"  # a reply of tags alone (a sigh) still has words
         self.last_thinking = inline_thinking or getattr(self._llm, "last_thinking", None) or structured_thinking
         # v0.38: the monologue's logged tier — ephemeral, never persisted to long-term memory. Off → silent.
         if self.last_thinking and self._think_show != "off":
@@ -3363,6 +3385,11 @@ def build_core(
             embedder = None
 
     canon = load_canon(cfg.canon_path)
+    # v2.7.1: her voice tags — on only while a voice speaks her replies (the Telegram voice notes or the voicer)
+    # on a model that performs tags (LUMI_VOICE_MODEL=eleven_v4_turbo …); else off, byte-identical.
+    voice_tags = None
+    if (cfg.telegram_voice or cfg.voice) and renders_tags(cfg.voice_model):
+        voice_tags = load_inner_voice(DEFAULT_VOICE_TAGS_PATH)
     # v0.38 Inner Voice: load the authored think instruction when on; a missing/empty file degrades to
     # the generic REASONING_DIRECTIVE (logged, never a crash). Off → the directive, byte-identical.
     reasoning_directive = REASONING_DIRECTIVE
@@ -3530,4 +3557,5 @@ def build_core(
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,
         cache_monitor=cfg.cache_monitor,
+        voice_tags=voice_tags,
     )

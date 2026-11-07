@@ -56,7 +56,8 @@ def voice_pending(outbox_path: str | Path, spoken_path: str | Path, tts: TTS, pl
     voiced = 0
     for rec in fifo.read_since(outbox_path, fifo.load_pointer(spoken_path)):
         if rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
-            chunks = split_sentences(rec["text"]) if sentences else [rec["text"]]
+            said = rec.get("speech") or rec["text"]  # v2.7.1: her voice tags, when the record has them
+            chunks = split_sentences(said) if sentences else [said]
             spoke_any, synth_failed = False, False
             for chunk in chunks:
                 try:

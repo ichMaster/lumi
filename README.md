@@ -12,6 +12,11 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.7.1 — Emotion in her voice.** As Кіра's in matrix-agora: when her replies are voiced (Telegram voice notes or
+the voicer) on an ElevenLabs model that performs audio tags (`LUMI_VOICE_MODEL=eleven_v4_turbo`), she writes
+`[laughs]`, `[sighs]`, `[whispers]` … from a small palette (`core/voice_tags.md`) — her voice laughs, sighs and
+whispers, while the text on the screen, in Telegram and in her memory never shows a bracket.
+
 **2.7 — Pipelines.** Code reaches the box by pipeline, not by hand: CI runs ruff + pytest on every push, and a
 pull-based deploy agent on the box (`scripts/deploy_agent.py`, a systemd timer) deploys a green `main` to dev by
 itself and a release tag to prod only after `deploy_agent.py confirm <tag>` — her data archived first, a smoke after

@@ -414,7 +414,7 @@ class _Service:
             if self.outbox is not None and self.outbox.mirror_user:
                 self.mirror(mirror_user, req.text)  # your line → Telegram first, as in-process keyboard turns
             result = self.core.reply(req.text, self.session, images=req.images, **hooks)
-            self.mirror(mirror_reply, result)
+            self.mirror(mirror_reply, result, getattr(self.core, "last_speech", None))
             self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
                                       "theme": self.core.theme, "origin": origin})
             self.publish_message("user", req.text, "client", origin=origin)

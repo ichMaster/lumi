@@ -32,8 +32,9 @@ def test_the_surface_stays_small():
     # v2.2: with the commands in the layer, the TUI's own core surface is this handful (24 incl. the
     # remote-only `command`); v2.4 adds the remote-only push channel (`listen` / `stop`). Growth here is
     # a design signal — prefer the command layer. v2.6 adds two client-mode reads: the server's `features`
-    # (gating /image and /web) and the `network_summary` behind /latency's NETWORK line.
-    assert len(_tui_core_surface()) <= 28
+    # (gating /image and /web) and the `network_summary` behind /latency's NETWORK line. v2.7.1 adds
+    # `last_speech` (her voice tags for the outbox — in-process only; always None in a client).
+    assert len(_tui_core_surface()) <= 29
 
 
 def test_client_mode_is_opt_in(monkeypatch):

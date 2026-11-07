@@ -1,6 +1,10 @@
 Lumi — Release notes
 ====================
 
+Version 2.7.1 (2026-11-07)
+---------------------------
+- Emotion in her voice (as Кіра's in matrix-agora): with the Telegram voice notes or the voicer on a model that performs ElevenLabs audio tags (LUMI_VOICE_MODEL=eleven_v4_turbo), she writes [laughs] / [sighs] / [whispers] … from a small palette (core/voice_tags.md); her voice performs them, the text — the screen, Telegram, her memory — never shows them. A model that reads tags aloud never receives one; off → nothing changes.
+
 Version 2.7.0 (2026-10-20)
 ---------------------------
 - LUMI-233: CI — GitHub Actions run ruff + pytest on Linux for every push and pull request, with no secret; the deploy agent ships only a commit whose checks are green.
