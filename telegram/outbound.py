@@ -170,7 +170,7 @@ async def voice_to_telegram(outbox_path, sent_path, *, tts, to_ogg, send_voice, 
                 await send_photo(rec)
                 count += 1
             elif rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
-                ogg = to_ogg(tts.synth(rec["text"], emotion=rec.get("emotion")))
+                ogg = to_ogg(tts.synth(rec.get("speech") or rec["text"], emotion=rec.get("emotion")))
                 await send_voice(ogg, caption_for(rec))
                 count += 1
         except Exception as exc:  # noqa: BLE001 — leave the pointer before this id → retry next loop

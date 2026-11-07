@@ -169,6 +169,8 @@ DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
 # when LUMI_INNER_VOICE is on). v1.1: the same file now carries retrospective → voices → arbiter
 # (the arbiter picks the reply's intent). Config-referenced; off → the hardcoded directive.
 DEFAULT_INNER_VOICE_PATH = _REPO_ROOT / "core" / "inner_voice.md"
+# v2.7.1: her voice-tag palette — in her prompt only while a voice speaks her replies on a model that performs tags
+DEFAULT_VOICE_TAGS_PATH = _REPO_ROOT / "core" / "voice_tags.md"
 
 # Answer styles (overlays); editable like the canon. Optional.
 DEFAULT_STYLES_PATH = _REPO_ROOT / "core" / "styles.md"

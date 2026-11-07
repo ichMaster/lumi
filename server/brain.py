@@ -141,7 +141,7 @@ class BrainHost:
                 service.last_input = self._clock()  # a Telegram / dictated line is real input
                 service.publish_message("user", record["text"], source)
                 state = self._core.reply(record["text"], service.session)
-                service.mirror(mirror_reply, state)
+                service.mirror(mirror_reply, state, getattr(self._core, "last_speech", None))
                 service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
                                              "theme": self._core.theme, "origin": None})
                 service.publish_message("lili", state.reply, source, state=state)
@@ -222,7 +222,7 @@ class BrainHost:
         """She speaks first: a hidden self-turn (the seed is never shown), her reply pushed as a ``message``
         with the face event. The caller holds the lock."""
         state = self._core.reply(seed, self._service.session)
-        self._service.mirror(mirror_reply, state)  # she speaks first in Telegram too
+        self._service.mirror(mirror_reply, state, getattr(self._core, "last_speech", None))  # Telegram too
         self._service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
                                            "theme": self._core.theme, "origin": None})
         self._service.publish_message("lili", state.reply, source, state=state)
