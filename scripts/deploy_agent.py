@@ -45,6 +45,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 REPO = "ichMaster/lumi"
+IMAGE = "ghcr.io/ichmaster/lumi"  # deploy/compose/compose.yaml pulls it with the ref's tag
 INSTANCES = ("dev", "prod")
 HEALTH_WAIT_S = 90.0  # how long a restarted server may take to answer /v1/health
 STABLE_S = 60.0  # the services must still be active this long after the restart
@@ -72,16 +73,32 @@ def parse_env(text: str) -> dict[str, str]:
     return env
 
 
+_PASSED = ("success", "skipped", "neutral")
+
+
 def ci_verdict(payload: object) -> str:
-    """GitHub's check runs for a commit → ``green`` (all done and passing), ``red``, ``pending`` or ``none``."""
+    """GitHub's check runs for a commit → ``green``, ``red``, ``pending`` or ``none``.
+
+    A commit collects runs from every ref it was pushed to (``v2-dev``, then ``main``, a tag), and a newer push to a
+    ref cancels that ref's run in progress — so each check (by name) is judged on its own (v2.8 review #1): any
+    failure → red; a run still going → pending; otherwise green if one run of it passed (a cancelled twin doesn't
+    count against it); only cancelled → red."""
     runs = (payload or {}).get("check_runs") if isinstance(payload, dict) else None
     if not runs:
         return "none"
-    if any(r.get("status") != "completed" for r in runs):
-        return "pending"
-    if all(r.get("conclusion") in ("success", "skipped", "neutral") for r in runs):
-        return "green"
-    return "red"
+    by_name: dict[str, list[dict]] = {}
+    for run in runs:
+        by_name.setdefault(str(run.get("name")), []).append(run)
+    verdicts = set()
+    for same in by_name.values():
+        done = [r.get("conclusion") for r in same if r.get("status") == "completed"]
+        if any(c not in _PASSED and c != "cancelled" for c in done):
+            verdicts.add("red")
+        elif len(done) < len(same):
+            verdicts.add("pending")
+        else:
+            verdicts.add("green" if any(c in _PASSED for c in done) else "red")
+    return "red" if "red" in verdicts else "pending" if "pending" in verdicts else "green"
 
 
 def image_tag(ref: str) -> str:
@@ -238,8 +255,10 @@ class Agent:
             return {}
 
     def _seed(self, state: dict) -> dict:
-        """Fill in what each instance runs today the first time the agent sees it (no deploy): the ref from its
-        checkout, and whether it runs as the v2.6 units or as containers."""
+        """Fill in what each instance runs: its ref the first time the agent sees it (from its checkout — no
+        deploy), and on **every** step whether it runs as the v2.6 units or as containers, read from systemd (review
+        #2: the owner may go back to the units by hand; a recorded value would then send the next deploy into the
+        port the units hold)."""
         for instance in INSTANCES:
             side = state.setdefault(instance, {})
             if not side.get("current"):
@@ -247,8 +266,7 @@ class Agent:
                            else self.git("prod", "describe", "--tags", "--exact-match"))
                 if rc == 0:
                     side["current"] = ref.strip()
-            if not side.get("runs"):
-                side["runs"] = "units" if self._enabled(_units(instance)[0]) else "containers"
+            side["runs"] = "units" if self._enabled(_units(instance)[0]) else "containers"
         return state
 
     # the outside world, one command at a time
@@ -413,6 +431,7 @@ class Agent:
             side.update(current=ref, previous=previous, previous_runs=previous_runs)
             last[instance] = {"ref": ref, "result": "ok", "at": started}
             self.log(f"{instance}: {ref} is live — the smoke is green")
+            self._prune(state)
             return True
         self.log(f"{instance}: {ref} failed the smoke — {'; '.join(reasons)} — back to {previous} ({previous_runs})")
         side.setdefault("bad", []).append(ref)
@@ -420,6 +439,18 @@ class Agent:
         if previous:
             self._go(instance, side, previous, previous_runs, ref)
         return False
+
+    def _prune(self, state: dict) -> None:
+        """Remove the Lumi images no instance runs or would roll back to (v2.8 review #3 — each new commit leaves
+        ~240 MB of layers). Kept: each instance's current and previous image. GHCR keeps every tag, and Docker
+        refuses to remove an image a container still uses."""
+        keep = {image_tag(ref) for instance in INSTANCES for ref in
+                (state.get(instance, {}).get("current"), state.get(instance, {}).get("previous")) if ref}
+        rc, out = self._run(["docker", "images", IMAGE, "--format", "{{.Tag}}"], None)
+        stale = sorted({tag for tag in out.split() if tag != "<none>" and tag not in keep}) if rc == 0 else []
+        if stale:
+            rc, _ = self._run(["docker", "image", "rm", *[f"{IMAGE}:{tag}" for tag in stale]], None)
+            self.log(f"superseded images {'removed' if rc == 0 else 'removed where unused'}: {', '.join(stale)}")
 
     # the commands
     def tick(self) -> None:

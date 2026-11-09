@@ -56,6 +56,25 @@ def test_ci_verdict(runs, verdict):
     assert ci_verdict({"check_runs": runs} if runs is not None else None) == verdict
 
 
+def _run(name, status="completed", conclusion="success"):
+    return {"name": name, "status": status, "conclusion": conclusion if status == "completed" else None}
+
+
+@pytest.mark.parametrize(("runs", "verdict"), [
+    # merged into main, then v2-dev pushed again: the commit's v2-dev runs cancelled, its main runs passed
+    ([_run("gates", conclusion="cancelled"), _run("image", conclusion="cancelled"), _run("gates"), _run("image")],
+     "green"),
+    ([_run("gates"), _run("image", conclusion="cancelled")], "red"),  # the image never finished anywhere
+    ([_run("gates", conclusion="failure"), _run("gates")], "red"),  # a real failure on any ref stays red
+    ([_run("gates", conclusion="cancelled"), _run("gates", status="in_progress")], "pending"),
+    ([_run("gates"), _run("image", status="queued"), _run("image", conclusion="cancelled")], "pending"),
+    ([_run("gates", conclusion="timed_out"), _run("image", status="in_progress")], "red"),
+])
+def test_a_cancelled_twin_never_marks_a_commit_red(runs, verdict):
+    """Review #1: each check is judged by name; a cancelled run of one ref doesn't outvote a passed one."""
+    assert ci_verdict({"check_runs": runs}) == verdict
+
+
 def test_a_ref_runs_as_cis_image_tag():
     assert image_tag("v2.8.0") == "v2.8.0"  # a release is its own tag
     assert image_tag("b6a4ca692fe299014e0db805394ccb72f30a3e49") == "sha-b6a4ca6"  # metadata-action's type=sha
@@ -127,6 +146,7 @@ class World:
         self.home, self.main, self.tags, self.ci, self.tar_fails = home, main, list(tags), ci, tar_fails
         self.ancestors, self.broken, self.late_crash = set(ancestors), set(broken), set(late_crash)
         self.images = set(images)  # no image for a commit or tag older than the image workflow (m1, v2.7.0)
+        self.local: set[str] = set()  # the images pulled onto the box
         self.versions = versions or {"m1": "2.7.0", "m2": "2.8.0", "m3": "2.8.1"}
         self.checkout = {"dev": dev_head, "prod": prod_tag}  # the v2.6 units run this; the agent never moves it
         self.enabled = {"dev": True, "prod": True}  # the v2.6 units
@@ -153,6 +173,13 @@ class World:
             return self._compose(cmd[1].split("=", 1)[1], cmd)
         if cmd[:2] == ["docker", "inspect"]:
             return self._inspect(cmd[4:])
+        if cmd[:3] == ["docker", "images", da.IMAGE]:
+            return 0, "\n".join(sorted(self.local))
+        if cmd[:3] == ["docker", "image", "rm"]:
+            in_use = {r[1] for r in self.runs.values() if r and r[0] == "containers"}
+            tags = [c.split(":")[-1] for c in cmd[3:]]
+            self.local -= {t for t in tags if t not in in_use}
+            return (1, "image is being used by a running container") if in_use & set(tags) else (0, "")
         if cmd[0] == "git":
             return self._git(Path(cmd[2]).parent.name, cmd[3:])
         if cmd[0] == "tar":
@@ -186,7 +213,10 @@ class World:
         inst = Path(cmd[cmd.index("--env-file") + 1]).stem
         verb = cmd[cmd.index("-f") + 2:]
         if verb[0] == "pull":
-            return (0, "") if tag in self.images else (1, f"manifest for ghcr.io/ichmaster/lumi:{tag} not found")
+            if tag not in self.images:
+                return 1, f"manifest for ghcr.io/ichmaster/lumi:{tag} not found"
+            self.local.add(tag)
+            return 0, ""
         if verb[:2] == ["up", "-d"]:
             if tag not in self.images:
                 return 1, f"pull access denied for ghcr.io/ichmaster/lumi:{tag}"
@@ -323,6 +353,42 @@ def test_a_later_deploy_recreates_the_containers_and_never_touches_the_units(wor
     assert world.ups("dev") == ["sha-m2", "sha-m3"]
     assert len(world.unit_calls("disable")) == 1 and world.unit_calls("enable") == []  # retired once
     assert agent.load()["dev"]["previous_runs"] == "containers"
+
+
+def test_a_way_back_by_hand_is_noticed_before_the_next_deploy(world):
+    """Review #2: the owner went back to the units by hand (`compose down` + `enable --now`) and restarted the timer;
+    the state still says containers — the next deploy must retire the units again, not run into their port."""
+    agent, _ = _agent(world)
+    agent.tick()  # dev on sha-m2, units retired
+    world.run(agent._compose("dev", "m2", "down"))  # the guide's way back, by hand
+    world.run(["systemctl", "--user", "enable", "--now", *da._units("dev")])
+    assert world.runs["dev"] == ("units", "m1") and agent.load()["dev"]["runs"] == "containers"  # stale record
+    world.main, world.ancestors = "m3", {"m1", "m2"}
+    agent.tick()
+    assert world.runs["dev"] == ("containers", "sha-m3")
+    assert len(world.unit_calls("disable")) == 2  # retired again, because systemd said so
+    assert agent.load()["last"]["dev"]["result"] == "ok"
+
+
+def test_superseded_images_are_removed_but_never_a_rollback_target(world):
+    """Review #3: each new commit leaves ~240 MB of layers — keep only what runs and what a rollback would need."""
+    world.images.add("sha-m4")
+    world.versions["m4"] = "2.8.2"
+    agent, said = _agent(world)
+    for sha, ancestors in (("m2", {"m1"}), ("m3", {"m1", "m2"}), ("m4", {"m1", "m2", "m3"})):
+        world.main, world.ancestors = sha, ancestors
+        agent.tick()
+    assert world.runs["dev"] == ("containers", "sha-m4")
+    assert world.local == {"sha-m3", "sha-m4"}  # current + previous; sha-m2 removed
+    assert any("superseded images removed: sha-m2" in line for line in said)
+
+
+def test_a_failed_deploy_keeps_every_image(world):
+    agent, _ = _agent(world)
+    agent.tick()  # sha-m2
+    world.main, world.ancestors, world.broken = "m3", {"m1", "m2"}, {"sha-m3"}
+    agent.tick()  # fails, back to sha-m2 — nothing pruned on a failure
+    assert world.local == {"sha-m2", "sha-m3"} and not any(c[:3] == ["docker", "image", "rm"] for c in world.cmds)
 
 
 @pytest.mark.parametrize("ci", ["failure", "in_progress"])

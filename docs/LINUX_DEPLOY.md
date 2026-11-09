@@ -258,7 +258,8 @@ v2-dev ── merge (ff) ──► main ── CI: gates + image ──► :sha-
 - **A deploy moves code only.** The agent never writes under a data root (it only reads prod's, into the archive)
   and never touches an `.env`; its own files are `~/lumi/deploy/{deploy_agent.py,compose/,state.json,deploy.log,
   agent.lock}` and the archives in `~/lumi/prod/backups/` (never pruned — delete old ones by hand when the disk wants
-  it). Settings changes are still yours (by hand until v2.9); after one, restart the instance's containers.
+  it). After a deploy that passes, the agent removes the Lumi images no instance runs or would roll back to (GHCR
+  keeps every tag). Settings changes are still yours (by hand until v2.9); after one, restart the instance's containers.
 
 The commands (on the box, or from the Mac as `ssh slate-server 'python3 ~/lumi/deploy/deploy_agent.py …'`):
 
@@ -349,7 +350,7 @@ data root — the same `.env` the containers read.
 | `compose`: `the image tag is set by the deploy agent` | a hand-run compose command without `LUMI_IMAGE_TAG` | use the `lumi` function (§Stop, restart) |
 | `up` fails: `port is already allocated` | a v2.6 unit (or something else) still holds the port | `systemctl --user disable --now lumi-server@<instance>`; `ss -ltnp 'sport = :<port>'` |
 | server log: `another brain already runs on this data root` | a unit and a container on the same root | stop and disable the unit — one brain per memory |
-| the server container restarts in a loop | it crashes at start | `docker logs lumi-<i>-server-1`; the agent's smoke rolls back a deploy that does this |
+| the server container restarts in a loop | it crashes at start — or refuses its configuration (a taken port, a non-release prod build): unlike the v2.6 units (exit 78 never restarted), Docker restarts every exit, with a growing back-off | `docker logs lumi-<i>-server-1` names the reason; fix the `.env` / the port; the agent's smoke rolls back a deploy that does this |
 | Mac: `server unreachable at http://192.168.1.197:8766` (a timeout) | the container is down, ufw has no rule, or the port differs | `docker ps`; the ufw rule (setup §1); compare the ports in `.env` and `deploy/compose/<i>.env` |
 | Mac: `the server at … rejected the token` | the Mac's token isn't this instance's | copy the box instance's `LUMI_SERVER_TOKEN` |
 | TUI: `… rejected the token — no pushes until a restart` | the server restarted with another token | fix the token, restart the client |
@@ -373,6 +374,7 @@ data root — the same `.env` the containers read.
   the agent reads GitHub and GHCR without a token, and the instance token it sends to `/v1/state` stays on the box,
   unlogged.
 - **The containers run as your user** (uid 1000), so her data root stays yours; `init: true` reaps her ffmpeg
-  children and passes SIGTERM to Python.
+  children and passes SIGTERM to Python. Docker's own copy of their stderr is capped at 3 × 10 MB per container;
+  her logs live in the data root.
 - Not here yet: settings as YAML (**v2.9**), the admin panel (**v2.10–v2.11**); TLS, public exposure and the security
   scans (**v4.1**); voice mode, the voicer and dictation beside the server (revisited after v2.6).

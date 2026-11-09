@@ -82,3 +82,11 @@ def test_no_secret_in_the_compose_files(name):
         if line.lstrip().startswith("#"):
             continue
         assert not _SECRET.search(line), f"secret-shaped value in {name}: {line!r}"
+
+
+@pytest.mark.parametrize("name", ["server", "telegram-inbound", "telegram-outbound"])
+def test_dockers_copy_of_the_logs_is_bounded(name):
+    """v2.8 review #4: json-file without a limit grows for ever; her own logs live in the data root."""
+    logging = SERVICES[name]["logging"]
+    assert logging["driver"] == "json-file"
+    assert logging["options"]["max-size"] == "10m" and int(logging["options"]["max-file"]) >= 1

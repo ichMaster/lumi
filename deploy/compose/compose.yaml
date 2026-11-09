@@ -21,6 +21,11 @@ x-lumi: &lumi
   init: true                                     # tini as PID 1: SIGTERM reaches python, ffmpeg children are reaped
   restart: unless-stopped
   stop_grace_period: 300s                        # SIGTERM → her session close (summary + facts) → exit
+  logging:                                       # Docker's own copy of stderr — bounded (her logs stay in /data)
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
   server:
