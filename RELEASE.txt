@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 2.8.0 (2026-11-09)
+---------------------------
+- LUMI-238: one Docker image for every Lumi process (Dockerfile + .dockerignore: python:3.13-slim, uv, ffmpeg, tzdata, a non-root user, a /v1/health HEALTHCHECK, the build ref baked as LUMI_BUILD); the guards' container mode — inside a container the bind guard allows the wildcard (exposure is the compose publish rule's job) and the env guard lets prod run only a release build.
+- LUMI-239: CI builds the image on every push and runs a container smoke (health as dev with VERSION, a clean stop); main pushes :edge + :sha-<short>, a release tag :vA.B.C + :latest to GHCR, with the workflow's own token.
+- LUMI-240: a compose project per instance (deploy/compose/: lumi-prod, lumi-dev) — the server and both Telegram daemons from one image, the data root bind-mounted at /data, the instance's .env through env_file, published on the LAN address only, restart unless-stopped, a 300 s grace for her session close.
+- LUMI-241: the deploy agent deploys images — dev the green commit's :sha-<short>, prod the confirmed tag (her data archived first) — with the smoke and an automatic way back to the previous image; an instance's first container deploy retires its v2.6 units, which stay installed as the way back.
+- LUMI-242: docs/LINUX_DEPLOY.md rewritten for containers; docs/SERVER_STATUS.md; ARCHITECTURE §Deployment as built.
+- LUMI-243: dev runs in containers since 2026-10-20; prod moves with `deploy_agent.py confirm v2.8.0`.
+- Code review fixes: a cancelled twin CI run no longer marks a commit red; the agent reads units-or-containers from systemd on every step; superseded Lumi images are removed after a kept deploy; Docker's copy of the containers' logs is capped (3 × 10 MB).
+- Includes 2.7.1 (emotion in her voice).
+
 Version 2.7.1 (2026-11-07)
 ---------------------------
 - Emotion in her voice (as Кіра's in matrix-agora): with the Telegram voice notes or the voicer on a model that performs ElevenLabs audio tags (LUMI_VOICE_MODEL=eleven_v4_turbo), she writes [laughs] / [sighs] / [whispers] … from a small palette (core/voice_tags.md); her voice performs them, the text — the screen, Telegram, her memory — never shows them. A model that reads tags aloud never receives one; off → nothing changes.

@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.8 — Lumi in Docker.** Every Lumi process on the box runs from one image (`ghcr.io/ichmaster/lumi`, built and
+smoke-tested by CI): a compose project per instance (`deploy/compose/`) runs the server and both Telegram daemons
+with her data root bind-mounted and the instance's `.env` through `env_file`, published on the LAN address only. The
+deploy agent deploys image tags — a green `main` to dev as `sha-<short>`, `confirm <tag>` to prod with her data
+archived first — with the smoke and an automatic way back; the v2.6 units are retired and stay as the way back. An
+image moves code only: her data and settings stay on the host. Guide: [docs/LINUX_DEPLOY.md](docs/LINUX_DEPLOY.md)
+(LUMI-238..243).
+
 **2.7.1 — Emotion in her voice.** As Кіра's in matrix-agora: when her replies are voiced (Telegram voice notes or
 the voicer) on an ElevenLabs model that performs audio tags (`LUMI_VOICE_MODEL=eleven_v4_turbo`), she writes
 `[laughs]`, `[sighs]`, `[whispers]` … from a small palette (`core/voice_tags.md`) — her voice laughs, sighs and
