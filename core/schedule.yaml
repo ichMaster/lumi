@@ -1,0 +1,101 @@
+# Lumi thought schedule (v0.42; YAML since v2.9) — when Лілі's %directives fire on a clock.
+#
+# Each `schedule:` row binds one directive to one trigger (+ an optional raw seed topic).
+# The whole scheduler is off unless `scheduler.enabled: true` (env LUMI_SCHEDULER); and each row is off until you
+# set enabled: true. A scheduled act is a GIFT, never a demand — off by default, quiet hours + caps apply.
+#
+# Triggers (pick one per row) — QUOTE every time ("08:00"): YAML reads an unquoted 08:00 as a number:
+#   every: "10m"                          — a wall-clock interval
+#   idle: "15m"                           — idle since your last message (the migrated nudge)
+#   at: "08:00"   days: [...]             — a fixed daily/weekly minute (fires once)
+#   between: "07:00-09:00"  every: "20m"  — a windowed periodic
+#   cron: "*/10 7-9 * * 1-5"              — a raw 5-field cron (minute hour dom month dow)
+#
+# `name` labels a row so an instance can change it in its own settings.yaml without editing this file:
+#   schedule:
+#     - name: morning-brief
+#       enabled: false          # merged over the row of the same name; a new name adds a row
+# The name is not part of a row's identity (its schedule.state key), so naming a row never re-fires it.
+#
+# Seeds use {placeholders} — resolved AT FIRE TIME against live state (never stored resolved).
+
+# free-muse when you've been away — the migrated idle %think/%wonder (v0.42). `seeds` picks a random
+# %directive line from core/think_seeds.md each fire (no immediate repeat — the old A-menu), so editing
+# that file changes what she muses on. Enabled by default (still gated by thoughts.enabled); a fraction
+# graduate to a spoken turn (she speaks first), subsuming the v0.4 nudge.
+
+# thoughts — free-muse every 15 min of idle. To keep it to waking hours (08:00–01:00), set
+# `thoughts.quiet_hours: 1-8` in settings.yaml (quiet 01:00–08:00) — the veto applies to idle too.
+# (One trigger per row: `idle` and `between` can't be combined — that would drop the row.)
+
+schedule:
+  # silent
+  - name: muse-silent
+    seeds: core/think_seeds.md
+    idle: "15m"
+    show: false
+    enabled: true
+
+  # inloud
+  - name: muse-aloud
+    seeds: core/think_seeds2.md
+    idle: "55m"
+    show: true
+    enabled: true
+
+  # a glance at the world a few times a day, seeded by the ambient headline.
+  # show: true writes the result to the chat (a 💭 line, like a typed %catchup!); omit it to keep the
+  # thought silent (recorded to /thoughts + fed into her next reply, but not shown live).
+  - name: catchup
+    directive: catchup
+    between: "08:30-23:30"
+    every: "3h"
+    topic: "свіжі новини цікаві Віталіку"
+    show: true
+    enabled: true
+
+  # the OPEN directive — any custom task you author, on any clock (the topic IS the instruction)
+  - name: morning-touch
+    directive: prompt
+    at: "07:10"
+    topic: "тихий ранковий дотик, без зайвих слів"
+    show: true
+    enabled: true
+
+  # a morning news brief on weekdays, on a topic she follows
+  - name: morning-brief
+    directive: brief
+    at: "08:00"
+    days: [mon, tue, wed, thu, fri]
+    topic: "наука і технології"
+    show: true
+    enabled: true
+
+  # mood to picture
+  - name: imagine-mood
+    directive: imagine
+    at: "14:10"
+    topic: "який у тебе зараз настрій"
+    enabled: true
+
+  - name: learn-thoughts
+    directive: learn
+    at: "22:30"
+    topic: "{thoughts}"
+    show: true
+    enabled: true
+
+  # a nightly deep-read toward whatever she's been hungry to understand
+  - name: learn-recent
+    directive: learn
+    at: "23:30"
+    topic: "{recent}"
+    show: true
+    enabled: true
+
+  # journal
+  - name: journal
+    directive: journal
+    at: "00:30"
+    topic: "збережи найважливіше за цей день"
+    enabled: true

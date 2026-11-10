@@ -3,7 +3,9 @@
 .github
 .env
 .env.*
-!.env.example
+# v2.9: an instance's settings + secrets never enter an image (the examples do)
+settings.yaml
+secrets.yaml
 .lumi
 .venv
 **/__pycache__

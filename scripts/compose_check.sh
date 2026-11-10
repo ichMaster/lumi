@@ -5,7 +5,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-touch "$tmp/.env"
+touch "$tmp/settings.yaml" "$tmp/secrets.yaml" "$tmp/.env.migrated"  # v2.9: the mounted files
 for instance in prod dev; do
   args=(--env-file "$here/deploy/compose/$instance.env" -f "$here/deploy/compose/compose.yaml")
   LUMI_INSTANCE_DIR="$tmp" LUMI_IMAGE_TAG=check docker compose "${args[@]}" config -q

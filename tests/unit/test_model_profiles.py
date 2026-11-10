@@ -259,11 +259,11 @@ def test_core_ignores_an_unknown_startup_profile(tmp_path):
     assert core.profile is None
 
 
-# --- LUMI-165: core/models.toml — THE editable models file ---------------------------------------------
+# --- LUMI-165: core/models.yaml (TOML before v2.9) — THE editable models file ---------------------------------------------
 from core.config import DEFAULT_MODELS_PATH, _load_models_file  # noqa: E402
 
 
-def test_shipped_models_toml_parses_aliases_and_the_three_families():
+def test_shipped_models_yaml_parses_aliases_and_the_three_families():
     # Structural, not exact-equality — the owner EDITS this file when new models release.
     aliases, profiles = _load_models_file(DEFAULT_MODELS_PATH)
     assert {"opus", "sonnet", "haiku", "gemini"} <= set(aliases)
@@ -329,3 +329,60 @@ def test_merge_order_defaults_file_env(tmp_path, monkeypatch):
     monkeypatch.setenv("LUMI_MODEL_PROFILES", "gemini=gemini:env-r,env-t,env-m,env-h")
     cfg = load_config(load_env=False)
     assert cfg.model_profiles["gemini"].reply == "env-r"  # the env var wins over the file
+
+
+# --- v2.9 LUMI-246: core/models.yaml + an instance's models: section ------------------------------------------
+
+
+def test_the_yaml_models_file_loads_exactly_what_the_toml_did():
+    from pathlib import Path
+
+    from core.config import DEFAULT_MODELS_PATH, _load_models_file
+
+    assert DEFAULT_MODELS_PATH.name == "models.yaml"
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "v2.9" / "models.toml"
+    assert _load_models_file(DEFAULT_MODELS_PATH) == _load_models_file(fixture)
+
+
+def test_a_settings_profile_merges_over_the_authored_one_by_name(tmp_path, monkeypatch):
+    from core.config import load_config
+
+    for name in ("LUMI_MODEL_PROFILES", "LUMI_MODEL_ALIASES", "LUMI_MODEL_PROFILE", "LUMI_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / "settings.yaml").write_text(
+        "model:\n  profile: anthropic\n"
+        "models:\n  aliases:\n    fast: \"anthropic:claude-haiku-4-5-20251001\"\n"
+        "  profiles:\n    anthropic:\n      reply: claude-sonnet-5\n"
+        "    mine:\n      provider: openai\n      reply: a\n      think: b\n      mood: c\n      housekeeping: d\n",
+        encoding="utf-8")
+    cfg = load_config(load_env=False, settings_dir=tmp_path)
+    assert cfg.model_aliases["fast"] == ("anthropic", "claude-haiku-4-5-20251001")
+    assert cfg.model_aliases["opus"] == ("anthropic", "claude-opus-4-8")  # the authored aliases stay
+    anth = cfg.model_profiles["anthropic"]
+    assert anth.reply == "claude-sonnet-5" and anth.housekeeping == "claude-haiku-4-5-20251001"  # merged fields
+    assert cfg.model == "claude-sonnet-5"  # the active profile is the merged one
+    assert cfg.model_profiles["mine"].provider == "openai"
+
+
+def test_the_env_profiles_still_win_over_the_settings_section(tmp_path, monkeypatch):
+    from core.config import load_config
+
+    monkeypatch.setenv("LUMI_MODEL_PROFILES", "anthropic=anthropic:e1,e2,e3,e4")
+    (tmp_path / "settings.yaml").write_text("models:\n  profiles:\n    anthropic:\n      reply: s1\n",
+                                            encoding="utf-8")
+    assert load_config(load_env=False, settings_dir=tmp_path).model_profiles["anthropic"].reply == "e1"
+
+
+@pytest.mark.parametrize("section, problem", [
+    ("models:\n  aliases:\n    x: nocolon\n", "provider:model-id"),
+    ("models:\n  profiles:\n    anthropic: claude\n", "must be a mapping"),
+    ("models: [a]\n", "must be a mapping"),
+])
+def test_a_wrong_models_section_refuses_readably(tmp_path, section, problem):
+    from core.config import load_config
+    from core.settings import SettingsError
+
+    (tmp_path / "settings.yaml").write_text(section, encoding="utf-8")
+    with pytest.raises(SettingsError) as err:
+        load_config(load_env=False, settings_dir=tmp_path)
+    assert problem in str(err.value)

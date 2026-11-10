@@ -70,7 +70,7 @@ model_mood=os.getenv("LUMI_MODEL_MOOD") or None,
 model_housekeeping=os.getenv("LUMI_MODEL_HOUSEKEEPING") or None,
 ```
 
-`.env.example` snippet:
+Settings snippet (env names; `settings.example.yaml` since v2.9):
 
 ```bash
 # Per-operation model routing (all default to LUMI_MODEL when unset → unchanged).
@@ -282,7 +282,7 @@ analysis from the cost doc will show `think`/`mood` rows as Sonnet and housekeep
 ## 9. Rollout
 
 1. **PR 1 — Layer 1 + config + tests.** Defaults unset → no behavior change. Land green.
-2. **Enable in your `.env`:** `LUMI_MODEL_THINK=claude-sonnet-4-6`, `LUMI_MODEL_MOOD=claude-sonnet-4-6`,
+2. **Enable in your settings** (`./lumi-cli config set` each, v2.9): `LUMI_MODEL_THINK=claude-sonnet-4-6`, `LUMI_MODEL_MOOD=claude-sonnet-4-6`,
    `LUMI_MODEL_HOUSEKEEPING=claude-haiku-4-5`. Restart.
 3. **Measure 2 weeks** with the cost-doc script over `cache-log.jsonl`; confirm the saving and watch for any
    quality regressions in thoughts/mood (the only persona-adjacent ops downgraded).

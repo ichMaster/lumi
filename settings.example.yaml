@@ -1,0 +1,488 @@
+# Lumi settings — every non-secret setting of an instance (v2.9). GENERATED from core/settings.py by
+# `python scripts/settings_examples.py` — do not edit by hand.
+#
+# Copy the lines you change into settings.yaml (gitignored, next to secrets.yaml). Every line here is
+# commented out at its built-in default, so a copy of this file changes nothing until you uncomment one.
+# Precedence: the default < .env (deprecated) < settings.yaml / secrets.yaml < the process environment
+# (the `env` name on each line). `lumi-cli config set <group.key> <value>` validates and writes a change;
+# every setting takes effect after a restart.
+
+instance:
+  # The instance name (prod / dev): the status badge, the env-guard marker. Unset → no badge. · env LUMI_ENV
+  # env:
+  # The data root — where all of her mutable state lives. Unset → the in-repo .lumi. · env LUMI_HOME
+  # home:
+  # The Telegram daemons' log level. · one of DEBUG, INFO, WARNING, ERROR, CRITICAL · env LUMI_LOG_LEVEL
+  # log_level: INFO
+  # Emergency hatch for prod only: bypasses the clean/tagged check (never the marker checks); warned on every start. · env LUMI_ALLOW_DIRTY_PROD
+  # allow_dirty_prod: false
+
+server:
+  # The server's bind address (loopback, a LAN or Tailscale IP); on a client, the server it dials. · env LUMI_SERVER_HOST
+  # host: 127.0.0.1
+  # One port per instance (prod 8765, dev 8766). · an integer 1..65535 · env LUMI_SERVER_PORT
+  # port: 8765
+  # The TUI runs as a client of that server (no core in-process). · env LUMI_SERVER
+  # client_mode: false
+
+model:
+  # The model provider behind the LLMClient seam. · one of anthropic, openai, deepseek, minimax, local, gemini · env LUMI_PROVIDER
+  # provider: anthropic
+  # The reply model id. · env LUMI_MODEL
+  # reply: claude-haiku-4-5-20251001
+  # Boot the whole model stack from a named profile (core/models.yaml). Unset → the per-field settings. · env LUMI_MODEL_PROFILE
+  # profile:
+  # The think-path model. Unset → the reply model. · env LUMI_MODEL_THINK
+  # think:
+  # The daily mood call's model. Unset → the reply model. · env LUMI_MODEL_MOOD
+  # mood:
+  # Session start/close + compaction model. Unset → the reply model. · env LUMI_MODEL_HOUSEKEEPING
+  # housekeeping:
+  # The voice-mode talking register. Unset → the profile's voice, then think tier. · env LUMI_MODEL_VOICE
+  # voice:
+  # Route tool-loop continuation rounds to the step tier (Anthropic only). · env LUMI_TOOL_STEP_ROUTING
+  # tool_step_routing: false
+  # The tool-loop digging tier (a Claude id). · env LUMI_MODEL_TOOL_STEP
+  # tool_step:
+  # Extra /model aliases: alias=provider:model,… (over core/models.yaml and models:). · env LUMI_MODEL_ALIASES
+  # alias_overrides:
+  # Extra profiles: name=provider:reply,think,mood,housekeeping[,voice];… (over core/models.yaml and models:). · env LUMI_MODEL_PROFILES
+  # profile_overrides:
+  # The model-profiles file. Unset → core/models.yaml. · env LUMI_MODELS_FILE
+  # models_file:
+  # The model output cap. · an integer ≥ 1 · env LUMI_MAX_TOKENS
+  # max_tokens: 4096
+  # Surface the native thought summary (extended thinking). · env LUMI_THINKING
+  # thinking: false
+  # Adaptive-thinking depth. Unset → the API default. · one of low, medium, high, xhigh, max · env LUMI_EFFORT
+  # effort:
+  # Pre-answer reasoning; off drops the directive (and Gemini's thinking budget). · env LUMI_REASONING
+  # reasoning: true
+  # Stream the reply's prose as it generates. · env LUMI_STREAM
+  # stream: false
+  # base_url for an OpenAI-compatible / local server (Ollama, LM Studio). · env LUMI_LLM_BASE_URL
+  # base_url:
+  # Use the OpenAI Responses API for reasoning models. · one of auto, on, off · env LUMI_OPENAI_RESPONSES
+  # openai_responses: auto
+  # The OpenAI reasoning-summary granularity. · one of auto, concise, detailed, off · env LUMI_OPENAI_SUMMARY
+  # openai_summary: auto
+  # Mark the stable prompt prefix as a cache breakpoint. · env LUMI_PROMPT_CACHE
+  # prompt_cache: true
+  # The prompt-cache lifetime. · one of 5m, 1h · env LUMI_PROMPT_CACHE_TTL
+  # prompt_cache_ttl: 5m
+  # Explicit cachedContents on Gemini. · env LUMI_GEMINI_EXPLICIT_CACHE
+  # gemini_explicit_cache: false
+  # Gemini explicit-cache lifetime (e.g. 5h). Unset → the prompt-cache TTL. · a duration like 30m, 5h, 300s or a number of seconds · env LUMI_GEMINI_CACHE_TTL
+  # gemini_cache_ttl:
+
+persona:
+  # Her canon file. Unset → core/canon/lili.md. · env LUMI_CANON_PATH
+  # canon_path:
+  # The answer-style palette. Unset → core/styles.md. · env LUMI_STYLES_PATH
+  # styles_path:
+  # Load core/inner_voice.md as the think-phase instruction. · env LUMI_INNER_VOICE
+  # inner_voice: false
+  # The inner-voice file. Unset → core/inner_voice.md. · env LUMI_INNER_VOICE_FILE
+  # inner_voice_file:
+  # How the think monologue is surfaced. · one of debug, open, off · env LUMI_THINK_SHOW
+  # think_show: debug
+  # Persist and replay the arbiter's chosen move/style. · env LUMI_INTENT
+  # intent: false
+  # The emotion → emoji map. Unset → core/emoji.md. · env LUMI_EMOJI_PATH
+  # emoji_path:
+
+store:
+  # The store file. Unset → <data root>/store.json. · env LUMI_STORE_PATH
+  # path:
+  # The storage backend behind the Repository. · one of json, sqlite · env LUMI_STORE_BACKEND
+  # backend: json
+  # Queue the post-turn persist on a background worker. · env LUMI_ASYNC_POST
+  # async_post: false
+  # Write the per-session token usage + cost report on session close. · env LUMI_USAGE_REPORT
+  # usage_report: true
+  # Log each model call's cache behaviour to cache-report.md. · env LUMI_CACHE_MONITOR
+  # cache_monitor: false
+
+memory:
+  # Recent messages kept verbatim in context. · an integer ≥ 1 · env LUMI_MEMORY_WINDOW
+  # window: 40
+  # Older messages folded into the running digest per batch. · an integer ≥ 1 · env LUMI_COMPACTION_BATCH
+  # compaction_batch: 20
+  # The /memory quick-view count. · an integer ≥ 0 · env LUMI_RECENT_SUMMARIES
+  # recent_summaries: 5
+  # Days of session summaries recalled. · an integer ≥ 0 · env LUMI_SESSION_DAYS
+  # session_days: 2
+  # How many recent sessions to add (unset = all, 0 = none). · an integer ≥ 0 · env LUMI_SESSION_DETAIL_N
+  # session_detail_n:
+  # Per added session: the full summary or a one-line gist. · one of summary, gist · env LUMI_SESSION_FORMAT
+  # session_format: summary
+  # Days of day digests recalled. · an integer ≥ 0 · env LUMI_DAY_DAYS
+  # day_days: 7
+  # Days of week digests recalled. · an integer ≥ 0 · env LUMI_WEEK_DAYS
+  # week_days: 14
+  # Row cap for the day digests. · an integer ≥ 0 · env LUMI_MAX_DAY_ROWS
+  # max_day_rows: 4
+  # Row cap for the week digests. · an integer ≥ 0 · env LUMI_MAX_WEEK_ROWS
+  # max_week_rows: 6
+  # Day/week digests as a one-line dated index. · env LUMI_MEMORY_INDEX
+  # index: false
+  # Inject the identity-core facts section. · env LUMI_FACTS
+  # facts: true
+  # Identity-core injection cap (0 = all core facts). · an integer ≥ 0 · env LUMI_FACTS_CORE_MAX
+  # facts_core_max: 0
+
+recall:
+  # Semantic recall: index every message + /recall. · env LUMI_RECALL
+  # enabled: false
+  # The embedder. · one of local, voyage, openai · env LUMI_EMBED_PROVIDER
+  # embed_provider: local
+  # The embedding model. Unset → the provider's default. · env LUMI_EMBED_MODEL
+  # embed_model:
+  # /recall top-K results. · an integer ≥ 1 · env LUMI_RECALL_K
+  # k: 5
+  # Cap per message before embedding. · an integer ≥ 1 · env LUMI_EMBED_MAX_CHARS
+  # embed_max_chars: 2000
+  # Automatic per-turn RAG injection. · env LUMI_RAG
+  # rag: false
+  # Top-K past moments injected per turn. · an integer ≥ 0 · env LUMI_RAG_K
+  # rag_k: 4
+  # Cosine relevance floor. · a number 0..1 · env LUMI_RAG_FLOOR
+  # rag_floor: 0.3
+  # Per-turn fact-RAG push (non-core facts). · env LUMI_FACTS_RAG
+  # facts_rag: false
+  # Top-K non-core facts pushed per turn. · an integer ≥ 0 · env LUMI_FACTS_RAG_K
+  # facts_rag_k: 4
+  # The recall block's total char budget. · an integer ≥ 0 · env LUMI_RAG_MAX_CHARS
+  # rag_max_chars: 1200
+  # ± neighbour messages around each hit. · an integer ≥ 0 · env LUMI_RAG_W
+  # rag_w: 2
+  # Per-line cap for each recalled moment. · an integer ≥ 1 · env LUMI_RAG_SNIPPET_CHARS
+  # rag_snippet_chars: 240
+  # Index a long message as several chunks. · env LUMI_RAG_CHUNK
+  # chunk: false
+  # Target chunk size in chars. · an integer ≥ 1 · env LUMI_RAG_CHUNK_CHARS
+  # chunk_chars: 800
+  # Overlap between adjacent chunks. · an integer ≥ 0 · env LUMI_RAG_CHUNK_OVERLAP
+  # chunk_overlap: 120
+  # Only chunk messages longer than this. · an integer ≥ 1 · env LUMI_RAG_CHUNK_THRESHOLD
+  # chunk_threshold: 1200
+  # ± adjacent chunks injected around a hit. · an integer ≥ 0 · env LUMI_RAG_CHUNK_W
+  # chunk_w: 1
+  # The model-callable recall tool (needs recall on). · env LUMI_RECALL_TOOL
+  # tool: false
+  # Past moments the recall tool returns. · an integer ≥ 1 · env LUMI_RECALL_TOOL_K
+  # tool_k: 5
+  # Per-turn recall-tool call cap. · an integer ≥ 0 · env LUMI_RECALL_TOOL_MAX_CALLS
+  # tool_max_calls: 3
+  # The recall tool's default scope. · one of messages, facts, all · env LUMI_RECALL_SCOPE
+  # scope: messages
+  # Fetch raw verbatim messages by date. · env LUMI_DATE_TOOL
+  # date_tool: false
+  # The date tool's char budget. · an integer ≥ 1 · env LUMI_DATE_TOOL_MAX_CHARS
+  # date_tool_max_chars: 4000
+  # Max days a date range may span. · an integer ≥ 1 · env LUMI_DATE_TOOL_MAX_DAYS
+  # date_tool_max_days: 14
+  # Per-turn date-tool call cap. · an integer ≥ 0 · env LUMI_DATE_TOOL_MAX_CALLS
+  # date_tool_max_calls: 3
+
+mood:
+  # The daily mood of the day. · env LUMI_MOOD
+  # enabled: true
+  # Her natal snapshot. Unset → core/natal.md. · env LUMI_NATAL_PATH
+  # natal_path:
+  # Merge the computed biorhythms into the mood. · env LUMI_BIORHYTHMS
+  # biorhythms: true
+  # Merge the hormonal cycle into the mood. · env LUMI_CYCLE
+  # cycle: true
+
+world:
+  # Her location name for the ambient weather. · env LUMI_LOCATION
+  # location:
+  # Latitude for the ambient weather. · a number -90..90 · env LUMI_LAT
+  # lat:
+  # Longitude for the ambient weather. · a number -180..180 · env LUMI_LON
+  # lon:
+  # The weather API URL. · env LUMI_WEATHER_URL
+  # weather_url: https://api.open-meteo.com/v2/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&forecast_days=1&timezone=auto
+  # The ambient news feed URL. Unset → no ambient news. · env LUMI_NEWS_URL
+  # news_url:
+  # Ambient headlines kept. · an integer ≥ 0 · env LUMI_NEWS_CAP
+  # news_cap: 3
+
+closeness:
+  # The per-user relationship level. · env LUMI_CLOSENESS
+  # enabled: true
+  # The authored levels. Unset → core/closeness.md. · env LUMI_CLOSENESS_PATH
+  # path:
+  # The value decay drifts toward. · env LUMI_CLOSENESS_BASELINE
+  # baseline: 30.0
+  # Fraction retained per day of silence. · env LUMI_CLOSENESS_DECAY
+  # decay: 0.9
+  # Weight of the warm signals. · env LUMI_CLOSENESS_W_POS
+  # w_pos: 1.0
+  # Weight of the harm signals. · env LUMI_CLOSENESS_W_NEG
+  # w_neg: 1.5
+  # Per-turn nudge scale. · env LUMI_CLOSENESS_DELTA
+  # delta: 5.0
+  # Level re-bucket inertia. · env LUMI_CLOSENESS_INERTIA
+  # inertia: 3.0
+  # Drift rate toward the baseline. · env LUMI_CLOSENESS_DRIFT
+  # drift: 0.1
+  # Daily mood-shift strength 0..1 (off = 0). · a number 0..1 (or on / off) · env LUMI_CLOSENESS_MOOD_SHIFT
+  # mood_shift: 1.0
+
+nudge:
+  # The v0.4 idle nudge. · env LUMI_IDLE_NUDGE
+  # enabled: false
+  # Idle seconds before a nudge. · an integer ≥ 1 · env LUMI_IDLE_SECONDS
+  # idle_seconds: 240
+  # The nudge openers. Unset → core/nudges.md. · env LUMI_NUDGE_PATH
+  # path:
+  # The nudge's quiet window, HH-HH (e.g. 23-7). · an hour range HH-HH (e.g. 23-7), or off · env LUMI_QUIET_HOURS
+  # quiet_hours:
+
+thoughts:
+  # The thought-stream. · env LUMI_THOUGHTS
+  # enabled: true
+  # The proactive think's quiet window (HH-HH, or off). Unset → the nudge's. · an hour range HH-HH (e.g. 23-7), or off · env LUMI_THOUGHTS_QUIET_HOURS
+  # quiet_hours:
+  # Prompt feedback window (hours). · an integer ≥ 0 · env LUMI_THOUGHTS_WINDOW_H
+  # window_h: 24
+  # Max thought lines injected into the prompt. · an integer ≥ 0 · env LUMI_THOUGHTS_MAX_LINES
+  # max_lines: 12
+  # Hard per-thought length cap (0 = off). · an integer ≥ 0 · env LUMI_THOUGHT_MAX_CHARS
+  # max_chars: 0
+  # Idle seconds before a proactive %think. · an integer ≥ 1 · env LUMI_THOUGHTS_INTERVAL_S
+  # interval_s: 600
+  # Proactive thinks per session. · an integer ≥ 0 · env LUMI_THOUGHTS_CAP
+  # cap: 6
+  # Fraction of thoughts that graduate to a spoken turn. · a number 0..1 · env LUMI_THOUGHTS_SPOKEN_RATIO
+  # spoken_ratio: 0.2
+  # The /thoughts policy. · one of hidden, admin, off · env LUMI_THOUGHTS_SHOW
+  # show: hidden
+  # The thought prompt: seeds only, or the backdrop. · one of lean, full · env LUMI_THOUGHTS_CONTEXT
+  # context: lean
+  # The %think seed menu. Unset → core/think_seeds.md. · env LUMI_THINK_SEEDS_PATH
+  # seeds_path:
+  # Master gate: tool-using thoughts. · env LUMI_THOUGHT_TOOLS
+  # tools: false
+  # The %journal directive. · env LUMI_THOUGHT_JOURNAL
+  # journal: false
+  # The %lookup / %learn directives. · env LUMI_THOUGHT_WIKI
+  # wiki: false
+  # The %catchup / %brief directives. · env LUMI_THOUGHT_NEWS
+  # news: false
+  # The %search / %events directives. · env LUMI_THOUGHT_WEB
+  # web: false
+  # The owner-only %prompt directive. · env LUMI_THOUGHT_PROMPT
+  # prompt: false
+  # The %gaze / %imagine / %share directives. · env LUMI_THOUGHT_IMAGE
+  # image: false
+  # The paid %imagine sub-cap. · an integer ≥ 0 · env LUMI_THOUGHT_IMAGINE_CAP
+  # imagine_cap: 1
+  # Surface a running directive as a chat-log line. · env LUMI_THOUGHT_SURFACE
+  # surface: false
+
+scheduler:
+  # The in-process thought scheduler. · env LUMI_SCHEDULER
+  # enabled: false
+  # The thought schedule. Unset → core/schedule.yaml. · env LUMI_SCHEDULE_PATH
+  # path:
+  # Scheduler evaluation interval (ms). · an integer ≥ 1 · env LUMI_SCHED_TICK_MS
+  # tick_ms: 30000
+  # The ephemeral fast tick (ms). · an integer ≥ 1 · env LUMI_SCHED_TICK_FAST_MS
+  # tick_fast_ms: 60000
+  # Startup catch-up window (hours). · an integer ≥ 0 · env LUMI_SCHED_CATCHUP_H
+  # catchup_h: 6
+  # Global scheduled thoughts per day. · an integer ≥ 0 · env LUMI_SCHED_DAY_CAP
+  # day_cap: 24
+  # Shown scheduled thoughts also go to Telegram / the voicer. · env LUMI_SCHED_SHOW_TO_OUTBOX
+  # show_to_outbox: false
+
+tools:
+  # Max tool calls per turn. · an integer ≥ 1 · env LUMI_TOOL_MAX_STEPS
+  # max_steps: 8
+
+files:
+  # The sandboxed file tools. · env LUMI_FILE_TOOL
+  # enabled: false
+  # The sandbox root. Unset → <data root>/files. · env LUMI_FILES_DIR
+  # dir:
+  # Default / max lines per read_file. · an integer ≥ 1 · env LUMI_FILE_READ_LINES
+  # read_lines: 200
+  # Max lines one turn may read. · an integer ≥ 1 · env LUMI_FILE_READ_MAX_TOTAL
+  # read_max_total: 2000
+  # Per-result char cap on a read. · an integer ≥ 1 · env LUMI_FILE_READ_MAX_CHARS
+  # read_max_chars: 8000
+  # Max matches find_in_file returns. · an integer ≥ 1 · env LUMI_FILE_FIND_MAX
+  # find_max: 50
+  # Max bytes of one create/append. · an integer ≥ 1 · env LUMI_FILE_WRITE_MAX
+  # write_max: 65536
+  # Max source bytes for one copy_file. · an integer ≥ 1 · env LUMI_FILE_COPY_MAX
+  # copy_max: 5242880
+  # Max files search_files scans. · an integer ≥ 1 · env LUMI_FILE_SEARCH_MAX_FILES
+  # search_max_files: 200
+  # Max matching lines search_files returns. · an integer ≥ 1 · env LUMI_FILE_SEARCH_MAX_LINES
+  # search_max_lines: 100
+  # The output char budget of search_files. · an integer ≥ 1 · env LUMI_FILE_SEARCH_MAX_CHARS
+  # search_max_chars: 4000
+  # Max K lines each side of a read_around anchor. · an integer ≥ 0 · env LUMI_FILE_AROUND_MAX_K
+  # around_max_k: 50
+  # list_files date-range span cap (days). · an integer ≥ 1 · env LUMI_FILE_DATE_MAX_DAYS
+  # date_max_days: 366
+  # Show the file tools used each turn. · env LUMI_FILE_TOOL_TRACE
+  # trace: false
+
+wiki:
+  # The Wikipedia tool. · env LUMI_WIKI
+  # enabled: false
+  # Language editions; the first with a hit wins. · a list of strings (or one comma-separated string) · env LUMI_WIKI_LANG
+  # lang: [uk, en]
+  # Override the host. Unset → https://{lang}.wikipedia.org. · env LUMI_WIKI_BASE_URL
+  # base_url:
+  # Extract cap for one wiki_read. · an integer ≥ 1 · env LUMI_WIKI_MAX_CHARS
+  # max_chars: 1500
+  # Per-turn wiki call cap. · an integer ≥ 0 · env LUMI_WIKI_MAX_CALLS
+  # max_calls: 4
+
+news:
+  # The Guardian news tool. · env LUMI_NEWS_TOOL
+  # enabled: false
+  # The Guardian API base. · env LUMI_NEWS_API_URL
+  # api_url: https://content.guardianapis.com
+  # The topic allowlist. · a list of strings (or one comma-separated string) · env LUMI_NEWS_SECTIONS
+  # sections: [world, politics, business, technology, science, environment, culture, sport]
+  # Candidates per news_search. · an integer ≥ 1 · env LUMI_NEWS_MAX_RESULTS
+  # max_results: 8
+  # Body cap for one news_read. · an integer ≥ 1 · env LUMI_NEWS_MAX_CHARS
+  # max_chars: 3000
+  # Per-turn news call cap. · an integer ≥ 0 · env LUMI_NEWS_MAX_CALLS
+  # max_calls: 4
+  # Default recency window for a search (days). · an integer ≥ 1 · env LUMI_NEWS_DAYS
+  # days: 7
+
+web:
+  # The web_lookup tool + /web (paid, Gemini grounding). · env LUMI_WEB_LOOKUP
+  # enabled: false
+  # The Gemini grounding model. · env LUMI_WEB_LOOKUP_MODEL
+  # model: gemini-2.5-flash
+  # Per-turn grounded-call cap. · an integer ≥ 0 · env LUMI_WEB_LOOKUP_MAX_CALLS
+  # max_calls: 2
+  # Cap on the answer folded into the reply. · an integer ≥ 1 · env LUMI_WEB_LOOKUP_MAX_CHARS
+  # max_chars: 2000
+
+journal:
+  # The journal tools + /journal. · env LUMI_JOURNAL
+  # enabled: false
+  # The journal root. Unset → <data root>/journal. · env LUMI_JOURNAL_DIR
+  # dir:
+  # Cap on one journal_write body. · an integer ≥ 1 · env LUMI_JOURNAL_MAX_CHARS
+  # max_chars: 4000
+
+image:
+  # Vision (view_image + shared images) and generation. · env LUMI_IMAGE
+  # enabled: false
+  # Max images viewed per turn. · an integer ≥ 0 · env LUMI_VISION_MAX
+  # vision_max: 4
+  # Max size of one viewed image. · an integer ≥ 1 · env LUMI_IMAGE_MAX_BYTES
+  # max_bytes: 5242880
+  # The generation backend. · env LUMI_IMAGE_PROVIDER
+  # provider: gemini
+  # The generation model. · env LUMI_IMAGE_MODEL
+  # model: gemini-2.5-flash-image
+  # Generated PNG size hint. · an integer ≥ 1 · env LUMI_IMAGE_SIZE
+  # size: 768
+  # Max generations per turn (paid). · an integer ≥ 0 · env LUMI_IMAGE_MAX_GEN
+  # max_gen: 2
+  # Display targets for a generated PNG. · a list of strings (or one comma-separated string) · env LUMI_IMAGE_SHOW
+  # show: [path, viewer, telegram]
+
+bridge:
+  # The TUI reads the inbox / writes the outbox. · env LUMI_BRIDGE
+  # enabled: false
+  # The inbox. Unset → <data root>/inbox.jsonl. · env LUMI_INBOX_PATH
+  # inbox_path:
+  # The outbox. Unset → <data root>/outbox.jsonl. · env LUMI_OUTBOX_PATH
+  # outbox_path:
+
+telegram:
+  # The Telegram user ids served (the owner's). · a list of integer ids · env LUMI_TELEGRAM_ALLOWLIST
+  # allowlist:
+  # Inbound buffer flush cadence (s). · an integer ≥ 1 · env LUMI_TELEGRAM_FLUSH_S
+  # flush_s: 2
+  # Max outbox records per Telegram message. · an integer ≥ 1 · env LUMI_TELEGRAM_BATCH
+  # batch: 5
+  # Skip outbox records older than this (hours). · an integer ≥ 0 · env LUMI_TELEGRAM_CATCHUP_H
+  # catchup_h: 24
+  # Probability 0..1 of sending the face photo. · a number 0..1 (or on / off) · env LUMI_TELEGRAM_PHOTO
+  # photo: 0.0
+  # Send replies as voice messages. · env LUMI_TELEGRAM_VOICE
+  # voice: false
+  # Transcribe inbound voice messages. · env LUMI_TELEGRAM_STT
+  # stt: false
+
+voice:
+  # The TUI writes the outbox for the voicer. · env LUMI_VOICE
+  # enabled: false
+  # The ElevenLabs voice to speak in. · env LUMI_VOICE_ID
+  # voice_id:
+  # The ElevenLabs model. · env LUMI_VOICE_MODEL
+  # model: eleven_multilingual_v2
+  # On start, skip the replies missed while the voicer was off. · env LUMI_VOICE_SKIP_MISSED
+  # skip_missed: false
+  # Speak each reply sentence by sentence. · env LUMI_VOICE_SENTENCES
+  # sentences: false
+  # Streaming-STT end-of-turn silence (ms). · an integer ≥ 1 · env LUMI_VOICE_ENDPOINT_MS
+  # endpoint_ms: 500
+  # Voice-mode speaker: an index or a name substring. · env LUMI_VOICE_OUT_DEVICE
+  # out_device:
+  # First spoken chunk may cut after this many words (0 = off). · an integer ≥ 0 · env LUMI_VOICE_FIRST_CLAUSE_WORDS
+  # first_clause_words: 8
+  # STT reconnect attempts before falling back to text. · an integer ≥ 0 · env LUMI_VOICE_RECONNECT
+  # reconnect: 3
+  # The interaction mode at startup. · one of text, voice · env LUMI_MODE_SET
+  # mode: text
+
+dictation:
+  # Local dictation (mic → inbox). · env LUMI_DICTATION
+  # enabled: false
+  # The STT provider. · one of deepgram, elevenlabs, whisper · env LUMI_STT_PROVIDER
+  # stt_provider: deepgram
+  # The STT model. Unset → the provider's default. · env LUMI_STT_MODEL
+  # stt_model:
+  # The recognition language. · env LUMI_STT_LANG
+  # stt_lang: uk
+  # The mic: an index or a name substring. · env LUMI_STT_DEVICE
+  # stt_device:
+  # The listen toggle. Unset → <data root>/listen.flag. · env LUMI_LISTEN_FLAG
+  # listen_flag:
+
+tui:
+  # The send/receive sound. · env LUMI_SOUND
+  # sound: false
+  # Keep the input editable during a turn (queued). · env LUMI_INPUT_BUFFER
+  # input_buffer: false
+
+viewer:
+  # The face packs. Unset → viewer/faces. · env LUMI_FACES_DIR
+  # faces_dir:
+  # The emotion-face signal file the viewer polls. · env LUMI_FACE_SIGNAL
+  # face_signal:
+  # Relax the face to calm after this long (0 = off). · a number ≥ 0 · env LUMI_FACE_IDLE_SECONDS
+  # face_idle_seconds: 120.0
+
+# --- an instance's own changes to the authored files (optional) ---------------------------------------------
+# models:                 # merged over core/models.yaml by name — a profile's fields over the authored profile's
+#   aliases:
+#     fast: "anthropic:claude-haiku-4-5-20251001"
+#   profiles:
+#     anthropic:
+#       reply: claude-sonnet-5
+# schedule:               # merged over core/schedule.yaml by name — a new name adds a row
+#   - name: morning-brief
+#     enabled: false
+#   - name: evening-walk
+#     directive: think
+#     at: "19:00"         # quote every time: YAML reads an unquoted 19:00 as a number
+#     topic: "прогулянка"
+#     enabled: true

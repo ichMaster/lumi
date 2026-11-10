@@ -14,9 +14,10 @@ it reads as **untrusted information** (never instructions).
 
 ## Quick start
 
-1. **Turn it on** in `.env`:
-   ```ini
-   LUMI_WIKI=on
+1. **Turn it on** in `settings.yaml` (or `./lumi-cli config set wiki.enabled true`; the env name `LUMI_WIKI` still overrides):
+   ```yaml
+   wiki:
+     enabled: true
    ```
 2. **Restart the TUI** (`./lumi`) — settings are read at startup.
 3. **Ask her** something factual:

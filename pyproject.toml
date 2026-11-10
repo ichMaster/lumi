@@ -9,6 +9,7 @@ dependencies = [
     "anthropic>=0.40",
     "textual>=0.80",
     "python-dotenv>=1.0",
+    "pyyaml>=6",    # v2.9: settings.yaml + secrets.yaml (core/settings.py)
     "pillow>=11",   # v0.7 viewer: placeholder face generation
     "pygame>=2.6",  # v0.7 viewer: the local face window
 ]

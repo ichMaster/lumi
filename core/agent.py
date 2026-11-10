@@ -508,6 +508,7 @@ class Core:
         news_http_get: Callable[[str], str] | None = None,  # injected for tests; None → real urllib
         web_lookup_enabled: bool = False,
         web_lookup_model: str = "gemini-2.5-flash",
+        gemini_api_key: str = "",
         web_lookup_max_calls: int = 2,
         web_lookup_max_chars: int = 2000,
         web_search: Callable[..., str] | None = None,  # injected GeminiSearch for tests; None → real Gemini
@@ -658,6 +659,8 @@ class Core:
         # v0.27 web lookup — custom web_lookup (Gemini grounded search) on the same bounded loop (off by default).
         self._web_lookup_enabled = web_lookup_enabled
         self._web_lookup_model = web_lookup_model
+        # v2.9: the Gemini key from the settings (secrets.yaml), not only the process environment
+        self._gemini_api_key = gemini_api_key
         self._web_lookup_max_calls = web_lookup_max_calls
         self._web_lookup_max_chars = web_lookup_max_chars
         self._web_search = web_search  # injected GeminiSearch (tests); None → the real Gemini caller
@@ -2027,7 +2030,8 @@ class Core:
             return None, None
         from core.imagegen import GENERATE_TOOLS, ImageMaker, gemini_image_gen
 
-        gen = self._image_gen if self._image_gen is not None else gemini_image_gen(model=self._image_model)
+        gen = self._image_gen if self._image_gen is not None else gemini_image_gen(model=self._image_model,
+                                                                                  key=self._gemini_api_key or None)
         root = self._files_dir / self._user_id
         root.mkdir(parents=True, exist_ok=True)
         maker = ImageMaker(root, image_gen=gen, size=self._image_size)
@@ -2324,7 +2328,8 @@ class Core:
             return None, None
         from core.weblookup import WEB_LOOKUP_TOOLS, WebLookupTools, gemini_search
 
-        search = self._web_search if self._web_search is not None else gemini_search(model=self._web_lookup_model)
+        search = self._web_search if self._web_search is not None else gemini_search(model=self._web_lookup_model,
+                                                                                    key=self._gemini_api_key or None)
         web = WebLookupTools(
             search=search, today=self._clock().strftime("%Y-%m-%d"),
             max_chars=self._web_lookup_max_chars, max_calls=self._web_lookup_max_calls,
@@ -3539,6 +3544,7 @@ def build_core(
         news_days=cfg.news_days,
         web_lookup_enabled=cfg.web_lookup,
         web_lookup_model=cfg.web_lookup_model,
+        gemini_api_key=cfg.gemini_api_key,
         web_lookup_max_calls=cfg.web_lookup_max_calls,
         web_lookup_max_chars=cfg.web_lookup_max_chars,
         journal_enabled=cfg.journal,

@@ -9,6 +9,12 @@ How to switch Лілі to a different model or provider. From **v0.18** the mode
 - **MiniMax** — its chat API
 - **local** — any OpenAI-compatible local server (Ollama, LM Studio)
 
+> **v2.9 — settings as files.** The blocks below name each setting by its **env name** (`LUMI_PROVIDER`,
+> `OPENAI_API_KEY`, …). Since v2.9 they live in the instance's `settings.yaml` (a key in `secrets.yaml`, `0600`):
+> `./lumi-cli config set LUMI_PROVIDER openai` writes `model.provider: openai`, `./lumi-cli config set OPENAI_API_KEY
+> <key>` writes `providers.openai_api_key` (never echoed). Every setting's YAML key and env name are in
+> `settings.example.yaml`. An env variable still wins over the files.
+
 > This is an operator guide, not a design spec. The design lives in [ROADMAP.md §v0.18](../specification/ROADMAP.md)
 > and the issue breakdown in [v0.18-issues.md](../specification/roadmap/implementation/v0.18-issues.md).
 
@@ -16,7 +22,7 @@ How to switch Лілі to a different model or provider. From **v0.18** the mode
 
 ## How switching works (the 3 lines)
 
-In `.env` set three things, then **restart the TUI** (`./lumi`). Only **one** provider is active at a
+In the instance's settings set three things, then **restart the TUI** (`./lumi`). Only **one** provider is active at a
 time — whatever `LUMI_PROVIDER` says.
 
 ```ini
@@ -27,7 +33,7 @@ LUMI_MODEL=<model id>        # which model on that backend
 
 The status bar shows the active model, so you can confirm the switch.
 
-**Switch at runtime — no restart (v0.37).** Keep **both** keys in `.env` and flip engines mid-session with
+**Switch at runtime — no restart (v0.37).** Keep **both** keys in `secrets.yaml` and flip engines mid-session with
 the **`/model`** TUI command:
 
 - `/model` — print the active engine + the available aliases.
@@ -35,7 +41,7 @@ the **`/model`** TUI command:
   same conversation. `/model openai:gpt-4o` — an explicit `provider:model` for an id without an alias.
 
 Aliases come from config (`LUMI_MODEL_ALIASES=opus=anthropic:claude-opus-4-8,gpt-5.5=openai:gpt-5.5`, with
-sensible defaults). The switch is **not** persisted — the next restart uses the `.env` default; the new
+sensible defaults). The switch is **not** persisted — the next restart uses the settings' default; the new
 engine starts on a cold prompt cache (a one-off first turn). An unknown alias or a missing key is rejected
 with a clear message and leaves the current engine in place.
 
@@ -142,9 +148,19 @@ call, one tier).
 ### Model profiles (`/model-set`, v0.41) — the whole stack per provider
 
 A **profile** is a named, provider-homogeneous set `{reply, think, mood, housekeeping}`. The sets —
-and the `/model` aliases — live in **`core/models.toml`**: edit that file when new models are released
-(no code change). Merge order: code defaults ← `core/models.toml` ← the `.env` vars
-(`LUMI_MODEL_PROFILES` / `LUMI_MODEL_ALIASES`, then the per-field `LUMI_MODEL_*`). The shipped sets:
+and the `/model` aliases — live in **`core/models.yaml`** (TOML before v2.9): edit that file when new models are released
+(no code change). Merge order: code defaults ← `core/models.yaml` ← the instance's `settings.yaml` `models:`
+section (v2.9 — by name; a profile's fields merge over the authored one's) ← the settings
+`model.profile_overrides` / `model.alias_overrides` (env `LUMI_MODEL_PROFILES` / `LUMI_MODEL_ALIASES`), then the
+per-field `model.*` (env `LUMI_MODEL_*`). For one instance only:
+
+```yaml
+# ~/lumi/dev/settings.yaml
+models:
+  profiles:
+    anthropic:
+      reply: claude-sonnet-5    # the rest of the anthropic profile stays as authored
+``` The shipped sets:
 
 | profile | reply | think / mood | housekeeping |
 |---|---|---|---|
@@ -158,9 +174,9 @@ and the `/model` aliases — live in **`core/models.toml`**: edit that file when
 - **`/model <tier|full-id>`** afterwards moves the **reply only** and drops the profile mark (the
   stack no longer matches a named set; the tiers keep their values).
 - A failed switch (missing key) leaves the old stack untouched; nothing persists across restarts
-  (the next start reads `.env`).
-- **`LUMI_MODEL_PROFILE=anthropic`** boots the whole stack from a profile — one `.env` line instead of
-  five. Any explicitly set `LUMI_PROVIDER`/`LUMI_MODEL`/`LUMI_MODEL_*` var **wins over its profile
+  (the next start reads the settings).
+- **`model.profile: anthropic`** (env `LUMI_MODEL_PROFILE`) boots the whole stack from a profile — one line
+  instead of five. Any explicitly set `LUMI_PROVIDER`/`LUMI_MODEL`/`LUMI_MODEL_*` var **wins over its profile
   field** (expert overrides); an unknown/unset name → the plain env-var mode.
 
 ---
@@ -173,7 +189,7 @@ and the `/model` aliases — live in **`core/models.toml`**: edit that file when
 uv sync --extra models
 ```
 
-Get a key at <https://platform.openai.com/api-keys>, then in `.env`:
+Get a key at <https://platform.openai.com/api-keys>, then in the settings (env names — `./lumi-cli config set` each):
 
 ```ini
 LUMI_PROVIDER=openai
@@ -262,7 +278,7 @@ ollama pull qwen2.5            # or llama3.1 / mistral — pick one that knows U
 ollama serve                  # serves an OpenAI-compatible API on :11434
 ```
 
-Then in `.env`:
+Then in the settings (env names — `./lumi-cli config set` each):
 
 ```ini
 LUMI_PROVIDER=local
@@ -285,7 +301,7 @@ without a GPU. Good for testing the plumbing offline; not for the real relations
 ## 6. Google Gemini (v0.39)
 
 **No install** — Gemini uses plain HTTP (stdlib `urllib`), not an SDK, and the **key already exists**
-(`GEMINI_API_KEY` powers image gen + web lookup). In `.env`:
+(`GEMINI_API_KEY` powers image gen + web lookup). In the settings (env names):
 
 ```ini
 LUMI_PROVIDER=gemini
@@ -367,7 +383,7 @@ stint on another model, `/forget` clears that user's memory (drastic; per-user).
 
 ## Verifying a switch
 
-1. Restart `./lumi` after editing `.env`.
+1. Restart `./lumi` after changing the settings.
 2. Look at the **status bar** — it shows the active model id (e.g. `gpt-4o`, `deepseek-chat`).
 3. Send a message — if Лілі replies in character, the provider works.
 4. If you mistyped the provider or forgot the key, the TUI **fails fast at startup** with a clear

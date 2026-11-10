@@ -22,10 +22,15 @@ answer as **untrusted** (information, never a command), and sends **no personal 
 
 1. **Get a Gemini API key** (free tier available): [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
    (If image generation already works, you already have this — it's the same `GEMINI_API_KEY`.)
-2. **Turn it on** in `.env`:
-   ```ini
-   LUMI_WEB_LOOKUP=on
-   GEMINI_API_KEY=your-gemini-key
+2. **Turn it on** in `settings.yaml`, and put the key in `secrets.yaml` (`0600`) — or
+   `./lumi-cli config set web.enabled true` + `./lumi-cli config set GEMINI_API_KEY <key>` (the CLI never echoes it):
+   ```yaml
+   # settings.yaml
+   web:
+     enabled: true
+   # secrets.yaml
+   providers:
+     gemini_api_key: your-gemini-key
    ```
 3. **Restart the TUI** (`./lumi`).
 4. **Ask about something current — or use `/web`:**

@@ -60,6 +60,47 @@ Http = Callable[[str, dict], tuple[int, object]]
 
 
 # --- pure decisions ---------------------------------------------------------------------------------------------
+# v2.9: an instance's settings live in settings.yaml + secrets.yaml; the pre-v2.9 .env survives as .env.migrated
+# (compose mounts it at /app/.env, where only a pre-v2.9 image looks — the way back).
+SETTINGS_FILES = ("settings.yaml", "secrets.yaml", ".env.migrated")
+_SERVER_KEYS = {"host": "LUMI_SERVER_HOST", "port": "LUMI_SERVER_PORT", "token": "LUMI_SERVER_TOKEN"}
+
+
+def _server_lines(text: str) -> dict[str, str]:
+    """The ``server:`` group of a settings file, read line by line — for a Python without PyYAML."""
+    out: dict[str, str] = {}
+    in_server = False
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith((" ", "\t")):
+            in_server = line.split("#", 1)[0].strip() == "server:"
+            continue
+        if in_server and ":" in line:
+            key, value = line.split(":", 1)
+            value = re.sub(r"\s+#.*$", "", value).strip().strip("'\"")
+            if key.strip() in _SERVER_KEYS and value:
+                out[_SERVER_KEYS[key.strip()]] = value
+    return out
+
+
+def parse_settings(text: str) -> dict[str, str]:
+    """``LUMI_SERVER_HOST`` / ``_PORT`` / ``_TOKEN`` from a ``settings.yaml`` or ``secrets.yaml`` (its ``server:``
+    group) — PyYAML when the agent's Python has it, else a line reader for the files the migration writes."""
+    try:
+        import yaml
+    except ImportError:  # pragma: no cover - the box's python3 ships it; the line reader is tested directly
+        return _server_lines(text)
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        return _server_lines(text)
+    server = data.get("server") if isinstance(data, dict) else None
+    if not isinstance(server, dict):
+        return {}
+    return {_SERVER_KEYS[k]: str(v) for k, v in server.items() if k in _SERVER_KEYS and v is not None}
+
+
 def parse_env(text: str) -> dict[str, str]:
     """``KEY=VALUE`` lines of an instance ``.env`` (comments, blanks and inline ``# …`` dropped; quotes stripped)."""
     env: dict[str, str] = {}
@@ -249,10 +290,28 @@ class Agent:
         return self._run(["git", "-C", str(self.app(instance)), *args], None)
 
     def _env(self, instance: str) -> dict[str, str]:
-        try:
-            return parse_env((self.home / instance / ".env").read_text(encoding="utf-8"))
-        except OSError:
-            return {}
+        """The server's host / port / token for the smoke: ``settings.yaml`` + ``secrets.yaml`` (v2.9), over the
+        pre-v2.9 ``.env`` and then ``.env.migrated`` — the token is sent to the instance only, never logged."""
+        folder = self.home / instance
+        out: dict[str, str] = {}
+        for name, parse in ((".env.migrated", parse_env), (".env", parse_env),
+                            ("settings.yaml", parse_settings), ("secrets.yaml", parse_settings)):
+            try:
+                out.update(parse((folder / name).read_text(encoding="utf-8")))
+            except OSError:
+                continue
+        return out
+
+    def unmigrated(self, instance: str) -> list[str]:
+        """The v2.9 files compose mounts that ``instance`` lacks — a deploy never starts without them."""
+        return [name for name in SETTINGS_FILES if not (self.home / instance / name).is_file()]
+
+    def _refuse_unmigrated(self, instance: str) -> bool:
+        missing = self.unmigrated(instance)
+        if missing:
+            self.log(f"{instance}: not migrated to settings.yaml + secrets.yaml — missing {', '.join(missing)} "
+                     "(scripts/env_to_settings.py, docs/LINUX_DEPLOY.md) — nothing changed")
+        return bool(missing)
 
     def _seed(self, state: dict) -> dict:
         """Fill in what each instance runs: its ref the first time the agent sees it (from its checkout — no
@@ -417,6 +476,12 @@ class Agent:
         previous, previous_runs = side.get("current"), side.get("runs") or "units"
         started = self._stamp()
         last = state.setdefault("last", {})
+        if self._refuse_unmigrated(instance):  # v2.9: compose mounts the settings files — check before anything
+            if instance == "prod":
+                side.pop("confirmed", None)  # never retry every 5 minutes — a fresh `confirm` after the migration
+            last[instance] = {"ref": ref, "result": "not deployed: the instance is not migrated to settings.yaml",
+                              "at": started}
+            return False
         self.log(f"{instance}: deploying {ref} as {image_tag(ref)} (was {previous}, {previous_runs})")
         if not self._do(instance, self._compose(instance, ref, "pull", "--quiet")):
             last[instance] = {"ref": ref, "result": "not deployed: the image pull failed", "at": started}
@@ -513,6 +578,8 @@ class Agent:
             self.log(f"{instance}: nothing to roll back to")
             return False
         runs_now, runs_then = side.get("runs") or "units", side.get("previous_runs")
+        if runs_then == "containers" and self._refuse_unmigrated(instance):
+            return False
         if not runs_then:
             # A v2.7 record: both refs ran as units, and the v2.8 agent never moves a checkout any more.
             self.log(f"{instance}: {previous} ran before the containers — move the units' checkout by hand "

@@ -16,9 +16,10 @@ files. It is **off by default** and sandboxed.
 
 ## Quick start
 
-1. **Turn it on** in `.env`:
-   ```ini
-   LUMI_FILE_TOOL=on
+1. **Turn it on** in `settings.yaml` (or `./lumi-cli config set files.enabled true`; the env name `LUMI_FILE_TOOL` still overrides):
+   ```yaml
+   files:
+     enabled: true
    ```
 2. **Put files in her sandbox** — the per-user folder `.lumi/files/<user_id>/`. With the default
    single user that is **`.lumi/files/owner/`**:
@@ -136,21 +137,24 @@ All optional except `LUMI_FILE_TOOL`. Restart the TUI after changing any of them
 | `LUMI_FILE_DATE_MAX_DAYS` | Max `list_files` `after`/`before` span, in days (v0.32) | `366` |
 | `LUMI_TOOL_MAX_STEPS` | Max tool calls per turn (the loop cap) | `8` |
 
-Example `.env` block:
-```ini
-LUMI_FILE_TOOL=on
-# LUMI_FILES_DIR=.lumi/files
-# LUMI_FILE_READ_LINES=200
-# LUMI_FILE_READ_MAX_TOTAL=2000
-# LUMI_FILE_FIND_MAX=50
-# LUMI_FILE_WRITE_MAX=65536
-# LUMI_FILE_COPY_MAX=5242880
-# LUMI_FILE_SEARCH_MAX_FILES=200
-# LUMI_FILE_SEARCH_MAX_LINES=100
-# LUMI_FILE_SEARCH_MAX_CHARS=4000
-# LUMI_FILE_AROUND_MAX_K=50
-# LUMI_FILE_DATE_MAX_DAYS=366
-# LUMI_TOOL_MAX_STEPS=8
+Example `settings.yaml` block (v2.9 — the commented lines are the defaults; each key's env name is in
+`settings.example.yaml`):
+```yaml
+files:
+  enabled: true
+  # dir: .lumi/files
+  # read_lines: 200
+  # read_max_total: 2000
+  # find_max: 50
+  # write_max: 65536
+  # copy_max: 5242880
+  # search_max_files: 200
+  # search_max_lines: 100
+  # search_max_chars: 4000
+  # around_max_k: 50
+  # date_max_days: 366
+tools:
+  # max_steps: 8
 ```
 
 ---

@@ -1,7 +1,7 @@
 """Run the TUI: ``python -m tui`` (or ``uv run python -m tui``).
 
 Wires the real core (Claude Haiku via the Anthropic backend) from config and
-launches the Textual app. Needs ``ANTHROPIC_API_KEY`` in ``.env``.
+launches the Textual app. Needs ``ANTHROPIC_API_KEY`` (``providers.anthropic_api_key`` in ``secrets.yaml``).
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def _run_client(cfg) -> None:
     try:
         core.connect()
     except ServerAuthError as exc:  # the server is up — the tokens differ
-        raise SystemExit(f"{exc}\nUse the same LUMI_SERVER_TOKEN as the server's .env.") from None
+        raise SystemExit(f"{exc}\nUse the same server.token as the server's secrets.yaml.") from None
     except ServerUnavailable as exc:
         raise SystemExit(f"{exc}\nStart it with ./lumi-server — or run ./lumi for the in-process Лілі.") from None
     LumiApp(core).run()
@@ -89,7 +89,7 @@ def main() -> None:
     try:
         core = build_core(config=cfg, telegram_sink=sink)
     except LLMError as exc:
-        raise SystemExit(f"{exc}\nSet ANTHROPIC_API_KEY in .env (see .env.example).") from exc
+        raise SystemExit(f"{exc}\nSet providers.anthropic_api_key in secrets.yaml (see secrets.example.yaml).") from exc
     LumiApp(core).run()
 
 

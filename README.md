@@ -14,7 +14,8 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 **2.8 — Lumi in Docker.** Every Lumi process on the box runs from one image (`ghcr.io/ichmaster/lumi`, built and
 smoke-tested by CI): a compose project per instance (`deploy/compose/`) runs the server and both Telegram daemons
-with her data root bind-mounted and the instance's `.env` through `env_file`, published on the LAN address only. The
+with her data root bind-mounted and the instance's settings (then its `.env` through `env_file`; since 2.9
+`settings.yaml` + `secrets.yaml`, mounted read-only), published on the LAN address only. The
 deploy agent deploys image tags — a green `main` to dev as `sha-<short>`, `confirm <tag>` to prod with her data
 archived first — with the smoke and an automatic way back; the v2.6 units are retired and stay as the way back. An
 image moves code only: her data and settings stay on the host. Guide: [docs/LINUX_DEPLOY.md](docs/LINUX_DEPLOY.md)
@@ -169,7 +170,7 @@ interlude at v1.2), then needs, inner life, inner monologue, and emotional memor
 **0.42 — Thought scheduler: proactive `%directives` on a clock.** Лілі's autonomous acts now fire on a
 clock she keeps — *every 10 min*, *idle 15 min*, *at 08:00*, *between 08:00–22:00 every 2h*, *Mondays only*,
 or raw `cron` — via a small **in-TUI scheduler** (no daemon, no bus). A pure `due(now, last_fired, spec)`
-predicate per `core/schedule.toml` row drives `run_directive` **directly**, with a startup **catch-up** for
+predicate per `core/schedule.yaml` row (TOML until 2.9) drives `run_directive` **directly**, with a startup **catch-up** for
 fixed-time acts missed while closed, **quiet-hours** veto (an explicit `at:` pierces it) and **per-day
 caps**. A `seeds = "…"` row rotates a `%directive` menu (one picked per fire, re-read live); `show = true`
 (or a `%name!` seed) writes the thought to the chat as a `💭` line, and `LUMI_THOUGHT_SURFACE` marks each
@@ -188,11 +189,11 @@ silent thoughts still never leave the TUI.
 
 Builds on **0.41 — Model profiles: per-provider tier sets (`/model-set`).** One name now moves the **whole model
 stack**: a **profile** is a provider-homogeneous set `{reply, think, mood, housekeeping}`, three ship
-authored (**anthropic / openai / gemini**), and they live in **`core/models.toml`** — THE file to edit
-when new models release (aliases included; merge order: code defaults ← models.toml ← `.env`).
+authored (**anthropic / openai / gemini**), and they live in **`core/models.yaml`** (TOML until 2.9) — THE file to edit
+when new models release (aliases included; merge order: code defaults ← models.yaml ← the settings).
 **`/model-set gemini`** swaps the engine **and** all tiers in one atomic step — so the v0.40
 per-operation routing now works **on every engine**, not just Anthropic. **`LUMI_MODEL_PROFILE=anthropic`**
-boots the stack from a profile (one `.env` line instead of five; explicit `LUMI_MODEL_*` vars stay as
+boots the stack from a profile (one settings line instead of five; explicit `LUMI_MODEL_*` vars stay as
 expert overrides), the status bar shows `profile:model`, and `/model` still moves the **reply alone**
 (now also accepting a bare full id — provider inferred by prefix). Sonnet tier moved to **claude-sonnet-5**
 via the new file. See **[docs/MODELS_SETUP.md](docs/MODELS_SETUP.md)**.
@@ -401,7 +402,7 @@ tables in `.lumi/cache-report.md`.
 - **Resilient playback** — plays MP3 via `afplay`/`ffplay`; a **synth** failure retries (network),
   a **playback** failure logs + skips (audio already synthesized — never re-synthesizes a stuck
   speaker, so no wasted TTS credits).
-- **Run it** — `LUMI_VOICE=on` + the key/voice id in `.env`, then `uv run --extra voice python -m
+- **Run it** — `LUMI_VOICE=on` + the key/voice id in the settings (`secrets.yaml` for the key, 2.9), then `uv run --extra voice python -m
   voice.voicer` alongside the TUI (see the README "Hearing her" section). Mocked in tests (no paid calls).
 
 Queued next: **Telegram voice messages** (LUMI-060) — daemon 2 sending her replies as voice bubbles.
@@ -427,9 +428,12 @@ See [RELEASE.txt](RELEASE.txt) for the full changelog (incl. the v0.7 viewer + 0
   previous), `/prompt` (last turn's prompt), `/memory`, `/forget`.
 - **Keys** — Ctrl+Q quit (summarizes first), Ctrl+Y copy reply, Ctrl+O copy all,
   Ctrl+L clear screen, Ctrl+T mouse-select toggle.
-- **Config** — via `.env` (see [.env.example](.env.example)): `LUMI_MODEL`,
-  `LUMI_THINKING` (on/off), `LUMI_EFFORT`, `LUMI_MEMORY_WINDOW`,
-  `LUMI_COMPACTION_BATCH`, `LUMI_STYLES_PATH`.
+- **Config** (v2.9) — `settings.yaml` + `secrets.yaml` (`0600`), both gitignored, described by one schema
+  (`core/settings.py`); every setting is in [settings.example.yaml](settings.example.yaml) /
+  [secrets.example.yaml](secrets.example.yaml) with its default, allowed values and env name (`model.reply` =
+  `LUMI_MODEL`, `model.thinking` = `LUMI_THINKING`, `memory.window` = `LUMI_MEMORY_WINDOW`, …). Change one with
+  `./lumi-cli config set <key> <value>` (validated; restart to apply). A `LUMI_*` env variable still wins.
+  **`.env` is deprecated in v2.9 and removed in v2.10** — migrate with `uv run python scripts/env_to_settings.py .env`.
 
 ### Hearing her — local voice (v0.14)
 
@@ -439,12 +443,16 @@ skipped) and **skips the existing backlog on first run** — then speaks each ne
 
 1. **Get an ElevenLabs voice** — at [elevenlabs.io](https://elevenlabs.io), pick/clone a voice and
    copy its **voice id** + your **API key**.
-2. **Configure `.env`** (the key is a secret — `.env` is gitignored, never commit it):
-   ```ini
-   LUMI_VOICE=on                            # the TUI writes the outbox for the voicer
-   ELEVENLABS_API_KEY=sk_...                # your ElevenLabs key
-   LUMI_VOICE_ID=...                        # the voice to speak in
-   LUMI_VOICE_MODEL=eleven_multilingual_v2  # multilingual — handles Ukrainian
+2. **Configure** `settings.yaml` + `secrets.yaml` (the key is a secret — both are gitignored, never commit them):
+   ```yaml
+   # settings.yaml
+   voice:
+     enabled: true                     # the TUI writes the outbox for the voicer
+     voice_id: ...                     # the voice to speak in
+     model: eleven_multilingual_v2     # multilingual — handles Ukrainian
+   # secrets.yaml (chmod 600)
+   voice:
+     elevenlabs_api_key: sk_...        # your ElevenLabs key
    ```
 3. **Install the voice extra:** `uv sync --all-extras`
 4. **Run two processes** (the TUI is the brain; the voicer is a separate speaker):
@@ -470,7 +478,8 @@ tests/   pytest: unit + integration (mock model — no paid APIs)
 
 ```bash
 uv sync --extra dev          # create the environment
-cp .env.example .env         # then set ANTHROPIC_API_KEY
+cp settings.example.yaml settings.yaml && cp secrets.example.yaml secrets.yaml && chmod 600 secrets.yaml
+./lumi-cli config set providers.anthropic_api_key sk-ant-...   # the key (never echoed); or edit secrets.yaml
 ```
 
 ## Develop

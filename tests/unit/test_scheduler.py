@@ -169,7 +169,7 @@ def test_graduates_only_muse_family_and_respects_ratio():
 
 
 def test_migrated_schedule_has_idle_seeds_row():
-    # Structural — core/schedule.toml is user-editable, so assert the migration SHAPE (an idle seeds
+    # Structural — core/schedule.yaml is user-editable, so assert the migration SHAPE (an idle seeds
     # menu), not the enabled-state (the owner may enable rituals / tune rows).
     from core.config import DEFAULT_SCHEDULE_PATH
     from core.schedule import load_schedule

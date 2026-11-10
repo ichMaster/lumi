@@ -229,7 +229,7 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     if not cfg.telegram_allowlist:
         raise SystemExit("LUMI_TELEGRAM_ALLOWLIST is empty — no chat to send to")
 
-    log = get_logger("outbound", cfg.outbox_path.parent)
+    log = get_logger("outbound", cfg.outbox_path.parent, level=cfg.log_level)
     emoji_map = load_emoji_map(cfg.emoji_path)
     sent_path = cfg.outbox_path.with_suffix(".sent")
     bot = Bot(cfg.telegram_token)

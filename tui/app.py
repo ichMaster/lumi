@@ -439,7 +439,7 @@ class LumiApp(App[None]):
             )
 
             self._scheduler = Scheduler(
-                load_schedule(cfg.schedule_path), cfg.schedule_state_path,
+                load_schedule(cfg.schedule_path, getattr(cfg, "schedule_overrides", ())), cfg.schedule_state_path,
                 day_cap=cfg.sched_day_cap, quiet_hours=cfg.thoughts_quiet_hours,
             )
             for entry in self._scheduler.catch_up(now, catchup_h=cfg.sched_catchup_h):

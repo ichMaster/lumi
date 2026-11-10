@@ -13,7 +13,7 @@ box's settings but not exercised there yet.
 |---|---|---|---|---|
 | **prod** — her real memory | Linux box `slate-server` (192.168.1.197), `~/lumi/prod` | systemd user services: `lumi-server@prod` (port 8765), `lumi-telegram-inbound@prod`, `lumi-telegram-outbound@prod` | tag `v2.7.0` (via `confirm`, 2026-10-20 22:16) | ✅ since **2026-10-20 01:19** — moved from the Mac (messages, vectors, facts, summaries, thoughts all present) |
 | **dev** — test data | Linux box `slate-server` (192.168.1.197), `~/lumi/dev` | systemd user services: `lumi-server@dev`, `lumi-telegram-inbound@dev`, `lumi-telegram-outbound@dev` | **follows `main`** through the deploy agent — `b6a4ca6` (= `v2.7.0`) since 2026-10-20 22:13 | ✅ since 2026-10-19 23:07 |
-| **Mac prod** | Mac, `~/lumi/prod` | a **client** of the box's prod (`.env`: `LUMI_SERVER=on`) — `~/lumi/prod/app/lumi` talks to the box; its local `data/` is the untouched **fallback** (+ the pre-move archive in `backups/`) | `v2.6.0` (a client — move it with `prod_update.py` when you like) | ✅ — never start its Telegram daemons again (the box polls the prod bot) |
+| **Mac prod** | Mac, `~/lumi/prod` | a **client** of the box's prod (its settings: `LUMI_SERVER=on`) — `~/lumi/prod/app/lumi` talks to the box; its local `data/` is the untouched **fallback** (+ the pre-move archive in `backups/`) | `v2.6.0` (a client — move it with `prod_update.py` when you like) | ✅ — never start its Telegram daemons again (the box polls the prod bot) |
 | **Mac dev tree** | `./lumi-client`, `./lumi-cli` → `192.168.1.197:8766` (the box's dev) | the TUI/CLI over the API (LAN, ufw rule for 192.168.1.0/24) | `v2-dev` | ✅ seen |
 
 The box also runs **matrix-agora** (Matrix :8008, its panel :8090); Lumi's ports are 8765 (prod) and 8766 (dev).

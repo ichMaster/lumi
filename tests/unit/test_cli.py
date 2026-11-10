@@ -20,7 +20,7 @@ TOKEN = "cli-test-token"
 
 @pytest.fixture(autouse=True)
 def env_only(monkeypatch):
-    monkeypatch.setattr(cm, "load_config", lambda: load_config(load_env=False))
+    monkeypatch.setattr(cm, "load_config", lambda **kw: load_config(load_env=False, **kw))
 
 
 def _api(tmp_path):
@@ -171,3 +171,144 @@ def test_serve_says_why_it_refuses_instead_of_exiting_silently(monkeypatch, caps
         main(["serve"])
     assert exc.value.code == 78
     assert "LUMI_SERVER_TOKEN is not set" in capsys.readouterr().err
+
+
+# --- v2.9 LUMI-248: config get | set | validate over the settings files ---------------------------------------
+
+import logging  # noqa: E402
+import stat  # noqa: E402
+
+from core.settings import read_yaml  # noqa: E402
+
+SECRETS = {"ANTHROPIC_API_KEY": "sk-ant-CLI-SECRET-0001", "LUMI_TELEGRAM_TOKEN": "777:CLI-SECRET-0002",
+           "LUMI_SERVER_TOKEN": "tok-CLI-SECRET-0003"}
+SETTINGS_YAML = """# my settings — a hand comment that must survive
+memory:
+  window: 40          # tuned by hand
+  compaction_batch: 20
+
+recall:
+  rag: true
+"""
+SECRETS_YAML = f"""providers:
+  anthropic_api_key: {SECRETS["ANTHROPIC_API_KEY"]}
+telegram:
+  token: "{SECRETS["LUMI_TELEGRAM_TOKEN"]}"
+"""
+
+
+def _folder(tmp_path):
+    (tmp_path / "settings.yaml").write_text(SETTINGS_YAML, encoding="utf-8")
+    (tmp_path / "secrets.yaml").write_text(SECRETS_YAML, encoding="utf-8")
+    (tmp_path / "secrets.yaml").chmod(0o600)
+    return tmp_path
+
+
+def _cfg(argv, tmp_path):
+    out, err = io.StringIO(), io.StringIO()
+    code = main(["config", *argv, "--dir", str(tmp_path)], out=out, err=err)
+    return code, out.getvalue(), err.getvalue()
+
+
+def test_config_get_shows_the_value_and_where_it_comes_from(tmp_path, monkeypatch):
+    for name in ("LUMI_MEMORY_WINDOW", "LUMI_RAG_K", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    _folder(tmp_path)
+    assert _cfg(["get", "memory.window"], tmp_path)[1].startswith("memory.window = 40  (settings.yaml")
+    assert "recall.rag_k = 4  (default" in _cfg(["get", "LUMI_RAG_K"], tmp_path)[1]  # the env name works too
+    code, out, _ = _cfg(["get", "providers.anthropic_api_key"], tmp_path)
+    assert code == 0 and "= •••set•••  (secrets.yaml" in out and SECRETS["ANTHROPIC_API_KEY"] not in out
+    assert "= (unset)" in _cfg(["get", "providers.openai_api_key"], tmp_path)[1]
+    monkeypatch.setenv("LUMI_MEMORY_WINDOW", "55")
+    assert "memory.window = 55  (env" in _cfg(["get", "memory.window"], tmp_path)[1]
+
+
+def test_config_set_validates_and_refuses_a_wrong_value_writing_nothing(tmp_path):
+    _folder(tmp_path)
+    before = (tmp_path / "settings.yaml").read_bytes()
+    code, out, err = _cfg(["set", "persona.think_show", "loud"], tmp_path)
+    assert code == 1 and "persona.think_show" in err and "one of debug, open, off" in err
+    code, out, err = _cfg(["set", "server.port", "70000"], tmp_path)
+    assert code == 1 and "an integer 1..65535" in err
+    code, out, err = _cfg(["set", "memory.nonsense", "1"], tmp_path)
+    assert code == 1 and "unknown setting" in err
+    assert (tmp_path / "settings.yaml").read_bytes() == before  # byte for byte
+
+
+def test_config_set_changes_only_its_line_and_keeps_the_comments(tmp_path, monkeypatch):
+    monkeypatch.delenv("LUMI_MEMORY_WINDOW", raising=False)
+    _folder(tmp_path)
+    code, out, err = _cfg(["set", "memory.window", "50"], tmp_path)
+    assert code == 0, err
+    assert "memory.window = 50 → " in out and "restart needed" in out
+    text = (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+    assert text == SETTINGS_YAML.replace("  window: 40          # tuned by hand", "  window: 50")
+    assert load_config(load_env=False, settings_dir=tmp_path).memory_window == 50
+    _cfg(["set", "recall.k", "7"], tmp_path)  # a new key in an existing group
+    _cfg(["set", "wiki.lang", "uk,pl"], tmp_path)  # a new group
+    data = read_yaml(tmp_path / "settings.yaml")
+    assert data["recall"] == {"rag": True, "k": 7} and data["wiki"] == {"lang": ["uk", "pl"]}
+    assert "# my settings — a hand comment that must survive" in (tmp_path / "settings.yaml").read_text()
+
+
+def test_config_set_writes_a_secret_into_secrets_yaml_0600_without_echoing_it(tmp_path):
+    _folder(tmp_path)
+    code, out, err = _cfg(["set", "LUMI_SERVER_TOKEN", SECRETS["LUMI_SERVER_TOKEN"]], tmp_path)
+    assert code == 0, err
+    assert "server.token = •••set••• → " in out and "(0600)" in out
+    assert SECRETS["LUMI_SERVER_TOKEN"] not in out + err
+    assert read_yaml(tmp_path / "secrets.yaml")["server"]["token"] == SECRETS["LUMI_SERVER_TOKEN"]
+    assert stat.S_IMODE((tmp_path / "secrets.yaml").stat().st_mode) == 0o600
+    assert "token" not in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+
+
+def test_config_set_into_an_empty_folder_creates_the_file(tmp_path):
+    code, out, err = _cfg(["set", "server.port", "8766"], tmp_path)
+    assert code == 0, err
+    assert read_yaml(tmp_path / "settings.yaml") == {"server": {"port": 8766}}
+
+
+def test_config_set_notes_an_environment_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("LUMI_MEMORY_WINDOW", "55")
+    assert "still wins over the file" in _cfg(["set", "memory.window", "50"], tmp_path)[1]
+
+
+def test_config_validate(tmp_path):
+    _folder(tmp_path)
+    code, out, err = _cfg(["validate"], tmp_path)
+    assert code == 0 and "are valid" in out
+    (tmp_path / "settings.yaml").write_text("memory:\n  window: 0\n  future: 1\nserver:\n  port: x\n",
+                                            encoding="utf-8")
+    code, out, err = _cfg(["validate"], tmp_path)
+    assert code == 1
+    assert err.count("error: ") == 2 and "memory.window" in err and "server.port" in err
+
+
+def test_config_validate_names_a_misplaced_secret_without_its_value(tmp_path):
+    (tmp_path / "settings.yaml").write_text(f"providers:\n  anthropic_api_key: {SECRETS['ANTHROPIC_API_KEY']}\n",
+                                            encoding="utf-8")
+    code, out, err = _cfg(["validate"], tmp_path)
+    assert code == 1 and "belongs in secrets.yaml" in err and SECRETS["ANTHROPIC_API_KEY"] not in out + err
+
+
+def test_no_secret_in_any_config_output_or_log(tmp_path, monkeypatch, caplog):
+    _folder(tmp_path)
+    monkeypatch.setenv("LUMI_SERVER_TOKEN", SECRETS["LUMI_SERVER_TOKEN"])
+    runs = [["show"], ["get", "providers.anthropic_api_key"], ["get", "telegram.token"], ["get", "server.token"],
+            ["set", "providers.anthropic_api_key", SECRETS["ANTHROPIC_API_KEY"]],
+            ["set", "telegram.token", SECRETS["LUMI_TELEGRAM_TOKEN"]], ["validate"], ["set", "server.port", "x"]]
+    seen = []
+    with caplog.at_level(logging.DEBUG):
+        for argv in runs:
+            code, out, err = _cfg(argv, tmp_path)
+            seen.append(out + err)
+    seen.append("\n".join(r.getMessage() for r in caplog.records))
+    for value in SECRETS.values():
+        assert all(value not in text for text in seen), value
+
+
+def test_config_show_masks_a_secret_whatever_the_field_is_called(tmp_path):
+    _folder(tmp_path)
+    code, out, _ = _cfg(["show"], tmp_path)
+    assert code == 0 and "api_key = •••set•••" in out and "telegram_token = •••set•••" in out
+    assert SECRETS["ANTHROPIC_API_KEY"] not in out

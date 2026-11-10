@@ -16,11 +16,12 @@ never a command), and is sandboxed + per-user. Generation is **paid** (needs `GE
 
 ## Quick start
 
-1. **Turn it on** in `.env`:
-   ```ini
-   LUMI_IMAGE=on
+1. **Turn it on** in `settings.yaml` (or `./lumi-cli config set image.enabled true`; the env name `LUMI_IMAGE` still overrides):
+   ```yaml
+   image:
+     enabled: true
    ```
-   Vision needs the **Anthropic** provider (`LUMI_PROVIDER=anthropic`, the default — it's multimodal).
+   Vision needs the **Anthropic** provider (`model.provider: anthropic`, the default — it's multimodal).
 2. **Restart the TUI** (`./lumi`).
 3. **Share an image:**
    ```
@@ -32,7 +33,7 @@ never a command), and is sandboxed + per-user. Generation is **paid** (needs `GE
    подивись на photo.png і опиши
    ```
    She calls `view_image` and describes it.
-5. **Ask her to draw** (generation — **paid**, needs a `GEMINI_API_KEY` in `.env`):
+5. **Ask her to draw** (generation — **paid**, needs `providers.gemini_api_key` in `secrets.yaml` — env `GEMINI_API_KEY`):
    ```
    намалюй кота в окулярах у неоновому місті
    ```
@@ -191,7 +192,7 @@ All optional except `LUMI_IMAGE`. Restart the TUI after changing any of them.
 | `LUMI_IMAGE_MAX_GEN` | Max generations per turn (paid) | `2` |
 | `LUMI_IMAGE_SHOW` | Where to show a generated PNG (the `telegram` target is superseded by `send_image`) | `path,viewer,telegram` |
 
-Generation also needs `GEMINI_API_KEY` (in `.env`). **Sending** (`send_image`, v0.24) needs no extra
+Generation also needs `GEMINI_API_KEY` (`providers.gemini_api_key` in `secrets.yaml`). **Sending** (`send_image`, v0.24) needs no extra
 config — it reuses `LUMI_IMAGE` + the [Telegram bridge](TELEGRAM_SETUP.md) (`LUMI_BRIDGE` + `LUMI_TELEGRAM_*`).
 The image tool can be on **alongside** the file + Wikipedia tools; a turn can use any of them.
 
@@ -210,7 +211,7 @@ The image tool can be on **alongside** the file + Wikipedia tools; a turn can us
   The picture must be in `.lumi/files/owner/` (e.g. `art/<name>.png`).
 - **The photo never arrives in Telegram.** Check the outbound daemon is running and the picture still
   exists; if the file vanished, the daemon sends her words as a plain message instead.
-- **Generation does nothing / "image generation failed".** Check `GEMINI_API_KEY` is set in `.env` and
+- **Generation does nothing / "image generation failed".** Check `providers.gemini_api_key` is set in `secrets.yaml` (`./lumi-cli config get GEMINI_API_KEY` says `•••set•••`) and
   that **billing is enabled** on your Google project — `gemini-2.5-flash-image` (Nano Banana) is **not**
   on the free tier (quota 0). A safety refusal also degrades to this notice; rephrase the prompt.
 - **"already exists".** `generate_image` won't overwrite — she'll pick a new name, or ask her to draw it

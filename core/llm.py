@@ -714,7 +714,7 @@ class AnthropicClient:
         if not api_key:
             raise LLMError(
                 "ANTHROPIC_API_KEY is not set — cannot reach Claude. "
-                "Add it to .env (see .env.example)."
+                "Add it to secrets.yaml (providers.anthropic_api_key; see secrets.example.yaml)."
             )
         import anthropic  # SDK imported only inside AnthropicClient
 
@@ -1285,8 +1285,8 @@ class OpenAICompatibleClient:
         else:
             if not api_key:
                 raise LLMError(
-                    "The OpenAI-compatible provider's key is not set — add the provider's key to .env "
-                    "(OPENAI_API_KEY / DEEPSEEK_API_KEY)."
+                    "The OpenAI-compatible provider's key is not set — add the provider's key to secrets.yaml "
+                    "(providers.openai_api_key / providers.deepseek_api_key)."
                 )
             import openai  # optional extra ('models'); imported only inside this client
 
@@ -1618,7 +1618,7 @@ class OpenAIResponsesClient:
             self._client = _client
         else:
             if not api_key:
-                raise LLMError("LUMI_PROVIDER=openai needs OPENAI_API_KEY in .env.")
+                raise LLMError("LUMI_PROVIDER=openai needs OPENAI_API_KEY (providers.openai_api_key in secrets.yaml).")
             import openai  # optional extra ('models'); imported only inside this client
 
             self._client = openai.OpenAI(api_key=api_key, base_url=base_url or None)
@@ -1914,7 +1914,7 @@ class MiniMaxClient:
         _transport: Callable[[str, dict, dict], dict] | None = None,
     ) -> None:
         if not api_key and _transport is None:
-            raise LLMError("MINIMAX_API_KEY is not set — add it to .env.")
+            raise LLMError("MINIMAX_API_KEY is not set — add providers.minimax_api_key to secrets.yaml.")
         self._key = api_key or ""
         self._base = (base_url or self._DEFAULT_BASE).rstrip("/")
         self._max_tokens = max_tokens
@@ -2063,7 +2063,7 @@ class GeminiClient:
         _clock: Callable[[], float] | None = None,
     ) -> None:
         if not api_key and _transport is None and _stream_transport is None:
-            raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
+            raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY (providers.gemini_api_key in secrets.yaml).")
         # v2.7: a turn's deadline lives per thread — thoughts and housekeeping share this client from other threads
         # and keep their own (no) budget. ``_clock`` is injectable so a test drives a "hang" without waiting.
         self._turn_deadline_s = turn_deadline_s
@@ -3012,11 +3012,11 @@ def build_llm(cfg: Config) -> LLMClient:
         )
     if provider == "minimax":
         if not cfg.minimax_api_key:
-            raise LLMError("LUMI_PROVIDER=minimax needs MINIMAX_API_KEY in .env.")
+            raise LLMError("LUMI_PROVIDER=minimax needs MINIMAX_API_KEY (providers.minimax_api_key in secrets.yaml).")
         return MiniMaxClient(cfg.minimax_api_key, base_url=cfg.llm_base_url or None, max_tokens=cfg.max_tokens)
     if provider == "gemini":  # v0.39 — Google Gemini behind the same seam (key shared with image/web gen)
         if not cfg.gemini_api_key:
-            raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY in .env.")
+            raise LLMError("LUMI_PROVIDER=gemini needs GEMINI_API_KEY (providers.gemini_api_key in secrets.yaml).")
         return GeminiClient(
             cfg.gemini_api_key, max_tokens=cfg.max_tokens, effort=cfg.effort, thinking=cfg.thinking,
             thinking_off=not cfg.reasoning,  # LUMI_REASONING=off → thinkingBudget 0
@@ -3048,11 +3048,11 @@ def _openai_compatible_target(cfg: Config, provider: str) -> tuple[str | None, s
     """(base_url, key) for an OpenAI-compatible provider; a clear LLMError names the missing var."""
     if provider == "openai":
         if not cfg.openai_api_key:
-            raise LLMError("LUMI_PROVIDER=openai needs OPENAI_API_KEY in .env.")
+            raise LLMError("LUMI_PROVIDER=openai needs OPENAI_API_KEY (providers.openai_api_key in secrets.yaml).")
         return (cfg.llm_base_url or None), cfg.openai_api_key
     if provider == "deepseek":
         if not cfg.deepseek_api_key:
-            raise LLMError("LUMI_PROVIDER=deepseek needs DEEPSEEK_API_KEY in .env.")
+            raise LLMError("LUMI_PROVIDER=deepseek needs DEEPSEEK_API_KEY (providers.deepseek_api_key in secrets.yaml).")
         return (cfg.llm_base_url or "https://api.deepseek.com"), cfg.deepseek_api_key
     # local OpenAI-compatible server (Ollama / LM Studio): needs a base_url; key usually optional.
     if not cfg.llm_base_url:

@@ -19,11 +19,13 @@ import pytest
 from scripts import deploy_agent as da
 from scripts.deploy_agent import (
     Agent,
+    _server_lines,
     ci_verdict,
     dev_action,
     errors_since,
     image_tag,
     parse_env,
+    parse_settings,
     prod_action,
     release_tags,
     smoke_verdict,
@@ -162,8 +164,13 @@ class World:
             (home / inst / "data").mkdir()
             (home / inst / "data" / "lumi.log").write_text("2026-10-20 00:00:00,000 INFO lumi: started\n")
             (home / inst / "data" / "store.json").write_text('{"messages": ["her memory"]}')
-            (home / inst / ".env").write_text(f"LUMI_ENV={inst}\nLUMI_SERVER_HOST=192.168.1.197\n"
-                                              f"LUMI_SERVER_PORT={_PORT[inst]}\nLUMI_SERVER_TOKEN=tok-{inst}\n")
+            # v2.9: the migrated layout — settings.yaml + secrets.yaml, the old .env kept as .env.migrated
+            (home / inst / "settings.yaml").write_text(f"instance:\n  env: {inst}\nserver:\n  host: 192.168.1.197\n"
+                                                       f"  port: {_PORT[inst]}\n")
+            (home / inst / "secrets.yaml").write_text(f"server:\n  token: tok-{inst}\n")
+            (home / inst / ".env.migrated").write_text(f"LUMI_ENV={inst}\nLUMI_SERVER_HOST=192.168.1.197\n"
+                                                       f"LUMI_SERVER_PORT={_PORT[inst]}\n"
+                                                       f"LUMI_SERVER_TOKEN=old-tok-{inst}\n")
 
     # the commands the agent runs
     def run(self, cmd, cwd=None):
@@ -685,14 +692,14 @@ def _fingerprint(home: Path) -> dict[str, str]:
 def test_contract_a_deploy_and_a_rollback_move_code_only(world):
     world.tags = ["v2.7.0", "v2.8.0"]
     before = _fingerprint(world.home)
-    assert any(k.endswith(".env") for k in before) and any("/data/" in k for k in before)
+    assert any(k.endswith("secrets.yaml") for k in before) and any("/data/" in k for k in before)
     agent, _ = _agent(world)
     agent.tick()
     agent.confirm("v2.8.0")
     agent.rollback("prod")
     agent.rollback("dev")
     assert world.ups("dev") and world.ups("prod")  # code did move
-    assert _fingerprint(world.home) == before  # data/ and .env untouched, byte for byte
+    assert _fingerprint(world.home) == before  # data/ and the settings files untouched, byte for byte
     assert {p.name for p in (world.home / "deploy").iterdir()} <= {"state.json", "deploy.log"}
     assert all(p.name.startswith("data-") and p.name.endswith(".tar.gz")
                for p in (world.home / "prod" / "backups").iterdir())
@@ -780,3 +787,66 @@ def test_a_second_step_never_runs_alongside_a_running_one(tmp_path, monkeypatch,
         fcntl.flock(held, fcntl.LOCK_EX)
         assert da.main(["status"]) == 1
     assert "another deploy step is running" in capsys.readouterr().out
+
+
+# --- v2.9 LUMI-249: the settings files ------------------------------------------------------------------------
+
+
+def test_parse_settings_reads_the_server_group():
+    text = "# c\ninstance:\n  env: dev\nserver:\n  host: 192.168.1.197\n  port: 8766  # dev\n"
+    assert parse_settings(text) == {"LUMI_SERVER_HOST": "192.168.1.197", "LUMI_SERVER_PORT": "8766"}
+    assert parse_settings("server:\n  token: 't0k'\n") == {"LUMI_SERVER_TOKEN": "t0k"}
+    assert parse_settings("") == {} and parse_settings("server: [x]\n") == {}
+
+
+def test_the_line_reader_matches_yaml_on_the_migrated_shape():
+    text = "# c\ninstance:\n  env: dev\nserver:\n  host: 192.168.1.197\n  port: 8766  # dev\n  token: 'x y'\n"
+    assert _server_lines(text) == parse_settings(text) == {
+        "LUMI_SERVER_HOST": "192.168.1.197", "LUMI_SERVER_PORT": "8766", "LUMI_SERVER_TOKEN": "x y"}
+
+
+def test_the_smoke_reads_the_yaml_over_the_old_env(world):
+    agent, _ = _agent(world)
+    env = agent._env("dev")
+    assert env["LUMI_SERVER_PORT"] == str(_PORT["dev"]) and env["LUMI_SERVER_TOKEN"] == "tok-dev"  # not old-tok
+    (world.home / "dev" / "secrets.yaml").unlink()
+    assert agent._env("dev")["LUMI_SERVER_TOKEN"] == "old-tok-dev"  # .env.migrated as the last fallback
+    (world.home / "dev" / ".env").write_text("LUMI_SERVER_TOKEN=env-tok\n")
+    assert agent._env("dev")["LUMI_SERVER_TOKEN"] == "env-tok"  # a pre-v2.9 .env over .env.migrated
+
+
+def test_the_smoke_sends_the_yaml_token_and_never_logs_it(world):
+    world.tags = ["v2.7.0", "v2.8.0"]
+    agent, _ = _agent(world)
+    agent.confirm("v2.8.0")
+    assert any(h.get("Authorization") == "Bearer tok-prod" for _, h in world.urls)
+    log = (world.home / "deploy" / "deploy.log").read_text(encoding="utf-8")
+    assert "tok-prod" not in log and "old-tok" not in log
+
+
+@pytest.mark.parametrize("missing", ["settings.yaml", "secrets.yaml", ".env.migrated"])
+def test_an_unmigrated_instance_is_never_deployed(world, missing):
+    world.tags = ["v2.7.0", "v2.8.0"]
+    (world.home / "prod" / missing).unlink()
+    agent, _ = _agent(world)
+    agent.confirm("v2.8.0")
+    assert not world.ups("prod")  # no pull, no stop, no archive, no up
+    assert not any("pull" in c for c in world.cmds if "/prod.env" in " ".join(c))
+    state = agent.load()
+    assert "confirmed" not in state["prod"]  # never retried every 5 minutes
+    assert "not migrated" in state["last"]["prod"]["result"]
+    log = (world.home / "deploy" / "deploy.log").read_text(encoding="utf-8")
+    assert f"missing {missing}" in log and "nothing changed" in log
+
+
+def test_a_rollback_of_an_unmigrated_instance_changes_nothing(world):
+    agent, _ = _agent(world)
+    agent.tick()  # dev: units → containers (sha-m2)
+    world.main, world.ancestors = "m3", {"m1", "m2"}
+    agent.tick()  # containers → containers (sha-m3): a rollback now needs compose, and so the settings files
+    assert agent.load()["dev"]["previous_runs"] == "containers"
+    ups = len(world.ups("dev"))
+    (world.home / "dev" / "settings.yaml").unlink()
+    assert agent.rollback("dev") is False
+    assert len(world.ups("dev")) == ups
+    assert "missing settings.yaml" in (world.home / "deploy" / "deploy.log").read_text(encoding="utf-8")

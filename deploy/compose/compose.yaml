@@ -1,22 +1,42 @@
 # v2.8 (LUMI-240) — one Lumi instance (prod or dev) as three containers from one image: the server and both
-# Telegram daemons, sharing the instance's data root (the file bus needs one filesystem) and its settings (.env,
-# unchanged). The deploy agent runs it, always with an explicit image tag:
+# Telegram daemons, sharing the instance's data root (the file bus needs one filesystem) and its settings.
+# v2.9 (LUMI-249): the settings are ~/lumi/<instance>/settings.yaml + secrets.yaml, mounted read-only at /settings
+# (no env_file any more). The pre-v2.9 .env, kept by the migration as .env.migrated, is mounted at /app/.env — only
+# a pre-v2.9 image looks there (its load_dotenv), so a rollback below v2.9 still has its settings; v2.9+ reads
+# LUMI_SETTINGS_DIR only. A missing file fails `up` (never an empty directory in its place); the deploy agent checks
+# for all three before it changes anything. The deploy agent runs it, always with an explicit image tag:
 #   LUMI_IMAGE_TAG=<tag> docker compose --env-file deploy/compose/<instance>.env -f deploy/compose/compose.yaml up -d
 # No default tag: a hand-run `up` never silently takes another image. Nothing secret lives in this file.
 name: lumi-${LUMI_INSTANCE:?pass --env-file deploy/compose/prod.env or dev.env}
 
 x-lumi: &lumi
   image: ghcr.io/ichmaster/lumi:${LUMI_IMAGE_TAG:?the image tag is set by the deploy agent}
-  env_file:
-    - path: ${LUMI_INSTANCE_DIR:?pass --env-file deploy/compose/prod.env or dev.env}/.env
-      required: true
-  environment:                                   # what differs inside a container — wins over the .env
+  environment:                                   # what differs inside a container — wins over the settings files
     LUMI_HOME: /data
+    LUMI_SETTINGS_DIR: /settings                 # v2.9: settings.yaml + secrets.yaml, mounted below
     LUMI_SERVER_HOST: 0.0.0.0                    # the image's own interfaces; the publish rule decides exposure
     LUMI_SERVER_PORT: ${LUMI_SERVER_PORT:?pass --env-file deploy/compose/prod.env or dev.env}
     TZ: ${LUMI_TZ:-Europe/Kyiv}                  # her local day: the mood, quiet hours, the scheduler
   volumes:
-    - ${LUMI_INSTANCE_DIR}/data:/data            # her memory stays on the host, owned by uid 1000
+    - ${LUMI_INSTANCE_DIR:?pass --env-file deploy/compose/prod.env or dev.env}/data:/data  # her memory, uid 1000
+    - type: bind                                 # v2.9: every non-secret setting
+      source: ${LUMI_INSTANCE_DIR}/settings.yaml
+      target: /settings/settings.yaml
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind                                 # v2.9: the keys and tokens (0600 on the host, uid 1000)
+      source: ${LUMI_INSTANCE_DIR}/secrets.yaml
+      target: /settings/secrets.yaml
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind                                 # v2.9: the way back — a pre-v2.9 image's settings
+      source: ${LUMI_INSTANCE_DIR}/.env.migrated
+      target: /app/.env
+      read_only: true
+      bind:
+        create_host_path: false
   user: "1000:1000"
   init: true                                     # tini as PID 1: SIGTERM reaches python, ffmpeg children are reaped
   restart: unless-stopped

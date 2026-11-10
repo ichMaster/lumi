@@ -3,8 +3,9 @@
 **Isolate every test from the developer's real runtime environment.** In particular, the user's
 `.env` may set `LUMI_BRIDGE=on` with the real `inbox`/`outbox` paths. Without this, a TUI test that
 runs a mock turn would call `mirror_reply(...)` into the **real** `.lumi/outbox.jsonl` — and the
-running Telegram daemon would then send those mock replies to Telegram. `load_config()` uses
-`load_dotenv()` with `override=False`, so a `monkeypatch.setenv` here takes precedence over `.env`.
+running Telegram daemon would then send those mock replies to Telegram. v2.9: `LUMI_SETTINGS_DIR`
+points at an empty folder, so a developer's real `settings.yaml` / `secrets.yaml` / `.env` at the repo
+root never reaches a test (and a `monkeypatch.setenv` always wins anyway — the environment is the top layer).
 """
 
 import pytest
@@ -21,3 +22,5 @@ def _isolate_runtime(monkeypatch, tmp_path_factory):
     bus = tmp_path_factory.mktemp("bus")
     monkeypatch.setenv("LUMI_INBOX_PATH", str(bus / "inbox.jsonl"))
     monkeypatch.setenv("LUMI_OUTBOX_PATH", str(bus / "outbox.jsonl"))
+    # v2.9: no settings file of the developer's is read — tests that need one pass settings_dir= explicitly.
+    monkeypatch.setenv("LUMI_SETTINGS_DIR", str(tmp_path_factory.mktemp("settings")))

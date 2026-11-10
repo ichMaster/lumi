@@ -63,17 +63,25 @@ uv sync --all-extras
 
 Search your bot's `@username`, open it, press **Start** — so it's allowed to message you back.
 
-### 4. Configure `.env` (gitignored — the token is never committed)
+### 4. Configure `settings.yaml` + `secrets.yaml` (v2.9 — both gitignored; the token is never committed)
 
-```ini
-LUMI_BRIDGE=on                                  # the TUI joins the file bus
-LUMI_TELEGRAM_TOKEN=8123456789:AAH9x...         # from BotFather (SECRET)
-LUMI_TELEGRAM_ALLOWLIST=123456789               # your id from @userinfobot (comma-separate for more)
-LUMI_TELEGRAM_FLUSH_S=2                          # daemon 1: consolidate a burst, flush every N s
-LUMI_TELEGRAM_BATCH=5                            # daemon 2: max replies merged per message
-LUMI_TELEGRAM_CATCHUP_H=24                       # daemon 2: skip replies older than this on restart
-LUMI_TELEGRAM_PHOTO=0                            # daemon 2: probability 0..1 of attaching the face photo (0.2 ≈ 1/5)
+```yaml
+# settings.yaml
+bridge:
+  enabled: true                 # the TUI joins the file bus (env LUMI_BRIDGE)
+telegram:
+  allowlist: [123456789]        # your id from @userinfobot (more: [id1, id2])
+  flush_s: 2                    # daemon 1: consolidate a burst, flush every N s
+  batch: 5                      # daemon 2: max replies merged per message
+  catchup_h: 24                 # daemon 2: skip replies older than this on restart
+  photo: 0.0                    # daemon 2: probability 0..1 of attaching the face photo (0.2 ≈ 1/5)
+# secrets.yaml (chmod 600)
+telegram:
+  token: "8123456789:AAH9x..."  # from BotFather (SECRET) — or `./lumi-cli config set telegram.token <token>`
 ```
+
+(A pre-v2.9 tree still reads the same names from `.env` — deprecated; migrate it with
+`uv run python scripts/env_to_settings.py .env`.)
 
 ### 5. Pre-flight check (before launching all three)
 
@@ -233,7 +241,7 @@ What you'll see (counts + ids only — **never the token or message text**):
 | Bot never replies, **no** `📱` in the TUI | daemon 1 down, or `LUMI_BRIDGE` off, or TUI not running | check `inbox pending`, `LUMI_BRIDGE=on`, that `./lumi` is running |
 | A daemon's terminal went quiet / it exited | crash or config error | read the tail of its `.lumi/telegram-*.log` (it logs the reason on exit), then restart it |
 | Your messages are ignored entirely | your id isn't in `LUMI_TELEGRAM_ALLOWLIST` | `telegram-inbound.log` shows `ignored non-allowlisted id=…` — put that id in the allowlist |
-| `TelegramUnauthorizedError` in a log | bad/rotated token | re-copy from BotFather into `.env` |
+| `TelegramUnauthorizedError` in a log | bad/rotated token | re-copy from BotFather: `./lumi-cli config set telegram.token <token>` |
 | `terminated by other getUpdates request` | **two** inbound daemons polling the same bot | run only **one** `telegram.inbound` |
 | A flood of old replies on restart | a long backlog in `outbox.jsonl` | that's the **catch-up cap**; lower `LUMI_TELEGRAM_CATCHUP_H` |
 | Burst of messages → several separate replies | flush window too short for your typing | raise `LUMI_TELEGRAM_FLUSH_S` |
@@ -303,7 +311,7 @@ speaks back.
 
 ## Security & scope
 
-- The **token is a secret** — it lives only in `.env` (gitignored). Don't paste it into commits,
+- The **token is a secret** — it lives only in `secrets.yaml` (`0600`, gitignored). Don't paste it into commits,
   logs, or screenshots. If it leaks, `/revoke` in BotFather and replace it.
 - The **allowlist** is the access boundary — only listed ids reach Лілі. There's no open sign-up.
 - **Single-owner, TUI-must-run.** For a 24/7, multi-user, always-on Лілі (the core hosted without

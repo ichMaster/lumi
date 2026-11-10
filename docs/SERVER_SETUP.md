@@ -17,7 +17,7 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 - **The server owns everything stateful**: her memory (the data root), the model calls, the session. A
   client never opens the data root.
 - **One instance = one server = one port + one token.** prod and dev each run their own.
-- **Streamed turns (v2.3).** With `LUMI_STREAM=on` in the instance's `.env`, the reply grows token by token in
+- **Streamed turns (v2.3).** With `model.stream: true` in the instance's `settings.yaml` (env `LUMI_STREAM`), the reply grows token by token in
   the client and the think-box fills live, as in the in-process TUI.
 - **The server speaks first (v2.4).** Every client also listens on a push channel: the status line follows
   the server wherever a change came from, and a thought she has out loud reaches every client unasked.
@@ -28,17 +28,28 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 ## Setup (once per instance)
 
 1. Install the extra: `uv sync --all-extras` (or `--extra server`).
-2. In the instance's `.env` (dev: `~/development/lumi/.env`; prod: `~/lumi/prod/.env`):
+2. In the instance's settings (v2.9 — dev: `~/development/lumi/settings.yaml` + `secrets.yaml`; prod:
+   `~/lumi/prod/…`; the examples are `settings.example.yaml` / `secrets.example.yaml`):
 
-   ```bash
-   LUMI_SERVER_TOKEN=<a long random string>   # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-   LUMI_SERVER_PORT=8765                      # prod 8765 · dev 8766 — never the same port for both
-   # LUMI_SERVER_HOST=127.0.0.1               # localhost (the default); on the Linux box its Tailscale/LAN IP —
-                                              # docs/LINUX_DEPLOY.md (never 0.0.0.0 or a public address: refused)
+   ```yaml
+   # settings.yaml
+   server:
+     port: 8765                 # prod 8765 · dev 8766 — never the same port for both
+     # host: 127.0.0.1          # localhost (the default); on the Linux box its Tailscale/LAN IP —
+                                # docs/LINUX_DEPLOY.md (never 0.0.0.0 or a public address: refused)
+   # secrets.yaml (chmod 600)
+   server:
+     token: <a long random string>   # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
    ```
 
-   The token is a secret: never commit it, never paste it into logs or chats. The server refuses to start
-   without one.
+   Or `./lumi-cli config set server.port 8765` and `./lumi-cli config set server.token <…>` — validated, written
+   to the right file, never echoed. The token is a secret: never commit it, never paste it into logs or chats. The
+   server refuses to start without one.
+
+   > **`.env` is deprecated in v2.9 and removed in v2.10.** A tree that still has one keeps working (it is read
+   > below the YAML files, with a warning at start-up); migrate it once with
+   > `uv run python scripts/env_to_settings.py .env` (a dry run) → `--apply` (writes both files, keeps
+   > `.env.migrated`).
 
 ## Run (three processes)
 
@@ -48,7 +59,7 @@ TUI (`LUMI_SERVER=off`, the default) still works exactly as before — this is o
 ./lumi-cli status                 # what it's running: env, version, model, session, turns, mood, theme
 ```
 
-The launchers `cd` to their own checkout, so the right `.env` is read wherever you call them from
+The launchers `cd` to their own checkout, so the right settings are read wherever you call them from
 (prod: `~/lumi/prod/app/lumi-server`, dev: `~/development/lumi/lumi-server`). **One brain per memory:**
 `./lumi` (in-process) and `./lumi-server` can't run on the same instance at once — the second one refuses
 ("another brain already runs on this data root…"); talk to a running server with `./lumi-client`.
@@ -66,14 +77,20 @@ One-shot commands (not a live monitor): each asks the server once, prints, exits
 | `./lumi-cli memory clear` | asks `[y/N]`, then clears (`/forget`) |
 | `./lumi-cli model [name]` | show / switch the engine (`/model`) |
 | `./lumi-cli model-set [profile]` | show / switch the model profile (`/model-set`) |
-| `./lumi-cli config` | the instance's effective config, every key/token masked |
+| `./lumi-cli config [show]` | the instance's effective config, every key/token masked |
+| `./lumi-cli config get <key>` | one setting (`memory.window` or its env name `LUMI_MEMORY_WINDOW`): its value and where it comes from (default / `.env` / `settings.yaml` / `secrets.yaml` / env); a secret shows `•••set•••` |
+| `./lumi-cli config set <key> <value>` | validated against the schema (a wrong value is refused with the allowed ones), written into `settings.yaml` — or `secrets.yaml` (`0600`) for a secret — changing only that line; applies after a restart |
+| `./lumi-cli config validate` | checks both files completely: one line per problem, exit 1 |
+
+`config` works on the files directly (no server needed); `--dir <folder>` points it at another instance's settings
+folder (the box: [LINUX_DEPLOY §2b](LINUX_DEPLOY.md#2b-settings-as-files-v29)).
 | `./lumi-cli think [topic]` | she thinks out loud (`%think! [topic]`) — printed here **and** shown in every connected client |
 
 Errors are one readable line and exit code 1 (server down, token rejected, busy).
 
 ## Streaming and what happens when it breaks (v2.3)
 
-The client streams whenever the **server** streams (`LUMI_STREAM` in the server's `.env`); otherwise every
+The client streams whenever the **server** streams (`model.stream` in the server's settings); otherwise every
 turn is blocking, as in v2.2. Each turn carries its own id. If the stream breaks mid-answer — the server
 restarts, the connection drops, a frame arrives garbled — the client asks for **that same turn** the
 blocking way and shows its final text: Лілі never answers twice, and nothing you sent is sent again. If the
@@ -102,9 +119,9 @@ Stopping the server with Ctrl+C no longer waits for connected clients to leave.
 
 ## Her time on the server (v2.5)
 
-`./lumi-server` hosts what the in-process TUI used to run on its timers, from the same `.env`:
+`./lumi-server` hosts what the in-process TUI used to run on its timers, from the same settings:
 
-- **the scheduler** (`LUMI_SCHEDULER`, `core/schedule.toml`): her scheduled acts fire on time (with the
+- **the scheduler** (`scheduler.enabled`, `core/schedule.yaml`): her scheduled acts fire on time (with the
   startup catch-up, the day caps and quiet hours as before); a shown thought is pushed as `💭`, a thought that
   turns into words is a message from her;
 - **the idle think / nudge** when the scheduler is off (`LUMI_THOUGHTS`, `LUMI_IDLE_NUDGE`);
@@ -128,13 +145,13 @@ it instead of bouncing as busy.
 **A quick check without waiting an hour** — point the server at a test schedule:
 
 ```bash
-cat > /tmp/lumi-quick.toml <<'TOML'
-[[schedule]]
-directive = "think"
-every = "2m"
-show = true
-TOML
-LUMI_SCHEDULE_PATH=/tmp/lumi-quick.toml LUMI_SCHED_SHOW_TO_OUTBOX=on ./lumi-server
+cat > /tmp/lumi-quick.yaml <<'YAML'
+schedule:
+  - directive: think
+    every: "2m"
+    show: true
+YAML
+LUMI_SCHEDULE_PATH=/tmp/lumi-quick.yaml LUMI_SCHED_SHOW_TO_OUTBOX=on ./lumi-server
 ```
 
 Within two minutes a thought arrives in Telegram (and in the client, if one is open). Restart without the
@@ -146,7 +163,7 @@ The **voice mode** (`/mode-set voice`), the **voicer** and **dictation** need th
 to the core — they stay in the in-process TUI (revisited after v2.6); in client mode they're switched off and
 the TUI says "not yet in server mode".
 
-`/image` and `/web` follow the **server's** `.env` (`LUMI_IMAGE`, `LUMI_WEB_LOOKUP`) from v2.6 — the server may be
+`/image` and `/web` follow the **server's** settings (`image.enabled`, `web.enabled`) from v2.6 — the server may be
 another machine, so the client asks it instead of reading its own.
 
 `LUMI_SERVER=off ./lumi` always gives you the full in-process Лілі.
@@ -159,9 +176,10 @@ client over LAN/Tailscale: [LINUX_DEPLOY.md](LINUX_DEPLOY.md).
 | You see | Meaning | Fix |
 |---|---|---|
 | `server unreachable at http://127.0.0.1:8765` | no server on that port | start it: `./lumi-server` (or check `LUMI_SERVER_PORT`) |
-| `the server rejected the token` | client and server `.env` differ | use the same `LUMI_SERVER_TOKEN` |
+| `the server rejected the token` | client and server tokens differ | use the same `server.token` (`secrets.yaml`) |
 | `Лілі is busy with another request` | one request at a time (e.g. the CLI ran during a turn) | try again |
-| `LUMI_SERVER_TOKEN is not set` | no token in `.env` | add one (Setup step 2) |
+| `LUMI_SERVER_TOKEN is not set` | no `server.token` in `secrets.yaml` | add one (Setup step 2) |
+| `Lumi settings — refusing to start: … is not valid — allowed: …` | a wrong value in a settings file | fix that key — `./lumi-cli config validate` lists every problem |
 | `Port 8766 … is already in use by another server` (server start, exit 78) | another process holds the port (the line names the finder: `lsof -nP -iTCP:<port> -sTCP:LISTEN` on the Mac, `ss -ltnp 'sport = :<port>'` on Linux) | stop it, or give this instance its own `LUMI_SERVER_PORT` (and its clients the same) |
 | `LUMI_SERVER_HOST=… listens on every interface` / `is a public address` / `is a hostname` | the server binds LAN/Tailscale only (v2.6) | use `127.0.0.1`, a LAN IP or the Tailscale IP |
 | `another brain already runs on this data root` | `./lumi` or `./lumi-server` already runs on this instance | stop it — or, for a running server, use `./lumi-client` |

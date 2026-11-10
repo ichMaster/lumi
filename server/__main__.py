@@ -21,7 +21,7 @@ EX_CONFIG = 78  # v2.6: sysexits' EX_CONFIG — the unit's RestartPreventExitSta
 
 
 class ConfigRefusal(SystemExit):
-    """A refusal only an edit of ``.env`` fixes (no token, a refused bind, a taken port) — the message on stderr,
+    """A refusal only an edit of the settings fixes (no token, a refused bind, a taken port) — the message on stderr,
     exit status 78, so systemd leaves the unit failed instead of restarting it every few seconds (v2.6)."""
 
     def __init__(self, message: str) -> None:
@@ -246,7 +246,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     cfg = load_config()
     if not cfg.server_token:
         raise ConfigRefusal("LUMI_SERVER_TOKEN is not set — the server never runs without a client token "
-                            "(see .env.example).")
+                            "(server.token in secrets.yaml — see secrets.example.yaml).")
     # v2.6: LAN/Tailscale only — refused before anything runs; v2.8: the image may bind every interface
     if problem := bind_problem(cfg.server_host, container=in_container()):
         raise ConfigRefusal(problem)
@@ -268,7 +268,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     try:
         core = build_core(config=cfg, telegram_sink=telegram_sink_of(cfg))
     except LLMError as exc:
-        raise SystemExit(f"{exc}\nSet the model key in .env (see .env.example).") from exc
+        raise SystemExit(f"{exc}\nSet the model key in secrets.yaml (see secrets.example.yaml).") from exc
     session = core.start_session()
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
                      on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg))

@@ -175,7 +175,9 @@ def enforce(
     if env is None and marker is None:
         return ()
     environ = os.environ if environ is None else environ
-    allow_dirty = (environ.get(OVERRIDE_ENV) or "").strip().lower() in _TRUTHY
+    # v2.9: the hatch is a setting (instance.allow_dirty_prod) — and still works straight from the environment
+    allow_dirty = bool(getattr(cfg, "allow_dirty_prod", False)) or (
+        (environ.get(OVERRIDE_ENV) or "").strip().lower() in _TRUTHY)
     container = in_container(environ, dockerenv=dockerenv)  # v2.8: the image's build, not a checkout
     git = git_state(repo, run) if env == "prod" and not container else GitState(available=False)
     verdict = check(env, marker, git, allow_dirty=allow_dirty, container=container,

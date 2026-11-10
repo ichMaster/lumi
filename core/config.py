@@ -2,8 +2,10 @@
 
 Config is explicit and switchable (ARCHITECTURE §Configuration and secrets):
 the active model id, the canon path, and the memory window live here, never
-hardcoded in the core. Secrets (``ANTHROPIC_API_KEY`` from v0.1) are read from
-the environment via a gitignored ``.env`` — never committed, never in code.
+hardcoded in the core. v2.9: an instance's settings live in ``settings.yaml`` and
+its secrets in ``secrets.yaml`` (``0600``), described by one schema
+(``core/settings.py``); the process environment still wins, ``.env`` is a
+deprecated layer for one release — never committed, never in code.
 
 v0.1 has one backend — Anthropic Claude Haiku. More models become switchable
 in v0.9 behind the same ``LLMClient`` seam, so ``provider`` is reserved here.
@@ -15,8 +17,6 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
-
-from dotenv import load_dotenv
 
 from core.closeness import ClosenessTuning
 from core.embedder import DEFAULT_LOCAL_MODEL
@@ -91,7 +91,7 @@ class ModelProfile(NamedTuple):
     housekeeping: str
     # v1.6.2 LUMI-199: the TALKING register — the voice-mode reply tier (fast, prose-first; the
     # chain-WS probes measured gemini-2.5-flash as the floor that holds the persona). Optional in
-    # models.toml / LUMI_MODEL_PROFILES; "" → the profile's think tier at resolution.
+    # models.yaml / LUMI_MODEL_PROFILES; "" → the profile's think tier at resolution.
     voice: str = ""
 
 
@@ -107,18 +107,45 @@ DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
 }
 
 
+_WARNED_TOML: set[str] = set()
+
+
 def _load_models_file(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str, ModelProfile]]:
-    """Load ``core/models.toml`` (v0.41 LUMI-165) — THE editable file for new model releases:
-    ``[aliases]`` (the /model shortcuts) + ``[profiles.*]`` (one set per family). Both merge over the
-    code defaults; a missing file or a malformed entry is skipped (never fatal — the defaults hold)."""
+    """Load ``core/models.yaml`` (v0.41 LUMI-165; YAML since v2.9) — THE editable file for new model releases:
+    ``aliases`` (the /model shortcuts) + ``profiles.*`` (one set per family). Both merge over the
+    code defaults; a missing file or a malformed entry is skipped (never fatal — the defaults hold).
+    A ``.toml`` path (the pre-v2.9 format) still parses for this one release, with a warning."""
+    import tomllib
+
+    import yaml
+
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:  # missing/unreadable → the defaults hold
+        return {}, {}
+    try:
+        if path.suffix == ".toml":
+            if str(path) not in _WARNED_TOML:
+                _WARNED_TOML.add(str(path))
+                import logging
+
+                logging.getLogger("lumi.config").warning(
+                    "%s is TOML — deprecated since v2.9; core/models.yaml is the format now", path)
+            data = tomllib.loads(text)
+        else:
+            data = yaml.safe_load(text) or {}
+    except (ValueError, yaml.YAMLError):  # a bad file → the defaults hold, never fatal
+        return {}, {}
+    return _models_from_data(data if isinstance(data, dict) else {})
+
+
+def _models_from_data(data: dict, base: dict[str, ModelProfile] | None = None
+                      ) -> tuple[dict[str, tuple[str, str]], dict[str, ModelProfile]]:
+    """``aliases`` + ``profiles`` from a parsed models mapping. With ``base`` (v2.9, an instance's settings.yaml
+    ``models:`` section), a profile's fields merge over the base profile of the same name."""
     aliases: dict[str, tuple[str, str]] = {}
     profiles: dict[str, ModelProfile] = {}
-    try:
-        import tomllib
-
-        data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):  # missing/unreadable/bad TOML → defaults hold
-        return aliases, profiles
     raw_aliases = data.get("aliases", {})
     if isinstance(raw_aliases, dict):
         for name, target in raw_aliases.items():
@@ -131,11 +158,14 @@ def _load_models_file(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str,
         for name, block in raw_profiles.items():
             if not isinstance(block, dict):
                 continue
+            key = str(name).strip().lower()
+            if base and key in base:  # v2.9: an instance's fields over the authored profile
+                block = base[key]._asdict() | {k: v for k, v in block.items() if v is not None}
             fields = [str(block.get(k, "")).strip()
                       for k in ("provider", "reply", "think", "mood", "housekeeping")]
             if all(fields):
-                voice = str(block.get("voice", "")).strip()  # v1.6.2: optional talking-register tier
-                profiles[str(name).strip().lower()] = ModelProfile(fields[0].lower(), *fields[1:], voice)
+                voice = str(block.get("voice", "") or "").strip()  # v1.6.2: optional talking-register tier
+                profiles[key] = ModelProfile(fields[0].lower(), *fields[1:], voice)
     return aliases, profiles
 
 
@@ -160,7 +190,7 @@ def _parse_model_profiles(raw: str, base: dict[str, ModelProfile] | None = None)
     return out
 
 # v0.41 LUMI-165: the editable model-profiles file (one [profile] block per family).
-DEFAULT_MODELS_PATH = _REPO_ROOT / "core" / "models.toml"
+DEFAULT_MODELS_PATH = _REPO_ROOT / "core" / "models.yaml"
 
 # Default canon path (config-referenced — never hardcoded in the core).
 DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
@@ -182,7 +212,7 @@ DEFAULT_THINK_SEEDS_PATH = _REPO_ROOT / "core" / "think_seeds.md"
 
 # v2.1 the DATA ROOT — every mutable-state default below derives from it. ``LUMI_HOME`` moves it (a prod
 # instance keeps her memory outside the checkout); unset → this in-repo ``.lumi``, exactly as before.
-# Authored files (canon, styles, schedule.toml, models.toml, faces …) are CODE and stay repo-relative.
+# Authored files (canon, styles, schedule.yaml, models.yaml, faces …) are CODE and stay repo-relative.
 DEFAULT_DATA_ROOT = _REPO_ROOT / ".lumi"
 # v2.1 the running version — the checkout's VERSION file (shown in the LUMI_ENV status badge).
 DEFAULT_VERSION_PATH = _REPO_ROOT / "VERSION"
@@ -197,7 +227,7 @@ def read_version(path: Path = DEFAULT_VERSION_PATH) -> str | None:
 
 
 # v0.42 thought scheduler — the authored schedule + the module's own last-fired state (not a bus).
-DEFAULT_SCHEDULE_PATH = _REPO_ROOT / "core" / "schedule.toml"
+DEFAULT_SCHEDULE_PATH = _REPO_ROOT / "core" / "schedule.yaml"
 DEFAULT_SCHEDULE_STATE_PATH = DEFAULT_DATA_ROOT / "schedule.state"
 
 # Emotion→emoji map (v0.5); editable. Optional (built-in default in core/emoji.py).
@@ -286,6 +316,13 @@ def _parse_id_list(raw: str | None) -> tuple[int, ...]:
     return tuple(out)
 
 
+def _csv(value: str | None, default: str) -> str:
+    """A comma list in canonical form (v2.9: spaces around the commas and empty items dropped — every consumer
+    splits and strips anyway, so a ``.env`` and a YAML list load to the same value). Unset/blank → ``default``."""
+    items = [part.strip() for part in (value or "").split(",") if part.strip()]
+    return ",".join(items) if items else default
+
+
 def _parse_bool(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _TRUTHY
 
@@ -342,6 +379,8 @@ class Config:
     styles_path: Path = DEFAULT_STYLES_PATH
     data_root: Path = DEFAULT_DATA_ROOT  # v2.1 LUMI_HOME — where every mutable-state default lives
     env: str | None = None               # v2.1 LUMI_ENV — prod | dev | … (None → no status badge)
+    log_level: str = "INFO"              # v2.9 LUMI_LOG_LEVEL — the Telegram daemons' log level
+    allow_dirty_prod: bool = False       # v2.9 LUMI_ALLOW_DIRTY_PROD — the env guard's prod emergency hatch
     app_version: str | None = None       # v2.1 the checkout's VERSION (shown in the badge)
     server_host: str = "127.0.0.1"       # v2.2 LUMI_SERVER_HOST — the server binds here (localhost by default)
     server_port: int = 8765              # v2.2 LUMI_SERVER_PORT — one port per instance (prod/dev)
@@ -398,6 +437,8 @@ class Config:
     scheduler: bool = False                                  # LUMI_SCHEDULER
     schedule_path: Path = DEFAULT_SCHEDULE_PATH              # LUMI_SCHEDULE_PATH
     schedule_state_path: Path = DEFAULT_SCHEDULE_STATE_PATH  # the module's last-fired state (not a bus)
+    # v2.9: an instance's schedule rows (settings.yaml `schedule:`), merged over the authored file by name
+    schedule_overrides: tuple = ()
     sched_tick_ms: int = 30000                               # LUMI_SCHED_TICK_MS — scheduler eval interval
     sched_tick_fast_ms: int = 60000                          # LUMI_SCHED_TICK_FAST_MS — the ephemeral tick
     sched_catchup_h: int = 6                                 # LUMI_SCHED_CATCHUP_H — startup catch-up window
@@ -606,160 +647,170 @@ class Config:
     openai_reasoning_summary: str = "auto"
 
 
-def load_config(*, load_env: bool = True) -> Config:
-    """Build a :class:`Config` from the environment (and ``.env``).
+def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> Config:
+    """Build a :class:`Config` from the instance's settings (v2.9: ``settings.yaml`` + ``secrets.yaml``).
 
-    Environment overrides:
-      - ``LUMI_MODEL`` — the model id (default :data:`DEFAULT_MODEL`).
-      - ``LUMI_PROVIDER`` — the provider (default ``anthropic``; more in v0.9).
-      - ``LUMI_CANON_PATH`` — the active canon file.
-      - ``LUMI_MEMORY_WINDOW`` — the rolling-window size (filled in v0.2).
-      - ``ANTHROPIC_API_KEY`` — the Claude Haiku key (never committed).
+    Precedence, weakest → strongest (``core/settings.py``): the built-in default < ``.env`` (deprecated, warned)
+    < ``settings.yaml`` / ``secrets.yaml`` < the process environment (a ``LUMI_*`` variable still wins).
+
+    ``load_env=False`` reads the process environment only (the hermetic tests); an explicit ``settings_dir``
+    reads that folder's files even then. A wrong value in a settings file raises
+    :class:`core.settings.SettingsError` (a readable ``SystemExit``) naming the key and the allowed values.
     """
-    if load_env:
-        load_dotenv()
+    from core import settings as _settings
 
-    canon_env = os.getenv("LUMI_CANON_PATH")
+    _res = _settings.resolve(os.environ, folder=settings_dir, load_files=load_env or settings_dir is not None)
+    if load_env:
+        _settings.export(_res)  # what load_dotenv() did: the SDKs, the probes and direct readers see the files
+        _settings.warn_once(_res)
+    _get = _res.get
+
+    canon_env = _get("LUMI_CANON_PATH")
     canon_path = Path(canon_env) if canon_env else DEFAULT_CANON_PATH
 
-    inner_voice_env = os.getenv("LUMI_INNER_VOICE_FILE")
+    inner_voice_env = _get("LUMI_INNER_VOICE_FILE")
     inner_voice_path = Path(inner_voice_env) if inner_voice_env else DEFAULT_INNER_VOICE_PATH
 
-    styles_env = os.getenv("LUMI_STYLES_PATH")
+    styles_env = _get("LUMI_STYLES_PATH")
     styles_path = Path(styles_env) if styles_env else DEFAULT_STYLES_PATH
 
     # v2.1 the data root: LUMI_HOME → every mutable default below derives from it; unset → the in-repo
     # .lumi (the DEFAULT_* constants, byte-identical). A per-path env still wins over the root.
-    home_env = (os.getenv("LUMI_HOME") or "").strip()
+    home_env = (_get("LUMI_HOME") or "").strip()
     data_root = Path(home_env).expanduser() if home_env else DEFAULT_DATA_ROOT
 
-    store_env = os.getenv("LUMI_STORE_PATH")
+    store_env = _get("LUMI_STORE_PATH")
     store_path = Path(store_env) if store_env else data_root / "store.json"
 
-    window_env = os.getenv("LUMI_MEMORY_WINDOW")
+    window_env = _get("LUMI_MEMORY_WINDOW")
     memory_window = int(window_env) if window_env else DEFAULT_MEMORY_WINDOW
 
-    batch_env = os.getenv("LUMI_COMPACTION_BATCH")
+    batch_env = _get("LUMI_COMPACTION_BATCH")
     compaction_batch = int(batch_env) if batch_env else DEFAULT_COMPACTION_BATCH
 
-    recent_env = os.getenv("LUMI_RECENT_SUMMARIES")
+    recent_env = _get("LUMI_RECENT_SUMMARIES")
     recent_summaries = int(recent_env) if recent_env else RECENT_SUMMARIES
-    session_days = int(sd) if (sd := os.getenv("LUMI_SESSION_DAYS")) else SESSION_DAYS
-    session_detail_n = int(sdn) if (sdn := os.getenv("LUMI_SESSION_DETAIL_N")) else None  # v0.35: unset → all
-    session_format = (os.getenv("LUMI_SESSION_FORMAT") or SESSION_FORMAT_DEFAULT).strip().lower()
+    session_days = int(sd) if (sd := _get("LUMI_SESSION_DAYS")) else SESSION_DAYS
+    session_detail_n = int(sdn) if (sdn := _get("LUMI_SESSION_DETAIL_N")) else None  # v0.35: unset → all
+    session_format = (_get("LUMI_SESSION_FORMAT") or SESSION_FORMAT_DEFAULT).strip().lower()
     if session_format not in SESSION_FORMATS:  # unknown → the safe default (full summary)
         session_format = SESSION_FORMAT_DEFAULT
-    day_days = int(dd) if (dd := os.getenv("LUMI_DAY_DAYS")) else DAY_DAYS
-    week_days = int(wd) if (wd := os.getenv("LUMI_WEEK_DAYS")) else WEEK_DAYS
-    max_day_rows = int(mdr) if (mdr := os.getenv("LUMI_MAX_DAY_ROWS")) else MAX_DAY_ROWS
-    max_week_rows = int(mwr) if (mwr := os.getenv("LUMI_MAX_WEEK_ROWS")) else MAX_WEEK_ROWS
-    memory_index = (os.getenv("LUMI_MEMORY_INDEX") or "off").strip().lower() in _TRUTHY  # v0.34
+    day_days = int(dd) if (dd := _get("LUMI_DAY_DAYS")) else DAY_DAYS
+    week_days = int(wd) if (wd := _get("LUMI_WEEK_DAYS")) else WEEK_DAYS
+    max_day_rows = int(mdr) if (mdr := _get("LUMI_MAX_DAY_ROWS")) else MAX_DAY_ROWS
+    max_week_rows = int(mwr) if (mwr := _get("LUMI_MAX_WEEK_ROWS")) else MAX_WEEK_ROWS
+    memory_index = (_get("LUMI_MEMORY_INDEX") or "off").strip().lower() in _TRUTHY  # v0.34
 
     # v0.10 closeness engine knobs (defaults from ClosenessTuning; each overridable via .env).
     _ct = ClosenessTuning()
     # The daily mood-shift strength is a 0..1 scale (on/off accepted): unset → full (1.0); set
     # parses via _parse_probability so "off"/0 disables it. (Unlike the floats above, 0.0 here is
     # a meaningful "off", so we can't use `… or default`.)
-    _ms = os.getenv("LUMI_CLOSENESS_MOOD_SHIFT")
+    _ms = _get("LUMI_CLOSENESS_MOOD_SHIFT")
     closeness_tuning = ClosenessTuning(
-        baseline=float(os.getenv("LUMI_CLOSENESS_BASELINE") or _ct.baseline),
-        decay_retained=float(os.getenv("LUMI_CLOSENESS_DECAY") or _ct.decay_retained),
-        w_pos=float(os.getenv("LUMI_CLOSENESS_W_POS") or _ct.w_pos),
-        w_neg=float(os.getenv("LUMI_CLOSENESS_W_NEG") or _ct.w_neg),
-        delta_scale=float(os.getenv("LUMI_CLOSENESS_DELTA") or _ct.delta_scale),
-        inertia=float(os.getenv("LUMI_CLOSENESS_INERTIA") or _ct.inertia),
-        drift_rate=float(os.getenv("LUMI_CLOSENESS_DRIFT") or _ct.drift_rate),
+        baseline=float(_get("LUMI_CLOSENESS_BASELINE") or _ct.baseline),
+        decay_retained=float(_get("LUMI_CLOSENESS_DECAY") or _ct.decay_retained),
+        w_pos=float(_get("LUMI_CLOSENESS_W_POS") or _ct.w_pos),
+        w_neg=float(_get("LUMI_CLOSENESS_W_NEG") or _ct.w_neg),
+        delta_scale=float(_get("LUMI_CLOSENESS_DELTA") or _ct.delta_scale),
+        inertia=float(_get("LUMI_CLOSENESS_INERTIA") or _ct.inertia),
+        drift_rate=float(_get("LUMI_CLOSENESS_DRIFT") or _ct.drift_rate),
         mood_shift_scale=_parse_probability(_ms) if _ms is not None else _ct.mood_shift_scale,
     )
 
-    max_tokens_env = os.getenv("LUMI_MAX_TOKENS")
+    max_tokens_env = _get("LUMI_MAX_TOKENS")
     max_tokens = int(max_tokens_env) if max_tokens_env else DEFAULT_MAX_TOKENS
 
-    thinking = _parse_bool(os.getenv("LUMI_THINKING"))
-    reasoning = (os.getenv("LUMI_REASONING") or "on").strip().lower() in _TRUTHY  # on by default
-    stream = (os.getenv("LUMI_STREAM") or "off").strip().lower() in _TRUTHY  # v1.4 (LUMI-188), off by default
-    async_post = (os.getenv("LUMI_ASYNC_POST") or "off").strip().lower() in _TRUTHY  # v1.5 (LUMI-192)
-    store_backend = (os.getenv("LUMI_STORE_BACKEND") or "json").strip().lower()  # v1.5 (LUMI-193)
+    thinking = _parse_bool(_get("LUMI_THINKING"))
+    reasoning = (_get("LUMI_REASONING") or "on").strip().lower() in _TRUTHY  # on by default
+    stream = (_get("LUMI_STREAM") or "off").strip().lower() in _TRUTHY  # v1.4 (LUMI-188), off by default
+    async_post = (_get("LUMI_ASYNC_POST") or "off").strip().lower() in _TRUTHY  # v1.5 (LUMI-192)
+    store_backend = (_get("LUMI_STORE_BACKEND") or "json").strip().lower()  # v1.5 (LUMI-193)
     if store_backend not in ("json", "sqlite"):
         store_backend = "json"  # unknown value → the safe default, never a crash
 
-    effort_env = os.getenv("LUMI_EFFORT")
+    effort_env = _get("LUMI_EFFORT")
     effort = effort_env.strip().lower() if effort_env and effort_env.strip() else DEFAULT_EFFORT
 
-    _think_show = (os.getenv("LUMI_THINK_SHOW") or "debug").strip().lower()
+    _think_show = (_get("LUMI_THINK_SHOW") or "debug").strip().lower()
     think_show = _think_show if _think_show in ("debug", "open", "off") else "debug"
 
     def _float(name: str) -> float | None:
-        raw = os.getenv(name)
+        raw = _get(name)
         try:
             return float(raw) if raw else None
         except ValueError:
             return None
 
-    news_cap_env = os.getenv("LUMI_NEWS_CAP")
+    news_cap_env = _get("LUMI_NEWS_CAP")
 
-    idle_seconds_env = os.getenv("LUMI_IDLE_SECONDS")
-    nudge_path_env = os.getenv("LUMI_NUDGE_PATH")
+    idle_seconds_env = _get("LUMI_IDLE_SECONDS")
+    nudge_path_env = _get("LUMI_NUDGE_PATH")
     # Quiet hours: the nudge's (LUMI_QUIET_HOURS) and the proactive-think's
     # (LUMI_THOUGHTS_QUIET_HOURS) are independent. The think inherits the nudge's when its own
     # var is UNSET; set it to "off" (or any non-range) to give the think no quiet hours at all.
-    quiet_hours = _parse_quiet_hours(os.getenv("LUMI_QUIET_HOURS"))  # e.g. "23-7"
-    thoughts_quiet_env = os.getenv("LUMI_THOUGHTS_QUIET_HOURS")
+    quiet_hours = _parse_quiet_hours(_get("LUMI_QUIET_HOURS"))  # e.g. "23-7"
+    thoughts_quiet_env = _get("LUMI_THOUGHTS_QUIET_HOURS")
     thoughts_quiet_hours = quiet_hours if thoughts_quiet_env is None else _parse_quiet_hours(thoughts_quiet_env)
 
     # v0.16 semantic recall: the embedder provider + its (cloud-only) key. local → no key.
-    embed_provider = (os.getenv("LUMI_EMBED_PROVIDER") or "local").strip().lower()
+    embed_provider = (_get("LUMI_EMBED_PROVIDER") or "local").strip().lower()
     embed_key = {
-        "voyage": os.getenv("VOYAGE_API_KEY"),
-        "openai": os.getenv("OPENAI_API_KEY"),
+        "voyage": _get("VOYAGE_API_KEY"),
+        "openai": _get("OPENAI_API_KEY"),
     }.get(embed_provider) or ""
     # The model defaults per provider (a Voyage/OpenAI model name, not the local e5 one) unless set.
     _embed_default_model = {"voyage": "voyage-3", "openai": "text-embedding-3-small"}.get(
         embed_provider, DEFAULT_LOCAL_MODEL
     )
-    embed_model = (os.getenv("LUMI_EMBED_MODEL") or _embed_default_model).strip()
+    embed_model = (_get("LUMI_EMBED_MODEL") or _embed_default_model).strip()
 
     # v0.41 LUMI-164: LUMI_MODEL_PROFILE boots the whole model stack from a named profile — one line
     # instead of five. Explicitly set LUMI_PROVIDER/LUMI_MODEL/LUMI_MODEL_* vars WIN over the profile
     # field (expert overrides); an unknown/unset name → pure env-var mode, byte-identical.
-    # Merge order (weakest → strongest): code defaults ← core/models.toml ← the .env vars — so a
-    # new model release is one edit in models.toml, no code change.
-    _models_path = Path(os.getenv("LUMI_MODELS_FILE") or DEFAULT_MODELS_PATH)
+    # Merge order (weakest → strongest): code defaults ← core/models.yaml ← the instance's settings.yaml
+    # `models:` section (v2.9, by name) ← the env vars — so a new model release is one edit in models.yaml.
+    _models_path = Path(_get("LUMI_MODELS_FILE") or DEFAULT_MODELS_PATH)
     _file_aliases, _file_profiles = _load_models_file(_models_path)
     _base_profiles = dict(DEFAULT_MODEL_PROFILES) | _file_profiles
-    _profiles = _parse_model_profiles(os.getenv("LUMI_MODEL_PROFILES", ""), base=_base_profiles)
-    _profile_name = (os.getenv("LUMI_MODEL_PROFILE") or "").strip().lower()
+    _inst_aliases, _inst_profiles = _models_from_data(_res.sections.get("models") or {}, base=_base_profiles)
+    _file_aliases = _file_aliases | _inst_aliases
+    _base_profiles = _base_profiles | _inst_profiles
+    _profiles = _parse_model_profiles(_get("LUMI_MODEL_PROFILES", ""), base=_base_profiles)
+    _profile_name = (_get("LUMI_MODEL_PROFILE") or "").strip().lower()
     _prof = _profiles.get(_profile_name)
 
     return Config(
-        provider=os.getenv("LUMI_PROVIDER") or (_prof.provider if _prof else "anthropic"),
-        model=os.getenv("LUMI_MODEL") or (_prof.reply if _prof else DEFAULT_MODEL),
-        model_think=(os.getenv("LUMI_MODEL_THINK") or "").strip() or (_prof.think if _prof else ""),
-        model_mood=(os.getenv("LUMI_MODEL_MOOD") or "").strip() or (_prof.mood if _prof else ""),
-        model_housekeeping=(os.getenv("LUMI_MODEL_HOUSEKEEPING") or "").strip()
+        provider=_get("LUMI_PROVIDER") or (_prof.provider if _prof else "anthropic"),
+        model=_get("LUMI_MODEL") or (_prof.reply if _prof else DEFAULT_MODEL),
+        model_think=(_get("LUMI_MODEL_THINK") or "").strip() or (_prof.think if _prof else ""),
+        model_mood=(_get("LUMI_MODEL_MOOD") or "").strip() or (_prof.mood if _prof else ""),
+        model_housekeeping=(_get("LUMI_MODEL_HOUSEKEEPING") or "").strip()
         or (_prof.housekeeping if _prof else ""),
         # v1.6.2 LUMI-199: the talking register — env wins, then the profile's voice tier, then its
         # think tier (a profile without `voice` still resolves to a sensible fast model).
-        model_voice=(os.getenv("LUMI_MODEL_VOICE") or "").strip()
+        model_voice=(_get("LUMI_MODEL_VOICE") or "").strip()
         or (_prof.voice if _prof else "") or (_prof.think if _prof else ""),
-        tool_step_routing=(os.getenv("LUMI_TOOL_STEP_ROUTING") or "off").strip().lower() in _TRUTHY,
-        model_tool_step=(os.getenv("LUMI_MODEL_TOOL_STEP") or "").strip(),
+        tool_step_routing=(_get("LUMI_TOOL_STEP_ROUTING") or "off").strip().lower() in _TRUTHY,
+        model_tool_step=(_get("LUMI_MODEL_TOOL_STEP") or "").strip(),
         model_aliases=_parse_model_aliases(
-            os.getenv("LUMI_MODEL_ALIASES", ""), base=dict(DEFAULT_MODEL_ALIASES) | _file_aliases
+            _get("LUMI_MODEL_ALIASES", ""), base=dict(DEFAULT_MODEL_ALIASES) | _file_aliases
         ),
         model_profiles=_profiles,
         model_profile=_profile_name if _prof else "",
         canon_path=canon_path,
-        inner_voice=(os.getenv("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default
+        inner_voice=(_get("LUMI_INNER_VOICE") or "off").strip().lower() in _TRUTHY,  # off by default
         inner_voice_path=inner_voice_path,
         styles_path=styles_path,
         data_root=data_root,
-        env=(os.getenv("LUMI_ENV") or "").strip().lower() or None,  # v2.1: unset/blank → no badge
+        env=(_get("LUMI_ENV") or "").strip().lower() or None,  # v2.1: unset/blank → no badge
+        log_level=(_get("LUMI_LOG_LEVEL") or "INFO").strip().upper(),  # v2.9 (was read by telegram/ directly)
+        allow_dirty_prod=_parse_bool(_get("LUMI_ALLOW_DIRTY_PROD")),  # v2.9 (the env guard also checks the env)
         app_version=read_version(),
-        server_host=(os.getenv("LUMI_SERVER_HOST") or "127.0.0.1").strip(),  # v2.2
-        server_port=int(os.getenv("LUMI_SERVER_PORT") or 8765),
-        server_token=(os.getenv("LUMI_SERVER_TOKEN") or "").strip(),
-        server=(os.getenv("LUMI_SERVER") or "off").strip().lower() in _TRUTHY,  # v2.2 client mode, off by default
+        server_host=(_get("LUMI_SERVER_HOST") or "127.0.0.1").strip(),  # v2.2
+        server_port=int(_get("LUMI_SERVER_PORT") or 8765),
+        server_token=(_get("LUMI_SERVER_TOKEN") or "").strip(),
+        server=(_get("LUMI_SERVER") or "off").strip().lower() in _TRUTHY,  # v2.2 client mode, off by default
         store_path=store_path,
         memory_window=memory_window,
         compaction_batch=compaction_batch,
@@ -780,180 +831,181 @@ def load_config(*, load_env: bool = True) -> Config:
         store_backend=store_backend,
         effort=effort,
         think_show=think_show,
-        location=os.getenv("LUMI_LOCATION") or None,
+        location=_get("LUMI_LOCATION") or None,
         lat=_float("LUMI_LAT"),
         lon=_float("LUMI_LON"),
-        weather_url=os.getenv("LUMI_WEATHER_URL") or DEFAULT_WEATHER_URL,
-        news_url=os.getenv("LUMI_NEWS_URL") or None,
+        weather_url=_get("LUMI_WEATHER_URL") or DEFAULT_WEATHER_URL,
+        news_url=_get("LUMI_NEWS_URL") or None,
         news_cap=int(news_cap_env) if news_cap_env else 3,
-        idle_nudge=_parse_bool(os.getenv("LUMI_IDLE_NUDGE")),
-        sound=_parse_bool(os.getenv("LUMI_SOUND")),
-        input_buffer=_parse_bool(os.getenv("LUMI_INPUT_BUFFER")),  # v1.2, off by default
+        idle_nudge=_parse_bool(_get("LUMI_IDLE_NUDGE")),
+        sound=_parse_bool(_get("LUMI_SOUND")),
+        input_buffer=_parse_bool(_get("LUMI_INPUT_BUFFER")),  # v1.2, off by default
         idle_seconds=int(idle_seconds_env) if idle_seconds_env else 240,
         nudge_path=Path(nudge_path_env) if nudge_path_env else DEFAULT_NUDGE_PATH,
-        think_seeds_path=Path(ts) if (ts := os.getenv("LUMI_THINK_SEEDS_PATH")) else DEFAULT_THINK_SEEDS_PATH,
-        scheduler=_parse_bool(os.getenv("LUMI_SCHEDULER")),
-        schedule_path=Path(sp) if (sp := os.getenv("LUMI_SCHEDULE_PATH")) else DEFAULT_SCHEDULE_PATH,
+        think_seeds_path=Path(ts) if (ts := _get("LUMI_THINK_SEEDS_PATH")) else DEFAULT_THINK_SEEDS_PATH,
+        scheduler=_parse_bool(_get("LUMI_SCHEDULER")),
+        schedule_path=Path(sp) if (sp := _get("LUMI_SCHEDULE_PATH")) else DEFAULT_SCHEDULE_PATH,
         schedule_state_path=data_root / "schedule.state",  # v2.1: follows the data root (no per-path env)
-        sched_tick_ms=int(os.getenv("LUMI_SCHED_TICK_MS") or 30000),
-        sched_tick_fast_ms=int(os.getenv("LUMI_SCHED_TICK_FAST_MS") or 60000),
-        sched_catchup_h=int(os.getenv("LUMI_SCHED_CATCHUP_H") or 6),
-        sched_day_cap=int(os.getenv("LUMI_SCHED_DAY_CAP") or 24),
-        sched_show_to_outbox=_parse_bool(os.getenv("LUMI_SCHED_SHOW_TO_OUTBOX")),
+        schedule_overrides=tuple(_res.sections.get("schedule") or ()),  # v2.9: settings.yaml `schedule:`
+        sched_tick_ms=int(_get("LUMI_SCHED_TICK_MS") or 30000),
+        sched_tick_fast_ms=int(_get("LUMI_SCHED_TICK_FAST_MS") or 60000),
+        sched_catchup_h=int(_get("LUMI_SCHED_CATCHUP_H") or 6),
+        sched_day_cap=int(_get("LUMI_SCHED_DAY_CAP") or 24),
+        sched_show_to_outbox=_parse_bool(_get("LUMI_SCHED_SHOW_TO_OUTBOX")),
         quiet_hours=quiet_hours,
         thoughts_quiet_hours=thoughts_quiet_hours,
-        emoji_path=Path(emoji_env) if (emoji_env := os.getenv("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,
-        mood=(os.getenv("LUMI_MOOD") or "on").strip().lower() in _TRUTHY,  # on by default
-        biorhythms=(os.getenv("LUMI_BIORHYTHMS") or "on").strip().lower() in _TRUTHY,  # on by default
-        cycle=(os.getenv("LUMI_CYCLE") or "on").strip().lower() in _TRUTHY,  # on by default
-        natal_path=Path(natal_env) if (natal_env := os.getenv("LUMI_NATAL_PATH")) else DEFAULT_NATAL_PATH,
+        emoji_path=Path(emoji_env) if (emoji_env := _get("LUMI_EMOJI_PATH")) else DEFAULT_EMOJI_PATH,
+        mood=(_get("LUMI_MOOD") or "on").strip().lower() in _TRUTHY,  # on by default
+        biorhythms=(_get("LUMI_BIORHYTHMS") or "on").strip().lower() in _TRUTHY,  # on by default
+        cycle=(_get("LUMI_CYCLE") or "on").strip().lower() in _TRUTHY,  # on by default
+        natal_path=Path(natal_env) if (natal_env := _get("LUMI_NATAL_PATH")) else DEFAULT_NATAL_PATH,
         closeness_path=(
-            Path(cl_env) if (cl_env := os.getenv("LUMI_CLOSENESS_PATH")) else DEFAULT_CLOSENESS_PATH
+            Path(cl_env) if (cl_env := _get("LUMI_CLOSENESS_PATH")) else DEFAULT_CLOSENESS_PATH
         ),
-        faces_dir=Path(fd) if (fd := os.getenv("LUMI_FACES_DIR")) else DEFAULT_FACES_DIR,
-        closeness=(os.getenv("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
-        intent=_parse_bool(os.getenv("LUMI_INTENT")),  # v1.1, off by default
-        facts_enabled=(os.getenv("LUMI_FACTS") or "on").strip().lower() in _TRUTHY,  # master switch, on by default
-        prompt_cache=(os.getenv("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
-        prompt_cache_ttl="1h" if (os.getenv("LUMI_PROMPT_CACHE_TTL") or "5m").strip().lower() == "1h" else "5m",
-        gemini_explicit_cache=_parse_bool(os.getenv("LUMI_GEMINI_EXPLICIT_CACHE")),  # v1.3, off by default
-        gemini_cache_ttl_s=_parse_duration_s(os.getenv("LUMI_GEMINI_CACHE_TTL")),  # v1.3, e.g. "5h"; None → prompt_cache_ttl
-        usage_report=(os.getenv("LUMI_USAGE_REPORT") or "on").strip().lower() in _TRUTHY,  # on by default
-        cache_monitor=(os.getenv("LUMI_CACHE_MONITOR") or "off").strip().lower() in _TRUTHY,  # off by default
-        file_tool=(os.getenv("LUMI_FILE_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
-        files_dir=Path(os.getenv("LUMI_FILES_DIR")) if os.getenv("LUMI_FILES_DIR") else data_root / "files",
-        file_read_lines=int(os.getenv("LUMI_FILE_READ_LINES") or 200),
-        file_read_max_total=int(os.getenv("LUMI_FILE_READ_MAX_TOTAL") or 2000),
-        file_read_max_chars=int(os.getenv("LUMI_FILE_READ_MAX_CHARS") or 8000),
-        file_find_max=int(os.getenv("LUMI_FILE_FIND_MAX") or 50),
-        file_write_max=int(os.getenv("LUMI_FILE_WRITE_MAX") or 65536),
-        file_copy_max=int(os.getenv("LUMI_FILE_COPY_MAX") or 5 * 1024 * 1024),
-        file_search_max_files=int(os.getenv("LUMI_FILE_SEARCH_MAX_FILES") or 200),
-        file_search_max_lines=int(os.getenv("LUMI_FILE_SEARCH_MAX_LINES") or 100),
-        file_search_max_chars=int(os.getenv("LUMI_FILE_SEARCH_MAX_CHARS") or 4000),
-        file_around_max_k=int(os.getenv("LUMI_FILE_AROUND_MAX_K") or 50),
-        file_date_max_days=int(os.getenv("LUMI_FILE_DATE_MAX_DAYS") or 366),
-        tool_max_steps=int(os.getenv("LUMI_TOOL_MAX_STEPS") or 8),
-        file_tool_trace=(os.getenv("LUMI_FILE_TOOL_TRACE") or "off").strip().lower() in _TRUTHY,  # off by default
-        wiki=(os.getenv("LUMI_WIKI") or "off").strip().lower() in _TRUTHY,  # off by default
-        wiki_lang=os.getenv("LUMI_WIKI_LANG") or "uk,en",
-        wiki_base_url=os.getenv("LUMI_WIKI_BASE_URL") or "",
-        wiki_max_chars=int(os.getenv("LUMI_WIKI_MAX_CHARS") or 1500),
-        wiki_max_calls=int(os.getenv("LUMI_WIKI_MAX_CALLS") or 4),
-        news_tool=(os.getenv("LUMI_NEWS_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
-        news_api_key=os.getenv("LUMI_NEWS_API_KEY") or "",
-        news_api_url=os.getenv("LUMI_NEWS_API_URL") or "https://content.guardianapis.com",
-        news_sections=os.getenv("LUMI_NEWS_SECTIONS")
-        or "world,politics,business,technology,science,environment,culture,sport",
-        news_max_results=int(os.getenv("LUMI_NEWS_MAX_RESULTS") or 8),
-        news_max_chars=int(os.getenv("LUMI_NEWS_MAX_CHARS") or 3000),
-        news_max_calls=int(os.getenv("LUMI_NEWS_MAX_CALLS") or 4),
-        news_days=int(os.getenv("LUMI_NEWS_DAYS") or 7),
-        web_lookup=(os.getenv("LUMI_WEB_LOOKUP") or "off").strip().lower() in _TRUTHY,  # v0.27, off by default
-        web_lookup_model=os.getenv("LUMI_WEB_LOOKUP_MODEL") or "gemini-2.5-flash",
-        web_lookup_max_calls=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CALLS") or 2),
-        web_lookup_max_chars=int(os.getenv("LUMI_WEB_LOOKUP_MAX_CHARS") or 2000),
-        journal=(os.getenv("LUMI_JOURNAL") or "off").strip().lower() in _TRUTHY,  # v0.28, off by default
-        journal_dir=Path(jd) if (jd := os.getenv("LUMI_JOURNAL_DIR")) else data_root / "journal",
-        journal_max_chars=int(os.getenv("LUMI_JOURNAL_MAX_CHARS") or 4000),
-        image=(os.getenv("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
-        vision_max=int(os.getenv("LUMI_VISION_MAX") or 4),
-        image_max_bytes=int(os.getenv("LUMI_IMAGE_MAX_BYTES") or 5_242_880),
-        image_provider=os.getenv("LUMI_IMAGE_PROVIDER") or "gemini",
-        image_model=os.getenv("LUMI_IMAGE_MODEL") or "gemini-2.5-flash-image",
-        image_size=int(os.getenv("LUMI_IMAGE_SIZE") or 768),
-        image_max_gen=int(os.getenv("LUMI_IMAGE_MAX_GEN") or 2),
-        image_show=os.getenv("LUMI_IMAGE_SHOW") or "path,viewer,telegram",
-        recall=(os.getenv("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
+        faces_dir=Path(fd) if (fd := _get("LUMI_FACES_DIR")) else DEFAULT_FACES_DIR,
+        closeness=(_get("LUMI_CLOSENESS") or "on").strip().lower() in _TRUTHY,  # on by default
+        intent=_parse_bool(_get("LUMI_INTENT")),  # v1.1, off by default
+        facts_enabled=(_get("LUMI_FACTS") or "on").strip().lower() in _TRUTHY,  # master switch, on by default
+        prompt_cache=(_get("LUMI_PROMPT_CACHE") or "on").strip().lower() in _TRUTHY,  # v0.15, on by default
+        prompt_cache_ttl="1h" if (_get("LUMI_PROMPT_CACHE_TTL") or "5m").strip().lower() == "1h" else "5m",
+        gemini_explicit_cache=_parse_bool(_get("LUMI_GEMINI_EXPLICIT_CACHE")),  # v1.3, off by default
+        gemini_cache_ttl_s=_parse_duration_s(_get("LUMI_GEMINI_CACHE_TTL")),  # v1.3, e.g. "5h"; None → prompt_cache_ttl
+        usage_report=(_get("LUMI_USAGE_REPORT") or "on").strip().lower() in _TRUTHY,  # on by default
+        cache_monitor=(_get("LUMI_CACHE_MONITOR") or "off").strip().lower() in _TRUTHY,  # off by default
+        file_tool=(_get("LUMI_FILE_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
+        files_dir=Path(_get("LUMI_FILES_DIR")) if _get("LUMI_FILES_DIR") else data_root / "files",
+        file_read_lines=int(_get("LUMI_FILE_READ_LINES") or 200),
+        file_read_max_total=int(_get("LUMI_FILE_READ_MAX_TOTAL") or 2000),
+        file_read_max_chars=int(_get("LUMI_FILE_READ_MAX_CHARS") or 8000),
+        file_find_max=int(_get("LUMI_FILE_FIND_MAX") or 50),
+        file_write_max=int(_get("LUMI_FILE_WRITE_MAX") or 65536),
+        file_copy_max=int(_get("LUMI_FILE_COPY_MAX") or 5 * 1024 * 1024),
+        file_search_max_files=int(_get("LUMI_FILE_SEARCH_MAX_FILES") or 200),
+        file_search_max_lines=int(_get("LUMI_FILE_SEARCH_MAX_LINES") or 100),
+        file_search_max_chars=int(_get("LUMI_FILE_SEARCH_MAX_CHARS") or 4000),
+        file_around_max_k=int(_get("LUMI_FILE_AROUND_MAX_K") or 50),
+        file_date_max_days=int(_get("LUMI_FILE_DATE_MAX_DAYS") or 366),
+        tool_max_steps=int(_get("LUMI_TOOL_MAX_STEPS") or 8),
+        file_tool_trace=(_get("LUMI_FILE_TOOL_TRACE") or "off").strip().lower() in _TRUTHY,  # off by default
+        wiki=(_get("LUMI_WIKI") or "off").strip().lower() in _TRUTHY,  # off by default
+        wiki_lang=_csv(_get("LUMI_WIKI_LANG"), "uk,en"),
+        wiki_base_url=_get("LUMI_WIKI_BASE_URL") or "",
+        wiki_max_chars=int(_get("LUMI_WIKI_MAX_CHARS") or 1500),
+        wiki_max_calls=int(_get("LUMI_WIKI_MAX_CALLS") or 4),
+        news_tool=(_get("LUMI_NEWS_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
+        news_api_key=_get("LUMI_NEWS_API_KEY") or "",
+        news_api_url=_get("LUMI_NEWS_API_URL") or "https://content.guardianapis.com",
+        news_sections=_csv(_get("LUMI_NEWS_SECTIONS"),
+                           "world,politics,business,technology,science,environment,culture,sport"),
+        news_max_results=int(_get("LUMI_NEWS_MAX_RESULTS") or 8),
+        news_max_chars=int(_get("LUMI_NEWS_MAX_CHARS") or 3000),
+        news_max_calls=int(_get("LUMI_NEWS_MAX_CALLS") or 4),
+        news_days=int(_get("LUMI_NEWS_DAYS") or 7),
+        web_lookup=(_get("LUMI_WEB_LOOKUP") or "off").strip().lower() in _TRUTHY,  # v0.27, off by default
+        web_lookup_model=_get("LUMI_WEB_LOOKUP_MODEL") or "gemini-2.5-flash",
+        web_lookup_max_calls=int(_get("LUMI_WEB_LOOKUP_MAX_CALLS") or 2),
+        web_lookup_max_chars=int(_get("LUMI_WEB_LOOKUP_MAX_CHARS") or 2000),
+        journal=(_get("LUMI_JOURNAL") or "off").strip().lower() in _TRUTHY,  # v0.28, off by default
+        journal_dir=Path(jd) if (jd := _get("LUMI_JOURNAL_DIR")) else data_root / "journal",
+        journal_max_chars=int(_get("LUMI_JOURNAL_MAX_CHARS") or 4000),
+        image=(_get("LUMI_IMAGE") or "off").strip().lower() in _TRUTHY,  # off by default
+        vision_max=int(_get("LUMI_VISION_MAX") or 4),
+        image_max_bytes=int(_get("LUMI_IMAGE_MAX_BYTES") or 5_242_880),
+        image_provider=_get("LUMI_IMAGE_PROVIDER") or "gemini",
+        image_model=_get("LUMI_IMAGE_MODEL") or "gemini-2.5-flash-image",
+        image_size=int(_get("LUMI_IMAGE_SIZE") or 768),
+        image_max_gen=int(_get("LUMI_IMAGE_MAX_GEN") or 2),
+        image_show=_csv(_get("LUMI_IMAGE_SHOW"), "path,viewer,telegram"),
+        recall=(_get("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,
         embed_api_key=embed_key,
-        recall_k=int(os.getenv("LUMI_RECALL_K") or 5),
-        embed_max_chars=int(os.getenv("LUMI_EMBED_MAX_CHARS") or 2000),
-        rag=(os.getenv("LUMI_RAG") or "off").strip().lower() in _TRUTHY,  # v0.17, off by default
-        rag_k=int(os.getenv("LUMI_RAG_K") or 4),
-        rag_floor=float(os.getenv("LUMI_RAG_FLOOR") or 0.3),
-        facts_rag=(os.getenv("LUMI_FACTS_RAG") or "off").strip().lower() in _TRUTHY,  # v0.36, off
-        facts_rag_k=int(os.getenv("LUMI_FACTS_RAG_K") or 4),
-        rag_max_chars=int(os.getenv("LUMI_RAG_MAX_CHARS") or 1200),
-        rag_w=int(os.getenv("LUMI_RAG_W") or 2),
-        rag_snippet_chars=int(os.getenv("LUMI_RAG_SNIPPET_CHARS") or 240),
-        rag_chunk=(os.getenv("LUMI_RAG_CHUNK") or "off").strip().lower() in _TRUTHY,  # v0.30, off by default
-        rag_chunk_chars=int(os.getenv("LUMI_RAG_CHUNK_CHARS") or 800),
-        rag_chunk_overlap=int(os.getenv("LUMI_RAG_CHUNK_OVERLAP") or 120),
-        rag_chunk_threshold=int(os.getenv("LUMI_RAG_CHUNK_THRESHOLD") or 1200),
-        rag_chunk_w=int(os.getenv("LUMI_RAG_CHUNK_W") or 1),
-        recall_tool=(os.getenv("LUMI_RECALL_TOOL") or "off").strip().lower() in _TRUTHY,  # v0.31, off
-        recall_tool_k=int(os.getenv("LUMI_RECALL_TOOL_K") or 5),
-        recall_tool_max_calls=int(os.getenv("LUMI_RECALL_TOOL_MAX_CALLS") or 3),
-        date_tool=(os.getenv("LUMI_DATE_TOOL") or "off").strip().lower() in _TRUTHY,  # v0.31, off
-        date_tool_max_chars=int(os.getenv("LUMI_DATE_TOOL_MAX_CHARS") or 4000),
-        date_tool_max_days=int(os.getenv("LUMI_DATE_TOOL_MAX_DAYS") or 14),
-        date_tool_max_calls=int(os.getenv("LUMI_DATE_TOOL_MAX_CALLS") or 3),
-        facts_core_max=int(os.getenv("LUMI_FACTS_CORE_MAX") or 0),
+        recall_k=int(_get("LUMI_RECALL_K") or 5),
+        embed_max_chars=int(_get("LUMI_EMBED_MAX_CHARS") or 2000),
+        rag=(_get("LUMI_RAG") or "off").strip().lower() in _TRUTHY,  # v0.17, off by default
+        rag_k=int(_get("LUMI_RAG_K") or 4),
+        rag_floor=float(_get("LUMI_RAG_FLOOR") or 0.3),
+        facts_rag=(_get("LUMI_FACTS_RAG") or "off").strip().lower() in _TRUTHY,  # v0.36, off
+        facts_rag_k=int(_get("LUMI_FACTS_RAG_K") or 4),
+        rag_max_chars=int(_get("LUMI_RAG_MAX_CHARS") or 1200),
+        rag_w=int(_get("LUMI_RAG_W") or 2),
+        rag_snippet_chars=int(_get("LUMI_RAG_SNIPPET_CHARS") or 240),
+        rag_chunk=(_get("LUMI_RAG_CHUNK") or "off").strip().lower() in _TRUTHY,  # v0.30, off by default
+        rag_chunk_chars=int(_get("LUMI_RAG_CHUNK_CHARS") or 800),
+        rag_chunk_overlap=int(_get("LUMI_RAG_CHUNK_OVERLAP") or 120),
+        rag_chunk_threshold=int(_get("LUMI_RAG_CHUNK_THRESHOLD") or 1200),
+        rag_chunk_w=int(_get("LUMI_RAG_CHUNK_W") or 1),
+        recall_tool=(_get("LUMI_RECALL_TOOL") or "off").strip().lower() in _TRUTHY,  # v0.31, off
+        recall_tool_k=int(_get("LUMI_RECALL_TOOL_K") or 5),
+        recall_tool_max_calls=int(_get("LUMI_RECALL_TOOL_MAX_CALLS") or 3),
+        date_tool=(_get("LUMI_DATE_TOOL") or "off").strip().lower() in _TRUTHY,  # v0.31, off
+        date_tool_max_chars=int(_get("LUMI_DATE_TOOL_MAX_CHARS") or 4000),
+        date_tool_max_days=int(_get("LUMI_DATE_TOOL_MAX_DAYS") or 14),
+        date_tool_max_calls=int(_get("LUMI_DATE_TOOL_MAX_CALLS") or 3),
+        facts_core_max=int(_get("LUMI_FACTS_CORE_MAX") or 0),
         recall_scope=(
-            (os.getenv("LUMI_RECALL_SCOPE") or "messages").strip().lower()
-            if (os.getenv("LUMI_RECALL_SCOPE") or "messages").strip().lower() in ("messages", "facts", "all")
+            (_get("LUMI_RECALL_SCOPE") or "messages").strip().lower()
+            if (_get("LUMI_RECALL_SCOPE") or "messages").strip().lower() in ("messages", "facts", "all")
             else "messages"
         ),
-        thoughts=(os.getenv("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
-        thoughts_window_h=int(os.getenv("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
-        thoughts_max_lines=int(os.getenv("LUMI_THOUGHTS_MAX_LINES") or THOUGHTS_MAX_LINES),
-        thought_max_chars=int(os.getenv("LUMI_THOUGHT_MAX_CHARS") or THOUGHT_MAX_CHARS),
-        thoughts_interval_s=int(os.getenv("LUMI_THOUGHTS_INTERVAL_S") or THOUGHTS_INTERVAL_S),
-        thoughts_cap=int(os.getenv("LUMI_THOUGHTS_CAP") or THOUGHTS_CAP),
-        thoughts_spoken_ratio=float(os.getenv("LUMI_THOUGHTS_SPOKEN_RATIO") or THOUGHTS_SPOKEN_RATIO),
-        thoughts_show=(os.getenv("LUMI_THOUGHTS_SHOW") or "hidden").strip().lower(),
-        thoughts_context=(os.getenv("LUMI_THOUGHTS_CONTEXT") or "lean").strip().lower(),
-        thought_tools=(os.getenv("LUMI_THOUGHT_TOOLS") or "off").strip().lower() in _TRUTHY,  # v0.33, off
-        thought_journal=(os.getenv("LUMI_THOUGHT_JOURNAL") or "off").strip().lower() in _TRUTHY,  # v0.33
-        thought_wiki=(os.getenv("LUMI_THOUGHT_WIKI") or "off").strip().lower() in _TRUTHY,  # v0.33
-        thought_news=(os.getenv("LUMI_THOUGHT_NEWS") or "off").strip().lower() in _TRUTHY,  # v0.33
-        thought_web=(os.getenv("LUMI_THOUGHT_WEB") or "off").strip().lower() in _TRUTHY,  # v0.33
-        thought_prompt=(os.getenv("LUMI_THOUGHT_PROMPT") or "off").strip().lower() in _TRUTHY,  # v0.33
-        thought_image=(os.getenv("LUMI_THOUGHT_IMAGE") or "off").strip().lower() in _TRUTHY,  # v0.33
-        thought_imagine_cap=int(os.getenv("LUMI_THOUGHT_IMAGINE_CAP") or 1),  # v0.33 %imagine paid sub-cap
-        thought_surface=(os.getenv("LUMI_THOUGHT_SURFACE") or "off").strip().lower() in _TRUTHY,  # v0.33
-        bridge=(os.getenv("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
-        inbox_path=Path(ib) if (ib := os.getenv("LUMI_INBOX_PATH")) else data_root / "inbox.jsonl",
-        outbox_path=Path(ob) if (ob := os.getenv("LUMI_OUTBOX_PATH")) else data_root / "outbox.jsonl",
-        telegram_token=(os.getenv("LUMI_TELEGRAM_TOKEN") or "").strip(),
-        telegram_allowlist=_parse_id_list(os.getenv("LUMI_TELEGRAM_ALLOWLIST")),
-        telegram_flush_s=int(os.getenv("LUMI_TELEGRAM_FLUSH_S") or 2),
-        telegram_batch=int(os.getenv("LUMI_TELEGRAM_BATCH") or 5),
-        telegram_catchup_h=int(os.getenv("LUMI_TELEGRAM_CATCHUP_H") or 24),
-        telegram_photo=_parse_probability(os.getenv("LUMI_TELEGRAM_PHOTO")),
-        telegram_voice=(os.getenv("LUMI_TELEGRAM_VOICE") or "off").strip().lower() in _TRUTHY,
-        telegram_stt=(os.getenv("LUMI_TELEGRAM_STT") or "off").strip().lower() in _TRUTHY,  # v0.26.x, off by default
-        voice=(os.getenv("LUMI_VOICE") or "off").strip().lower() in _TRUTHY,
-        elevenlabs_api_key=(os.getenv("ELEVENLABS_API_KEY") or "").strip(),
-        voice_id=(os.getenv("LUMI_VOICE_ID") or "").strip(),
-        voice_model=(os.getenv("LUMI_VOICE_MODEL") or "eleven_multilingual_v2").strip(),
-        voice_skip_missed=(os.getenv("LUMI_VOICE_SKIP_MISSED") or "off").strip().lower() in _TRUTHY,
-        voice_sentences=(os.getenv("LUMI_VOICE_SENTENCES") or "off").strip().lower() in _TRUTHY,  # v1.4
+        thoughts=(_get("LUMI_THOUGHTS") or "on").strip().lower() in _TRUTHY,  # v0.12, on by default
+        thoughts_window_h=int(_get("LUMI_THOUGHTS_WINDOW_H") or THOUGHTS_WINDOW_H),
+        thoughts_max_lines=int(_get("LUMI_THOUGHTS_MAX_LINES") or THOUGHTS_MAX_LINES),
+        thought_max_chars=int(_get("LUMI_THOUGHT_MAX_CHARS") or THOUGHT_MAX_CHARS),
+        thoughts_interval_s=int(_get("LUMI_THOUGHTS_INTERVAL_S") or THOUGHTS_INTERVAL_S),
+        thoughts_cap=int(_get("LUMI_THOUGHTS_CAP") or THOUGHTS_CAP),
+        thoughts_spoken_ratio=float(_get("LUMI_THOUGHTS_SPOKEN_RATIO") or THOUGHTS_SPOKEN_RATIO),
+        thoughts_show=(_get("LUMI_THOUGHTS_SHOW") or "hidden").strip().lower(),
+        thoughts_context=(_get("LUMI_THOUGHTS_CONTEXT") or "lean").strip().lower(),
+        thought_tools=(_get("LUMI_THOUGHT_TOOLS") or "off").strip().lower() in _TRUTHY,  # v0.33, off
+        thought_journal=(_get("LUMI_THOUGHT_JOURNAL") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_wiki=(_get("LUMI_THOUGHT_WIKI") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_news=(_get("LUMI_THOUGHT_NEWS") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_web=(_get("LUMI_THOUGHT_WEB") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_prompt=(_get("LUMI_THOUGHT_PROMPT") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_image=(_get("LUMI_THOUGHT_IMAGE") or "off").strip().lower() in _TRUTHY,  # v0.33
+        thought_imagine_cap=int(_get("LUMI_THOUGHT_IMAGINE_CAP") or 1),  # v0.33 %imagine paid sub-cap
+        thought_surface=(_get("LUMI_THOUGHT_SURFACE") or "off").strip().lower() in _TRUTHY,  # v0.33
+        bridge=(_get("LUMI_BRIDGE") or "off").strip().lower() in _TRUTHY,  # v0.13, off by default
+        inbox_path=Path(ib) if (ib := _get("LUMI_INBOX_PATH")) else data_root / "inbox.jsonl",
+        outbox_path=Path(ob) if (ob := _get("LUMI_OUTBOX_PATH")) else data_root / "outbox.jsonl",
+        telegram_token=(_get("LUMI_TELEGRAM_TOKEN") or "").strip(),
+        telegram_allowlist=_parse_id_list(_get("LUMI_TELEGRAM_ALLOWLIST")),
+        telegram_flush_s=int(_get("LUMI_TELEGRAM_FLUSH_S") or 2),
+        telegram_batch=int(_get("LUMI_TELEGRAM_BATCH") or 5),
+        telegram_catchup_h=int(_get("LUMI_TELEGRAM_CATCHUP_H") or 24),
+        telegram_photo=_parse_probability(_get("LUMI_TELEGRAM_PHOTO")),
+        telegram_voice=(_get("LUMI_TELEGRAM_VOICE") or "off").strip().lower() in _TRUTHY,
+        telegram_stt=(_get("LUMI_TELEGRAM_STT") or "off").strip().lower() in _TRUTHY,  # v0.26.x, off by default
+        voice=(_get("LUMI_VOICE") or "off").strip().lower() in _TRUTHY,
+        elevenlabs_api_key=(_get("ELEVENLABS_API_KEY") or "").strip(),
+        voice_id=(_get("LUMI_VOICE_ID") or "").strip(),
+        voice_model=(_get("LUMI_VOICE_MODEL") or "eleven_multilingual_v2").strip(),
+        voice_skip_missed=(_get("LUMI_VOICE_SKIP_MISSED") or "off").strip().lower() in _TRUTHY,
+        voice_sentences=(_get("LUMI_VOICE_SENTENCES") or "off").strip().lower() in _TRUTHY,  # v1.4
 
-        dictation=(os.getenv("LUMI_DICTATION") or "off").strip().lower() in _TRUTHY,  # v0.26, off by default
-        stt_provider=(os.getenv("LUMI_STT_PROVIDER") or "deepgram").strip().lower(),
-        stt_model=(os.getenv("LUMI_STT_MODEL") or "").strip(),
-        stt_lang=(os.getenv("LUMI_STT_LANG") or "uk").strip(),
-        stt_device=(os.getenv("LUMI_STT_DEVICE") or "").strip(),
-        listen_flag_path=Path(lf) if (lf := os.getenv("LUMI_LISTEN_FLAG")) else data_root / "listen.flag",
-        voice_endpoint_ms=int(os.getenv("LUMI_VOICE_ENDPOINT_MS") or 500),
-        voice_out_device=(os.getenv("LUMI_VOICE_OUT_DEVICE") or "").strip(),
-        voice_first_clause_words=int(os.getenv("LUMI_VOICE_FIRST_CLAUSE_WORDS") or 8),
-        voice_reconnect=int(os.getenv("LUMI_VOICE_RECONNECT") or 3),
+        dictation=(_get("LUMI_DICTATION") or "off").strip().lower() in _TRUTHY,  # v0.26, off by default
+        stt_provider=(_get("LUMI_STT_PROVIDER") or "deepgram").strip().lower(),
+        stt_model=(_get("LUMI_STT_MODEL") or "").strip(),
+        stt_lang=(_get("LUMI_STT_LANG") or "uk").strip(),
+        stt_device=(_get("LUMI_STT_DEVICE") or "").strip(),
+        listen_flag_path=Path(lf) if (lf := _get("LUMI_LISTEN_FLAG")) else data_root / "listen.flag",
+        voice_endpoint_ms=int(_get("LUMI_VOICE_ENDPOINT_MS") or 500),
+        voice_out_device=(_get("LUMI_VOICE_OUT_DEVICE") or "").strip(),
+        voice_first_clause_words=int(_get("LUMI_VOICE_FIRST_CLAUSE_WORDS") or 8),
+        voice_reconnect=int(_get("LUMI_VOICE_RECONNECT") or 3),
         mode_set=(lambda m: m if m in ("text", "voice") else "text")(
-            (os.getenv("LUMI_MODE_SET") or "text").strip().lower()),
-        deepgram_api_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),
+            (_get("LUMI_MODE_SET") or "text").strip().lower()),
+        deepgram_api_key=(_get("DEEPGRAM_API_KEY") or "").strip(),
         closeness_tuning=closeness_tuning,
-        face_signal=Path(face_env) if (face_env := os.getenv("LUMI_FACE_SIGNAL")) else None,
-        face_idle=float(idle_env) if (idle_env := os.getenv("LUMI_FACE_IDLE_SECONDS")) else 120.0,
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
-        openai_api_key=(os.getenv("OPENAI_API_KEY") or "").strip(),
-        deepseek_api_key=(os.getenv("DEEPSEEK_API_KEY") or "").strip(),
-        gemini_api_key=(os.getenv("GEMINI_API_KEY") or "").strip(),
-        minimax_api_key=(os.getenv("MINIMAX_API_KEY") or "").strip(),
-        llm_base_url=(os.getenv("LUMI_LLM_BASE_URL") or "").strip(),
-        openai_responses=(os.getenv("LUMI_OPENAI_RESPONSES") or "auto").strip().lower(),
-        openai_reasoning_summary=(os.getenv("LUMI_OPENAI_SUMMARY") or "auto").strip().lower(),
+        face_signal=Path(face_env) if (face_env := _get("LUMI_FACE_SIGNAL")) else None,
+        face_idle=float(idle_env) if (idle_env := _get("LUMI_FACE_IDLE_SECONDS")) else 120.0,
+        api_key=_get("ANTHROPIC_API_KEY"),
+        openai_api_key=(_get("OPENAI_API_KEY") or "").strip(),
+        deepseek_api_key=(_get("DEEPSEEK_API_KEY") or "").strip(),
+        gemini_api_key=(_get("GEMINI_API_KEY") or "").strip(),
+        minimax_api_key=(_get("MINIMAX_API_KEY") or "").strip(),
+        llm_base_url=(_get("LUMI_LLM_BASE_URL") or "").strip(),
+        openai_responses=(_get("LUMI_OPENAI_RESPONSES") or "auto").strip().lower(),
+        openai_reasoning_summary=(_get("LUMI_OPENAI_SUMMARY") or "auto").strip().lower(),
     )

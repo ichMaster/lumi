@@ -49,7 +49,7 @@ class BrainHost:
         self._scheduler: Scheduler | None = None
         self._ticks: TickService | None = None
         if cfg.scheduler:
-            self._scheduler = Scheduler(load_schedule(cfg.schedule_path), cfg.schedule_state_path,
+            self._scheduler = Scheduler(load_schedule(cfg.schedule_path, getattr(cfg, "schedule_overrides", ())), cfg.schedule_state_path,
                                         day_cap=cfg.sched_day_cap, quiet_hours=cfg.thoughts_quiet_hours)
             self._ticks = TickService()  # the v3 needs register their %update_state here
         # When the scheduler is on it owns the idle rule (as in-process); off → the legacy timers run.
