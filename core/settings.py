@@ -23,6 +23,7 @@ holds ``settings.yaml``, ``secrets.yaml`` or ``.env``.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import stat
@@ -482,10 +483,9 @@ def to_env(s: Setting, value: Any) -> str | None:
         return None
     if t == "int":
         if isinstance(value, bool) or not isinstance(value, int):
-            if isinstance(value, str) and value.strip().lstrip("-").isdigit():
-                value = int(value.strip())
-            else:
-                return None
+            if not isinstance(value, str) or not re.fullmatch(r"-?[0-9]+", value.strip()):
+                return None  # ASCII digits only: "²".isdigit() is True, but int("²") raises (code review #6)
+            value = int(value.strip())
         return None if _range_problem(s, value) else str(value)
     if t in ("float", "probability"):
         if t == "probability" and isinstance(value, bool):
@@ -500,8 +500,8 @@ def to_env(s: Setting, value: Any) -> str | None:
                 value = float(word)
             except ValueError:
                 return None
-        if not isinstance(value, (int, float)):
-            return None
+        if not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None  # .inf / nan pass a range check and crash load_config (code review #6)
         lo, hi = (0.0, 1.0) if t == "probability" else (s.min, s.max)
         if (lo is not None and value < lo) or (hi is not None and value > hi):
             return None
@@ -538,15 +538,15 @@ def to_env(s: Setting, value: Any) -> str | None:
         if isinstance(value, bool):
             return None
         if isinstance(value, (int, float)):
-            return str(value)
+            return str(value) if math.isfinite(value) and value >= 0 else None
         if isinstance(value, str):
             text = value.strip().lower()
             num = text[:-1] if text[-1:] in ("h", "m", "s") else text
             try:
-                float(num)
+                number = float(num)
             except ValueError:
                 return None
-            return text
+            return text if math.isfinite(number) and number >= 0 else None
         return None
     if t == "hours":
         if value is False or (isinstance(value, str) and value.strip().lower() in ("off", "none", "")):

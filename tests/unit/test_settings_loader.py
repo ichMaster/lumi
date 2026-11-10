@@ -413,3 +413,20 @@ def test_review_3_the_old_gemini_name_never_beats_the_new_one(tmp_path, env, fil
     for name, text in files.items():
         _write(tmp_path, name, text, 0o600)
     assert st.resolve(env, folder=tmp_path).values["GEMINI_API_KEY"] == want
+
+
+@pytest.mark.parametrize("yaml_text, key", [
+    ("model:\n  gemini_cache_ttl: .inf\n", "model.gemini_cache_ttl"),
+    ("model:\n  gemini_cache_ttl: inf\n", "model.gemini_cache_ttl"),
+    ("model:\n  gemini_cache_ttl: -5m\n", "model.gemini_cache_ttl"),
+    ("recall:\n  rag_floor: .nan\n", "recall.rag_floor"),
+    ("viewer:\n  face_idle_seconds: .inf\n", "viewer.face_idle_seconds"),
+    ("memory:\n  window: \"²\"\n", "memory.window"),
+    ("memory:\n  window: \"--5\"\n", "memory.window"),
+])
+def test_review_6_values_load_config_would_crash_on_are_refused(tmp_path, yaml_text, key):
+    _write(tmp_path, "settings.yaml", yaml_text)
+    with pytest.raises(st.SettingsError) as err:  # a readable refusal, never an OverflowError / ValueError
+        _load(tmp_path)
+    assert key in str(err.value)
+    assert st.check_folder(tmp_path)[0]  # and `config validate` says so
