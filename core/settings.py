@@ -58,6 +58,8 @@ SETTINGS_FILE = "settings.yaml"
 SECRETS_FILE = "secrets.yaml"
 DOTENV_FILE = ".env"
 SETTINGS_DIR_ENV = "LUMI_SETTINGS_DIR"
+# Structured sections of settings.yaml (not flat settings): an instance's overrides of the authored files.
+STRUCTURED = ("models", "schedule")
 
 TYPES = ("bool", "int", "float", "str", "path", "enum", "list", "ids", "duration", "hours", "probability")
 
@@ -122,7 +124,7 @@ SETTINGS: tuple[Setting, ...] = (
        choices=_PROVIDERS),
     _s("LUMI_MODEL", "model.reply", "str", "claude-haiku-4-5-20251001", "The reply model id."),
     _s("LUMI_MODEL_PROFILE", "model.profile", "str", None,
-       "Boot the whole model stack from a named profile (core/models.toml). Unset → the per-field settings."),
+       "Boot the whole model stack from a named profile (core/models.yaml). Unset → the per-field settings."),
     _s("LUMI_MODEL_THINK", "model.think", "str", None, "The think-path model. Unset → the reply model."),
     _s("LUMI_MODEL_MOOD", "model.mood", "str", None, "The daily mood call's model. Unset → the reply model."),
     _s("LUMI_MODEL_HOUSEKEEPING", "model.housekeeping", "str", None,
@@ -133,10 +135,10 @@ SETTINGS: tuple[Setting, ...] = (
        "Route tool-loop continuation rounds to the step tier (Anthropic only)."),
     _s("LUMI_MODEL_TOOL_STEP", "model.tool_step", "str", None, "The tool-loop digging tier (a Claude id)."),
     _s("LUMI_MODEL_ALIASES", "model.alias_overrides", "str", None,
-       "Extra /model aliases: alias=provider:model,… (over core/models.toml)."),
+       "Extra /model aliases: alias=provider:model,… (over core/models.yaml and models:)."),
     _s("LUMI_MODEL_PROFILES", "model.profile_overrides", "str", None,
-       "Extra profiles: name=provider:reply,think,mood,housekeeping[,voice];… (over core/models.toml)."),
-    _s("LUMI_MODELS_FILE", "model.models_file", "path", None, "The model-profiles file. Unset → core/models.toml."),
+       "Extra profiles: name=provider:reply,think,mood,housekeeping[,voice];… (over core/models.yaml and models:)."),
+    _s("LUMI_MODELS_FILE", "model.models_file", "path", None, "The model-profiles file. Unset → core/models.yaml."),
     _s("LUMI_MAX_TOKENS", "model.max_tokens", "int", 4096, "The model output cap.", min=1),
     _s("LUMI_THINKING", "model.thinking", "bool", False, "Surface the native thought summary (extended thinking)."),
     _s("LUMI_EFFORT", "model.effort", "enum", None, "Adaptive-thinking depth. Unset → the API default.",
@@ -296,7 +298,7 @@ SETTINGS: tuple[Setting, ...] = (
     _s("LUMI_THOUGHT_SURFACE", "thoughts.surface", "bool", False, "Surface a running directive as a chat-log line."),
     # --- scheduler ------------------------------------------------------------------------------------------
     _s("LUMI_SCHEDULER", "scheduler.enabled", "bool", False, "The in-process thought scheduler."),
-    _s("LUMI_SCHEDULE_PATH", "scheduler.path", "path", None, "The thought schedule. Unset → core/schedule.toml."),
+    _s("LUMI_SCHEDULE_PATH", "scheduler.path", "path", None, "The thought schedule. Unset → core/schedule.yaml."),
     _s("LUMI_SCHED_TICK_MS", "scheduler.tick_ms", "int", 30000, "Scheduler evaluation interval (ms).", min=1),
     _s("LUMI_SCHED_TICK_FAST_MS", "scheduler.tick_fast_ms", "int", 60000, "The ephemeral fast tick (ms).", min=1),
     _s("LUMI_SCHED_CATCHUP_H", "scheduler.catchup_h", "int", 6, "Startup catch-up window (hours).", min=0),
@@ -646,6 +648,7 @@ class Resolution:
     sources: dict[str, str] = field(default_factory=dict)  # alias → default/.env/settings.yaml/secrets.yaml/env
     warnings: list[str] = field(default_factory=list)
     from_files: dict[str, str] = field(default_factory=dict)  # alias → value, the file layers only (for export)
+    sections: dict[str, Any] = field(default_factory=dict)  # the validated structured sections (models, schedule)
 
     def get(self, name: str, default: str | None = None) -> str | None:
         return self.values.get(name, default)
@@ -671,13 +674,105 @@ def _apply_old_names(layer: dict[str, str]) -> dict[str, str]:
     return layer
 
 
-def _file_layer(path: Path, *, secret: bool) -> tuple[dict[str, str], list[str], list[str]]:
-    """``(alias → env string, problems, warnings)`` for one YAML file."""
+_PROFILE_FIELDS = ("provider", "reply", "think", "mood", "housekeeping", "voice")
+_ROW_KEYS = ("name", "directive", "seeds", "topic", "enabled", "show", "cron", "between", "at", "every", "idle",
+             "days")
+_DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _check_models(data: Any, where: str) -> tuple[list[str], list[str]]:
+    """The ``models:`` section (aliases + profiles merged over core/models.yaml) — its shape, never the model ids."""
+    problems: list[str] = []
+    warnings: list[str] = []
+    if not isinstance(data, dict):
+        return [f"{where}: models must be a mapping with aliases: and/or profiles:"], []
+    for key in data:
+        if key not in ("aliases", "profiles"):
+            warnings.append(f"unknown key 'models.{key}' in {where} — ignored")
+    aliases = data.get("aliases") or {}
+    if not isinstance(aliases, dict):
+        problems.append(f"{where}: models.aliases must be a mapping (alias: \"provider:model\")")
+    else:
+        for alias, target in aliases.items():
+            if not isinstance(target, str) or ":" not in target:
+                problems.append(f"{where}: models.aliases.{alias} = {target!r} is not valid — allowed: "
+                                "\"provider:model-id\"")
+    profiles = data.get("profiles") or {}
+    if not isinstance(profiles, dict):
+        problems.append(f"{where}: models.profiles must be a mapping (name: {{provider, reply, …}})")
+    else:
+        for name, block in profiles.items():
+            if not isinstance(block, dict):
+                problems.append(f"{where}: models.profiles.{name} must be a mapping of "
+                                + ", ".join(_PROFILE_FIELDS))
+                continue
+            for k, v in block.items():
+                if k not in _PROFILE_FIELDS:
+                    warnings.append(f"unknown key 'models.profiles.{name}.{k}' in {where} — ignored")
+                elif v is not None and not isinstance(v, str):
+                    problems.append(f"{where}: models.profiles.{name}.{k} = {v!r} is not valid — allowed: a model id")
+    return problems, warnings
+
+
+def _check_schedule(rows: Any, where: str) -> tuple[list[str], list[str]]:
+    """The ``schedule:`` section — rows merged over core/schedule.yaml by ``name``; each needs one."""
+    problems: list[str] = []
+    warnings: list[str] = []
+    if not isinstance(rows, list):
+        return [f"{where}: schedule must be a list of rows (- name: …)"], []
+    for i, row in enumerate(rows, 1):
+        at = f"{where}: schedule row {i}"
+        if not isinstance(row, dict):
+            problems.append(f"{at} must be a mapping (name: …, directive: …, at: …)")
+            continue
+        name = row.get("name")
+        if not isinstance(name, str) or not name.strip():
+            problems.append(f"{at} needs a name: (the authored row it changes, or a new one)")
+            continue
+        label = f"{where}: schedule[{name}]"
+        for k, v in row.items():
+            if k not in _ROW_KEYS:
+                warnings.append(f"unknown key '{k}' in schedule row '{name}' ({where}) — ignored")
+            elif v is None:
+                continue
+            elif k in ("enabled", "show") and not isinstance(v, bool):
+                problems.append(f"{label}.{k} = {v!r} is not valid — allowed: true or false")
+            elif k in ("at", "between") and not isinstance(v, str):
+                problems.append(f"{label}.{k} = {v!r} is not valid — allowed: a quoted time like \"08:00\" "
+                                f"(YAML reads an unquoted 08:00 as a number)")
+            elif k == "days" and not (isinstance(v, list) and all(str(d).lower() in _DAYS for d in v)):
+                problems.append(f"{label}.days = {v!r} is not valid — allowed: a list of " + ", ".join(_DAYS))
+            elif k in ("directive", "seeds", "topic", "cron", "name") and not isinstance(v, str):
+                problems.append(f"{label}.{k} = {v!r} is not valid — allowed: text")
+            elif k in ("every", "idle") and (isinstance(v, bool) or not isinstance(v, (str, int, float))):
+                problems.append(f"{label}.{k} = {v!r} is not valid — allowed: a duration like 15m or 3h")
+    return problems, warnings
+
+
+def _file_layer(path: Path, *, secret: bool, sections: dict | None = None
+                ) -> tuple[dict[str, str], list[str], list[str]]:
+    """``(alias → env string, problems, warnings)`` for one YAML file; its structured sections go into
+    ``sections`` (settings.yaml only)."""
     values: dict[str, str] = {}
     problems: list[str] = []
     warnings: list[str] = []
     name = path.name
-    for key, value in flatten(read_yaml(path)).items():
+    data = read_yaml(path)
+    for section in STRUCTURED:
+        if section not in data:
+            continue
+        raw = data.pop(section)
+        if secret:
+            problems.append(f"{name}: the {section}: section belongs in {SETTINGS_FILE}")
+            continue
+        if raw is None:
+            continue
+        p, w = (_check_models if section == "models" else _check_schedule)(raw, name)
+        problems += p
+        warnings += w
+        if not p and sections is not None:
+            sections[section] = raw
+    for key, value in flatten(data).items():
         s = BY_KEY.get(key)
         if s is None:
             warnings.append(f"unknown setting '{key}' in {name} — ignored")
@@ -715,7 +810,7 @@ def resolve(environ: Mapping[str, str] | None = None, *, folder: Path | None = N
             f"{folder / DOTENV_FILE} is deprecated since v2.9 — migrate it with "
             f"`python scripts/env_to_settings.py {folder / DOTENV_FILE}` (settings.yaml + secrets.yaml)"
         )
-    plain, p1, w1 = _file_layer(folder / SETTINGS_FILE, secret=False)
+    plain, p1, w1 = _file_layer(folder / SETTINGS_FILE, secret=False, sections=res.sections)
     secrets_path = folder / SECRETS_FILE
     secret, p2, w2 = _file_layer(secrets_path, secret=True)
     problems = p1 + p2
@@ -816,4 +911,24 @@ def render_example(*, secret: bool) -> str:
         for s in members:
             out.append(f"  # {_comment(s)}")
             out.append(f"  # {_yaml_value(s.key, None if secret else s.default)}")
+    if not secret:
+        out.append(_OVERRIDES_EXAMPLE)
     return "\n".join(out) + "\n"
+
+
+_OVERRIDES_EXAMPLE = """
+# --- an instance's own changes to the authored files (optional) ---------------------------------------------
+# models:                 # merged over core/models.yaml by name — a profile's fields over the authored profile's
+#   aliases:
+#     fast: "anthropic:claude-haiku-4-5-20251001"
+#   profiles:
+#     anthropic:
+#       reply: claude-sonnet-5
+# schedule:               # merged over core/schedule.yaml by name — a new name adds a row
+#   - name: morning-brief
+#     enabled: false
+#   - name: evening-walk
+#     directive: think
+#     at: "19:00"         # quote every time: YAML reads an unquoted 19:00 as a number
+#     topic: "прогулянка"
+#     enabled: true"""

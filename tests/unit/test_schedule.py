@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
 
 from core.config import DEFAULT_SCHEDULE_PATH, load_config
 from core.schedule import (
@@ -132,8 +135,8 @@ def test_parse_malformed_toml_is_empty_never_raises():
     assert parse_schedule("not [ valid toml =") == []
 
 
-def test_shipped_schedule_toml_parses():
-    # Structural only — core/schedule.toml is user-editable runtime config, so don't pin enabled-state.
+def test_shipped_schedule_yaml_parses():
+    # Structural only — core/schedule.yaml is user-editable runtime config, so don't pin enabled-state.
     entries = load_schedule(DEFAULT_SCHEDULE_PATH)
     assert len(entries) >= 5  # the idle seeds-menu + the ritual rows
     assert any(e.seeds and e.trigger.kind == "idle" for e in entries)  # the migrated idle seeds-menu
@@ -219,3 +222,110 @@ def test_shipped_catchup_row_shows_in_chat():
     from core.config import DEFAULT_SCHEDULE_PATH
     catchup = [e for e in load_schedule(DEFAULT_SCHEDULE_PATH) if e.directive == "catchup"]
     assert catchup and catchup[0].show is True  # the example demonstrates show = true
+
+
+# --- v2.9 LUMI-246: core/schedule.yaml + an instance's rows by name -------------------------------------------
+
+_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "v2.9"
+
+
+def test_the_yaml_schedule_loads_exactly_what_the_toml_did():
+    from core.config import DEFAULT_SCHEDULE_PATH
+
+    assert DEFAULT_SCHEDULE_PATH.name == "schedule.yaml"
+    yaml_entries = load_schedule(DEFAULT_SCHEDULE_PATH)
+    toml_entries = load_schedule(_FIXTURES / "schedule.toml")  # the pre-v2.9 file, kept as a fixture
+    assert yaml_entries == toml_entries  # every field (the name is not part of equality)
+    assert [e.id for e in yaml_entries] == [e.id for e in toml_entries]  # schedule.state keys unchanged
+    assert all(e.name for e in yaml_entries)  # each authored row is named, so an instance can change it
+
+
+def test_a_toml_path_still_loads_with_one_warning(caplog, tmp_path):
+    p = tmp_path / "old.toml"
+    p.write_text('[[schedule]]\ndirective = "think"\nidle = "10m"\n', encoding="utf-8")
+    with caplog.at_level("WARNING", logger="lumi.schedule"):
+        assert len(load_schedule(p)) == 1
+        assert len(load_schedule(p)) == 1
+    assert sum("deprecated since v2.9" in r.message for r in caplog.records) == 1
+
+
+_AUTHORED = """schedule:
+  - name: brief
+    directive: brief
+    at: "08:00"
+    topic: science
+    enabled: true
+  - directive: think
+    idle: "15m"
+"""
+
+
+def test_an_override_merges_over_the_row_of_the_same_name(tmp_path):
+    from core.schedule import parse_schedule_yaml
+
+    base = parse_schedule_yaml(_AUTHORED)
+    off = parse_schedule_yaml(_AUTHORED, [{"name": "brief", "enabled": False}])
+    assert [e.enabled for e in off] == [False, True]
+    assert [e.id for e in off] == [e.id for e in base]  # turning a row off never changes its identity
+    assert off[0].topic == "science" and off[0].trigger.kind == "at"  # the other fields stay
+
+
+def test_an_override_with_a_trigger_replaces_the_authored_trigger():
+    from core.schedule import parse_schedule_yaml
+
+    moved = parse_schedule_yaml(_AUTHORED, [{"name": "brief", "every": "2h"}])
+    assert moved[0].trigger.kind == "every" and moved[0].trigger.interval_s == 7200
+
+
+def test_a_new_name_adds_a_row_and_unnamed_rows_are_untouched():
+    from core.schedule import parse_schedule_yaml
+
+    out = parse_schedule_yaml(_AUTHORED, [{"name": "walk", "directive": "think", "at": "19:00", "topic": "walk"}])
+    assert [e.directive for e in out] == ["brief", "think", "think"]
+    assert out[1].trigger.kind == "idle" and out[2].name == "walk"
+
+
+def test_a_malformed_yaml_schedule_is_empty_never_raises():
+    from core.schedule import parse_schedule_yaml
+
+    assert parse_schedule_yaml("schedule: [unclosed") == []
+    assert parse_schedule_yaml("just text") == []
+
+
+def test_settings_yaml_schedule_rows_reach_the_config(tmp_path):
+    from core.config import load_config
+
+    (tmp_path / "settings.yaml").write_text(
+        "schedule:\n  - name: morning-brief\n    enabled: false\n", encoding="utf-8")
+    cfg = load_config(load_env=False, settings_dir=tmp_path)
+    assert cfg.schedule_overrides == ({"name": "morning-brief", "enabled": False},)
+    entries = load_schedule(cfg.schedule_path, cfg.schedule_overrides)
+    brief = next(e for e in entries if e.name == "morning-brief")
+    assert brief.enabled is False
+
+
+@pytest.mark.parametrize("section, problem", [
+    ("schedule:\n  - enabled: false\n", "needs a name"),
+    ("schedule:\n  - name: x\n    at: 19:00\n", "quoted time"),  # YAML 1.1: an unquoted 19:00 is 1140
+    ("schedule:\n  - name: x\n    enabled: maybe\n", "true or false"),
+    ("schedule:\n  - name: x\n    days: [someday]\n", "mon, tue"),
+    ("schedule:\n  name: x\n", "must be a list"),
+])
+def test_a_wrong_schedule_section_refuses_readably(tmp_path, section, problem):
+    from core.config import load_config
+    from core.settings import SettingsError
+
+    (tmp_path / "settings.yaml").write_text(section, encoding="utf-8")
+    with pytest.raises(SettingsError) as err:
+        load_config(load_env=False, settings_dir=tmp_path)
+    assert problem in str(err.value)
+
+
+def test_the_schedule_section_never_belongs_in_secrets(tmp_path):
+    from core.config import load_config
+    from core.settings import SettingsError
+
+    (tmp_path / "secrets.yaml").write_text("schedule:\n  - name: x\n", encoding="utf-8")
+    (tmp_path / "secrets.yaml").chmod(0o600)
+    with pytest.raises(SettingsError, match="belongs in settings.yaml"):
+        load_config(load_env=False, settings_dir=tmp_path)

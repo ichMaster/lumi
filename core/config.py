@@ -91,7 +91,7 @@ class ModelProfile(NamedTuple):
     housekeeping: str
     # v1.6.2 LUMI-199: the TALKING register — the voice-mode reply tier (fast, prose-first; the
     # chain-WS probes measured gemini-2.5-flash as the floor that holds the persona). Optional in
-    # models.toml / LUMI_MODEL_PROFILES; "" → the profile's think tier at resolution.
+    # models.yaml / LUMI_MODEL_PROFILES; "" → the profile's think tier at resolution.
     voice: str = ""
 
 
@@ -107,18 +107,45 @@ DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
 }
 
 
+_WARNED_TOML: set[str] = set()
+
+
 def _load_models_file(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str, ModelProfile]]:
-    """Load ``core/models.toml`` (v0.41 LUMI-165) — THE editable file for new model releases:
-    ``[aliases]`` (the /model shortcuts) + ``[profiles.*]`` (one set per family). Both merge over the
-    code defaults; a missing file or a malformed entry is skipped (never fatal — the defaults hold)."""
+    """Load ``core/models.yaml`` (v0.41 LUMI-165; YAML since v2.9) — THE editable file for new model releases:
+    ``aliases`` (the /model shortcuts) + ``profiles.*`` (one set per family). Both merge over the
+    code defaults; a missing file or a malformed entry is skipped (never fatal — the defaults hold).
+    A ``.toml`` path (the pre-v2.9 format) still parses for this one release, with a warning."""
+    import tomllib
+
+    import yaml
+
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:  # missing/unreadable → the defaults hold
+        return {}, {}
+    try:
+        if path.suffix == ".toml":
+            if str(path) not in _WARNED_TOML:
+                _WARNED_TOML.add(str(path))
+                import logging
+
+                logging.getLogger("lumi.config").warning(
+                    "%s is TOML — deprecated since v2.9; core/models.yaml is the format now", path)
+            data = tomllib.loads(text)
+        else:
+            data = yaml.safe_load(text) or {}
+    except (ValueError, yaml.YAMLError):  # a bad file → the defaults hold, never fatal
+        return {}, {}
+    return _models_from_data(data if isinstance(data, dict) else {})
+
+
+def _models_from_data(data: dict, base: dict[str, ModelProfile] | None = None
+                      ) -> tuple[dict[str, tuple[str, str]], dict[str, ModelProfile]]:
+    """``aliases`` + ``profiles`` from a parsed models mapping. With ``base`` (v2.9, an instance's settings.yaml
+    ``models:`` section), a profile's fields merge over the base profile of the same name."""
     aliases: dict[str, tuple[str, str]] = {}
     profiles: dict[str, ModelProfile] = {}
-    try:
-        import tomllib
-
-        data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):  # missing/unreadable/bad TOML → defaults hold
-        return aliases, profiles
     raw_aliases = data.get("aliases", {})
     if isinstance(raw_aliases, dict):
         for name, target in raw_aliases.items():
@@ -131,11 +158,14 @@ def _load_models_file(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str,
         for name, block in raw_profiles.items():
             if not isinstance(block, dict):
                 continue
+            key = str(name).strip().lower()
+            if base and key in base:  # v2.9: an instance's fields over the authored profile
+                block = base[key]._asdict() | {k: v for k, v in block.items() if v is not None}
             fields = [str(block.get(k, "")).strip()
                       for k in ("provider", "reply", "think", "mood", "housekeeping")]
             if all(fields):
-                voice = str(block.get("voice", "")).strip()  # v1.6.2: optional talking-register tier
-                profiles[str(name).strip().lower()] = ModelProfile(fields[0].lower(), *fields[1:], voice)
+                voice = str(block.get("voice", "") or "").strip()  # v1.6.2: optional talking-register tier
+                profiles[key] = ModelProfile(fields[0].lower(), *fields[1:], voice)
     return aliases, profiles
 
 
@@ -160,7 +190,7 @@ def _parse_model_profiles(raw: str, base: dict[str, ModelProfile] | None = None)
     return out
 
 # v0.41 LUMI-165: the editable model-profiles file (one [profile] block per family).
-DEFAULT_MODELS_PATH = _REPO_ROOT / "core" / "models.toml"
+DEFAULT_MODELS_PATH = _REPO_ROOT / "core" / "models.yaml"
 
 # Default canon path (config-referenced — never hardcoded in the core).
 DEFAULT_CANON_PATH = _REPO_ROOT / "core" / "canon" / "lili.md"
@@ -182,7 +212,7 @@ DEFAULT_THINK_SEEDS_PATH = _REPO_ROOT / "core" / "think_seeds.md"
 
 # v2.1 the DATA ROOT — every mutable-state default below derives from it. ``LUMI_HOME`` moves it (a prod
 # instance keeps her memory outside the checkout); unset → this in-repo ``.lumi``, exactly as before.
-# Authored files (canon, styles, schedule.toml, models.toml, faces …) are CODE and stay repo-relative.
+# Authored files (canon, styles, schedule.yaml, models.yaml, faces …) are CODE and stay repo-relative.
 DEFAULT_DATA_ROOT = _REPO_ROOT / ".lumi"
 # v2.1 the running version — the checkout's VERSION file (shown in the LUMI_ENV status badge).
 DEFAULT_VERSION_PATH = _REPO_ROOT / "VERSION"
@@ -197,7 +227,7 @@ def read_version(path: Path = DEFAULT_VERSION_PATH) -> str | None:
 
 
 # v0.42 thought scheduler — the authored schedule + the module's own last-fired state (not a bus).
-DEFAULT_SCHEDULE_PATH = _REPO_ROOT / "core" / "schedule.toml"
+DEFAULT_SCHEDULE_PATH = _REPO_ROOT / "core" / "schedule.yaml"
 DEFAULT_SCHEDULE_STATE_PATH = DEFAULT_DATA_ROOT / "schedule.state"
 
 # Emotion→emoji map (v0.5); editable. Optional (built-in default in core/emoji.py).
@@ -400,6 +430,8 @@ class Config:
     scheduler: bool = False                                  # LUMI_SCHEDULER
     schedule_path: Path = DEFAULT_SCHEDULE_PATH              # LUMI_SCHEDULE_PATH
     schedule_state_path: Path = DEFAULT_SCHEDULE_STATE_PATH  # the module's last-fired state (not a bus)
+    # v2.9: an instance's schedule rows (settings.yaml `schedule:`), merged over the authored file by name
+    schedule_overrides: tuple = ()
     sched_tick_ms: int = 30000                               # LUMI_SCHED_TICK_MS — scheduler eval interval
     sched_tick_fast_ms: int = 60000                          # LUMI_SCHED_TICK_FAST_MS — the ephemeral tick
     sched_catchup_h: int = 6                                 # LUMI_SCHED_CATCHUP_H — startup catch-up window
@@ -729,11 +761,14 @@ def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> C
     # v0.41 LUMI-164: LUMI_MODEL_PROFILE boots the whole model stack from a named profile — one line
     # instead of five. Explicitly set LUMI_PROVIDER/LUMI_MODEL/LUMI_MODEL_* vars WIN over the profile
     # field (expert overrides); an unknown/unset name → pure env-var mode, byte-identical.
-    # Merge order (weakest → strongest): code defaults ← core/models.toml ← the .env vars — so a
-    # new model release is one edit in models.toml, no code change.
+    # Merge order (weakest → strongest): code defaults ← core/models.yaml ← the instance's settings.yaml
+    # `models:` section (v2.9, by name) ← the env vars — so a new model release is one edit in models.yaml.
     _models_path = Path(_get("LUMI_MODELS_FILE") or DEFAULT_MODELS_PATH)
     _file_aliases, _file_profiles = _load_models_file(_models_path)
     _base_profiles = dict(DEFAULT_MODEL_PROFILES) | _file_profiles
+    _inst_aliases, _inst_profiles = _models_from_data(_res.sections.get("models") or {}, base=_base_profiles)
+    _file_aliases = _file_aliases | _inst_aliases
+    _base_profiles = _base_profiles | _inst_profiles
     _profiles = _parse_model_profiles(_get("LUMI_MODEL_PROFILES", ""), base=_base_profiles)
     _profile_name = (_get("LUMI_MODEL_PROFILE") or "").strip().lower()
     _prof = _profiles.get(_profile_name)
@@ -804,6 +839,7 @@ def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> C
         scheduler=_parse_bool(_get("LUMI_SCHEDULER")),
         schedule_path=Path(sp) if (sp := _get("LUMI_SCHEDULE_PATH")) else DEFAULT_SCHEDULE_PATH,
         schedule_state_path=data_root / "schedule.state",  # v2.1: follows the data root (no per-path env)
+        schedule_overrides=tuple(_res.sections.get("schedule") or ()),  # v2.9: settings.yaml `schedule:`
         sched_tick_ms=int(_get("LUMI_SCHED_TICK_MS") or 30000),
         sched_tick_fast_ms=int(_get("LUMI_SCHED_TICK_FAST_MS") or 60000),
         sched_catchup_h=int(_get("LUMI_SCHED_CATCHUP_H") or 6),

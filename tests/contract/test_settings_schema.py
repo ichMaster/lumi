@@ -29,6 +29,7 @@ import settings_examples  # noqa: E402
 DERIVED = {
     "app_version": "the checkout's VERSION file",
     "embed_api_key": "VOYAGE_API_KEY or OPENAI_API_KEY, picked by recall.embed_provider",
+    "schedule_overrides": "the settings.yaml schedule: section (LUMI-246), not a flat setting",
 }
 # Settings whose change shows only together with another one (the reason is the partner).
 CONDITIONAL = {

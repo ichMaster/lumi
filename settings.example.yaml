@@ -30,7 +30,7 @@ model:
   # provider: anthropic
   # The reply model id. · env LUMI_MODEL
   # reply: claude-haiku-4-5-20251001
-  # Boot the whole model stack from a named profile (core/models.toml). Unset → the per-field settings. · env LUMI_MODEL_PROFILE
+  # Boot the whole model stack from a named profile (core/models.yaml). Unset → the per-field settings. · env LUMI_MODEL_PROFILE
   # profile:
   # The think-path model. Unset → the reply model. · env LUMI_MODEL_THINK
   # think:
@@ -44,11 +44,11 @@ model:
   # tool_step_routing: false
   # The tool-loop digging tier (a Claude id). · env LUMI_MODEL_TOOL_STEP
   # tool_step:
-  # Extra /model aliases: alias=provider:model,… (over core/models.toml). · env LUMI_MODEL_ALIASES
+  # Extra /model aliases: alias=provider:model,… (over core/models.yaml and models:). · env LUMI_MODEL_ALIASES
   # alias_overrides:
-  # Extra profiles: name=provider:reply,think,mood,housekeeping[,voice];… (over core/models.toml). · env LUMI_MODEL_PROFILES
+  # Extra profiles: name=provider:reply,think,mood,housekeeping[,voice];… (over core/models.yaml and models:). · env LUMI_MODEL_PROFILES
   # profile_overrides:
-  # The model-profiles file. Unset → core/models.toml. · env LUMI_MODELS_FILE
+  # The model-profiles file. Unset → core/models.yaml. · env LUMI_MODELS_FILE
   # models_file:
   # The model output cap. · an integer ≥ 1 · env LUMI_MAX_TOKENS
   # max_tokens: 4096
@@ -286,7 +286,7 @@ thoughts:
 scheduler:
   # The in-process thought scheduler. · env LUMI_SCHEDULER
   # enabled: false
-  # The thought schedule. Unset → core/schedule.toml. · env LUMI_SCHEDULE_PATH
+  # The thought schedule. Unset → core/schedule.yaml. · env LUMI_SCHEDULE_PATH
   # path:
   # Scheduler evaluation interval (ms). · an integer ≥ 1 · env LUMI_SCHED_TICK_MS
   # tick_ms: 30000
@@ -470,3 +470,19 @@ viewer:
   # face_signal:
   # Relax the face to calm after this long (0 = off). · a number ≥ 0 · env LUMI_FACE_IDLE_SECONDS
   # face_idle_seconds: 120.0
+
+# --- an instance's own changes to the authored files (optional) ---------------------------------------------
+# models:                 # merged over core/models.yaml by name — a profile's fields over the authored profile's
+#   aliases:
+#     fast: "anthropic:claude-haiku-4-5-20251001"
+#   profiles:
+#     anthropic:
+#       reply: claude-sonnet-5
+# schedule:               # merged over core/schedule.yaml by name — a new name adds a row
+#   - name: morning-brief
+#     enabled: false
+#   - name: evening-walk
+#     directive: think
+#     at: "19:00"         # quote every time: YAML reads an unquoted 19:00 as a number
+#     topic: "прогулянка"
+#     enabled: true

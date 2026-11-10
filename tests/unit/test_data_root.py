@@ -1,7 +1,7 @@
 """Unit tests for the v2.1 data root — LUMI_HOME (LUMI-207).
 
 One variable moves every mutable-state default; an explicit per-path env still wins; authored files
-(canon, styles, schedule.toml, models.toml, faces …) are code and never follow it.
+(canon, styles, schedule.yaml, models.yaml, faces …) are code and never follow it.
 """
 
 from pathlib import Path

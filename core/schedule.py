@@ -104,6 +104,9 @@ class ScheduleEntry:
     seeds: str = ""  # a %directive-lines file; the fire picks one at random
     show: bool = False  # v0.42: write the thought to the chat (like a typed %name! open directive)
     days_raw: tuple[str, ...] = field(default=(), repr=False)  # for round-trip/debug only
+    # v2.9: a row's label, so an instance's settings.yaml can change it by name — NOT part of its id (naming a
+    # row never changes its schedule.state key) and not part of equality.
+    name: str = field(default="", compare=False)
 
     @property
     def id(self) -> str:
@@ -217,7 +220,12 @@ def _cron_match(expr: str, now: datetime) -> bool:
         return False
 
 
-# --- parsing core/schedule.toml --------------------------------------------------------------------
+# --- parsing core/schedule.yaml (v2.9; core/schedule.toml before) ----------------------------------
+# The keys that pick a row's trigger: an override that names one replaces the authored row's trigger.
+TRIGGER_KEYS = ("cron", "between", "at", "every", "idle", "days")
+ROW_KEYS = ("name", "directive", "seeds", "topic", "enabled", "show", *TRIGGER_KEYS)
+
+
 def _entry_from_row(row: dict) -> ScheduleEntry | None:
     """One ``[[schedule]]`` row → a :class:`ScheduleEntry`, or ``None`` if malformed (skipped)."""
     directive = str(row.get("directive", "")).strip()
@@ -262,34 +270,85 @@ def _entry_from_row(row: dict) -> ScheduleEntry | None:
         return None
     return ScheduleEntry(
         directive=directive, trigger=trig, topic=topic, enabled=enabled, seeds=seeds, show=show,
-        days_raw=days_raw,
+        days_raw=days_raw, name=str(row.get("name") or "").strip(),
     )
 
 
-def parse_schedule(text: str) -> list[ScheduleEntry]:
-    """Parse ``schedule.toml`` text → entries. Malformed rows are skipped (never fatal)."""
+def _rows_toml(text: str) -> list[dict]:
     try:
         data = tomllib.loads(text)
     except (ValueError, TypeError) as exc:
         _log.warning("schedule.toml parse failed: %s", exc)
         return []
-    out: list[ScheduleEntry] = []
-    for row in data.get("schedule", []):
-        if not isinstance(row, dict):
+    rows = data.get("schedule", [])
+    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+
+
+def _rows_yaml(text: str) -> list[dict]:
+    import yaml
+
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        _log.warning("schedule.yaml parse failed: %s", exc)
+        return []
+    rows = data.get("schedule", []) if isinstance(data, dict) else []
+    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+
+
+def merge_rows(rows: list[dict], overrides: list[dict] | tuple = ()) -> list[dict]:
+    """An instance's rows (v2.9, settings.yaml ``schedule:``) over the authored ones, by ``name``: an override's
+    fields win over the row of the same name (one that names a trigger key replaces the authored trigger); a new
+    name adds a row. Unnamed rows pass through untouched."""
+    out = [dict(r) for r in rows]
+    index = {str(r.get("name")).strip(): i for i, r in enumerate(out) if str(r.get("name") or "").strip()}
+    for override in overrides:
+        name = str(override.get("name") or "").strip()
+        if not name:
             continue
-        entry = _entry_from_row(row)
-        if entry is not None:
-            out.append(entry)
+        if name in index:
+            base = out[index[name]]
+            if any(k in override for k in TRIGGER_KEYS):
+                base = {k: v for k, v in base.items() if k not in TRIGGER_KEYS}
+            out[index[name]] = base | dict(override)
+        else:
+            index[name] = len(out)
+            out.append(dict(override))
     return out
 
 
-def load_schedule(path: str | Path) -> list[ScheduleEntry]:
-    """Read + parse the authored schedule file. A missing/unreadable file → ``[]`` (never raises)."""
+def _entries(rows: list[dict]) -> list[ScheduleEntry]:
+    return [e for row in rows if (e := _entry_from_row(row)) is not None]
+
+
+def parse_schedule(text: str) -> list[ScheduleEntry]:
+    """Parse ``schedule.toml`` text (the pre-v2.9 format) → entries. Malformed rows are skipped (never fatal)."""
+    return _entries(_rows_toml(text))
+
+
+def parse_schedule_yaml(text: str, overrides: list[dict] | tuple = ()) -> list[ScheduleEntry]:
+    """Parse ``schedule.yaml`` text (v2.9) → entries, an instance's ``overrides`` merged by name. Malformed rows
+    are skipped (never fatal)."""
+    return _entries(merge_rows(_rows_yaml(text), overrides))
+
+
+_WARNED_TOML: set[str] = set()
+
+
+def load_schedule(path: str | Path, overrides: list[dict] | tuple = ()) -> list[ScheduleEntry]:
+    """Read + parse the authored schedule file (+ an instance's ``overrides``). A ``.toml`` path still parses for
+    this one release, with a warning. A missing/unreadable file → only the overrides (never raises)."""
     p = Path(path)
     try:
-        return parse_schedule(p.read_text(encoding="utf-8"))
+        text = p.read_text(encoding="utf-8")
     except OSError:
-        return []
+        text = ""
+    if p.suffix == ".toml":
+        if str(p) not in _WARNED_TOML:
+            _WARNED_TOML.add(str(p))
+            _log.warning("%s is TOML — deprecated since v2.9; core/schedule.yaml is the format now", p)
+        return _entries(merge_rows(_rows_toml(text), overrides))
+    return _entries(merge_rows(_rows_yaml(text), overrides))
 
 
 # --- schedule.state (last-fired per entry) ---------------------------------------------------------
