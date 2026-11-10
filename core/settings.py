@@ -23,6 +23,7 @@ holds ``settings.yaml``, ``secrets.yaml`` or ``.env``.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import stat
@@ -453,6 +454,8 @@ def _allowed(s: Setting) -> str:
         return "a list of integer ids"
     if s.type == "list":
         return "a list of strings (or one comma-separated string)"
+    if s.type in ("str", "path"):
+        return "text — quote a value that looks like a number (\"0123\"); YAML reads 0123 as 83"
     kind = {"int": "an integer", "float": "a number"}.get(s.type, "text")
     if s.min is not None and s.max is not None:
         return f"{kind} {s.min:g}..{s.max:g}"
@@ -482,10 +485,9 @@ def to_env(s: Setting, value: Any) -> str | None:
         return None
     if t == "int":
         if isinstance(value, bool) or not isinstance(value, int):
-            if isinstance(value, str) and value.strip().lstrip("-").isdigit():
-                value = int(value.strip())
-            else:
-                return None
+            if not isinstance(value, str) or not re.fullmatch(r"-?[0-9]+", value.strip()):
+                return None  # ASCII digits only: "²".isdigit() is True, but int("²") raises (code review #6)
+            value = int(value.strip())
         return None if _range_problem(s, value) else str(value)
     if t in ("float", "probability"):
         if t == "probability" and isinstance(value, bool):
@@ -500,8 +502,8 @@ def to_env(s: Setting, value: Any) -> str | None:
                 value = float(word)
             except ValueError:
                 return None
-        if not isinstance(value, (int, float)):
-            return None
+        if not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None  # .inf / nan pass a range check and crash load_config (code review #6)
         lo, hi = (0.0, 1.0) if t == "probability" else (s.min, s.max)
         if (lo is not None and value < lo) or (hi is not None and value > hi):
             return None
@@ -517,9 +519,9 @@ def to_env(s: Setting, value: Any) -> str | None:
                 return choice
         return None
     if t in ("str", "path"):
-        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
-            return None
-        return str(value)
+        # text only: YAML 1.1 reads an unquoted 0123 as the number 83 and 1.10 as 1.1 — the original is lost, so a
+        # number is refused with a hint to quote it (code review #10)
+        return value if isinstance(value, str) else None
     if t in ("list", "ids"):
         items = value if isinstance(value, list) else (value.split(",") if isinstance(value, str) else None)
         if items is None:
@@ -538,15 +540,15 @@ def to_env(s: Setting, value: Any) -> str | None:
         if isinstance(value, bool):
             return None
         if isinstance(value, (int, float)):
-            return str(value)
+            return str(value) if math.isfinite(value) and value >= 0 else None
         if isinstance(value, str):
             text = value.strip().lower()
             num = text[:-1] if text[-1:] in ("h", "m", "s") else text
             try:
-                float(num)
+                number = float(num)
             except ValueError:
                 return None
-            return text
+            return text if math.isfinite(number) and number >= 0 else None
         return None
     if t == "hours":
         if value is False or (isinstance(value, str) and value.strip().lower() in ("off", "none", "")):
@@ -582,18 +584,57 @@ def settings_dir(environ: Mapping[str, str] | None = None, *, repo: Path = _REPO
     return repo
 
 
+_STRICT_LOADER: Any = None
+
+
+def _strict_loader() -> Any:
+    """PyYAML's SafeLoader, refusing a duplicate key — ``safe_load`` keeps the last one silently (code review #7)."""
+    global _STRICT_LOADER
+    if _STRICT_LOADER is None:
+        import yaml
+
+        class StrictLoader(yaml.SafeLoader):
+            pass
+
+        def mapping(loader: Any, node: Any, deep: bool = False) -> Any:
+            seen: set = set()
+            for key_node, _value in node.value:
+                key = loader.construct_object(key_node, deep=deep)
+                if key in seen:
+                    raise yaml.constructor.ConstructorError(
+                        None, None, f"duplicate key {key!r} (only the last would count)", key_node.start_mark)
+                seen.add(key)
+            return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+        StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+        _STRICT_LOADER = StrictLoader
+    return _STRICT_LOADER
+
+
+def parse_yaml(text: str, name: str) -> Any:
+    """Parse a settings file's text. A syntax error refuses with the problem and its line/column only — never
+    PyYAML's snippet of the line, which in ``secrets.yaml`` is the secret itself (code review #1); a duplicate key
+    refuses too (code review #7)."""
+    import yaml
+
+    try:
+        return yaml.load(text, Loader=_strict_loader())  # noqa: S506 — a SafeLoader subclass
+    except yaml.MarkedYAMLError as exc:
+        mark = exc.problem_mark or exc.context_mark
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark is not None else ""
+        what = exc.problem or exc.context or "a syntax error"
+        raise SettingsError(f"Lumi settings — {name} is not valid YAML: {what}{where}") from None
+    except yaml.YAMLError:
+        raise SettingsError(f"Lumi settings — {name} is not valid YAML") from None
+
+
 def read_yaml(path: Path) -> dict:
     """A YAML mapping from ``path`` (``{}`` when missing or empty); a parse error or a non-mapping refuses."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
-    import yaml
-
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise SettingsError(f"Lumi settings — {path} is not valid YAML:\n  {exc}") from None
+    data = parse_yaml(text, str(path))
     if data is None:
         return {}
     if not isinstance(data, dict):
@@ -667,12 +708,20 @@ def _real_env(environ: Mapping[str, str]) -> dict[str, str]:
     return {k: v for k, v in environ.items() if not (k in _EXPORTED and _EXPORTED[k] == v)}
 
 
-def _apply_old_names(layer: dict[str, str]) -> dict[str, str]:
-    """Map a deprecated name (``GOOGLE_API_KEY``) onto its setting when the current name is absent."""
+def _apply_old_names(res: Resolution, layers: list[tuple[dict[str, str], str]]) -> None:
+    """A deprecated name (``GOOGLE_API_KEY``) fills its setting only when the current name is absent from **every**
+    layer — so a shell's old name never beats the file's new one (code review #3); among the layers that carry the
+    old name, the strongest wins."""
     for old, s in _BY_OLD.items():
-        if old in layer and s.alias not in layer:
-            layer[s.alias] = layer[old]
-    return layer
+        if s.alias in res.values:
+            continue
+        for layer, label in reversed(layers):
+            if old in layer:
+                res.values[s.alias] = layer[old]
+                res.sources[s.alias] = label
+                if label != "env":
+                    res.from_files[s.alias] = layer[old]  # exported under the current name too
+                break
 
 
 _PROFILE_FIELDS = ("provider", "reply", "think", "mood", "housekeeping", "voice")
@@ -797,15 +846,19 @@ def resolve(environ: Mapping[str, str] | None = None, *, folder: Path | None = N
 
     Raises :class:`SettingsError` when a settings file holds a wrong value (every problem named in one message)."""
     environ = os.environ if environ is None else environ
-    env = _apply_old_names(_real_env(environ))
+    env = _real_env(environ)
     if not load_files:
         res = Resolution(folder=None)
         res.values = dict(env)
         res.sources = {k: "env" for k in env if k in BY_ALIAS}
+        _apply_old_names(res, [(env, "env")])
         return res
+    explicit = folder is None and bool((environ.get(SETTINGS_DIR_ENV) or "").strip())
     folder = settings_dir(environ) if folder is None else Path(folder)
     res = Resolution(folder=folder)
-    dotenv = _apply_old_names(read_dotenv(folder / DOTENV_FILE))
+    if explicit and not folder.is_dir():  # a typo'd folder would otherwise give the defaults silently (review #14)
+        res.warnings.append(f"{SETTINGS_DIR_ENV}={folder} does not exist — no settings file is read")
+    dotenv = read_dotenv(folder / DOTENV_FILE)
     if dotenv:
         res.warnings.append(
             f"{folder / DOTENV_FILE} is deprecated since v2.9 — migrate it with "
@@ -824,13 +877,15 @@ def resolve(environ: Mapping[str, str] | None = None, *, folder: Path | None = N
             pass
     if problems:
         raise SettingsError("Lumi settings — refusing to start:\n" + "\n".join(f"  • {p}" for p in problems))
-    for layer, label in ((dotenv, ".env"), (plain, SETTINGS_FILE), (secret, SECRETS_FILE), (env, "env")):
+    layers = [(dotenv, ".env"), (plain, SETTINGS_FILE), (secret, SECRETS_FILE), (env, "env")]
+    for layer, label in layers:
         for name, value in layer.items():
             res.values[name] = value
             if name in BY_ALIAS:
                 res.sources[name] = label
             if label != "env":
                 res.from_files[name] = value
+    _apply_old_names(res, layers)
     return res
 
 
@@ -848,8 +903,13 @@ def export(res: Resolution, environ: MutableMapping[str, str] | None = None) -> 
 
 def warn_once(res: Resolution, stream=None) -> None:
     """Print each warning once per process (``WARNING (settings): …`` on stderr)."""
+    warn_messages(res.warnings, stream)
+
+
+def warn_messages(messages: list[str], stream=None) -> None:
+    """Print each message once per process, as a ``WARNING (settings): …`` line on stderr."""
     stream = sys.stderr if stream is None else stream
-    for w in res.warnings:
+    for w in messages:
         if w not in _WARNED:
             _WARNED.add(w)
             print(f"WARNING (settings): {w}", file=stream)
@@ -1005,15 +1065,28 @@ def render_file(values: Mapping[str, Any], header: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_private(path: Path, text: str) -> None:
-    """Create ``path`` with mode ``0600`` from the first byte (no window where it is world-readable); an existing
-    file keeps its inode and is re-chmodded."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+def write_atomic(path: Path, text: str, *, private: bool = False) -> None:
+    """Write ``path`` whole or not at all (code review #12): a temp file beside it — ``0600`` from the first byte —
+    fsynced, then ``os.replace``. A secret file ends ``0600``; another keeps its mode (``0644`` when new)."""
+    path = Path(path)
+    mode = 0o600 if private else (stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.fchmod(fd, 0o600)
-        os.write(fd, text.encode("utf-8"))
-    finally:
-        os.close(fd)
+        with os.fdopen(fd, "wb") as f:
+            f.write(text.encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def write_private(path: Path, text: str) -> None:
+    """A secret file: written atomically, ``0600`` from the first byte (no window where it is world-readable)."""
+    write_atomic(path, text, private=True)
 
 
 # --- lumi-cli config: one setting at a time --------------------------------------------------------------------
@@ -1061,12 +1134,16 @@ def _group_block(lines: list[str], group: str) -> tuple[int, int, int] | None:
     return header, end, last
 
 
-def set_in_text(text: str, key: str, value: Any) -> str:
-    """``text`` with ``key`` set to ``value`` — only that line changes (or one line is added to its group, or the
-    group is appended); every other line and comment stays. Verified by re-parsing; a file whose shape the line
-    edit can't handle (an inline ``group: {…}``) is rewritten whole from its parsed content instead."""
-    import yaml
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
 
+
+def set_in_text(text: str, key: str, value: Any) -> str:
+    """``text`` with ``key`` set to ``value`` — only that key's line changes (its old block value, e.g. a ``- item``
+    list, replaced), or one line is added to its group (at the group's own indentation), or the group is appended;
+    every other line and comment stays. Verified by re-parsing: unless ``key`` now holds ``value`` and every other
+    setting and section is exactly as before, it refuses (a :class:`SettingsError`) — it never rewrites a file
+    (code review #2)."""
     group, leaf = key.split(".", 1)
     scalar = yaml_scalar(value)
     lines = text.splitlines()
@@ -1077,23 +1154,32 @@ def set_in_text(text: str, key: str, value: Any) -> str:
         lines += ["", f"{group}:", f"  {leaf}: {scalar}"]
     elif block is not None:
         header, end, last = block
+        members = [i for i in range(header + 1, end) if lines[i].strip() and not lines[i].lstrip().startswith("#")]
+        indent = " " * (_indent(lines[members[0]]) if members else 2)
         for i in range(header + 1, end):
             if m := re.match(rf"^(\s+){re.escape(leaf)}:(\s|$)", lines[i]):
-                lines[i] = f"{m.group(1)}{leaf}: {scalar}"
+                j = i + 1  # the old value's own lines (a block list / mapping under the key) go with it
+                while j < end and (not lines[j].strip() or _indent(lines[j]) > len(m.group(1))):
+                    j += 1
+                while j > i + 1 and not lines[j - 1].strip():
+                    j -= 1  # keep the blank lines that separate it from what follows
+                lines[i:j] = [f"{m.group(1)}{leaf}: {scalar}"]
                 break
         else:
-            lines.insert(last + 1, f"  {leaf}: {scalar}")
+            lines.insert(last + 1, f"{indent}{leaf}: {scalar}")
     new = "\n".join(lines) + "\n"
+    before = parse_yaml(text, "the file") or {}
     try:
-        ok = flatten(yaml.safe_load(new) or {}).get(key, object()) == value
-    except yaml.YAMLError:
-        ok = False
-    if ok:
-        return new
-    data = flatten({k: v for k, v in (yaml.safe_load(text) or {}).items() if k not in STRUCTURED})
-    data[key] = value
-    header_lines = "".join(line + "\n" for line in text.splitlines() if line.startswith("#")) or "# Lumi settings\n"
-    return render_file(data, header_lines)
+        after = parse_yaml(new, "the edited file") or {}
+    except SettingsError:
+        after = None
+    if isinstance(before, dict) and isinstance(after, dict):
+        want = flatten({k: v for k, v in before.items() if k not in STRUCTURED}) | {key: value}
+        got = flatten({k: v for k, v in after.items() if k not in STRUCTURED})
+        if got == want and all(before.get(sec) == after.get(sec) for sec in STRUCTURED):
+            return new
+    raise SettingsError(f"lumi-cli config set can't change {key} in this file line by line (its layout is unusual — "
+                        "an inline group, a duplicate key, mixed indentation); nothing was written — edit it by hand")
 
 
 def set_value(folder: Path, name: str, text: str) -> tuple[Setting, Path]:
@@ -1112,10 +1198,7 @@ def set_value(folder: Path, name: str, text: str) -> tuple[Setting, Path]:
         old = (f"# Lumi {'secrets' if s.secret else 'settings'} — written by `lumi-cli config set`. Every setting is "
                "described in settings.example.yaml / secrets.example.yaml.\n")
     new = set_in_text(old, s.key, value)
-    if s.secret:
-        write_private(path, new)
-    else:
-        path.write_text(new, encoding="utf-8")
+    write_atomic(path, new, private=s.secret)
     return s, path
 
 

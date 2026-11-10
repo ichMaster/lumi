@@ -699,7 +699,10 @@ def test_contract_a_deploy_and_a_rollback_move_code_only(world):
     agent.rollback("prod")
     agent.rollback("dev")
     assert world.ups("dev") and world.ups("prod")  # code did move
-    assert _fingerprint(world.home) == before  # data/ and the settings files untouched, byte for byte
+    after = _fingerprint(world.home)
+    restored = {k for k in after.keys() - before.keys() if k.endswith("/.env")}  # the units' way back (review #5)
+    assert all(after[k] == before[k.replace("/.env", "/.env.migrated")] for k in restored)  # a copy, nothing new
+    assert {k: v for k, v in after.items() if k not in restored} == before  # data/ and the settings untouched
     assert {p.name for p in (world.home / "deploy").iterdir()} <= {"state.json", "deploy.log"}
     assert all(p.name.startswith("data-") and p.name.endswith(".tar.gz")
                for p in (world.home / "prod" / "backups").iterdir())
@@ -850,3 +853,39 @@ def test_a_rollback_of_an_unmigrated_instance_changes_nothing(world):
     assert agent.rollback("dev") is False
     assert len(world.ups("dev")) == ups
     assert "missing settings.yaml" in (world.home / "deploy" / "deploy.log").read_text(encoding="utf-8")
+
+
+
+def test_review_5_the_way_back_to_the_units_restores_their_env(world):
+    world.tags = ["v2.7.0", "v2.8.0"]
+    agent, _ = _agent(world)
+    agent.confirm("v2.8.0")  # prod: units → containers; previous_runs = units
+    env = world.home / "prod" / ".env"
+    assert not env.exists()  # migrated: only .env.migrated
+    assert agent.rollback("prod") is True  # back to the units
+    assert env.read_bytes() == (world.home / "prod" / ".env.migrated").read_bytes()
+    assert oct(env.stat().st_mode & 0o777) == "0o600"
+    assert ".env restored from .env.migrated" in (world.home / "deploy" / "deploy.log").read_text(encoding="utf-8")
+
+
+def test_review_5_an_existing_env_is_never_overwritten(world):
+    world.tags = ["v2.7.0", "v2.8.0"]
+    agent, _ = _agent(world)
+    agent.confirm("v2.8.0")
+    env = world.home / "prod" / ".env"
+    env.write_text("LUMI_ENV=prod\n# hand-made\n")
+    agent.rollback("prod")
+    assert env.read_text() == "LUMI_ENV=prod\n# hand-made\n"
+
+
+
+def test_review_13_the_smoke_dials_where_compose_publishes(world):
+    world.tags = ["v2.7.0", "v2.8.0"]
+    compose = world.home / "deploy" / "compose"
+    compose.mkdir(parents=True, exist_ok=True)
+    (compose / "prod.env").write_text("LUMI_INSTANCE=prod\nLUMI_PUBLISH_HOST=192.168.1.197\nLUMI_SERVER_PORT=8765\n")
+    (world.home / "prod" / "settings.yaml").write_text("server:\n  host: 127.0.0.1\n  port: 9999\n")  # stale
+    agent, _ = _agent(world)
+    agent.confirm("v2.8.0")
+    assert any(url.startswith("http://192.168.1.197:8765/v1/") for url, _ in world.urls)
+    assert not any(":9999/" in url for url, _ in world.urls)

@@ -1,6 +1,18 @@
 Lumi — Release notes
 ====================
 
+Version 2.9.0 (2026-11-10)
+---------------------------
+- LUMI-244: settings as files under one typed schema (core/settings.py: 217 settings in 27 groups — YAML key, env name, type, default, description, secret/restart flags, allowed values) and a loader: the built-in default < .env (deprecated for this release, warned) < settings.yaml / secrets.yaml (0600) < the process environment. A wrong value in a file refuses naming the file, the key and the allowed values (a secret's value never shown); load_config reads the merged values through its unchanged parsers.
+- LUMI-245: settings.example.yaml + secrets.example.yaml generated from the schema (scripts/settings_examples.py, every setting commented out at its default); .env.example retired; settings.yaml / secrets.yaml gitignored and kept out of every image; the schema contract test (schema <-> examples <-> loader, every setting feeds a Config field).
+- LUMI-246: core/models.yaml + core/schedule.yaml (the TOMLs converted, every schedule.state id unchanged; rows named); an instance's settings.yaml may change a model profile or a schedule row by name (models: / schedule:).
+- LUMI-247: scripts/env_to_settings.py — .env to settings.yaml + secrets.yaml: a dry run first, a round-trip check (the new files must load to the same configuration), unknown keys reported, the old file kept as .env.migrated.
+- LUMI-248: lumi-cli config get | set | validate (+ show, --dir): set validates against the schema, edits one line, writes a secret into secrets.yaml (0600); every output masks every secret.
+- LUMI-249: the containers mount settings.yaml + secrets.yaml read-only at /settings (no env_file); .env.migrated is mounted at /app/.env, where only a pre-v2.9 image looks — so a rollback below v2.9 keeps its settings; the deploy agent's smoke reads the YAML and refuses to deploy or roll back an instance that isn't migrated.
+- LUMI-250: the operator guides, ARCHITECTURE, CLAUDE.md and README switch from .env to the YAML files (LINUX_DEPLOY §2b: the migration through the image, lumi-cli config on the box, the way back).
+- LUMI-251: the dev tree and dev on the box run from settings.yaml + secrets.yaml with no .env; prod moves with `deploy_agent.py confirm v2.9.0` after its migration.
+- Code review (14 fixes): a YAML syntax error never prints the offending line (the secret); config set never rewrites a file — it refuses an uneditable layout; the old GOOGLE_API_KEY never beats providers.gemini_api_key; a schedule override's days/every merge as modifiers; the way back to the v2.6 units restores their .env; .inf/nan, duplicate keys and a number for a text setting are refused; /new never re-reads the settings, a settings refusal is the server's exit 78; .env.migrated is 0600; an incomplete new profile is named; writes are atomic; the smoke dials where compose publishes; a missing LUMI_SETTINGS_DIR is warned.
+
 Version 2.8.0 (2026-11-09)
 ---------------------------
 - LUMI-238: one Docker image for every Lumi process (Dockerfile + .dockerignore: python:3.13-slim, uv, ffmpeg, tzdata, a non-root user, a /v1/health HEALTHCHECK, the build ref baked as LUMI_BUILD); the guards' container mode — inside a container the bind guard allows the wildcard (exposure is the compose publish rule's job) and the env guard lets prod run only a release build.

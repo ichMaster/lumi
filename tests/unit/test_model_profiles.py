@@ -386,3 +386,21 @@ def test_a_wrong_models_section_refuses_readably(tmp_path, section, problem):
     with pytest.raises(SettingsError) as err:
         load_config(load_env=False, settings_dir=tmp_path)
     assert problem in str(err.value)
+
+
+
+def test_review_11_an_incomplete_new_profile_is_named_not_silently_ignored(tmp_path, capsys, monkeypatch):
+    from core import settings as st
+    from core.config import _models_from_data, load_config
+
+    warnings: list[str] = []
+    _, profiles = _models_from_data({"profiles": {"mine": {"provider": "openai", "reply": "a"}}}, base={},
+                                    warnings=warnings)
+    assert "mine" not in profiles
+    assert warnings and "models.profiles.mine" in warnings[0] and "think, mood, housekeeping" in warnings[0]
+    (tmp_path / "settings.yaml").write_text("models:\n  profiles:\n    mine:\n      provider: openai\n",
+                                            encoding="utf-8")
+    monkeypatch.setenv("LUMI_SETTINGS_DIR", str(tmp_path))
+    st._WARNED.clear()
+    load_config()  # a real start prints it once on stderr
+    assert "models.profiles.mine is a new profile missing reply" in capsys.readouterr().err

@@ -12,6 +12,15 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.9 — Settings as files.** Every setting of an instance lives in `settings.yaml` + `secrets.yaml` (`0600`),
+described by one typed schema (`core/settings.py`, 217 settings) that the loader, the generated example files
+(`settings.example.yaml` / `secrets.example.yaml`), the migration and `lumi-cli config` all read. Precedence: the
+default < `.env` (deprecated, removed in 2.10) < the YAML files < the process environment; a wrong value refuses
+naming the key and the allowed values, and no secret reaches an output or a log. `lumi-cli config get | set |
+validate` changes one setting safely; `scripts/env_to_settings.py` migrates a `.env` (a dry run first, a round-trip
+check); the authored `core/models.yaml` / `core/schedule.yaml` can be changed per instance by name. On the box the
+containers mount the two files read-only (LUMI-244..251).
+
 **2.8 — Lumi in Docker.** Every Lumi process on the box runs from one image (`ghcr.io/ichmaster/lumi`, built and
 smoke-tested by CI): a compose project per instance (`deploy/compose/`) runs the server and both Telegram daemons
 with her data root bind-mounted and the instance's settings (then its `.env` through `env_file`; since 2.9

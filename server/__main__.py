@@ -242,8 +242,12 @@ def close_session(service, *, wait_s: float = SHUTDOWN_WAIT_S) -> bool:
 def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model); the app is tested directly
     from core.config import load_config
     from core.envguard import guard_entry, in_container
+    from core.settings import SettingsError
 
-    cfg = load_config()
+    try:
+        cfg = load_config()
+    except SettingsError as exc:  # v2.9: a wrong settings file is a configuration refusal — exit 78, not a loop
+        raise ConfigRefusal(str(exc)) from None
     if not cfg.server_token:
         raise ConfigRefusal("LUMI_SERVER_TOKEN is not set — the server never runs without a client token "
                             "(server.token in secrets.yaml — see secrets.example.yaml).")

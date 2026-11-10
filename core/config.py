@@ -140,10 +140,11 @@ def _load_models_file(path: Path) -> tuple[dict[str, tuple[str, str]], dict[str,
     return _models_from_data(data if isinstance(data, dict) else {})
 
 
-def _models_from_data(data: dict, base: dict[str, ModelProfile] | None = None
+def _models_from_data(data: dict, base: dict[str, ModelProfile] | None = None, warnings: list[str] | None = None
                       ) -> tuple[dict[str, tuple[str, str]], dict[str, ModelProfile]]:
     """``aliases`` + ``profiles`` from a parsed models mapping. With ``base`` (v2.9, an instance's settings.yaml
-    ``models:`` section), a profile's fields merge over the base profile of the same name."""
+    ``models:`` section), a profile's fields merge over the base profile of the same name; a new profile missing a
+    field is skipped with a line in ``warnings`` (code review #11)."""
     aliases: dict[str, tuple[str, str]] = {}
     profiles: dict[str, ModelProfile] = {}
     raw_aliases = data.get("aliases", {})
@@ -166,6 +167,11 @@ def _models_from_data(data: dict, base: dict[str, ModelProfile] | None = None
             if all(fields):
                 voice = str(block.get("voice", "") or "").strip()  # v1.6.2: optional talking-register tier
                 profiles[key] = ModelProfile(fields[0].lower(), *fields[1:], voice)
+            elif warnings is not None:
+                missing = [k for k, v in zip(("provider", "reply", "think", "mood", "housekeeping"), fields,
+                                             strict=True) if not v]
+                warnings.append(f"settings.yaml models.profiles.{key} is a new profile missing {', '.join(missing)} "
+                                "— ignored (a new profile needs provider, reply, think, mood and housekeeping)")
     return aliases, profiles
 
 
@@ -773,7 +779,11 @@ def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> C
     _models_path = Path(_get("LUMI_MODELS_FILE") or DEFAULT_MODELS_PATH)
     _file_aliases, _file_profiles = _load_models_file(_models_path)
     _base_profiles = dict(DEFAULT_MODEL_PROFILES) | _file_profiles
-    _inst_aliases, _inst_profiles = _models_from_data(_res.sections.get("models") or {}, base=_base_profiles)
+    _model_warnings: list[str] = []
+    _inst_aliases, _inst_profiles = _models_from_data(_res.sections.get("models") or {}, base=_base_profiles,
+                                                      warnings=_model_warnings)
+    if _model_warnings and load_env:
+        _settings.warn_messages(_model_warnings)
     _file_aliases = _file_aliases | _inst_aliases
     _base_profiles = _base_profiles | _inst_profiles
     _profiles = _parse_model_profiles(_get("LUMI_MODEL_PROFILES", ""), base=_base_profiles)

@@ -12,6 +12,7 @@ import io
 import logging
 import os
 import re
+import stat
 from dataclasses import fields
 from pathlib import Path
 
@@ -379,3 +380,142 @@ def test_the_core_passes_the_settings_gemini_key_to_image_and_web(tmp_path, monk
     cfg = _load(tmp_path)
     core = build_core(config=cfg, llm=MockLLMClient(), repository=JsonRepository(tmp_path / "s.json"))
     assert core._gemini_api_key == "g-yaml"
+
+
+# --- v2.9 code review ----------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text", [
+    "providers:\n  anthropic_api_key: sk-ant-LEAK123: oops\n",       # a colon in an unquoted value
+    "providers:\n  anthropic_api_key: \"sk-ant-LEAK123\n",             # an unclosed quote
+    "providers:\n  anthropic_api_key: [sk-ant-LEAK123\n",             # an unclosed flow list
+])
+def test_review_1_a_yaml_error_never_shows_the_secret_line(tmp_path, text):
+    _write(tmp_path, "secrets.yaml", text, 0o600)
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "not valid YAML" in str(err.value) and "line " in str(err.value)
+    assert "LEAK123" not in str(err.value)
+    problems, _ = st.check_folder(tmp_path)  # lumi-cli config validate
+    assert problems and all("LEAK123" not in p for p in problems)
+    with pytest.raises(st.SettingsError) as err:  # lumi-cli config set on the broken file: no raw traceback
+        st.set_value(tmp_path, "server.token", "new")
+    assert "LEAK123" not in str(err.value)
+
+
+@pytest.mark.parametrize("env, files, want", [
+    ({"GOOGLE_API_KEY": "g-shell"}, {"secrets.yaml": "providers:\n  gemini_api_key: g-file\n"}, "g-file"),
+    ({"GOOGLE_API_KEY": "g-shell"}, {".env": "GEMINI_API_KEY=g-dotenv\n"}, "g-dotenv"),
+    ({"GOOGLE_API_KEY": "g-shell", "GEMINI_API_KEY": "g-env"}, {}, "g-env"),
+    ({"GOOGLE_API_KEY": "g-shell"}, {}, "g-shell"),  # the old name still works when nothing else names the key
+    ({}, {".env": "GOOGLE_API_KEY=g-old-dotenv\n"}, "g-old-dotenv"),
+])
+def test_review_3_the_old_gemini_name_never_beats_the_new_one(tmp_path, env, files, want):
+    for name, text in files.items():
+        _write(tmp_path, name, text, 0o600)
+    assert st.resolve(env, folder=tmp_path).values["GEMINI_API_KEY"] == want
+
+
+@pytest.mark.parametrize("yaml_text, key", [
+    ("model:\n  gemini_cache_ttl: .inf\n", "model.gemini_cache_ttl"),
+    ("model:\n  gemini_cache_ttl: inf\n", "model.gemini_cache_ttl"),
+    ("model:\n  gemini_cache_ttl: -5m\n", "model.gemini_cache_ttl"),
+    ("recall:\n  rag_floor: .nan\n", "recall.rag_floor"),
+    ("viewer:\n  face_idle_seconds: .inf\n", "viewer.face_idle_seconds"),
+    ("memory:\n  window: \"²\"\n", "memory.window"),
+    ("memory:\n  window: \"--5\"\n", "memory.window"),
+])
+def test_review_6_values_load_config_would_crash_on_are_refused(tmp_path, yaml_text, key):
+    _write(tmp_path, "settings.yaml", yaml_text)
+    with pytest.raises(st.SettingsError) as err:  # a readable refusal, never an OverflowError / ValueError
+        _load(tmp_path)
+    assert key in str(err.value)
+    assert st.check_folder(tmp_path)[0]  # and `config validate` says so
+
+
+@pytest.mark.parametrize("text, line", [
+    ("memory:\n  window: 12\nrecall:\n  rag: true\nmemory:\n  compaction_batch: 10\n", 5),  # a group twice
+    ("memory:\n  window: 12\n  window: 30\n", 3),                                                 # a key twice
+])
+def test_review_7_a_duplicate_key_refuses_naming_its_line(tmp_path, text, line):
+    _write(tmp_path, "settings.yaml", text)
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "duplicate key" in str(err.value) and f"line {line}" in str(err.value)
+
+
+def test_review_7_a_duplicate_in_secrets_names_the_key_not_the_value(tmp_path):
+    _write(tmp_path, "secrets.yaml", "server:\n  token: a-SECRET-1\n  token: b-SECRET-2\n", 0o600)
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "duplicate key 'token'" in str(err.value) and "SECRET" not in str(err.value)
+
+
+def test_review_8_new_session_never_re_reads_the_settings_files(tmp_path, monkeypatch):
+    """/new re-snapshots the ambient context; a settings file broken mid-session must not raise in that worker."""
+    import asyncio
+
+    import tui.app as tui_app
+    from core.agent import Core
+    from core.llm import MockLLMClient
+    from state.local_store import JsonRepository
+
+    core = Core(llm=MockLLMClient(states={"reply": "так", "emotion": "calm", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="claude-haiku-4-5-20251001")
+    app = tui_app.LumiApp(core)
+    app._app_cfg = load_config(load_env=False)  # what on_mount loaded
+
+    def broken(**_kw):
+        raise st.SettingsError("Lumi settings — refusing to start:\n  • settings.yaml: memory.window = 0 …")
+
+    monkeypatch.setattr(tui_app, "load_config", broken)
+    asyncio.run(app._refresh_world())  # no SystemExit: it used the config loaded at start
+
+
+
+@pytest.mark.parametrize("yaml_value", ["0123", "4", "1.10"])
+def test_review_10_a_number_for_a_text_setting_is_refused_with_a_quote_hint(tmp_path, yaml_value):
+    _write(tmp_path, "settings.yaml", f"voice:\n  voice_id: {yaml_value}\n")
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "voice.voice_id" in str(err.value) and "quote" in str(err.value)
+    _write(tmp_path, "settings.yaml", f'voice:\n  voice_id: "{yaml_value}"\n')
+    assert _load(tmp_path).voice_id == yaml_value  # quoted, it stays exactly what was written
+
+
+def test_review_10_the_cli_and_the_migration_write_numeric_text_quoted(tmp_path):
+    st.set_value(tmp_path, "dictation.stt_device", "4")
+    assert "stt_device: '4'" in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+    assert _load(tmp_path).stt_device == "4"
+    assert st.render_file({"voice.voice_id": "0123"}, "# h\n").endswith("  voice_id: '0123'\n")
+
+
+
+def test_review_12_a_failed_write_leaves_the_old_file_whole(tmp_path, monkeypatch):
+    path = _write(tmp_path, "secrets.yaml", "server:\n  token: old\n", 0o600)
+
+    def boom(*_a, **_kw):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(st.os, "replace", boom)
+    with pytest.raises(OSError):
+        st.set_value(tmp_path, "server.token", "new")
+    assert path.read_text(encoding="utf-8") == "server:\n  token: old\n"  # never truncated
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["secrets.yaml"]  # no temp file left behind
+
+
+def test_review_12_the_modes_after_an_atomic_write(tmp_path):
+    st.set_value(tmp_path, "server.token", "t")
+    st.set_value(tmp_path, "memory.window", "30")
+    assert stat.S_IMODE((tmp_path / "secrets.yaml").stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / "settings.yaml").stat().st_mode) == 0o644
+    (tmp_path / "settings.yaml").chmod(0o640)
+    st.set_value(tmp_path, "memory.window", "31")
+    assert stat.S_IMODE((tmp_path / "settings.yaml").stat().st_mode) == 0o640  # an existing mode is kept
+
+
+
+def test_review_14_a_missing_settings_folder_is_named(tmp_path):
+    res = st.resolve({"LUMI_SETTINGS_DIR": str(tmp_path / "typo")})
+    assert any("LUMI_SETTINGS_DIR" in w and "does not exist" in w for w in res.warnings)
+    assert not st.resolve({"LUMI_SETTINGS_DIR": str(tmp_path)}).warnings  # an existing (empty) folder is fine

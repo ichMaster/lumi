@@ -34,9 +34,11 @@ schedule:
 ### One instance only (v2.9): `name` + its `settings.yaml`
 
 Every authored row in `core/schedule.yaml` has a `name`. An instance changes a row **for itself** in its own
-`settings.yaml` — the fields given merge over the authored row of the same name (a trigger key replaces the
-authored trigger), and a new name adds a row. The name is not part of a row's identity (its `schedule.state`
-key), so naming or overriding a row never re-fires it:
+`settings.yaml` — the fields given merge over the authored row of the same name, and a new name adds a row. A
+different trigger kind (`at` → `every`) replaces the authored trigger; the same kind or a modifier merges into it
+(`days` keeps the authored `at`, `every` keeps a `between` window). The name is not part of a row's identity (its
+`schedule.state` key), so naming a row or turning it off never re-fires it; changing its trigger, topic or seeds
+makes it a new row (a fresh key):
 
 ```yaml
 # ~/lumi/prod/settings.yaml
