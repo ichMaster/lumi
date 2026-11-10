@@ -678,12 +678,20 @@ def _real_env(environ: Mapping[str, str]) -> dict[str, str]:
     return {k: v for k, v in environ.items() if not (k in _EXPORTED and _EXPORTED[k] == v)}
 
 
-def _apply_old_names(layer: dict[str, str]) -> dict[str, str]:
-    """Map a deprecated name (``GOOGLE_API_KEY``) onto its setting when the current name is absent."""
+def _apply_old_names(res: Resolution, layers: list[tuple[dict[str, str], str]]) -> None:
+    """A deprecated name (``GOOGLE_API_KEY``) fills its setting only when the current name is absent from **every**
+    layer — so a shell's old name never beats the file's new one (code review #3); among the layers that carry the
+    old name, the strongest wins."""
     for old, s in _BY_OLD.items():
-        if old in layer and s.alias not in layer:
-            layer[s.alias] = layer[old]
-    return layer
+        if s.alias in res.values:
+            continue
+        for layer, label in reversed(layers):
+            if old in layer:
+                res.values[s.alias] = layer[old]
+                res.sources[s.alias] = label
+                if label != "env":
+                    res.from_files[s.alias] = layer[old]  # exported under the current name too
+                break
 
 
 _PROFILE_FIELDS = ("provider", "reply", "think", "mood", "housekeeping", "voice")
@@ -808,15 +816,16 @@ def resolve(environ: Mapping[str, str] | None = None, *, folder: Path | None = N
 
     Raises :class:`SettingsError` when a settings file holds a wrong value (every problem named in one message)."""
     environ = os.environ if environ is None else environ
-    env = _apply_old_names(_real_env(environ))
+    env = _real_env(environ)
     if not load_files:
         res = Resolution(folder=None)
         res.values = dict(env)
         res.sources = {k: "env" for k in env if k in BY_ALIAS}
+        _apply_old_names(res, [(env, "env")])
         return res
     folder = settings_dir(environ) if folder is None else Path(folder)
     res = Resolution(folder=folder)
-    dotenv = _apply_old_names(read_dotenv(folder / DOTENV_FILE))
+    dotenv = read_dotenv(folder / DOTENV_FILE)
     if dotenv:
         res.warnings.append(
             f"{folder / DOTENV_FILE} is deprecated since v2.9 — migrate it with "
@@ -835,13 +844,15 @@ def resolve(environ: Mapping[str, str] | None = None, *, folder: Path | None = N
             pass
     if problems:
         raise SettingsError("Lumi settings — refusing to start:\n" + "\n".join(f"  • {p}" for p in problems))
-    for layer, label in ((dotenv, ".env"), (plain, SETTINGS_FILE), (secret, SECRETS_FILE), (env, "env")):
+    layers = [(dotenv, ".env"), (plain, SETTINGS_FILE), (secret, SECRETS_FILE), (env, "env")]
+    for layer, label in layers:
         for name, value in layer.items():
             res.values[name] = value
             if name in BY_ALIAS:
                 res.sources[name] = label
             if label != "env":
                 res.from_files[name] = value
+    _apply_old_names(res, layers)
     return res
 
 

@@ -400,3 +400,16 @@ def test_review_1_a_yaml_error_never_shows_the_secret_line(tmp_path, text):
     with pytest.raises(st.SettingsError) as err:  # lumi-cli config set on the broken file: no raw traceback
         st.set_value(tmp_path, "server.token", "new")
     assert "LEAK123" not in str(err.value)
+
+
+@pytest.mark.parametrize("env, files, want", [
+    ({"GOOGLE_API_KEY": "g-shell"}, {"secrets.yaml": "providers:\n  gemini_api_key: g-file\n"}, "g-file"),
+    ({"GOOGLE_API_KEY": "g-shell"}, {".env": "GEMINI_API_KEY=g-dotenv\n"}, "g-dotenv"),
+    ({"GOOGLE_API_KEY": "g-shell", "GEMINI_API_KEY": "g-env"}, {}, "g-env"),
+    ({"GOOGLE_API_KEY": "g-shell"}, {}, "g-shell"),  # the old name still works when nothing else names the key
+    ({}, {".env": "GOOGLE_API_KEY=g-old-dotenv\n"}, "g-old-dotenv"),
+])
+def test_review_3_the_old_gemini_name_never_beats_the_new_one(tmp_path, env, files, want):
+    for name, text in files.items():
+        _write(tmp_path, name, text, 0o600)
+    assert st.resolve(env, folder=tmp_path).values["GEMINI_API_KEY"] == want
