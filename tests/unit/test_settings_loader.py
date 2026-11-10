@@ -448,3 +448,24 @@ def test_review_7_a_duplicate_in_secrets_names_the_key_not_the_value(tmp_path):
     with pytest.raises(st.SettingsError) as err:
         _load(tmp_path)
     assert "duplicate key 'token'" in str(err.value) and "SECRET" not in str(err.value)
+
+
+def test_review_8_new_session_never_re_reads_the_settings_files(tmp_path, monkeypatch):
+    """/new re-snapshots the ambient context; a settings file broken mid-session must not raise in that worker."""
+    import asyncio
+
+    import tui.app as tui_app
+    from core.agent import Core
+    from core.llm import MockLLMClient
+    from state.local_store import JsonRepository
+
+    core = Core(llm=MockLLMClient(states={"reply": "так", "emotion": "calm", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="Ти — Лілі.", model="claude-haiku-4-5-20251001")
+    app = tui_app.LumiApp(core)
+    app._app_cfg = load_config(load_env=False)  # what on_mount loaded
+
+    def broken(**_kw):
+        raise st.SettingsError("Lumi settings — refusing to start:\n  • settings.yaml: memory.window = 0 …")
+
+    monkeypatch.setattr(tui_app, "load_config", broken)
+    asyncio.run(app._refresh_world())  # no SystemExit: it used the config loaded at start

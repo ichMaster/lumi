@@ -238,3 +238,13 @@ def test_run_prints_a_refusal_then_exits_78(monkeypatch, capsys):
         sm.run()
     assert exc.value.code == sm.EX_CONFIG and not isinstance(exc.value, sm.ConfigRefusal)  # a plain exit 78
     assert "listens on every interface" in capsys.readouterr().err
+
+
+
+def test_review_8_a_wrong_settings_file_is_a_config_refusal(monkeypatch, tmp_path):
+    """v2.9 code review #8: a SettingsError at start exits 78 (the configuration refusal), not 1."""
+    (tmp_path / "settings.yaml").write_text("server:\n  port: nope\n", encoding="utf-8")
+    monkeypatch.setattr("core.config.load_config", lambda: load_config(load_env=False, settings_dir=tmp_path))
+    with pytest.raises(sm.ConfigRefusal) as exc:
+        sm.main()
+    assert exc.value.code == sm.EX_CONFIG and "server.port" in str(exc.value)

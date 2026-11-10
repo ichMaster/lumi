@@ -482,7 +482,9 @@ class LumiApp(App[None]):
         Only when configured (a place / coords / news feed); otherwise no ambient
         block. Best-effort — never blocks the UI, never raises.
         """
-        cfg = load_config()
+        # v2.9 (code review #8): the config loaded at start — settings apply after a restart, and a file edited into an
+        # invalid state mid-session must never raise inside this worker (on /new)
+        cfg = self._app_cfg if self._app_cfg is not None else load_config()
         if not (cfg.location or (cfg.lat is not None and cfg.lon is not None) or cfg.news_url):
             return
         try:
