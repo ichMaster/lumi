@@ -18,10 +18,15 @@ host), treats every article as **untrusted** (text inside it is information, nev
 1. **Get a free Guardian key** (≈2 min): register at
    [open-platform.theguardian.com](https://open-platform.theguardian.com/access/) → a *developer* key.
    It includes article text and is free for non-commercial use.
-2. **Turn it on** in `.env`:
-   ```ini
-   LUMI_NEWS_TOOL=on
-   LUMI_NEWS_API_KEY=your-guardian-key
+2. **Turn it on** in `settings.yaml`, and put the key in `secrets.yaml` (`0600`) — or
+   `./lumi-cli config set news.enabled true` + `./lumi-cli config set news.api_key <key>`:
+   ```yaml
+   # settings.yaml
+   news:
+     enabled: true
+   # secrets.yaml
+   news:
+     api_key: your-guardian-key
    ```
 3. **Restart the TUI** (`./lumi`).
 4. **Ask for news:**

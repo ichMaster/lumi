@@ -68,7 +68,7 @@ since). **Non-destructive** (raw `LongTermFact`s kept); rebuilt only when facts 
 redundancy + transient crisis episodes drop. See ARCHITECTURE §Identity, users, and memory scopes.
 
 ### Phase 1 — Config trims (today, **zero code**, reversible)
-The two remaining volatile heavies are pure `.env`:
+The two remaining volatile heavies are pure settings (then `.env`, `settings.yaml` since v2.9):
 - `LUMI_THOUGHTS_MAX_LINES` **150 → 40** (−~4.5K on busy nights)
 - `LUMI_SESSION_DAYS` **2 → 1** (−~5K; day/week digests still carry the older gist)
 
@@ -150,7 +150,7 @@ closeness block (~150 tok, recomputed each turn) rides in the volatile tail.
 ---
 
 ## 5. Recommended sequence
-1. **Phase 1 now** — flip the two `.env` knobs.
+1. **Phase 1 now** — flip the two settings knobs.
 2. **Phase 2 next** — prompt caching: highest cost-per-effort, no quality risk, makes everything
    after it cheaper. ~1 day, ships with tests + a contract note.
 3. **Phase 3** — execute the v0.16–17 RAG issues already drafted.

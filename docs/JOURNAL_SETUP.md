@@ -20,9 +20,10 @@ relationship).
 
 ## Quick start
 
-1. **Turn it on** in `.env`:
-   ```ini
-   LUMI_JOURNAL=on
+1. **Turn it on** in `settings.yaml` (or `./lumi-cli config set journal.enabled true`; the env name `LUMI_JOURNAL` still overrides):
+   ```yaml
+   journal:
+     enabled: true
    ```
 2. **Restart the TUI** (`./lumi`).
 3. **Ask her to write — or use `/journal`:**

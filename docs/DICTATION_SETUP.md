@@ -15,11 +15,16 @@ or run **offline Whisper**), and a **separate process** (the terminal never capt
 
 ## Quick start
 
-1. **Pick a provider** and set keys in `.env`:
-   ```ini
-   LUMI_DICTATION=on
-   LUMI_STT_PROVIDER=deepgram        # deepgram / elevenlabs / whisper
-   DEEPGRAM_API_KEY=...              # for deepgram (Whisper needs no key)
+1. **Pick a provider** in `settings.yaml` and put its key in `secrets.yaml` (`0600`) — or `./lumi-cli config set`
+   each one (the env names `LUMI_DICTATION` / `LUMI_STT_PROVIDER` / `DEEPGRAM_API_KEY` work there too):
+   ```yaml
+   # settings.yaml
+   dictation:
+     enabled: true
+     stt_provider: deepgram          # deepgram / elevenlabs / whisper
+   # secrets.yaml
+   dictation:
+     deepgram_api_key: ...           # for deepgram (Whisper needs no key)
    ```
 2. **Restart the TUI** (`./lumi`). It now drains the inbox and shows a **Ctrl+D** listen toggle.
 3. **Run the dictator** (a separate terminal):

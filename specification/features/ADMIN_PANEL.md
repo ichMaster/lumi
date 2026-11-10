@@ -6,8 +6,8 @@ pipelines; prod already on the box since 2026-10-20) and v2.8 (both instances as
 
 ## Why
 
-Each instance is configured by a ~28 KB `.env` (about 205 `LUMI_*` knobs + 9 API keys) plus `core/models.toml`
-and `core/schedule.toml`. Changing one setting means SSH, an editor and a restart; knowing whether she is healthy
+Each instance was configured (until v2.9) by a ~28 KB `.env` (about 205 `LUMI_*` knobs + 9 API keys) plus
+`core/models.toml` and `core/schedule.toml`. Changing one setting means SSH, an editor and a restart; knowing whether she is healthy
 means reading `lumi.log` and the JSONL ledgers by hand (a slow Gemini, a cut-off mood, a bold `**ТЕМА:**` were all
 found that way). The goal: **one admin panel on the box administers both instances** — health, uptime, daemons,
 tokens, cost and latency at a glance, and every setting changed safely, with prod guarded.
@@ -35,6 +35,12 @@ Mac browser ── LAN ──► lumi-admin (on the box, :8767, its own admin to
   inline SVG. An instance switcher at the top; prod is always shown in red.
 
 ## v2.9 — Settings as files
+
+**Status: shipped (v2.9.0).** As designed below, with two notes from the build: the file values are also exported
+into the process environment (never over a real variable — what `load_dotenv` did, so the SDKs and the probes keep
+working), and the containers mount the pre-v2.9 `.env` (kept as `.env.migrated`) at `/app/.env` instead of an
+optional `env_file` — only a pre-v2.9 image reads it, so the deploy agent's automatic way back after a failed smoke
+keeps its settings. Operator steps: [LINUX_DEPLOY §2b](../../docs/LINUX_DEPLOY.md#2b-settings-as-files-v29).
 
 - **Per instance:** `~/lumi/<instance>/settings.yaml` (every non-secret knob, grouped — model, mood, memory, recall,
   thoughts, scheduler, telegram, voice, tools, server, …) and `secrets.yaml` (`0600` — the API keys, the bot token,

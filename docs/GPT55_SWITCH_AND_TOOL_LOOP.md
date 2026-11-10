@@ -8,7 +8,7 @@ passthrough. GPT-5.5 (and DeepSeek-V4-Pro) are released; the only real gap is Lu
 
 ## Part 1 — An option to switch between Opus 4.8 and GPT-5.5
 
-Keep **both** keys in `.env` so either engine is one flip away:
+Keep **both** keys in the settings (`secrets.yaml` since v2.9) so either engine is one flip away:
 
 ```ini
 ANTHROPIC_API_KEY=sk-ant-...
@@ -47,7 +47,7 @@ A TUI command to swap engines mid-session, ideal for the A/B the cost doc recomm
   hard-coded. The status bar already reflects `self._model`.
 - **Notes:** a mid-session switch is fine (history is just messages); the new engine starts on a **cold
   cache** (one-off); and **switching to GPT-5.5 keeps tools only after Part 2** — until then a `/model
-  gpt-5.5` turn runs tool-less. Persists nothing — the next restart uses the `.env` default.
+  gpt-5.5` turn runs tool-less. Persists nothing — the next restart uses the settings' default.
 
 > This pairs with **v0.37 (per-operation routing)**: `/model` sets the *engine* (the reply model); v0.37 sets
 > which *tiers* run the cheap ops. They compose — e.g. reply on GPT-5.5, housekeeping still on Haiku.

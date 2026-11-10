@@ -1,10 +1,12 @@
-# Linux deploy — Лілі always on (v2.6–v2.8)
+# Linux deploy — Лілі always on (v2.6–v2.9)
 
 > **Both instances run on the box as Docker containers (v2.8)** — one image (`ghcr.io/ichmaster/lumi`), a compose
 > project per instance, her memory on the host. Dev has run on the box since 2026-10-19, prod since **2026-10-20**
 > (her memory moved from the Mac at v2.6.0 — the Mac prod is its client, its `data/` the fallback). Code reaches the
 > box only through the **deploy agent** ([§Deploys](#deploys)): a green `main` → dev by itself, a release tag → prod
 > after your `confirm`. The v2.6 systemd units are retired and stay installed as [the way back](#the-way-back-the-v26-units).
+> **Since v2.9** each instance's settings are `~/lumi/<instance>/settings.yaml` + `secrets.yaml` (`0600`), no `.env`
+> ([§Settings as files](#2b-settings-as-files-v29)).
 
 Run Лілі's server on the always-on home **Linux box** and talk to her from the Mac over **LAN/Tailscale**. This is
 the operator's guide: install, deploy, check, monitor, fix. The design is in [ROADMAP §v2.6–v2.8](../specification/ROADMAP.md)
@@ -19,7 +21,7 @@ Mac (clients only)                           Linux box (always on) — 192.168.1
 ./lumi-cli    ─┼── LAN (ufw: 192.168.1.0/24) ►   server :8766 · telegram-inbound · telegram-outbound
 ~/lumi/prod/  ─┘                             compose project lumi-prod (image vA.B.C, after your `confirm`)
   app/lumi (a client, LUMI_SERVER=on)        ►   server :8765 · telegram-inbound · telegram-outbound
-  data/ = the pre-move fallback              ~/lumi/<instance>/{.env, data/, app/}   settings · her memory · refs
+  data/ = the pre-move fallback              ~/lumi/<instance>/{settings.yaml, secrets.yaml, data/, app/}
                                              ~/lumi/deploy/                          the agent, its timer, compose files
 ```
 
@@ -28,7 +30,8 @@ Mac (clients only)                           Linux box (always on) — 192.168.1
   lived is inside it.
 - **A compose project per instance** (`deploy/compose/compose.yaml` + `prod.env` / `dev.env`): three containers that
   share the instance's **data root** (bind-mounted at `/data` — the file bus needs one filesystem) and its **settings**
-  (`~/lumi/<instance>/.env`, unchanged, through `env_file`). Each instance keeps its own port, token, bot and data.
+  (v2.9: `~/lumi/<instance>/settings.yaml` + `secrets.yaml`, mounted read-only at `/settings`). Each instance keeps its
+  own port, token, bot and data.
 - **The deploy agent** (a systemd user timer, `~/lumi/deploy/`) deploys image tags: CI green → dev, `confirm` → prod,
   with a smoke and an automatic way back ([§Deploys](#deploys)).
 - **LAN/Tailscale only.** Inside its container the server binds `0.0.0.0` (the image's container mode); the compose
@@ -59,8 +62,8 @@ The image brings its own Python, uv, ffmpeg and tzdata — nothing else to insta
 
 ### 1. Two free ports and the firewall (once)
 
-The defaults are **prod 8765 · dev 8766** — one port per instance, in its `.env` **and** in
-`deploy/compose/<instance>.env`. Check nothing else listens there, then admit the home subnet:
+The defaults are **prod 8765 · dev 8766** — one port per instance, in its `settings.yaml` (`server.port`) **and** in
+`deploy/compose/<instance>.env` (the compose parameters — not settings, nothing secret). Check nothing else listens there, then admit the home subnet:
 
 ```bash
 ss -ltnp | grep -E ':(8765|8766)\b'                  # prints nothing → both are free
@@ -73,44 +76,96 @@ Docker publishes past ufw's input chain, so the **publish address** is what real
 
 ### 2. The instance directories
 
-Each instance is `~/lumi/<instance>/` with three things:
+Each instance is `~/lumi/<instance>/` with these things:
 
 ```
-~/lumi/dev/.env       its settings + keys (chmod 600) — compose passes it into every container
-~/lumi/dev/data/      its data root — bind-mounted at /data, owned by your user (uid 1000, as the image runs)
-~/lumi/dev/app/       a git checkout — the agent reads refs from it (merge-base, tags, VERSION); the v2.6 units run it
+~/lumi/dev/settings.yaml   every non-secret setting (v2.9) — mounted read-only at /settings in every container
+~/lumi/dev/secrets.yaml    the keys and tokens (chmod 600, your user) — mounted beside it
+~/lumi/dev/.env.migrated   the pre-v2.9 .env, kept by the migration — mounted at /app/.env for the way back below v2.9
+~/lumi/dev/data/           its data root — bind-mounted at /data, owned by your user (uid 1000, as the image runs)
+~/lumi/dev/app/            a git checkout — the agent reads refs from it (merge-base, tags, VERSION); the v2.6 units run it
 ```
 
 ```bash
 mkdir -p ~/lumi/dev/data && cd ~/lumi/dev
 git clone https://github.com/ichMaster/lumi.git app
-cp app/.env.example .env && chmod 600 .env           # then edit — below
+cp app/settings.example.yaml settings.yaml && cp app/secrets.example.yaml secrets.yaml && chmod 600 secrets.yaml
+touch .env.migrated                                  # a new instance has no pre-v2.9 past; compose mounts the file
 ```
 
-In `~/lumi/dev/.env` — copy your keys and settings over from the Mac dev `.env`, then set:
+Then set (uncomment and fill in — every line of the examples is commented out at its default):
+
+```yaml
+# settings.yaml
+instance:
+  env: dev
+  home: ~/lumi/dev/data             # for the v2.6 units; inside the container it's overridden to /data
+server:
+  host: 192.168.1.197               # what the agent's smoke dials; inside the container it's overridden to 0.0.0.0
+  port: 8766                        # = deploy/compose/dev.env
+bridge:
+  enabled: true                     # the Telegram bridge beside the server
+telegram:
+  allowlist: [<your Telegram id>]
+# secrets.yaml
+server:
+  token: <a new random one>         # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+telegram:
+  token: <the DEV bot's token>
+```
+
+**Set no per-path setting** (`store.path`, `files.dir`, `journal.dir`, `bridge.inbox_path`, `bridge.outbox_path`,
+`dictation.listen_flag`) — the data root places them all.
+
+### 2b. Settings as files (v2.9)
+
+An instance that ran before v2.9 has a `~/lumi/<instance>/.env`. **Migrate it once**, with the image that will read
+the files (the same Python and the same schema) — a dry run first, which prints the planned `settings.yaml`, the
+secret **keys** (never a value) and the keys it can't place, and checks that the new files load to exactly the same
+configuration:
 
 ```bash
-LUMI_ENV=dev
-LUMI_SERVER_PORT=8766                 # = deploy/compose/dev.env
-LUMI_SERVER_TOKEN=<a new random one>  # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-LUMI_BRIDGE=on                        # the Telegram bridge beside the server
-LUMI_TELEGRAM_TOKEN=<the DEV bot's token>
-LUMI_TELEGRAM_ALLOWLIST=<your Telegram id>
-LUMI_SERVER_HOST=192.168.1.197        # what the agent's smoke dials; inside the container it's overridden to 0.0.0.0
-LUMI_HOME=~/lumi/dev/data             # for the v2.6 units; inside the container it's overridden to /data
+i=dev; tag=$(docker inspect -f '{{index .Config.Labels "io.lumi.build"}}' lumi-$i-server-1)   # or a newer tag
+cp -p ~/lumi/$i/.env ~/lumi/backups/$i.env.pre-v2.9                                         # a copy, 0600
+docker run --rm -v ~/lumi/$i:/instance ghcr.io/ichmaster/lumi:$tag \
+  python scripts/env_to_settings.py /instance/.env --out /instance              # dry run: read it
+docker run --rm -v ~/lumi/$i:/instance ghcr.io/ichmaster/lumi:$tag \
+  python scripts/env_to_settings.py /instance/.env --out /instance --apply      # settings.yaml + secrets.yaml (0600)
+ls -l ~/lumi/$i                                        # no .env; .env.migrated kept; secrets.yaml -rw-------
 ```
 
-**Delete every per-path override** you copied (`LUMI_STORE_PATH`, `LUMI_FILES_DIR`, `LUMI_JOURNAL_DIR`,
-`LUMI_INBOX_PATH`, `LUMI_OUTBOX_PATH`, `LUMI_LISTEN_FLAG`) — the data root places them all. Check:
-`grep -nE '^LUMI_[A-Z_]*(PATH|DIR|FLAG)=' ~/lumi/dev/.env` prints nothing. Compose reads `KEY=value  # comment`
-lines as they are.
+The image must be v2.9 or newer (it carries `scripts/env_to_settings.py`). The deploy agent **refuses to deploy or
+roll back** an instance that lacks `settings.yaml`, `secrets.yaml` or `.env.migrated` — before it changes anything
+(`last deploy …: not deployed: the instance is not migrated`).
+
+**Change a setting** with `lumi-cli config` through the image — it validates (a wrong value is refused with the
+allowed ones), edits only that line, keeps `secrets.yaml` at `0600` and never prints a secret:
+
+```bash
+cfg() {  # cfg <dev|prod> <config args…> — e.g. `cfg dev get memory.window`, `cfg dev set recall.rag true`
+  local i=$1; shift
+  docker run --rm -v ~/lumi/$i:/instance \
+    ghcr.io/ichmaster/lumi:$(docker inspect -f '{{index .Config.Labels "io.lumi.build"}}' lumi-$i-server-1) \
+    python -m cli config "$@" --dir /instance
+}
+cfg dev validate && lumi dev restart                   # a setting applies after a restart (the `lumi` function below)
+```
+
+`docker compose restart` is enough — the files are read at start, not baked into the container. A `LUMI_*` variable
+in the compose `environment:` block (`LUMI_HOME`, the in-container host/port) still wins over the files.
+
+**The way back below v2.9** is automatic: compose mounts `.env.migrated` at `/app/.env`, where only a pre-v2.9 image
+looks (its `load_dotenv`), so `rollback` (or the agent's own way back after a failed smoke) starts the older image
+with the settings it had — the ones from before the migration. A v2.9+ image never reads it. The v2.6 units read
+`~/lumi/<instance>/.env`: before going back to them by hand, `cp -p .env.migrated .env`.
 
 For the "scheduled thought" check later, turn the scheduler on as in
 [SERVER_SETUP §Her time on the server](SERVER_SETUP.md) (its quick-check schedule recipe).
 
 ### 3. Prod — with her memory, never empty
 
-Prod's directory is the same shape (`~/lumi/prod/{.env,data,app}`, port 8765, its own token and bot). **Never start
+Prod's directory is the same shape (`~/lumi/prod/{settings.yaml,secrets.yaml,data,app}`, port 8765, its own token
+and bot). **Never start
 prod on an empty data root** — the first start marks it `prod` and begins a blank Лілі. Her memory comes in first.
 This was done once, on **2026-10-20** (v2.1.1 on the Mac → v2.6.0 on the box):
 
@@ -119,8 +174,9 @@ This was done once, on **2026-10-20** (v2.1.1 on the Mac → v2.6.0 on the box):
    (2026-10-20: `data-20261020-0116-v2.1.1-premove.tar.gz`, ~290 MB — the whole data root: the store, vectors,
    journal, her files, the bus files and pointers, the logs, `env-marker`).
 3. **Copy** it to the box (`scp` → `~/lumi/backups/`) and unpack: `tar -xzf ~/lumi/backups/data-…tar.gz -C ~/lumi/prod`.
-4. **Settings:** copy the Mac prod `.env` to `~/lumi/prod/.env` (`chmod 600`) and set `LUMI_ENV=prod`, the box's
-   `LUMI_SERVER_HOST`, `LUMI_SERVER_PORT=8765` and a **new** `LUMI_SERVER_TOKEN`; delete every per-path override.
+4. **Settings:** (then) the Mac prod `.env` copied to `~/lumi/prod/.env` (`chmod 600`) with `LUMI_ENV=prod`, the
+   box's `LUMI_SERVER_HOST`, `LUMI_SERVER_PORT=8765` and a **new** `LUMI_SERVER_TOKEN`, every per-path override
+   deleted — migrated to `settings.yaml` + `secrets.yaml` at v2.9 ([§2b](#2b-settings-as-files-v29)).
 5. **Start** prod and **verify** before trusting it: the counts match the Mac (2026-10-20: 18 844 messages, 27 913
    vectors, 2 951 facts, 372 summaries, 4 543 thoughts), `/mood` answers, an old memory is recalled, a Telegram
    reply arrives.
@@ -150,12 +206,17 @@ A bot token can be polled by **one** process. The box polls **both** bots (dev a
 
 ### 6. The Mac clients
 
-In the `.env` the Mac client reads (the dev tree's `~/development/lumi/.env`):
+In the settings the Mac client reads (the dev tree's `~/development/lumi/settings.yaml` + `secrets.yaml`; a
+not-yet-migrated tree reads its `.env`, deprecated in v2.9):
 
-```bash
-LUMI_SERVER_HOST=192.168.1.197        # the box — the address the containers publish on
-LUMI_SERVER_PORT=8766                 # the box's dev port
-LUMI_SERVER_TOKEN=<the box's dev token>
+```yaml
+# settings.yaml
+server:
+  host: 192.168.1.197               # the box — the address the containers publish on
+  port: 8766                        # the box's dev port
+# secrets.yaml
+server:
+  token: <the box's dev token>
 ```
 
 ```bash
@@ -164,11 +225,12 @@ LUMI_SERVER_TOKEN=<the box's dev token>
 ```
 
 After the first turn, `/latency` ends with `NETWORK client↔server: last … ms · median … ms`. `/image` and `/web`
-follow what the **box** has on. With `LUMI_SERVER_HOST` naming the box, a local `./lumi-server` on the Mac refuses to
+follow what the **box** has on. With `server.host` naming the box, a local `./lumi-server` on the Mac refuses to
 start ("not an address of this machine") — set it back to `127.0.0.1` for local work.
 
-**Her own (prod) client** is the Mac prod checkout: `~/lumi/prod/.env` has `LUMI_SERVER=on` + the box's prod host,
-port `8765` and the prod token, so `~/lumi/prod/app/lumi` talks to the box. It must stay at a release tag (the env
+**Her own (prod) client** is the Mac prod checkout: its settings (`~/lumi/prod/.env`, read as the deprecated layer
+until it is migrated like any instance) have `LUMI_SERVER=on` + the box's prod host, port `8765` and the prod token,
+so `~/lumi/prod/app/lumi` talks to the box. It must stay at a release tag (the env
 guard); move it with `scripts/prod_update.py --tag …` when you like — it only moves the client.
 
 ### 7. The deploy agent
@@ -196,6 +258,17 @@ three lines above) — the agent never updates itself.
 ---
 
 ## Check it
+
+**The v2.9 DoD:**
+
+1. **Both instances run from `settings.yaml` + `secrets.yaml` with no `.env`**: `ls -l ~/lumi/{dev,prod}` shows the
+   two files (`secrets.yaml` `-rw-------`), `.env.migrated`, no `.env`; `docker ps` shows all six containers healthy.
+2. **A setting changed with `lumi-cli config set` is validated and applies after a restart**: `cfg dev set
+   persona.think_show loud` is refused with `one of debug, open, off`; a valid change + `lumi dev restart` shows in
+   `cfg dev get …` and in her behaviour.
+3. **No secret in any CLI output or log**: `cfg dev get server.token` says `•••set•••`; grepping the token's value
+   over `docker logs lumi-dev-server-1` and `data/lumi.log` finds nothing.
+4. **The dev tree runs the same way** (`./lumi`, `./lumi-server` from its `settings.yaml` + `secrets.yaml`).
 
 **The v2.8 DoD:**
 
@@ -247,8 +320,8 @@ v2-dev ── merge (ff) ──► main ── CI: gates + image ──► :sha-
   - **The first container deploy** of an instance stops and disables its three v2.6 units before any container
     starts (the port and the brain lock are free; two brains never share her root).
 - **The smoke** (no model is called): `/v1/health` answers as this instance (`env`) and the expected version (prod:
-  the tag; dev: the commit's `VERSION`); `/v1/state` answers with the instance's token (read from its `.env`, never
-  logged); all three containers stay up the **whole** minute — the same container, the same restart count (Docker
+  the tag; dev: the commit's `VERSION`); `/v1/state` answers with the instance's token (read from its `secrets.yaml`
+  — a pre-v2.9 instance's `.env` — never logged); all three containers stay up the **whole** minute — the same container, the same restart count (Docker
   would bring a crashed one back within seconds) — and `/v1/health` still answers at its end; no new `ERROR` line in
   `data/lumi.log` since the start.
 - **A failed smoke goes back** at once to what ran before — the previous image, or **the v2.6 units** right after a
@@ -256,10 +329,12 @@ v2-dev ── merge (ff) ──► main ── CI: gates + image ──► :sha-
   failed ref **bad**: never retried by itself (a newer commit is; a bad tag deploys again only after a fresh
   `confirm`).
 - **A deploy moves code only.** The agent never writes under a data root (it only reads prod's, into the archive)
-  and never touches an `.env`; its own files are `~/lumi/deploy/{deploy_agent.py,compose/,state.json,deploy.log,
+  and never touches the settings files; its own files are `~/lumi/deploy/{deploy_agent.py,compose/,state.json,deploy.log,
   agent.lock}` and the archives in `~/lumi/prod/backups/` (never pruned — delete old ones by hand when the disk wants
   it). After a deploy that passes, the agent removes the Lumi images no instance runs or would roll back to (GHCR
-  keeps every tag). Settings changes are still yours (by hand until v2.9); after one, restart the instance's containers.
+  keeps every tag). Settings changes are yours (`lumi-cli config set`, [§2b](#2b-settings-as-files-v29)); after one, restart the
+  instance's containers. A deploy or rollback of an instance missing its settings files is refused before anything
+  changes.
 
 The commands (on the box, or from the Mac as `ssh slate-server 'python3 ~/lumi/deploy/deploy_agent.py …'`):
 
@@ -338,8 +413,9 @@ git -C ~/lumi/prod/app checkout <tag> && (cd ~/lumi/prod/app && uv sync --frozen
 systemctl --user enable --now lumi-server@prod lumi-telegram-inbound@prod lumi-telegram-outbound@prod
 ```
 
-Under the units the server binds `LUMI_SERVER_HOST` from the `.env` (the LAN address) and `LUMI_HOME` places the
-data root — the same `.env` the containers read.
+Under the units the server binds `LUMI_SERVER_HOST` (the LAN address) and `LUMI_HOME` places the data root. A unit's
+checkout older than v2.9 reads only `~/lumi/<instance>/.env` — `cp -p .env.migrated .env` before starting it; from
+v2.9 a unit reads `~/lumi/<instance>/settings.yaml` + `secrets.yaml` (the repo's parent folder).
 
 ## Troubleshooting
 
@@ -350,9 +426,12 @@ data root — the same `.env` the containers read.
 | `compose`: `the image tag is set by the deploy agent` | a hand-run compose command without `LUMI_IMAGE_TAG` | use the `lumi` function (§Stop, restart) |
 | `up` fails: `port is already allocated` | a v2.6 unit (or something else) still holds the port | `systemctl --user disable --now lumi-server@<instance>`; `ss -ltnp 'sport = :<port>'` |
 | server log: `another brain already runs on this data root` | a unit and a container on the same root | stop and disable the unit — one brain per memory |
-| the server container restarts in a loop | it crashes at start — or refuses its configuration (a taken port, a non-release prod build): unlike the v2.6 units (exit 78 never restarted), Docker restarts every exit, with a growing back-off | `docker logs lumi-<i>-server-1` names the reason; fix the `.env` / the port; the agent's smoke rolls back a deploy that does this |
-| Mac: `server unreachable at http://192.168.1.197:8766` (a timeout) | the container is down, ufw has no rule, or the port differs | `docker ps`; the ufw rule (setup §1); compare the ports in `.env` and `deploy/compose/<i>.env` |
-| Mac: `the server at … rejected the token` | the Mac's token isn't this instance's | copy the box instance's `LUMI_SERVER_TOKEN` |
+| the server container restarts in a loop | it crashes at start — or refuses its configuration (a taken port, a non-release prod build): unlike the v2.6 units (exit 78 never restarted), Docker restarts every exit, with a growing back-off | `docker logs lumi-<i>-server-1` names the reason (a wrong setting: the file, the key and the allowed values); fix it with `cfg <i> set …` / the port; the agent's smoke rolls back a deploy that does this |
+| Mac: `server unreachable at http://192.168.1.197:8766` (a timeout) | the container is down, ufw has no rule, or the port differs | `docker ps`; the ufw rule (setup §1); compare `server.port` in `settings.yaml` and `deploy/compose/<i>.env` |
+| Mac: `the server at … rejected the token` | the Mac's token isn't this instance's | copy the box instance's `server.token` (its `secrets.yaml`) |
+| `status`: `last deploy …: not deployed: the instance is not migrated` / `deploy.log`: `missing settings.yaml` | the instance still has only a `.env` | migrate it ([§2b](#2b-settings-as-files-v29)), then `confirm` again (prod) / wait for the next tick (dev) |
+| `up` fails: `bind source path does not exist: …/settings.yaml` | a hand-run `up` on an unmigrated instance | migrate it first ([§2b](#2b-settings-as-files-v29)) |
+| `WARNING (settings): … secrets.yaml is readable by others` | the secrets file lost its `0600` | `chmod 600 ~/lumi/<i>/secrets.yaml` |
 | TUI: `… rejected the token — no pushes until a restart` | the server restarted with another token | fix the token, restart the client |
 | no Telegram messages arrive, `telegram-inbound.log` shows a *Conflict* (another getUpdates) | another machine polls the same bot | stop the other poller (setup §5) |
 | her day starts at the wrong hour (mood, quiet hours) | the container's clock zone | `LUMI_TZ` in `deploy/compose/<i>.env` (default `Europe/Kyiv`) |
@@ -368,13 +447,14 @@ data root — the same `.env` the containers read.
 - **LAN/Tailscale only.** The compose file publishes on the box's LAN address; outside a container the server
   itself refuses a wildcard or public bind. Never forward the port on the router. On the home LAN the token crosses
   the wire in the clear (no TLS until v4.1) — the same trust as agora's panel.
-- **Secrets only in `~/lumi/<instance>/.env`** (`chmod 600`) — never in the image, the compose files, a unit or a log.
-  The image's build context excludes `.env*`, `.git` and `.lumi` (`.dockerignore`).
+- **Secrets only in `~/lumi/<instance>/secrets.yaml`** (`chmod 600`; the pre-v2.9 `.env.migrated` too) — never in the
+  image, the compose files, a unit or a log; `lumi-cli config` masks them on every output. The image's build context
+  excludes `.env*`, `settings.yaml`, `secrets.yaml`, `.git` and `.lumi` (`.dockerignore`).
 - **The pipeline holds no secret:** CI needs none beyond the workflow's own `GITHUB_TOKEN` (which pushes the image),
   the agent reads GitHub and GHCR without a token, and the instance token it sends to `/v1/state` stays on the box,
   unlogged.
 - **The containers run as your user** (uid 1000), so her data root stays yours; `init: true` reaps her ffmpeg
   children and passes SIGTERM to Python. Docker's own copy of their stderr is capped at 3 × 10 MB per container;
   her logs live in the data root.
-- Not here yet: settings as YAML (**v2.9**), the admin panel (**v2.10–v2.11**); TLS, public exposure and the security
+- Not here yet: the admin panel (**v2.10–v2.11**); TLS, public exposure and the security
   scans (**v4.1**); voice mode, the voicer and dictation beside the server (revisited after v2.6).

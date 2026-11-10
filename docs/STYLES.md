@@ -196,7 +196,7 @@ Notes:
 - Meta alias members should reference **real** base style names — they're shown to Лілі as the
   meta's composition (`лагідна = поясни, просто, приклад`) so she knows what choosing it means.
 
-Point at a different file with `LUMI_STYLES_PATH` in `.env`.
+Point at a different file with `persona.styles_path` in `settings.yaml` (env `LUMI_STYLES_PATH`).
 
 ---
 

@@ -24,7 +24,7 @@ this doc is the size side.
 
 - **The II plan shipped and worked**: system prompt **~111 KB (06-11) → 62.6 KB (06-20) → 44 KB
   (06-24) → 29.1 KB today** (~4× down). Sessions=gist, day/week index, facts core-only, style trim,
-  thoughts capped at 10 lines — all live in `.env`.
+  thoughts capped at 10 lines — all live in the settings (`.env` then, `settings.yaml` since v2.9).
 - The old whales (conversations + days + weeks) are now **2.6 KB combined**. The new top-3:
   **thoughts 19.7%** · **inner-voice instruction 15%** · **facts core 10.8%**.
 - The thoughts block is capped by **count** (10) but not by **length per thought** — two scheduled

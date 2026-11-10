@@ -26,9 +26,10 @@ external surface beyond what semantic recall already does.
    LUMI_RECALL=on
    LUMI_EMBED_PROVIDER=local        # or voyage / openai (+ its key)
    ```
-2. **Turn the tool on** in `.env`:
-   ```ini
-   LUMI_RECALL_TOOL=on
+2. **Turn the tool on** in `settings.yaml` (or `./lumi-cli config set recall.tool true`; the env name `LUMI_RECALL_TOOL` still overrides):
+   ```yaml
+   recall:
+     tool: true
    ```
 3. **Restart the TUI** (`./lumi`) — settings are read at startup.
 4. **Ask her something that lives in her memory but isn't your literal words:**

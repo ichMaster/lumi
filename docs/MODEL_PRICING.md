@@ -1,7 +1,7 @@
 # Model pricing — the two profiles compared
 
 Per 1M tokens (provider list prices, July 2026). Rows tagged with the `[profiles.*]` role they fill in
-[core/models.toml](../core/models.toml).
+[core/models.yaml](../core/models.yaml).
 
 | Model | Input | Output |
 |-------|------:|-------:|

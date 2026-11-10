@@ -107,7 +107,7 @@ summaries, stored as `DaySummary`/`WeekSummary`, and injected by [core/prompt.py
    lever** — it clamps *lines*, but these digests are a single paragraph (one line), so lowering it (or
    `LUMI_MAX_DAY_ROWS=1`) does nothing; the length lives in the **prompt**, not the row cap.
 2. **Window (code, optional).** `DAY_DAYS` / `WEEK_DAYS` (how many days/weeks are injected) are hardcoded
-   constants, **not** `.env`-tunable today — trimming the count (or exposing `LUMI_DAY_DAYS` / `LUMI_WEEK_DAYS`)
+   constants, **not** settings-tunable at the time — trimming the count (or exposing `LUMI_DAY_DAYS` / `LUMI_WEEK_DAYS`)
    is a small code change that complements the per-day shrink.
 3. **Injection — no change.** `prompt.py` already joins the body to one line and renders `- [date] {body}`,
    so once the body is a gist it's automatically the dated index.
@@ -234,7 +234,7 @@ a tier to **zero**; drop it to **its index**.
 
 ## 7. Sequencing & flags
 
-1. **P5 + P2 + P4 first** — low-risk, mostly authoring/`.env` (`LUMI_SESSION_DAYS`, `LUMI_*_ROWS`,
+1. **P5 + P2 + P4 first** — low-risk, mostly authoring/settings (`LUMI_SESSION_DAYS`, `LUMI_*_ROWS`,
    `LUMI_THOUGHTS_MAX_LINES`), instantly reversible. Banks ~35% with little risk.
 2. **P1 next** — the gist tier; ship with the reconstruction test below.
 3. **`recall(scope=…)` / `recall_facts`** — the one code addition; then **P3** rides on it.
