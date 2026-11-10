@@ -582,18 +582,29 @@ def settings_dir(environ: Mapping[str, str] | None = None, *, repo: Path = _REPO
     return repo
 
 
+def parse_yaml(text: str, name: str) -> Any:
+    """Parse a settings file's text. A syntax error refuses with the problem and its line/column only — never
+    PyYAML's snippet of the line, which in ``secrets.yaml`` is the secret itself (code review #1)."""
+    import yaml
+
+    try:
+        return yaml.safe_load(text)
+    except yaml.MarkedYAMLError as exc:
+        mark = exc.problem_mark or exc.context_mark
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark is not None else ""
+        what = exc.problem or exc.context or "a syntax error"
+        raise SettingsError(f"Lumi settings — {name} is not valid YAML: {what}{where}") from None
+    except yaml.YAMLError:
+        raise SettingsError(f"Lumi settings — {name} is not valid YAML") from None
+
+
 def read_yaml(path: Path) -> dict:
     """A YAML mapping from ``path`` (``{}`` when missing or empty); a parse error or a non-mapping refuses."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
-    import yaml
-
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise SettingsError(f"Lumi settings — {path} is not valid YAML:\n  {exc}") from None
+    data = parse_yaml(text, str(path))
     if data is None:
         return {}
     if not isinstance(data, dict):
@@ -1065,7 +1076,6 @@ def set_in_text(text: str, key: str, value: Any) -> str:
     """``text`` with ``key`` set to ``value`` — only that line changes (or one line is added to its group, or the
     group is appended); every other line and comment stays. Verified by re-parsing; a file whose shape the line
     edit can't handle (an inline ``group: {…}``) is rewritten whole from its parsed content instead."""
-    import yaml
 
     group, leaf = key.split(".", 1)
     scalar = yaml_scalar(value)
@@ -1085,12 +1095,12 @@ def set_in_text(text: str, key: str, value: Any) -> str:
             lines.insert(last + 1, f"  {leaf}: {scalar}")
     new = "\n".join(lines) + "\n"
     try:
-        ok = flatten(yaml.safe_load(new) or {}).get(key, object()) == value
-    except yaml.YAMLError:
+        ok = flatten(parse_yaml(new, "the edited file") or {}).get(key, object()) == value
+    except SettingsError:
         ok = False
     if ok:
         return new
-    data = flatten({k: v for k, v in (yaml.safe_load(text) or {}).items() if k not in STRUCTURED})
+    data = flatten({k: v for k, v in (parse_yaml(text, "the file") or {}).items() if k not in STRUCTURED})
     data[key] = value
     header_lines = "".join(line + "\n" for line in text.splitlines() if line.startswith("#")) or "# Lumi settings\n"
     return render_file(data, header_lines)

@@ -379,3 +379,24 @@ def test_the_core_passes_the_settings_gemini_key_to_image_and_web(tmp_path, monk
     cfg = _load(tmp_path)
     core = build_core(config=cfg, llm=MockLLMClient(), repository=JsonRepository(tmp_path / "s.json"))
     assert core._gemini_api_key == "g-yaml"
+
+
+# --- v2.9 code review ----------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text", [
+    "providers:\n  anthropic_api_key: sk-ant-LEAK123: oops\n",       # a colon in an unquoted value
+    "providers:\n  anthropic_api_key: \"sk-ant-LEAK123\n",             # an unclosed quote
+    "providers:\n  anthropic_api_key: [sk-ant-LEAK123\n",             # an unclosed flow list
+])
+def test_review_1_a_yaml_error_never_shows_the_secret_line(tmp_path, text):
+    _write(tmp_path, "secrets.yaml", text, 0o600)
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "not valid YAML" in str(err.value) and "line " in str(err.value)
+    assert "LEAK123" not in str(err.value)
+    problems, _ = st.check_folder(tmp_path)  # lumi-cli config validate
+    assert problems and all("LEAK123" not in p for p in problems)
+    with pytest.raises(st.SettingsError) as err:  # lumi-cli config set on the broken file: no raw traceback
+        st.set_value(tmp_path, "server.token", "new")
+    assert "LEAK123" not in str(err.value)
