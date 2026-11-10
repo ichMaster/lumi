@@ -146,3 +146,14 @@ def test_the_round_trip_catches_a_difference(monkeypatch):
     # a broken renderer (it drops a setting) must be refused before anything is written
     assert mig.round_trip("LUMI_MEMORY_WINDOW=30\n", "memory:\n  window: 31\n", "") == ["memory_window"]
     assert mig.round_trip("LUMI_MEMORY_WINDOW=30\n", "memory:\n  window: 30\n", "") == []
+
+
+
+def test_review_9_the_migrated_env_is_private_and_unknown_keys_are_said_to_stop_applying(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(DOTENV, encoding="utf-8")
+    env.chmod(0o644)  # the Mac dev tree's .env was world-readable
+    code, out, err, _ = _run(tmp_path, "--apply")
+    assert code == 0, err
+    assert stat.S_IMODE((tmp_path / ".env.migrated").stat().st_mode) == 0o600
+    assert "no longer apply" in out and "LUMI_SOMETHING_OLD" in out

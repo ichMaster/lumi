@@ -156,10 +156,11 @@ def main(argv: list[str] | None = None, out=None, err=None) -> int:
     for key in p.secret:
         print(f"#   {key}  ← {st.BY_KEY[key].alias}", file=out)
     if p.unknown:
-        print(f"\nunknown keys (not migrated, kept in {MIGRATED}): " + ", ".join(sorted(p.unknown)), file=out)
+        print(f"\nunknown keys — NOT migrated: they no longer apply (kept for reference in {MIGRATED}): "
+              + ", ".join(sorted(p.unknown)), file=out)
     if p.env_only:
-        print("environment-only names (not settings, kept in .env.migrated): " + ", ".join(sorted(p.env_only)),
-              file=out)
+        print(f"environment-only names — not settings, so no file applies them any more (set them in the environment "
+              f"if you need them; kept for reference in {MIGRATED}): " + ", ".join(sorted(p.env_only)), file=out)
     if p.empty:
         print("set to nothing (left unset — the default): " + ", ".join(sorted(p.empty)), file=out)
     print("\nround-trip: the new files load to the same configuration as the .env ✓", file=out)
@@ -170,6 +171,7 @@ def main(argv: list[str] | None = None, out=None, err=None) -> int:
     (target / st.SETTINGS_FILE).write_text(settings_text, encoding="utf-8")
     st.write_private(target / st.SECRETS_FILE, secrets_text)
     shutil.move(str(source), str(source.parent / MIGRATED))
+    os.chmod(source.parent / MIGRATED, 0o600)  # it holds every secret, whatever mode the .env had (code review #9)
     print(f"wrote {target / st.SETTINGS_FILE} + {target / st.SECRETS_FILE} (0600); "
           f"{source.name} → {MIGRATED}", file=out)
     return 0
