@@ -512,3 +512,10 @@ def test_review_12_the_modes_after_an_atomic_write(tmp_path):
     (tmp_path / "settings.yaml").chmod(0o640)
     st.set_value(tmp_path, "memory.window", "31")
     assert stat.S_IMODE((tmp_path / "settings.yaml").stat().st_mode) == 0o640  # an existing mode is kept
+
+
+
+def test_review_14_a_missing_settings_folder_is_named(tmp_path):
+    res = st.resolve({"LUMI_SETTINGS_DIR": str(tmp_path / "typo")})
+    assert any("LUMI_SETTINGS_DIR" in w and "does not exist" in w for w in res.warnings)
+    assert not st.resolve({"LUMI_SETTINGS_DIR": str(tmp_path)}).warnings  # an existing (empty) folder is fine

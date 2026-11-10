@@ -853,8 +853,11 @@ def resolve(environ: Mapping[str, str] | None = None, *, folder: Path | None = N
         res.sources = {k: "env" for k in env if k in BY_ALIAS}
         _apply_old_names(res, [(env, "env")])
         return res
+    explicit = folder is None and bool((environ.get(SETTINGS_DIR_ENV) or "").strip())
     folder = settings_dir(environ) if folder is None else Path(folder)
     res = Resolution(folder=folder)
+    if explicit and not folder.is_dir():  # a typo'd folder would otherwise give the defaults silently (review #14)
+        res.warnings.append(f"{SETTINGS_DIR_ENV}={folder} does not exist — no settings file is read")
     dotenv = read_dotenv(folder / DOTENV_FILE)
     if dotenv:
         res.warnings.append(
