@@ -57,7 +57,7 @@ def _client_from_config(cfg: Any) -> Any:
     )
 
     if not cfg.server_token:
-        raise SystemExit("LUMI_SERVER_TOKEN is not set — the CLI uses the server's token from .env.")
+        raise SystemExit("server.token is not set (secrets.yaml, or LUMI_SERVER_TOKEN) — the CLI uses the server's token.")
     return RemoteCore(server_url(cfg), cfg.server_token)
 
 

@@ -28,13 +28,13 @@ def main() -> int:
     print("allowlist:       ", cfg.telegram_allowlist or "(EMPTY — nobody is served)")
 
     if not token or placeholder:
-        print("\n✗ Set LUMI_TELEGRAM_TOKEN in .env (from @BotFather).")
+        print("\n✗ Set telegram.token in secrets.yaml (from @BotFather).")
         return 1
     if not _TOKEN_RE.match(token):
         print("\n✗ Token doesn't look like a BotFather token (123456789:AA...). Re-copy it.")
         return 1
     if not cfg.telegram_allowlist:
-        print("\n✗ Set LUMI_TELEGRAM_ALLOWLIST in .env (your @userinfobot id).")
+        print("\n✗ Set telegram.allowlist in settings.yaml (your @userinfobot id).")
         return 1
 
     async def _getme() -> int:

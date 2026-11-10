@@ -104,7 +104,7 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
     if not cfg.telegram_allowlist:
         raise SystemExit("LUMI_TELEGRAM_ALLOWLIST is empty — refusing to serve everyone")
 
-    log = get_logger("inbound", cfg.inbox_path.parent)
+    log = get_logger("inbound", cfg.inbox_path.parent, level=cfg.log_level)
     allow = set(cfg.telegram_allowlist)
     inbound = Inbound(cfg.inbox_path, allow)
     bot = Bot(cfg.telegram_token)
