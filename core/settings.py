@@ -932,3 +932,84 @@ _OVERRIDES_EXAMPLE = """
 #     at: "19:00"         # quote every time: YAML reads an unquoted 19:00 as a number
 #     topic: "прогулянка"
 #     enabled: true"""
+
+
+# --- the migration's and the CLI's file form ------------------------------------------------------------------
+
+
+def from_env(s: Setting, raw: str) -> Any:
+    """An env-string value (a ``.env`` line) → its typed YAML value, mirroring how ``load_config`` reads it.
+
+    The result still goes through :func:`problem`; a value ``load_config`` would have crashed on (``int("x")``)
+    comes back as the raw string, so the validator names it."""
+    text = raw.strip()
+    t = s.type
+    if t == "bool":
+        return text.lower() in _TRUE_WORDS
+    if t == "int":
+        try:
+            return int(text)
+        except ValueError:
+            return text
+    if t == "float":
+        try:
+            return float(text)
+        except ValueError:
+            return text
+    if t == "probability":  # load_config's _parse_probability: on → 1, a number clamped, off/junk → 0
+        word = text.lower()
+        if word in _TRUE_WORDS:
+            return 1.0
+        if word in _FALSE_WORDS or not word:
+            return 0.0
+        try:
+            return max(0.0, min(1.0, float(word)))
+        except ValueError:
+            return text
+    if t == "enum":
+        for choice in s.choices:
+            if text.lower() == choice.lower():
+                return choice
+        return text
+    if t == "list":
+        return [part.strip() for part in text.split(",") if part.strip()]
+    if t == "ids":
+        parts = [part.strip() for part in text.split(",") if part.strip()]
+        return [int(p) for p in parts] if all(p.lstrip("-").isdigit() for p in parts) else text
+    if t == "hours":
+        return "off" if text.lower() in ("", "off", "none") else text
+    return text  # str / path / duration
+
+
+def yaml_scalar(value: Any) -> str:
+    """One value as a single-line YAML scalar or flow list (``true``, ``40``, ``[uk, en]``, ``'23-7'``)."""
+    import yaml
+
+    text = yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10**6)
+    return text.removesuffix("\n...\n").strip()
+
+
+def render_file(values: Mapping[str, Any], header: str) -> str:
+    """A settings file from ``group.key → value``: the header, then each group in schema order, its keys in
+    schema order (a key the schema doesn't know goes last in its group)."""
+    order = {s.key: i for i, s in enumerate(SETTINGS)}
+    lines = [header.rstrip("\n")]
+    groups: dict[str, list[str]] = {}
+    for key in sorted(values, key=lambda k: (order.get(k, len(order)), k)):
+        group, _, leaf = key.partition(".")
+        groups.setdefault(group, []).append(f"  {leaf}: {yaml_scalar(values[key])}")
+    for group in sorted(groups, key=lambda g: GROUPS.index(g) if g in GROUPS else len(GROUPS)):
+        lines.append(f"\n{group}:")
+        lines.extend(groups[group])
+    return "\n".join(lines) + "\n"
+
+
+def write_private(path: Path, text: str) -> None:
+    """Create ``path`` with mode ``0600`` from the first byte (no window where it is world-readable); an existing
+    file keeps its inode and is re-chmodded."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, text.encode("utf-8"))
+    finally:
+        os.close(fd)

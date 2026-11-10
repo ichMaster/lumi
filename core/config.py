@@ -316,6 +316,13 @@ def _parse_id_list(raw: str | None) -> tuple[int, ...]:
     return tuple(out)
 
 
+def _csv(value: str | None, default: str) -> str:
+    """A comma list in canonical form (v2.9: spaces around the commas and empty items dropped — every consumer
+    splits and strips anyway, so a ``.env`` and a YAML list load to the same value). Unset/blank → ``default``."""
+    items = [part.strip() for part in (value or "").split(",") if part.strip()]
+    return ",".join(items) if items else default
+
+
 def _parse_bool(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _TRUTHY
 
@@ -881,15 +888,15 @@ def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> C
         tool_max_steps=int(_get("LUMI_TOOL_MAX_STEPS") or 8),
         file_tool_trace=(_get("LUMI_FILE_TOOL_TRACE") or "off").strip().lower() in _TRUTHY,  # off by default
         wiki=(_get("LUMI_WIKI") or "off").strip().lower() in _TRUTHY,  # off by default
-        wiki_lang=_get("LUMI_WIKI_LANG") or "uk,en",
+        wiki_lang=_csv(_get("LUMI_WIKI_LANG"), "uk,en"),
         wiki_base_url=_get("LUMI_WIKI_BASE_URL") or "",
         wiki_max_chars=int(_get("LUMI_WIKI_MAX_CHARS") or 1500),
         wiki_max_calls=int(_get("LUMI_WIKI_MAX_CALLS") or 4),
         news_tool=(_get("LUMI_NEWS_TOOL") or "off").strip().lower() in _TRUTHY,  # off by default
         news_api_key=_get("LUMI_NEWS_API_KEY") or "",
         news_api_url=_get("LUMI_NEWS_API_URL") or "https://content.guardianapis.com",
-        news_sections=_get("LUMI_NEWS_SECTIONS")
-        or "world,politics,business,technology,science,environment,culture,sport",
+        news_sections=_csv(_get("LUMI_NEWS_SECTIONS"),
+                           "world,politics,business,technology,science,environment,culture,sport"),
         news_max_results=int(_get("LUMI_NEWS_MAX_RESULTS") or 8),
         news_max_chars=int(_get("LUMI_NEWS_MAX_CHARS") or 3000),
         news_max_calls=int(_get("LUMI_NEWS_MAX_CALLS") or 4),
@@ -908,7 +915,7 @@ def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> C
         image_model=_get("LUMI_IMAGE_MODEL") or "gemini-2.5-flash-image",
         image_size=int(_get("LUMI_IMAGE_SIZE") or 768),
         image_max_gen=int(_get("LUMI_IMAGE_MAX_GEN") or 2),
-        image_show=_get("LUMI_IMAGE_SHOW") or "path,viewer,telegram",
+        image_show=_csv(_get("LUMI_IMAGE_SHOW"), "path,viewer,telegram"),
         recall=(_get("LUMI_RECALL") or "off").strip().lower() in _TRUTHY,  # v0.16, off by default
         embed_provider=embed_provider,
         embed_model=embed_model,
