@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import signal
@@ -302,6 +303,18 @@ class Agent:
                 continue
         return out
 
+    def _restore_env_for_units(self, instance: str) -> None:
+        """The units' pre-v2.9 checkout reads only ``~/lumi/<i>/.env``; after the v2.9 migration it is
+        ``.env.migrated`` — copy it back (0600) so the way back starts with its settings (code review #5)."""
+        folder = self.home / instance
+        env, migrated = folder / ".env", folder / ".env.migrated"
+        if env.exists() or not migrated.is_file():
+            return
+        fd = os.open(env, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(migrated.read_bytes())
+        self.log(f"{instance}: .env restored from .env.migrated for the v2.6 units (their code reads only .env)")
+
     def unmigrated(self, instance: str) -> list[str]:
         """The v2.9 files compose mounts that ``instance`` lacks — a deploy never starts without them."""
         return [name for name in SETTINGS_FILES if not (self.home / instance / name).is_file()]
@@ -365,6 +378,7 @@ class Agent:
     def _to_units(self, instance: str, side: dict, leaving: str) -> bool:
         """Back to the v2.6 units — the way back from a first container deploy: the containers go, the units start
         on their checkout, which still holds the code they ran."""
+        self._restore_env_for_units(instance)
         down = self._do(instance, self._compose(instance, leaving, "down"))
         up = self._do(instance, ["systemctl", "--user", "enable", "--now", *_units(instance)])
         side["runs"] = "units"
