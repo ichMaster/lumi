@@ -397,7 +397,13 @@ class Agent:
     # the smoke
     def _smoke(self, instance: str, side: dict, ref: str, expected_version: str, since: str) -> list[str]:
         env = self._env(instance)
-        host, port = env.get("LUMI_SERVER_HOST", "127.0.0.1"), env.get("LUMI_SERVER_PORT", "8765")
+        # where compose publishes it (code review #13): the instance's compose parameters, over its settings
+        try:
+            params = parse_env((self.dir / "compose" / f"{instance}.env").read_text(encoding="utf-8"))
+        except OSError:
+            params = {}
+        host = params.get("LUMI_PUBLISH_HOST") or env.get("LUMI_SERVER_HOST", "127.0.0.1")
+        port = params.get("LUMI_SERVER_PORT") or env.get("LUMI_SERVER_PORT", "8765")
         base = f"http://{host}:{port}/v1"
         waited, health = 0.0, None
         while waited <= HEALTH_WAIT_S:

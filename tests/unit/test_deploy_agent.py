@@ -876,3 +876,16 @@ def test_review_5_an_existing_env_is_never_overwritten(world):
     env.write_text("LUMI_ENV=prod\n# hand-made\n")
     agent.rollback("prod")
     assert env.read_text() == "LUMI_ENV=prod\n# hand-made\n"
+
+
+
+def test_review_13_the_smoke_dials_where_compose_publishes(world):
+    world.tags = ["v2.7.0", "v2.8.0"]
+    compose = world.home / "deploy" / "compose"
+    compose.mkdir(parents=True, exist_ok=True)
+    (compose / "prod.env").write_text("LUMI_INSTANCE=prod\nLUMI_PUBLISH_HOST=192.168.1.197\nLUMI_SERVER_PORT=8765\n")
+    (world.home / "prod" / "settings.yaml").write_text("server:\n  host: 127.0.0.1\n  port: 9999\n")  # stale
+    agent, _ = _agent(world)
+    agent.confirm("v2.8.0")
+    assert any(url.startswith("http://192.168.1.197:8765/v1/") for url, _ in world.urls)
+    assert not any(":9999/" in url for url, _ in world.urls)
