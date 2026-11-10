@@ -149,6 +149,10 @@ activemq-data/
 
 # Environments
 .env
+.env.migrated
+# v2.9: an instance's settings + secrets (the dev tree keeps both at the repo root)
+settings.yaml
+secrets.yaml
 .env_back*
 .env_bak*
 .env.bak*

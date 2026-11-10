@@ -55,7 +55,8 @@ def test_it_checks_its_health_and_serves_by_default():
     assert _instructions()[-1] == 'CMD ["python", "-m", "server"]'
 
 
-@pytest.mark.parametrize("path", [".git", ".env", ".env.*", ".lumi", ".venv", "tests"])
+@pytest.mark.parametrize("path", [".git", ".env", ".env.*", ".lumi", ".venv", "tests",
+                                  "settings.yaml", "secrets.yaml"])  # v2.9: an instance's settings + keys
 def test_nothing_secret_or_lived_enters_the_build_context(path):
     assert path in IGNORED
 

@@ -8,12 +8,14 @@ import pytest
 from scripts.prod_update import (
     backup_name,
     env_keys,
+    example_aliases,
     main,
     new_unset_keys,
     pids_working_in,
     prod_processes,
     set_keys,
     valid_tag,
+    yaml_set_keys,
 )
 
 
@@ -147,3 +149,49 @@ def test_a_shell_sitting_in_app_is_not_prod(tmp_path):
     ]
     found = prod_processes(lines, home, cwd_pids={"301", "302", "303", "304", "305", "306"})
     assert [f.split()[0] for f in found] == ["304", "305", "306"]
+
+
+# --- v2.9 (LUMI-245): the generated YAML examples replace .env.example -----------------------------------------
+
+YAML_EXAMPLE = """# Lumi settings — GENERATED
+memory:
+  # Recent messages kept verbatim in context. · an integer ≥ 1 · env LUMI_MEMORY_WINDOW
+  # window: 40
+  # Inject the identity-core facts section. · env LUMI_FACTS
+  # facts: true
+
+server:
+  # The client token. · env LUMI_SERVER_TOKEN
+  # token:
+"""
+
+
+def test_env_keys_reads_the_env_names_of_a_yaml_example():
+    assert env_keys(YAML_EXAMPLE) == {"LUMI_MEMORY_WINDOW", "LUMI_FACTS", "LUMI_SERVER_TOKEN"}
+
+
+def test_example_aliases_pairs_each_key_with_its_env_name():
+    assert example_aliases(YAML_EXAMPLE) == {
+        "memory.window": "LUMI_MEMORY_WINDOW", "memory.facts": "LUMI_FACTS", "server.token": "LUMI_SERVER_TOKEN",
+    }
+
+
+def test_yaml_set_keys_names_only_the_uncommented_settings():
+    instance = "memory:\n  window: 30\n  # facts: false\nserver:\n  token: t\n"
+    assert yaml_set_keys(instance, example_aliases(YAML_EXAMPLE)) == {"LUMI_MEMORY_WINDOW", "LUMI_SERVER_TOKEN"}
+
+
+def test_the_transition_release_compares_env_example_names_with_yaml_names():
+    # the old tag has .env.example, the new one the YAML examples: only a truly new name is flagged
+    old = "# LUMI_MEMORY_WINDOW=40\nANTHROPIC_API_KEY=\n"
+    assert new_unset_keys(old, YAML_EXAMPLE, "LUMI_SERVER_TOKEN=x\n") == ["LUMI_FACTS"]
+
+
+def test_the_real_examples_document_every_setting():
+    from core.settings import SETTINGS
+
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "settings.example.yaml").read_text(encoding="utf-8") + (
+        root / "secrets.example.yaml").read_text(encoding="utf-8")
+    assert env_keys(text) == {s.alias for s in SETTINGS}  # an old name (GOOGLE_API_KEY) is a note, not a setting
+    assert set(example_aliases(text).values()) == {s.alias for s in SETTINGS}

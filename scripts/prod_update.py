@@ -4,14 +4,15 @@ The prod home (see docs/PROD_SETUP.md)::
 
     ~/lumi/prod/
       app/        a git checkout at a release tag (its uv venv at app/.venv)
-      .env        LUMI_HOME=~/lumi/prod/data, LUMI_ENV=prod, the keys — never edited by this script
+      settings.yaml + secrets.yaml   (v2.9; .env before) instance.home, instance.env, the keys — never edited here
       data/       her memory — only ever READ here (into the backup tarball)
       backups/    data-<YYYYmmdd-HHMM>-<old-tag>.tar.gz, one per update
 
 Steps: refuse while prod processes run (the SQLite store is in WAL mode — a live backup isn't safe) →
 fetch tags + validate the target → tar-backup data/ → checkout the tag → ``uv sync --frozen
---all-extras`` → print the running tag → warn about .env keys that are NEW in this release's
-.env.example and not set in the prod .env (keys only — the file is never touched).
+--all-extras`` → print the running tag → warn about settings that are NEW in this release's example
+files (``settings.example.yaml`` / ``secrets.example.yaml``; ``.env.example`` before v2.9) and not set by the
+instance (its ``settings.yaml`` / ``secrets.yaml`` / ``.env`` — names only, the files are never touched).
 
 Usage:
     python3 scripts/prod_update.py --tag v2.1.0 [--home ~/lumi/prod] [--dry-run]
@@ -34,6 +35,12 @@ from pathlib import Path
 DEFAULT_HOME = Path("~/lumi/prod")
 _TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
 _KEY_RE = re.compile(r"^\s*#?\s*([A-Z][A-Z0-9_]*)\s*=")
+_ENV_TOKEN_RE = re.compile(r"·\s*env\s+([A-Z][A-Z0-9_]*)")  # the generated YAML examples' `· env NAME` comments
+_GROUP_RE = re.compile(r"^([a-z][a-z0-9_]*):\s*$")
+_EXAMPLE_KEY_RE = re.compile(r"^\s+#\s+([a-z][a-z0-9_]*):")
+_YAML_KEY_RE = re.compile(r"^\s+([a-z][a-z0-9_]*):")
+EXAMPLE_FILES = ("settings.example.yaml", "secrets.example.yaml")
+INSTANCE_YAML = ("settings.yaml", "secrets.yaml")
 
 
 # --- pure helpers (unit-tested) ---------------------------------------------------------------------
@@ -50,8 +57,39 @@ def backup_name(now: datetime, old_tag: str | None) -> str:
 
 
 def env_keys(text: str) -> set[str]:
-    """Every variable NAME in a dotenv text — set (``KEY=``) or documented-but-commented (``# KEY=``)."""
-    return {m.group(1) for line in text.splitlines() if (m := _KEY_RE.match(line))}
+    """Every variable NAME an example documents: a dotenv's ``KEY=`` / ``# KEY=`` lines, or (v2.9) the
+    ``· env NAME`` comments of the generated YAML examples."""
+    names = {m.group(1) for line in text.splitlines() if (m := _KEY_RE.match(line))}
+    return names | set(_ENV_TOKEN_RE.findall(text))
+
+
+def example_aliases(text: str) -> dict[str, str]:
+    """``group.key`` → env NAME, read from a generated YAML example (each key line follows its comment)."""
+    out: dict[str, str] = {}
+    group, alias = "", None
+    for line in text.splitlines():
+        if m := _GROUP_RE.match(line):
+            group, alias = m.group(1), None
+        elif m := _ENV_TOKEN_RE.search(line):
+            alias = m.group(1)
+        elif (m := _EXAMPLE_KEY_RE.match(line)) and alias and group:
+            out[f"{group}.{m.group(1)}"] = alias
+            alias = None
+    return out
+
+
+def yaml_set_keys(text: str, aliases: dict[str, str]) -> set[str]:
+    """The env NAMEs an instance's ``settings.yaml`` / ``secrets.yaml`` sets (uncommented ``group:`` → ``key:``)."""
+    out: set[str] = set()
+    group = ""
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        if m := _GROUP_RE.match(line):
+            group = m.group(1)
+        elif (m := _YAML_KEY_RE.match(line)) and group and f"{group}.{m.group(1)}" in aliases:
+            out.add(aliases[f"{group}.{m.group(1)}"])
+    return out
 
 
 def set_keys(text: str) -> set[str]:
@@ -60,7 +98,8 @@ def set_keys(text: str) -> set[str]:
 
 
 def new_unset_keys(old_example: str, new_example: str, prod_env: str) -> list[str]:
-    """Keys this release ADDS to .env.example that the prod .env doesn't set — the "check these" list."""
+    """Names this release ADDS to its examples that the instance doesn't set — the "check these" list.
+    ``prod_env`` is the instance's set names as text (its ``.env``) or already-known names joined by newlines."""
     return sorted(env_keys(new_example) - env_keys(old_example) - set_keys(prod_env))
 
 
@@ -160,7 +199,7 @@ def main(argv: list[str] | None = None) -> None:
         f"backup {data} → {backups / backup_name(datetime.now(), old_tag)}",
         f"checkout {args.tag} (was {old_tag or 'untagged'})",
         "uv sync --frozen --all-extras",
-        "warn about .env keys new in this release",
+        "warn about settings new in this release",
     ]
     if args.dry_run:
         print("prod_update (dry run):\n  " + "\n  ".join(f"{i}. {s}" for i, s in enumerate(plan, 1)))
@@ -170,7 +209,8 @@ def main(argv: list[str] | None = None) -> None:
     _git(app, "fetch", "--tags", "--quiet")
     if _git(app, "rev-parse", "--verify", "--quiet", f"refs/tags/{args.tag}", check=False).returncode != 0:
         _die(f"unknown tag {args.tag} — nothing changed")
-    old_example = _git(app, "show", "HEAD:.env.example", check=False).stdout
+    old_example = "\n".join(_git(app, "show", f"HEAD:{name}", check=False).stdout
+                            for name in (*EXAMPLE_FILES, ".env.example"))
 
     # 3. backup (data/ is only read)
     if data.exists():
@@ -192,13 +232,18 @@ def main(argv: list[str] | None = None) -> None:
     print(f"prod now runs {_current_tag(app) or 'an UNTAGGED commit (?)'}")
 
     # 7. config is the owner's: only point at what's new
-    new_example = (app / ".env.example").read_text(encoding="utf-8") if (app / ".env.example").exists() else ""
+    new_example = "\n".join((app / name).read_text(encoding="utf-8")
+                            for name in (*EXAMPLE_FILES, ".env.example") if (app / name).exists())
     prod_env = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
-    if not env_file.exists():
-        print(f"WARNING: {env_file} is missing — prod needs LUMI_HOME, LUMI_ENV=prod and the keys")
+    aliases = example_aliases(new_example)
+    for name in INSTANCE_YAML:  # v2.9: the instance's YAML files, as KEY= lines for set_keys
+        if (home / name).exists():
+            prod_env += "".join(f"\n{n}=" for n in yaml_set_keys((home / name).read_text(encoding="utf-8"), aliases))
+    if not env_file.exists() and not any((home / name).exists() for name in INSTANCE_YAML):
+        print(f"WARNING: no settings in {home} — prod needs instance.home, instance.env=prod and the keys")
     fresh = new_unset_keys(old_example, new_example, prod_env)
     if fresh:
-        print("New in this release's .env.example and not set in the prod .env (add the ones you need):")
+        print("New in this release's settings examples and not set by prod (add the ones you need):")
         print("  " + ", ".join(fresh))
 
 

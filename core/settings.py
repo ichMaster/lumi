@@ -114,7 +114,7 @@ SETTINGS: tuple[Setting, ...] = (
        "The server's bind address (loopback, a LAN or Tailscale IP); on a client, the server it dials."),
     _s("LUMI_SERVER_PORT", "server.port", "int", 8765, "One port per instance (prod 8765, dev 8766).",
        min=1, max=65535),
-    _secret("LUMI_SERVER_TOKEN", "server.token", "The client token — required to serve; never logged."),
+    _secret("LUMI_SERVER_TOKEN", "server.token", "The client token — required to serve; never logged. Make one: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"."),
     _s("LUMI_SERVER", "server.client_mode", "bool", False,
        "The TUI runs as a client of that server (no core in-process)."),
     # --- model ----------------------------------------------------------------------------------------------
@@ -158,13 +158,13 @@ SETTINGS: tuple[Setting, ...] = (
     _s("LUMI_GEMINI_CACHE_TTL", "model.gemini_cache_ttl", "duration", None,
        "Gemini explicit-cache lifetime (e.g. 5h). Unset → the prompt-cache TTL."),
     # --- providers (secrets) --------------------------------------------------------------------------------
-    _secret("ANTHROPIC_API_KEY", "providers.anthropic_api_key", "The Anthropic (Claude) key."),
-    _secret("OPENAI_API_KEY", "providers.openai_api_key", "The OpenAI key (also the OpenAI embedder)."),
-    _secret("DEEPSEEK_API_KEY", "providers.deepseek_api_key", "The DeepSeek key."),
-    _secret("MINIMAX_API_KEY", "providers.minimax_api_key", "The MiniMax key."),
+    _secret("ANTHROPIC_API_KEY", "providers.anthropic_api_key", "The Anthropic (Claude) key — console.anthropic.com."),
+    _secret("OPENAI_API_KEY", "providers.openai_api_key", "The OpenAI key (also the OpenAI embedder) — platform.openai.com."),
+    _secret("DEEPSEEK_API_KEY", "providers.deepseek_api_key", "The DeepSeek key — platform.deepseek.com."),
+    _secret("MINIMAX_API_KEY", "providers.minimax_api_key", "The MiniMax key — the MiniMax console."),
     _secret("GEMINI_API_KEY", "providers.gemini_api_key",
-            "The Google Gemini key — the engine, image generation and web lookup.", old=("GOOGLE_API_KEY",)),
-    _secret("VOYAGE_API_KEY", "providers.voyage_api_key", "The Voyage key (the cloud embedder)."),
+            "The Google Gemini key — the engine, image generation and web lookup — aistudio.google.com.", old=("GOOGLE_API_KEY",)),
+    _secret("VOYAGE_API_KEY", "providers.voyage_api_key", "The Voyage key (the cloud embedder) — dash.voyageai.com."),
     # --- persona ---------------------------------------------------------------------------------------------
     _s("LUMI_CANON_PATH", "persona.canon_path", "path", None, "Her canon file. Unset → core/canon/lili.md."),
     _s("LUMI_STYLES_PATH", "persona.styles_path", "path", None, "The answer-style palette. Unset → core/styles.md."),
@@ -314,10 +314,10 @@ SETTINGS: tuple[Setting, ...] = (
     _s("LUMI_FILE_FIND_MAX", "files.find_max", "int", 50, "Max matches find_in_file returns.", min=1),
     _s("LUMI_FILE_WRITE_MAX", "files.write_max", "int", 65536, "Max bytes of one create/append.", min=1),
     _s("LUMI_FILE_COPY_MAX", "files.copy_max", "int", 5 * 1024 * 1024, "Max source bytes for one copy_file.", min=1),
-    _s("LUMI_FILE_SEARCH_MAX_FILES", "files.search_max_files", "int", 200, "search_files: max files.", min=1),
-    _s("LUMI_FILE_SEARCH_MAX_LINES", "files.search_max_lines", "int", 100, "search_files: max matching lines.", min=1),
-    _s("LUMI_FILE_SEARCH_MAX_CHARS", "files.search_max_chars", "int", 4000, "search_files: output char budget.", min=1),
-    _s("LUMI_FILE_AROUND_MAX_K", "files.around_max_k", "int", 50, "read_around: max K lines each side.", min=0),
+    _s("LUMI_FILE_SEARCH_MAX_FILES", "files.search_max_files", "int", 200, "Max files search_files scans.", min=1),
+    _s("LUMI_FILE_SEARCH_MAX_LINES", "files.search_max_lines", "int", 100, "Max matching lines search_files returns.", min=1),
+    _s("LUMI_FILE_SEARCH_MAX_CHARS", "files.search_max_chars", "int", 4000, "The output char budget of search_files.", min=1),
+    _s("LUMI_FILE_AROUND_MAX_K", "files.around_max_k", "int", 50, "Max K lines each side of a read_around anchor.", min=0),
     _s("LUMI_FILE_DATE_MAX_DAYS", "files.date_max_days", "int", 366, "list_files date-range span cap (days).", min=1),
     _s("LUMI_FILE_TOOL_TRACE", "files.trace", "bool", False, "Show the file tools used each turn."),
     # --- wiki -----------------------------------------------------------------------------------------------
@@ -328,7 +328,7 @@ SETTINGS: tuple[Setting, ...] = (
     _s("LUMI_WIKI_MAX_CALLS", "wiki.max_calls", "int", 4, "Per-turn wiki call cap.", min=0),
     # --- news (the Guardian tool) ----------------------------------------------------------------------------
     _s("LUMI_NEWS_TOOL", "news.enabled", "bool", False, "The Guardian news tool."),
-    _secret("LUMI_NEWS_API_KEY", "news.api_key", "The Guardian developer key."),
+    _secret("LUMI_NEWS_API_KEY", "news.api_key", "The Guardian developer key — open-platform.theguardian.com."),
     _s("LUMI_NEWS_API_URL", "news.api_url", "str", "https://content.guardianapis.com", "The Guardian API base."),
     _s("LUMI_NEWS_SECTIONS", "news.sections", "list",
        ["world", "politics", "business", "technology", "science", "environment", "culture", "sport"],
@@ -371,7 +371,7 @@ SETTINGS: tuple[Setting, ...] = (
     _s("LUMI_TELEGRAM_STT", "telegram.stt", "bool", False, "Transcribe inbound voice messages."),
     # --- voice ----------------------------------------------------------------------------------------------
     _s("LUMI_VOICE", "voice.enabled", "bool", False, "The TUI writes the outbox for the voicer."),
-    _secret("ELEVENLABS_API_KEY", "voice.elevenlabs_api_key", "The ElevenLabs key (TTS, Scribe STT)."),
+    _secret("ELEVENLABS_API_KEY", "voice.elevenlabs_api_key", "The ElevenLabs key (TTS, Scribe STT) — elevenlabs.io."),
     _s("LUMI_VOICE_ID", "voice.voice_id", "str", None, "The ElevenLabs voice to speak in."),
     _s("LUMI_VOICE_MODEL", "voice.model", "str", "eleven_multilingual_v2", "The ElevenLabs model."),
     _s("LUMI_VOICE_SKIP_MISSED", "voice.skip_missed", "bool", False,
@@ -392,7 +392,7 @@ SETTINGS: tuple[Setting, ...] = (
     _s("LUMI_STT_LANG", "dictation.stt_lang", "str", "uk", "The recognition language."),
     _s("LUMI_STT_DEVICE", "dictation.stt_device", "str", None, "The mic: an index or a name substring."),
     _s("LUMI_LISTEN_FLAG", "dictation.listen_flag", "path", None, "The listen toggle. Unset → <data root>/listen.flag."),
-    _secret("DEEPGRAM_API_KEY", "dictation.deepgram_api_key", "The Deepgram key (cloud STT)."),
+    _secret("DEEPGRAM_API_KEY", "dictation.deepgram_api_key", "The Deepgram key (cloud STT) — console.deepgram.com."),
     # --- tui ------------------------------------------------------------------------------------------------
     _s("LUMI_SOUND", "tui.sound", "bool", False, "The send/receive sound."),
     _s("LUMI_INPUT_BUFFER", "tui.input_buffer", "bool", False, "Keep the input editable during a turn (queued)."),
@@ -604,6 +604,8 @@ def flatten(data: Mapping, prefix: str = "") -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name, value in data.items():
         key = f"{prefix}{name}"
+        if value is None and not prefix and key in GROUPS:
+            continue  # a group header whose lines are all commented out (the example files' shape)
         if isinstance(value, dict) and key not in BY_KEY:
             out.update(flatten(value, key + "."))
         else:
@@ -755,3 +757,63 @@ def warn_once(res: Resolution, stream=None) -> None:
         if w not in _WARNED:
             _WARNED.add(w)
             print(f"WARNING (settings): {w}", file=stream)
+
+
+# --- the example files (scripts/settings_examples.py writes them; the schema contract test compares) -----------
+
+_HEADERS = {
+    False: (
+        "# Lumi settings — every non-secret setting of an instance (v2.9). GENERATED from core/settings.py by\n"
+        "# `python scripts/settings_examples.py` — do not edit by hand.\n"
+        "#\n"
+        "# Copy the lines you change into settings.yaml (gitignored, next to secrets.yaml). Every line here is\n"
+        "# commented out at its built-in default, so a copy of this file changes nothing until you uncomment one.\n"
+        "# Precedence: the default < .env (deprecated) < settings.yaml / secrets.yaml < the process environment\n"
+        "# (the `env` name on each line). `lumi-cli config set <group.key> <value>` validates and writes a change;\n"
+        "# every setting takes effect after a restart.\n"
+    ),
+    True: (
+        "# Lumi secrets — the API keys and tokens of an instance (v2.9). GENERATED from core/settings.py by\n"
+        "# `python scripts/settings_examples.py` — do not edit by hand.\n"
+        "#\n"
+        "# Copy to secrets.yaml (gitignored) and `chmod 600 secrets.yaml`; fill in only the keys you use (the active\n"
+        "# provider's, the bot token, the server token). Never commit a real key. `lumi-cli config` masks every\n"
+        "# secret on every output; `lumi-cli config set <group.key> <value>` writes one here.\n"
+    ),
+}
+
+
+def _yaml_value(key: str, value: Any) -> str:
+    import yaml
+
+    leaf = key.rsplit(".", 1)[1]
+    if value is None:
+        return f"{leaf}:"
+    text = yaml.safe_dump(value, default_flow_style=True, allow_unicode=True, width=10**6)
+    return f"{leaf}: {text.removesuffix(chr(10) + '...' + chr(10)).strip()}"
+
+
+def _comment(s: Setting) -> str:
+    parts = [s.description]
+    if s.choices or s.min is not None or s.max is not None or s.type in (
+            "hours", "duration", "probability", "ids", "list"):
+        parts.append(_allowed(s))
+    parts.append(f"env {s.alias}")
+    if s.old:
+        parts.append("formerly " + ", ".join(s.old))
+    return " · ".join(parts)
+
+
+def render_example(*, secret: bool) -> str:
+    """``settings.example.yaml`` (``secret=False``) or ``secrets.example.yaml`` — every setting of that kind, by
+    group in schema order, commented out at its default with its description, allowed values and env name."""
+    out = [_HEADERS[secret].rstrip("\n")]
+    for group in GROUPS:
+        members = [s for s in SETTINGS if s.group == group and s.secret == secret]
+        if not members:
+            continue
+        out.append(f"\n{group}:")
+        for s in members:
+            out.append(f"  # {_comment(s)}")
+            out.append(f"  # {_yaml_value(s.key, None if secret else s.default)}")
+    return "\n".join(out) + "\n"
