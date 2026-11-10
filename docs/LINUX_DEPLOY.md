@@ -1,4 +1,4 @@
-# Linux deploy — Лілі always on (v2.6–v2.9)
+# Linux deploy — Лілі always on (v2.6–v2.10)
 
 > **Both instances run on the box as Docker containers (v2.8)** — one image (`ghcr.io/ichmaster/lumi`), a compose
 > project per instance, her memory on the host. Dev has run on the box since 2026-10-19, prod since **2026-10-20**
@@ -400,6 +400,46 @@ lumi() {  # lumi <dev|prod> <compose args…> — e.g. `lumi dev ps`, `lumi prod
 **Updates go through the agent** ([§Deploys](#deploys)) — merge into `main` for dev, tag + `confirm` for prod. Never
 `up` another tag by hand while the timer runs: the agent's state would no longer say what runs.
 
+## The admin panel (v2.10)
+
+One panel for both instances — `lumi-admin`, its own compose project (`deploy/admin/`) from the **same image**
+(`python -m admin`). It shows prod and dev side by side (Overview: up/down, version + image, uptime + restarts,
+model, today's mood, turns, tokens and cost, latency, errors, data-root size, the box), eight health checks every
+minute with their history, the containers with start / stop / restart, usage per day / model / kind, and the logs.
+It **never runs the core, never writes a data root** (both instance folders are mounted read-only) and **makes no
+paid call** (only `/v1/health` and `/v1/state` of each server). A prod action asks for the typed confirmation
+`prod`. It holds `docker.sock` — root-equivalent on the box — so it is LAN-only, behind its own token.
+
+**Install** (once — a staged copy of `deploy/admin/` from `main`, like the agent's install):
+
+```bash
+mkdir -p ~/lumi/admin && cd ~/lumi/admin
+stage=$(mktemp -d) && git -C ~/lumi/dev/app fetch -q --tags origin \
+  && git -C ~/lumi/dev/app archive origin/main deploy/admin | tar -x -C "$stage"
+mkdir -p ~/lumi/deploy/admin && cp "$stage"/deploy/admin/* ~/lumi/deploy/admin/ && rm -rf "$stage"
+cp ~/lumi/deploy/admin/admin.example.yaml ~/lumi/admin/admin.yaml          # the registry: prod + dev
+python3 -c "import secrets; print('admin:\n  token: ' + secrets.token_urlsafe(32))" > ~/lumi/admin/secrets.yaml
+chmod 600 ~/lumi/admin/secrets.yaml                                         # the token — never printed
+LUMI_IMAGE_TAG=v2.10.0 docker compose --env-file ~/lumi/deploy/admin/admin.env \
+  -f ~/lumi/deploy/admin/compose.yaml up -d
+sudo ufw allow from 192.168.1.0/24 to any port 8767 proto tcp              # the home subnet only
+```
+
+From the Mac: `http://192.168.1.197:8767`, and paste the token (`ssh slate-server 'cat ~/lumi/admin/secrets.yaml'`
+shows it to you). The page keeps it for the browser tab only (`sessionStorage`).
+
+**Update** to a new release: the same `up -d` with the new `LUMI_IMAGE_TAG` (re-stage `deploy/admin/` first if the
+release changed it). The deploy agent doesn't manage the panel. **Stop:** `docker compose -p lumi-admin down`.
+
+| You see | Meaning | Fix |
+|---|---|---|
+| `docker logs lumi-admin-admin-1`: `admin.token is missing / too short` | no `~/lumi/admin/secrets.yaml` token of 32+ characters | write it as above, `chmod 600`, `up -d` again |
+| `… only prod and dev are panel instances` / `instances.<i>.url` | `admin.yaml` names something else or lacks a field | copy `admin.example.yaml` again |
+| every container `unknown` | the panel can't reach the Docker socket | `DOCKER_GID` in `admin.env` = `getent group docker` (999 on the box) |
+| the `server` check red for a healthy instance | the panel can't reach the instance's published port | `curl` the URL from `admin.yaml` on the box; the instance's `deploy/compose/<i>.env` |
+| the `state` check amber | no `server.token` in the instance's `secrets.yaml` | migrate the instance (§2b) |
+| a 401 in the page | the token was refused | sign out, paste the token again |
+
 ## The way back: the v2.6 units
 
 The units (`deploy/systemd/lumi-*@.service`) stay installed in `~/.config/systemd/user/`, disabled. Right after an
@@ -456,5 +496,5 @@ v2.9 a unit reads `~/lumi/<instance>/settings.yaml` + `secrets.yaml` (the repo's
 - **The containers run as your user** (uid 1000), so her data root stays yours; `init: true` reaps her ffmpeg
   children and passes SIGTERM to Python. Docker's own copy of their stderr is capped at 3 × 10 MB per container;
   her logs live in the data root.
-- Not here yet: the admin panel (**v2.10–v2.11**); TLS, public exposure and the security
+- Not here yet: editing settings from the panel (**v2.11**); TLS, public exposure and the security
   scans (**v4.1**); voice mode, the voicer and dictation beside the server (revisited after v2.6).

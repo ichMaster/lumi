@@ -1,6 +1,7 @@
 # Admin panel — one window onto prod and dev (v2.9–v2.11)
 
-**Status:** planned (owner request, 2026-10-19). Three phases before the pywebview client (now **v2.12**):
+**Status:** v2.9 and v2.10 shipped; v2.11 planned (owner request, 2026-10-19). Three phases before the pywebview
+client (now **v2.12**):
 **v2.9** settings as files → **v2.10** the panel: watch → **v2.11** the panel: configure. Builds on v2.7 (the
 pipelines; prod already on the box since 2026-10-20) and v2.8 (both instances as Docker containers on the box).
 
@@ -60,6 +61,13 @@ keeps its settings. Operator steps: [LINUX_DEPLOY §2b](../../docs/LINUX_DEPLOY.
   masked on every output.
 
 ## v2.10 — The panel: watch
+
+**Status: shipped (v2.10.0).** `admin/` (`python -m admin`, the same image, the `lumi-admin` compose project in
+`deploy/admin/`): the readers (`admin/readers.py`), eight health checks + the minute runner (`admin/health.py`), the
+Docker-API container seam with the prod confirmation (`admin/containers.py`), the API + static page
+(`admin/app.py`, `admin/static/`), the registry + token (`admin/registry.py`), prices from `core/pricing.yaml`. The
+"probe the model now" button is not built yet (an opt-in later). Operator steps:
+[LINUX_DEPLOY §The admin panel](../../docs/LINUX_DEPLOY.md#the-admin-panel-v210).
 
 - **Overview** — per instance: up or down, version (the image tag), uptime and restarts (each container's start
   time and restart count), model and profile, today's mood and theme (and whether the mood completed),

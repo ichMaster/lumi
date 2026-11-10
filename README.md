@@ -479,6 +479,7 @@ Stop the voicer anytime — the chat is unaffected; on restart it resumes from w
 core/    canon, styles, config, llm seam, repository interface, the reply() turn
 tui/     the Textual terminal client (in-process in v0)
 state/   repository implementation + local storage (keyed by user_id)
+admin/   v2.10: the admin panel — one window onto the box's prod and dev (python -m admin, deploy/admin/)
 docs/    implementation references (MEMORY.md, STYLES.md, CANON_SPEC.md)
 tests/   pytest: unit + integration (mock model — no paid APIs)
 ```

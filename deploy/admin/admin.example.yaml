@@ -1,0 +1,12 @@
+# The admin panel's registry (v2.10) — copy to ~/lumi/admin/admin.yaml on the box. Only the box's two instances.
+# root: the instance folder as the panel's container sees it (compose mounts ~/lumi/<i> read-only at /instances/<i>)
+# url: the instance's server as published on the LAN; project: its compose project (deploy/compose/<i>.env)
+instances:
+  prod:
+    root: /instances/prod
+    url: "http://192.168.1.197:8765"
+    project: lumi-prod
+  dev:
+    root: /instances/dev
+    url: "http://192.168.1.197:8766"
+    project: lumi-dev
