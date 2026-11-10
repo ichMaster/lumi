@@ -454,6 +454,8 @@ def _allowed(s: Setting) -> str:
         return "a list of integer ids"
     if s.type == "list":
         return "a list of strings (or one comma-separated string)"
+    if s.type in ("str", "path"):
+        return "text — quote a value that looks like a number (\"0123\"); YAML reads 0123 as 83"
     kind = {"int": "an integer", "float": "a number"}.get(s.type, "text")
     if s.min is not None and s.max is not None:
         return f"{kind} {s.min:g}..{s.max:g}"
@@ -517,9 +519,9 @@ def to_env(s: Setting, value: Any) -> str | None:
                 return choice
         return None
     if t in ("str", "path"):
-        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
-            return None
-        return str(value)
+        # text only: YAML 1.1 reads an unquoted 0123 as the number 83 and 1.10 as 1.1 — the original is lost, so a
+        # number is refused with a hint to quote it (code review #10)
+        return value if isinstance(value, str) else None
     if t in ("list", "ids"):
         items = value if isinstance(value, list) else (value.split(",") if isinstance(value, str) else None)
         if items is None:

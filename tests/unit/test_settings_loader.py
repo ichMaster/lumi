@@ -469,3 +469,21 @@ def test_review_8_new_session_never_re_reads_the_settings_files(tmp_path, monkey
 
     monkeypatch.setattr(tui_app, "load_config", broken)
     asyncio.run(app._refresh_world())  # no SystemExit: it used the config loaded at start
+
+
+
+@pytest.mark.parametrize("yaml_value", ["0123", "4", "1.10"])
+def test_review_10_a_number_for_a_text_setting_is_refused_with_a_quote_hint(tmp_path, yaml_value):
+    _write(tmp_path, "settings.yaml", f"voice:\n  voice_id: {yaml_value}\n")
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "voice.voice_id" in str(err.value) and "quote" in str(err.value)
+    _write(tmp_path, "settings.yaml", f'voice:\n  voice_id: "{yaml_value}"\n')
+    assert _load(tmp_path).voice_id == yaml_value  # quoted, it stays exactly what was written
+
+
+def test_review_10_the_cli_and_the_migration_write_numeric_text_quoted(tmp_path):
+    st.set_value(tmp_path, "dictation.stt_device", "4")
+    assert "stt_device: '4'" in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+    assert _load(tmp_path).stt_device == "4"
+    assert st.render_file({"voice.voice_id": "0123"}, "# h\n").endswith("  voice_id: '0123'\n")
