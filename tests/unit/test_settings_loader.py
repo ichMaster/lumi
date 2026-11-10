@@ -12,6 +12,7 @@ import io
 import logging
 import os
 import re
+import stat
 from dataclasses import fields
 from pathlib import Path
 
@@ -487,3 +488,27 @@ def test_review_10_the_cli_and_the_migration_write_numeric_text_quoted(tmp_path)
     assert "stt_device: '4'" in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
     assert _load(tmp_path).stt_device == "4"
     assert st.render_file({"voice.voice_id": "0123"}, "# h\n").endswith("  voice_id: '0123'\n")
+
+
+
+def test_review_12_a_failed_write_leaves_the_old_file_whole(tmp_path, monkeypatch):
+    path = _write(tmp_path, "secrets.yaml", "server:\n  token: old\n", 0o600)
+
+    def boom(*_a, **_kw):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(st.os, "replace", boom)
+    with pytest.raises(OSError):
+        st.set_value(tmp_path, "server.token", "new")
+    assert path.read_text(encoding="utf-8") == "server:\n  token: old\n"  # never truncated
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["secrets.yaml"]  # no temp file left behind
+
+
+def test_review_12_the_modes_after_an_atomic_write(tmp_path):
+    st.set_value(tmp_path, "server.token", "t")
+    st.set_value(tmp_path, "memory.window", "30")
+    assert stat.S_IMODE((tmp_path / "secrets.yaml").stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / "settings.yaml").stat().st_mode) == 0o644
+    (tmp_path / "settings.yaml").chmod(0o640)
+    st.set_value(tmp_path, "memory.window", "31")
+    assert stat.S_IMODE((tmp_path / "settings.yaml").stat().st_mode) == 0o640  # an existing mode is kept

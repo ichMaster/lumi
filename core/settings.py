@@ -1062,15 +1062,28 @@ def render_file(values: Mapping[str, Any], header: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_private(path: Path, text: str) -> None:
-    """Create ``path`` with mode ``0600`` from the first byte (no window where it is world-readable); an existing
-    file keeps its inode and is re-chmodded."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+def write_atomic(path: Path, text: str, *, private: bool = False) -> None:
+    """Write ``path`` whole or not at all (code review #12): a temp file beside it — ``0600`` from the first byte —
+    fsynced, then ``os.replace``. A secret file ends ``0600``; another keeps its mode (``0644`` when new)."""
+    path = Path(path)
+    mode = 0o600 if private else (stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.fchmod(fd, 0o600)
-        os.write(fd, text.encode("utf-8"))
-    finally:
-        os.close(fd)
+        with os.fdopen(fd, "wb") as f:
+            f.write(text.encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def write_private(path: Path, text: str) -> None:
+    """A secret file: written atomically, ``0600`` from the first byte (no window where it is world-readable)."""
+    write_atomic(path, text, private=True)
 
 
 # --- lumi-cli config: one setting at a time --------------------------------------------------------------------
@@ -1182,10 +1195,7 @@ def set_value(folder: Path, name: str, text: str) -> tuple[Setting, Path]:
         old = (f"# Lumi {'secrets' if s.secret else 'settings'} — written by `lumi-cli config set`. Every setting is "
                "described in settings.example.yaml / secrets.example.yaml.\n")
     new = set_in_text(old, s.key, value)
-    if s.secret:
-        write_private(path, new)
-    else:
-        path.write_text(new, encoding="utf-8")
+    write_atomic(path, new, private=s.secret)
     return s, path
 
 

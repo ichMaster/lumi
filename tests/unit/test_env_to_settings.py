@@ -157,3 +157,20 @@ def test_review_9_the_migrated_env_is_private_and_unknown_keys_are_said_to_stop_
     assert code == 0, err
     assert stat.S_IMODE((tmp_path / ".env.migrated").stat().st_mode) == 0o600
     assert "no longer apply" in out and "LUMI_SOMETHING_OLD" in out
+
+
+
+def test_review_12_a_failed_apply_keeps_nothing_and_the_env(tmp_path, monkeypatch):
+    from core import settings as st
+
+    real = st.write_atomic
+
+    def fail_second(path, text, *, private=False):
+        if not private:
+            raise OSError(28, "No space left on device")
+        return real(path, text, private=private)
+
+    monkeypatch.setattr(st, "write_atomic", fail_second)
+    code, out, err, env = _run(tmp_path, "--apply")
+    assert code == 1 and "nothing kept" in err
+    assert sorted(p.name for p in tmp_path.iterdir()) == [".env"]  # no lone secrets.yaml, the .env in place

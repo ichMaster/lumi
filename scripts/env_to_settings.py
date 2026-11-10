@@ -168,8 +168,17 @@ def main(argv: list[str] | None = None, out=None, err=None) -> int:
         print("dry run — nothing written; rerun with --apply", file=out)
         return 0
     target.mkdir(parents=True, exist_ok=True)
-    (target / st.SETTINGS_FILE).write_text(settings_text, encoding="utf-8")
-    st.write_private(target / st.SECRETS_FILE, secrets_text)
+    written: list[Path] = []
+    try:  # both files or neither (code review #12): a lone settings.yaml would block the rerun
+        st.write_private(target / st.SECRETS_FILE, secrets_text)
+        written.append(target / st.SECRETS_FILE)
+        st.write_atomic(target / st.SETTINGS_FILE, settings_text)
+        written.append(target / st.SETTINGS_FILE)
+    except OSError as exc:
+        for path in written:
+            path.unlink(missing_ok=True)
+        print(f"env_to_settings: writing failed ({exc.strerror or exc}) — nothing kept, the .env untouched", file=err)
+        return 1
     shutil.move(str(source), str(source.parent / MIGRATED))
     os.chmod(source.parent / MIGRATED, 0o600)  # it holds every secret, whatever mode the .env had (code review #9)
     print(f"wrote {target / st.SETTINGS_FILE} + {target / st.SECRETS_FILE} (0600); "
