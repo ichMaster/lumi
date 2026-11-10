@@ -22,7 +22,8 @@ nav button.active, .switcher button.active { border-color: var(--accent); color:
 .muted { color: var(--muted); font-size: 12px; }
 main { padding: 16px; max-width: 1280px; margin: 0 auto; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+  min-width: 0; overflow-x: auto; }  /* a card never grows past its grid cell */
 .card.prod { border-top: 4px solid var(--prod); }
 .card h2 { margin: 0 0 8px; font-size: 18px; display: flex; gap: 8px; align-items: center; }
 .card.prod h2 { color: var(--prod); }
@@ -34,8 +35,10 @@ dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 500; }
-.strip { display: inline-flex; gap: 2px; }
-.strip i { width: 7px; height: 14px; border-radius: 2px; display: inline-block; }
+.strip { display: inline-flex; flex-wrap: wrap; gap: 1px; max-width: 244px; }  /* 60 runs × 4 px */
+.strip i { width: 3px; height: 12px; border-radius: 1px; display: inline-block; }
+td.detail { min-width: 160px; }
+svg.chart { display: block; width: 100%; height: auto; max-height: 220px; }
 .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .controls select, .controls input { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--card); color: var(--ink); }

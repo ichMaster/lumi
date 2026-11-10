@@ -93,7 +93,7 @@ async function renderHealth() {
     { class: `card ${name === "prod" ? "prod" : ""}` }, el("h2", {}, name),
     el("table", {}, el("tr", {}, el("th", {}, "check"), el("th", {}, "status"), el("th", {}, "detail"),
                        el("th", {}, "last hour")),
-      checks.map((c) => el("tr", {}, el("td", {}, c.name), el("td", {}, badge(c.status)), el("td", {}, c.detail),
+      checks.map((c) => el("tr", {}, el("td", {}, c.name), el("td", {}, badge(c.status)), el("td", { class: "detail" }, c.detail),
         el("td", {}, el("span", { class: "strip" },
           c.history.slice(-60).map(([ts, s]) => el("i", { class: s, title: `${ts} ${s}` })))))))));
   $("#health").replaceChildren(el("p", { class: "muted" }, `checked ${data.last_run ?? "not yet"} — every minute,`
@@ -136,19 +136,29 @@ async function renderUsage() {
   const u = await api(`/api/usage?instance=${state.instance}&days=${days}`);
   const perDay = Object.entries(u.per_day);
   const max = Math.max(0.0001, ...perDay.map(([, b]) => b.cost));
-  const w = 36, hgt = 120;
+  // A fixed 600-wide viewBox scaled to the card: the bars share the width whatever the number of days, and only
+  // every k-th day is labelled so the labels never collide (live: 31 days of 36 px bars overflowed the card).
+  const VW = 600, hgt = 120, pad = 6;
+  const slot = (VW - 2 * pad) / Math.max(1, perDay.length);
+  const every = Math.max(1, Math.ceil(perDay.length / 8));
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("width", Math.max(200, perDay.length * w + 20)); svg.setAttribute("height", hgt + 30);
+  svg.setAttribute("viewBox", `0 0 ${VW} ${hgt + 30}`);
+  svg.setAttribute("class", "chart");
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   perDay.forEach(([day, b], i) => {
-    const h = Math.round((b.cost / max) * hgt);
+    const h = Math.max(b.cost > 0 ? 1 : 0, Math.round((b.cost / max) * hgt));
     const r = document.createElementNS(svg.namespaceURI, "rect");
-    Object.entries({ x: 10 + i * w, y: hgt - h + 5, width: w - 8, height: h, class: "bar" })
+    Object.entries({ x: pad + i * slot + slot * 0.12, y: hgt - h + 5, width: slot * 0.76, height: h, class: "bar" })
       .forEach(([k, v]) => r.setAttribute(k, v));
     const t = document.createElementNS(svg.namespaceURI, "title"); t.textContent = `${day}: ${usd(b.cost)}`;
     r.append(t);
-    const label = document.createElementNS(svg.namespaceURI, "text");
-    label.setAttribute("x", 10 + i * w); label.setAttribute("y", hgt + 22); label.textContent = day.slice(5);
-    svg.append(r, label);
+    svg.append(r);
+    if (i % every === 0 || i === perDay.length - 1) {
+      const label = document.createElementNS(svg.namespaceURI, "text");
+      label.setAttribute("x", pad + i * slot + slot / 2); label.setAttribute("y", hgt + 24);
+      label.setAttribute("text-anchor", "middle"); label.textContent = day.slice(5);
+      svg.append(label);
+    }
   });
   const table = (title, rows) => el("div", { class: "card" }, el("h2", {}, title), el("table", {},
     el("tr", {}, ["", "calls", "tokens", "cost"].map((x) => el("th", {}, x))),
