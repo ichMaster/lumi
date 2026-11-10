@@ -1,7 +1,7 @@
 # v2.8 (LUMI-238) — one image for every Lumi process on the box: the server (the default command) and both
 # Telegram daemons (compose runs `python -m telegram.inbound` / `python -m telegram.outbound`).
-# Nothing secret or lived is inside: settings come from the instance's .env (compose `env_file`), her memory is
-# the instance's data root, bind-mounted at /data. The matrix-agora pattern (agents/Dockerfile) on the same box.
+# Nothing secret or lived is inside: settings come from the instance's settings.yaml + secrets.yaml (v2.9, mounted
+# read-only at /settings by compose), her memory is the instance's data root, bind-mounted at /data. The matrix-agora pattern (agents/Dockerfile) on the same box.
 FROM python:3.13-slim
 
 # ffmpeg: her Telegram voice replies (OGG/Opus); tzdata: her local day — the mood, quiet hours and the scheduler

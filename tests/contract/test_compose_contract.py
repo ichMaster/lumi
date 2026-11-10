@@ -1,8 +1,9 @@
 """The compose contract (v2.8, LUMI-240) — what every instance's containers must be, read from the files.
 
 One file, two parameter sets: three services from one image, her data root bind-mounted at /data (the file bus
-needs one filesystem), settings only through the instance's ``.env`` (``env_file``), published **only** on the box's
-LAN address, no image default, and nothing secret in any of the three files. Docker's own parser checks them in CI
+needs one filesystem), settings (v2.9) only through the instance's ``settings.yaml`` + ``secrets.yaml`` mounted
+read-only at /settings (and the pre-v2.9 ``.env.migrated`` at /app/.env — the way back), published **only** on the
+box's LAN address, no image default, and nothing secret in any of the three files. Docker's own parser checks them in CI
 (``scripts/compose_check.sh``); this pins the rules without Docker.
 """
 
@@ -42,11 +43,20 @@ def test_the_image_tag_has_no_default():
 @pytest.mark.parametrize("name", ["server", "telegram-inbound", "telegram-outbound"])
 def test_every_service_shares_the_data_root_and_the_settings(name):
     svc = SERVICES[name]
-    assert svc["volumes"] == ["${LUMI_INSTANCE_DIR}/data:/data"]
-    assert [e["path"] for e in svc["env_file"]] == [
-        "${LUMI_INSTANCE_DIR:?pass --env-file deploy/compose/prod.env or dev.env}/.env"]
+    data, *files = svc["volumes"]
+    assert data == "${LUMI_INSTANCE_DIR:?pass --env-file deploy/compose/prod.env or dev.env}/data:/data"
+    # v2.9 (LUMI-249): the settings files, read-only, never auto-created as directories
+    assert [(f["source"], f["target"]) for f in files] == [
+        ("${LUMI_INSTANCE_DIR}/settings.yaml", "/settings/settings.yaml"),
+        ("${LUMI_INSTANCE_DIR}/secrets.yaml", "/settings/secrets.yaml"),
+        ("${LUMI_INSTANCE_DIR}/.env.migrated", "/app/.env"),  # only a pre-v2.9 image reads it (the way back)
+    ]
+    assert all(f["type"] == "bind" and f["read_only"] is True and f["bind"]["create_host_path"] is False
+               for f in files)
+    assert "env_file" not in svc  # v2.9: no .env layer in a container
     env = svc["environment"]
     assert env["LUMI_HOME"] == "/data" and env["LUMI_SERVER_HOST"] == "0.0.0.0"
+    assert env["LUMI_SETTINGS_DIR"] == "/settings"
     assert "TZ" in env  # her local day
     assert svc["user"] == "1000:1000" and svc["init"] is True and svc["restart"] == "unless-stopped"
     assert int(svc["stop_grace_period"].rstrip("s")) >= 300  # the session close makes model calls
