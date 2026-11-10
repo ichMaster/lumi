@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from core.agent import Core
 from core.clock import fixed_clock
 from core.llm import MockLLMClient
@@ -152,3 +154,59 @@ def test_core_skips_empty_session_and_honours_off(tmp_path):
     core = _core(tmp_path, ledger=ledger)
     core.end_session(core.start_session())
     assert load_records(ledger) == []
+
+
+
+# --- v2.10 LUMI-252: the prices as data (core/pricing.yaml) ---------------------------------------------------
+
+_OLD_TABLE = {  # core/usage.py PRICING before v2.10 — every id must still resolve to the same price
+    "claude-opus-4-8": (5.0, 25.0), "claude-opus-4-7": (5.0, 25.0), "claude-opus-4-6": (5.0, 25.0),
+    "claude-opus-4-5": (5.0, 25.0), "claude-sonnet-4-6": (3.0, 15.0), "claude-sonnet-4-5": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0), "gemini-3.1-pro": (2.0, 12.0), "gemini-3.7-flash": (0.75, 3.75),
+    "gemini-3.6-flash": (0.75, 3.75), "gemini-3.5-flash": (1.5, 9.0), "gemini-2.5-flash-lite": (0.10, 0.40),
+    "gemini-2.5-flash": (0.30, 2.50),
+}
+
+
+@pytest.mark.parametrize("model, price", sorted(_OLD_TABLE.items()))
+def test_pricing_yaml_keeps_every_old_price(model, price):
+    from core.usage import pricing_for
+
+    p = pricing_for(model)
+    assert (p.input, p.output) == price
+
+
+@pytest.mark.parametrize("model, price", [
+    ("claude-haiku-4-5-20251001", (1.0, 5.0)),          # a dated id: the prefix
+    ("gemini-3.1-pro-preview", (2.0, 12.0)),
+    ("gemini-2.5-flash-lite-preview", (0.10, 0.40)),    # the more specific prefix wins over gemini-2.5-flash
+    ("claude-sonnet-5", (3.0, 15.0)),                   # added in v2.10 (the intro price ended Sep 1, 2026)
+    ("claude-fable-5", (10.0, 50.0)),                   # added in v2.10
+    ("some-new-model", (5.0, 25.0)),                    # unknown → the opus-tier default
+])
+def test_pricing_lookup_order(model, price):
+    from core.usage import pricing_for
+
+    p = pricing_for(model)
+    assert (p.input, p.output) == price
+
+
+def test_the_cache_multipliers_come_from_the_file():
+    from core.usage import pricing_for
+
+    p = pricing_for("claude-opus-4-8")
+    assert p.cache_read == pytest.approx(0.5) and p.cache_write("5m") == pytest.approx(6.25)
+    assert p.cache_write("1h") == pytest.approx(10.0)
+
+
+@pytest.mark.parametrize("text", [None, "not: [valid", "models: {}\ndefault: {input: 1, output: 2}\n",
+                                  "models: {x: {input: nope}}\n"])
+def test_a_missing_or_malformed_pricing_file_falls_back_to_the_builtin_table(tmp_path, text, caplog):
+    from core.usage import _BUILTIN_DEFAULT, _BUILTIN_PRICING, load_pricing
+
+    path = tmp_path / "pricing.yaml"
+    if text is not None:
+        path.write_text(text, encoding="utf-8")
+    models, default, cache = load_pricing(path)
+    assert models == _BUILTIN_PRICING and default == _BUILTIN_DEFAULT and cache["read"] == 0.10
+    assert any("built-in prices hold" in r.getMessage() for r in caplog.records)

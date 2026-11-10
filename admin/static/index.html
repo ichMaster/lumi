@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lumi admin</title>
+  <link rel="stylesheet" href="/static/panel.css">
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="login-form">
+      <h1>Lumi admin</h1>
+      <p>The panel's token (<code>~/lumi/admin/secrets.yaml</code> → <code>admin.token</code>).</p>
+      <input id="token" type="password" autocomplete="current-password" placeholder="admin token" required>
+      <button type="submit">Open</button>
+      <p id="login-error" class="error" hidden></p>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <header>
+      <span class="brand">Lumi admin</span>
+      <nav id="tabs">
+        <button data-tab="overview" class="active">Overview</button>
+        <button data-tab="health">Health</button>
+        <button data-tab="services">Services</button>
+        <button data-tab="usage">Usage</button>
+        <button data-tab="logs">Logs</button>
+      </nav>
+      <span id="switcher" class="switcher"></span>
+      <span id="updated" class="muted"></span>
+      <button id="logout" class="link">sign out</button>
+    </header>
+    <main>
+      <section id="overview" class="tab"></section>
+      <section id="health" class="tab" hidden></section>
+      <section id="services" class="tab" hidden></section>
+      <section id="usage" class="tab" hidden>
+        <div class="controls">days <select id="usage-days"><option>1</option><option selected>7</option>
+          <option>14</option><option>31</option></select></div>
+        <div id="usage-body"></div>
+      </section>
+      <section id="logs" class="tab" hidden>
+        <div class="controls">
+          <select id="log-source">
+            <option value="lumi">lumi.log</option>
+            <option value="telegram-inbound">telegram-inbound.log</option>
+            <option value="telegram-outbound">telegram-outbound.log</option>
+            <option value="container:server">container: server</option>
+            <option value="container:telegram-inbound">container: telegram-inbound</option>
+            <option value="container:telegram-outbound">container: telegram-outbound</option>
+          </select>
+          <select id="log-level"><option value="">all levels</option><option>INFO</option><option>WARNING</option>
+            <option>ERROR</option></select>
+          <input id="log-q" placeholder="filter text">
+          <select id="log-tail"><option>100</option><option selected>200</option><option>500</option>
+            <option>2000</option></select>
+          <button id="log-go">Show</button>
+        </div>
+        <pre id="log-lines" class="log"></pre>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

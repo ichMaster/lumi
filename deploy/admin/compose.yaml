@@ -1,0 +1,38 @@
+# v2.10 (LUMI-257) — the admin panel, one per box: its own compose project from the same Lumi image. It shows prod
+# and dev side by side and drives their containers through the Docker API; it never runs the core, never writes a
+# data root (both instance folders are mounted read-only) and makes no paid call. Installed by hand with a tag:
+#   LUMI_IMAGE_TAG=v2.10.0 docker compose --env-file deploy/admin/admin.env -f deploy/admin/compose.yaml up -d
+# Nothing secret lives here: its token is ~/lumi/admin/secrets.yaml (0600), its registry ~/lumi/admin/admin.yaml.
+name: lumi-admin
+
+services:
+  admin:
+    image: ghcr.io/ichmaster/lumi:${LUMI_IMAGE_TAG:?the image tag (a release, e.g. v2.10.0)}
+    command: ["python", "-m", "admin"]
+    environment:
+      LUMI_ADMIN_HOME: /admin
+      LUMI_ADMIN_HOST: 0.0.0.0                     # the image's own interfaces; the publish rule decides exposure
+      LUMI_ADMIN_PORT: "8767"
+      TZ: ${LUMI_TZ:-Europe/Kyiv}                  # "today" for the usage and the mood check
+    ports:
+      - "${LUMI_PUBLISH_HOST:?pass --env-file deploy/admin/admin.env}:8767:8767"   # the LAN address only
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # the Docker API — root-equivalent: LAN-only, its own token
+      - ${LUMI_HOME_DIR:?pass --env-file deploy/admin/admin.env}/prod:/instances/prod:ro
+      - ${LUMI_HOME_DIR}/dev:/instances/dev:ro
+      - ${LUMI_HOME_DIR}/admin:/admin              # admin.yaml, secrets.yaml, health.jsonl — its only writable folder
+    user: "1000:1000"
+    group_add: ["${DOCKER_GID:-999}"]              # the host's docker group: the socket is root:docker 0660
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/healthz', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

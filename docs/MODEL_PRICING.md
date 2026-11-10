@@ -3,6 +3,10 @@
 Per 1M tokens (provider list prices, July 2026). Rows tagged with the `[profiles.*]` role they fill in
 [core/models.yaml](../core/models.yaml).
 
+> **The machine-readable prices are [core/pricing.yaml](../core/pricing.yaml)** (v2.10) — the one source the usage
+> report, `/usage` and the admin panel read. Change a price there; this page explains them. Since Sep 1, 2026
+> `claude-sonnet-5` is priced at $3/$15 (its intro price ended).
+
 | Model | Input | Output |
 |-------|------:|-------:|
 | claude-fable-5 | $10.00 | $50.00 |

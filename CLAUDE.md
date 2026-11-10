@@ -93,7 +93,7 @@ Python, **Anthropic SDK — Claude Haiku (v0.1); more models (Claude tiers / Ope
 /voice          # later (v0.14+): shared TTS adapter + local voicer (v0.14); shared STT adapter + local dictator (v0.21); reused by web voice (v4.2) / web dictation (v4.4)
 /mcp            # later (v5.2+): MCP client + web_search (v5.2), world-context/knowledge (v5.3), image/music generators (v6.3/v6.5); untrusted-content handling
 /deploy         # v2.6: systemd user units for the Linux box (server + Telegram daemons per instance; the way back since v2.8); v2.7: + lumi-deploy.service/.timer (the deploy agent, scripts/deploy_agent.py); v2.8: compose/ (compose.yaml + prod.env/dev.env) beside the root Dockerfile; the Docker image + compose per instance (the units retired)
-/admin          # later (v2.10): the admin panel — a container, FastAPI + static UI over both instances (health, services, usage, logs; settings v2.11)
+/admin          # v2.10: the admin panel — a container (deploy/admin/, the same image, python -m admin), FastAPI + static UI over both instances: readers (read-only), health checks, the Docker-API container seam, usage, logs; settings v2.11
 /state          # repository implementation + local storage (JSON/SQLite) + gallery files (v6), keyed by user_id
 /tests          # pytest: unit, contract, integration; mock model + fakes
 /specification  # MISSION/ARCHITECTURE/ROADMAP/EMOTION/WEB_SEARCH
