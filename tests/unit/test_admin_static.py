@@ -21,3 +21,13 @@ def test_the_login_checks_the_token_before_switching():
 def test_no_data_is_rendered_as_html():
     js = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "innerHTML" not in js and "insertAdjacentHTML" not in js and "document.write" not in js
+
+
+def test_the_charts_scale_to_their_card():
+    # live 2026-11-11: 31 days of fixed 36 px bars overflowed the Usage card; the 60-run history strip of 9 px
+    # cells pushed the Health table past prod's card
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    css = (STATIC / "panel.css").read_text(encoding="utf-8")
+    assert 'setAttribute("viewBox"' in js and 'svg.setAttribute("width"' not in js
+    assert "svg.chart { display: block; width: 100%" in css
+    assert "min-width: 0; overflow-x: auto;" in css and "max-width: 244px" in css
