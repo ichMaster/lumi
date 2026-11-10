@@ -430,3 +430,21 @@ def test_review_6_values_load_config_would_crash_on_are_refused(tmp_path, yaml_t
         _load(tmp_path)
     assert key in str(err.value)
     assert st.check_folder(tmp_path)[0]  # and `config validate` says so
+
+
+@pytest.mark.parametrize("text, line", [
+    ("memory:\n  window: 12\nrecall:\n  rag: true\nmemory:\n  compaction_batch: 10\n", 5),  # a group twice
+    ("memory:\n  window: 12\n  window: 30\n", 3),                                                 # a key twice
+])
+def test_review_7_a_duplicate_key_refuses_naming_its_line(tmp_path, text, line):
+    _write(tmp_path, "settings.yaml", text)
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "duplicate key" in str(err.value) and f"line {line}" in str(err.value)
+
+
+def test_review_7_a_duplicate_in_secrets_names_the_key_not_the_value(tmp_path):
+    _write(tmp_path, "secrets.yaml", "server:\n  token: a-SECRET-1\n  token: b-SECRET-2\n", 0o600)
+    with pytest.raises(st.SettingsError) as err:
+        _load(tmp_path)
+    assert "duplicate key 'token'" in str(err.value) and "SECRET" not in str(err.value)

@@ -582,13 +582,41 @@ def settings_dir(environ: Mapping[str, str] | None = None, *, repo: Path = _REPO
     return repo
 
 
+_STRICT_LOADER: Any = None
+
+
+def _strict_loader() -> Any:
+    """PyYAML's SafeLoader, refusing a duplicate key — ``safe_load`` keeps the last one silently (code review #7)."""
+    global _STRICT_LOADER
+    if _STRICT_LOADER is None:
+        import yaml
+
+        class StrictLoader(yaml.SafeLoader):
+            pass
+
+        def mapping(loader: Any, node: Any, deep: bool = False) -> Any:
+            seen: set = set()
+            for key_node, _value in node.value:
+                key = loader.construct_object(key_node, deep=deep)
+                if key in seen:
+                    raise yaml.constructor.ConstructorError(
+                        None, None, f"duplicate key {key!r} (only the last would count)", key_node.start_mark)
+                seen.add(key)
+            return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+        StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+        _STRICT_LOADER = StrictLoader
+    return _STRICT_LOADER
+
+
 def parse_yaml(text: str, name: str) -> Any:
     """Parse a settings file's text. A syntax error refuses with the problem and its line/column only — never
-    PyYAML's snippet of the line, which in ``secrets.yaml`` is the secret itself (code review #1)."""
+    PyYAML's snippet of the line, which in ``secrets.yaml`` is the secret itself (code review #1); a duplicate key
+    refuses too (code review #7)."""
     import yaml
 
     try:
-        return yaml.safe_load(text)
+        return yaml.load(text, Loader=_strict_loader())  # noqa: S506 — a SafeLoader subclass
     except yaml.MarkedYAMLError as exc:
         mark = exc.problem_mark or exc.context_mark
         where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark is not None else ""
