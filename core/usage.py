@@ -16,7 +16,11 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-# --- pricing (USD per 1,000,000 tokens; Anthropic list prices) -----------------------------------
+# --- pricing (USD per 1,000,000 tokens) — v2.10: data in core/pricing.yaml ---------------------------------
+PRICING_PATH = Path(__file__).resolve().parent / "pricing.yaml"
+
+# The multipliers for cached input (core/pricing.yaml `cache:`), relative to the model's input price.
+_CACHE = {"read": 0.10, "write_5m": 1.25, "write_1h": 2.0}
 
 
 @dataclass(frozen=True)
@@ -28,13 +32,14 @@ class ModelPricing:
 
     @property
     def cache_read(self) -> float:
-        return self.input * 0.10  # cached input is billed at 10 % of the input rate
+        return self.input * _CACHE["read"]  # cached input is billed at 10 % of the input rate
 
     def cache_write(self, ttl: str) -> float:
-        return self.input * (2.0 if ttl == "1h" else 1.25)  # 1h write 2×, 5m write 1.25×
+        return self.input * (_CACHE["write_1h"] if ttl == "1h" else _CACHE["write_5m"])  # 1h 2×, 5m 1.25×
 
 
-PRICING: dict[str, ModelPricing] = {
+# The table as it was before v2.10 — the fallback when core/pricing.yaml is missing or malformed.
+_BUILTIN_PRICING: dict[str, ModelPricing] = {
     "claude-opus-4-8": ModelPricing(5.0, 25.0),
     "claude-opus-4-7": ModelPricing(5.0, 25.0),
     "claude-opus-4-6": ModelPricing(5.0, 25.0),
@@ -52,7 +57,32 @@ PRICING: dict[str, ModelPricing] = {
     "gemini-2.5-flash-lite": ModelPricing(0.10, 0.40),
     "gemini-2.5-flash": ModelPricing(0.30, 2.50),
 }
-_DEFAULT_PRICING = ModelPricing(5.0, 25.0)  # unknown model → an opus-tier estimate
+_BUILTIN_DEFAULT = ModelPricing(5.0, 25.0)  # unknown model → an opus-tier estimate
+
+
+def load_pricing(path: Path = PRICING_PATH) -> tuple[dict[str, ModelPricing], ModelPricing, dict[str, float]]:
+    """``(models, default, cache multipliers)`` from ``core/pricing.yaml``; a missing or malformed file → the
+    built-in table (logged), never a crash."""
+    import logging
+
+    try:
+        import yaml
+
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        models = {str(k).strip().lower(): ModelPricing(float(v["input"]), float(v["output"]))
+                  for k, v in data["models"].items()}
+        default = ModelPricing(float(data["default"]["input"]), float(data["default"]["output"]))
+        cache = {k: float(data.get("cache", {}).get(k, v)) for k, v in _CACHE.items()}
+        if not models:
+            raise ValueError("no models")
+        return models, default, cache
+    except Exception as exc:  # noqa: BLE001 — any unreadable/malformed file: the built-in table holds
+        logging.getLogger("lumi.usage").warning("%s unusable (%s) — the built-in prices hold", path, exc)
+        return dict(_BUILTIN_PRICING), _BUILTIN_DEFAULT, dict(_CACHE)
+
+
+PRICING, _DEFAULT_PRICING, _loaded_cache = load_pricing()
+_CACHE.update(_loaded_cache)
 
 
 def pricing_for(model: str) -> ModelPricing:
