@@ -900,8 +900,13 @@ def export(res: Resolution, environ: MutableMapping[str, str] | None = None) -> 
 
 def warn_once(res: Resolution, stream=None) -> None:
     """Print each warning once per process (``WARNING (settings): …`` on stderr)."""
+    warn_messages(res.warnings, stream)
+
+
+def warn_messages(messages: list[str], stream=None) -> None:
+    """Print each message once per process, as a ``WARNING (settings): …`` line on stderr."""
     stream = sys.stderr if stream is None else stream
-    for w in res.warnings:
+    for w in messages:
         if w not in _WARNED:
             _WARNED.add(w)
             print(f"WARNING (settings): {w}", file=stream)
