@@ -312,3 +312,41 @@ def test_config_show_masks_a_secret_whatever_the_field_is_called(tmp_path):
     code, out, _ = _cfg(["show"], tmp_path)
     assert code == 0 and "api_key = •••set•••" in out and "telegram_token = •••set•••" in out
     assert SECRETS["ANTHROPIC_API_KEY"] not in out
+
+
+# --- v2.9 code review #2: config set never rewrites a file ----------------------------------------------------
+
+_SECTIONS = """schedule:
+  - name: morning-brief
+    enabled: false
+models:
+  aliases:
+    fast: "anthropic:claude-haiku-4-5-20251001"
+"""
+
+
+@pytest.mark.parametrize("layout, key, value, expect", [
+    ("telegram:\n  allowlist:\n    - 12345\n  batch: 5\n", "telegram.allowlist", "12345,678",
+     {"allowlist": [12345, 678], "batch": 5}),                                 # a block list under the key
+    ("memory:\n    window: 40\n", "memory.compaction_batch", "10",
+     {"window": 40, "compaction_batch": 10}),                                  # a group indented by 4
+    ("memory:\n    window: 40\n", "memory.window", "50", {"window": 50}),
+])
+def test_review_2_set_handles_the_layout_and_keeps_the_sections(tmp_path, layout, key, value, expect):
+    text = "# my comment\n" + layout + _SECTIONS
+    (tmp_path / "settings.yaml").write_text(text, encoding="utf-8")
+    code, out, err = _cfg(["set", key, value], tmp_path)
+    assert code == 0, err
+    data = read_yaml(tmp_path / "settings.yaml")
+    assert data[key.split(".")[0]] == expect
+    assert data["schedule"] == [{"name": "morning-brief", "enabled": False}]
+    assert data["models"] == {"aliases": {"fast": "anthropic:claude-haiku-4-5-20251001"}}
+    assert (tmp_path / "settings.yaml").read_text(encoding="utf-8").startswith("# my comment\n")
+
+
+def test_review_2_an_uneditable_layout_is_refused_and_nothing_written(tmp_path):
+    text = "memory: {window: 40}\n" + _SECTIONS  # an inline group: no line to change
+    (tmp_path / "settings.yaml").write_text(text, encoding="utf-8")
+    code, out, err = _cfg(["set", "memory.window", "50"], tmp_path)
+    assert code == 1 and "edit it by hand" in err and "nothing was written" in err
+    assert (tmp_path / "settings.yaml").read_text(encoding="utf-8") == text

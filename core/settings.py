@@ -1072,11 +1072,16 @@ def _group_block(lines: list[str], group: str) -> tuple[int, int, int] | None:
     return header, end, last
 
 
-def set_in_text(text: str, key: str, value: Any) -> str:
-    """``text`` with ``key`` set to ``value`` — only that line changes (or one line is added to its group, or the
-    group is appended); every other line and comment stays. Verified by re-parsing; a file whose shape the line
-    edit can't handle (an inline ``group: {…}``) is rewritten whole from its parsed content instead."""
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
 
+
+def set_in_text(text: str, key: str, value: Any) -> str:
+    """``text`` with ``key`` set to ``value`` — only that key's line changes (its old block value, e.g. a ``- item``
+    list, replaced), or one line is added to its group (at the group's own indentation), or the group is appended;
+    every other line and comment stays. Verified by re-parsing: unless ``key`` now holds ``value`` and every other
+    setting and section is exactly as before, it refuses (a :class:`SettingsError`) — it never rewrites a file
+    (code review #2)."""
     group, leaf = key.split(".", 1)
     scalar = yaml_scalar(value)
     lines = text.splitlines()
@@ -1087,23 +1092,32 @@ def set_in_text(text: str, key: str, value: Any) -> str:
         lines += ["", f"{group}:", f"  {leaf}: {scalar}"]
     elif block is not None:
         header, end, last = block
+        members = [i for i in range(header + 1, end) if lines[i].strip() and not lines[i].lstrip().startswith("#")]
+        indent = " " * (_indent(lines[members[0]]) if members else 2)
         for i in range(header + 1, end):
             if m := re.match(rf"^(\s+){re.escape(leaf)}:(\s|$)", lines[i]):
-                lines[i] = f"{m.group(1)}{leaf}: {scalar}"
+                j = i + 1  # the old value's own lines (a block list / mapping under the key) go with it
+                while j < end and (not lines[j].strip() or _indent(lines[j]) > len(m.group(1))):
+                    j += 1
+                while j > i + 1 and not lines[j - 1].strip():
+                    j -= 1  # keep the blank lines that separate it from what follows
+                lines[i:j] = [f"{m.group(1)}{leaf}: {scalar}"]
                 break
         else:
-            lines.insert(last + 1, f"  {leaf}: {scalar}")
+            lines.insert(last + 1, f"{indent}{leaf}: {scalar}")
     new = "\n".join(lines) + "\n"
+    before = parse_yaml(text, "the file") or {}
     try:
-        ok = flatten(parse_yaml(new, "the edited file") or {}).get(key, object()) == value
+        after = parse_yaml(new, "the edited file") or {}
     except SettingsError:
-        ok = False
-    if ok:
-        return new
-    data = flatten({k: v for k, v in (parse_yaml(text, "the file") or {}).items() if k not in STRUCTURED})
-    data[key] = value
-    header_lines = "".join(line + "\n" for line in text.splitlines() if line.startswith("#")) or "# Lumi settings\n"
-    return render_file(data, header_lines)
+        after = None
+    if isinstance(before, dict) and isinstance(after, dict):
+        want = flatten({k: v for k, v in before.items() if k not in STRUCTURED}) | {key: value}
+        got = flatten({k: v for k, v in after.items() if k not in STRUCTURED})
+        if got == want and all(before.get(sec) == after.get(sec) for sec in STRUCTURED):
+            return new
+    raise SettingsError(f"lumi-cli config set can't change {key} in this file line by line (its layout is unusual — "
+                        "an inline group, a duplicate key, mixed indentation); nothing was written — edit it by hand")
 
 
 def set_value(folder: Path, name: str, text: str) -> tuple[Setting, Path]:
