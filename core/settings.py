@@ -24,6 +24,7 @@ holds ``settings.yaml``, ``secrets.yaml`` or ``.env``.
 from __future__ import annotations
 
 import os
+import re
 import stat
 import sys
 from collections.abc import Mapping, MutableMapping
@@ -1013,3 +1014,116 @@ def write_private(path: Path, text: str) -> None:
         os.write(fd, text.encode("utf-8"))
     finally:
         os.close(fd)
+
+
+# --- lumi-cli config: one setting at a time --------------------------------------------------------------------
+
+
+def lookup(name: str) -> Setting | None:
+    """A setting by its YAML key (``memory.window``) or its env name (``LUMI_MEMORY_WINDOW``)."""
+    return BY_KEY.get(name) or BY_ALIAS.get(name) or _BY_OLD.get(name)
+
+
+def parse_cli_value(s: Setting, text: str) -> Any:
+    """A value typed on the command line → its YAML value: numbers and booleans parsed as YAML (``on`` → true),
+    text kept verbatim (a voice id ``007`` stays ``007``), a list as ``a,b`` or ``[a, b]``."""
+    import yaml
+
+    raw = text.strip()
+    if s.type in ("bool", "int", "float", "probability"):
+        try:
+            return yaml.safe_load(raw)
+        except yaml.YAMLError:
+            return raw
+    if s.type in ("list", "ids"):
+        if raw.startswith("["):
+            try:
+                return yaml.safe_load(raw)
+            except yaml.YAMLError:
+                return raw
+        return from_env(s, raw)
+    return raw
+
+
+def _group_block(lines: list[str], group: str) -> tuple[int, int, int] | None:
+    """``(header, end, last member)`` line indexes of ``group:``'s block, or ``None`` when there is none."""
+    header = next((i for i, line in enumerate(lines) if re.match(rf"^{re.escape(group)}:\s*(#.*)?$", line)), None)
+    if header is None:
+        return None
+    end, last = header + 1, header
+    while end < len(lines):
+        line = lines[end]
+        if line.startswith((" ", "\t")) and line.strip():
+            last = end
+        elif line.strip() and not line.startswith("#"):
+            break  # the next top-level key
+        end += 1
+    return header, end, last
+
+
+def set_in_text(text: str, key: str, value: Any) -> str:
+    """``text`` with ``key`` set to ``value`` — only that line changes (or one line is added to its group, or the
+    group is appended); every other line and comment stays. Verified by re-parsing; a file whose shape the line
+    edit can't handle (an inline ``group: {…}``) is rewritten whole from its parsed content instead."""
+    import yaml
+
+    group, leaf = key.split(".", 1)
+    scalar = yaml_scalar(value)
+    lines = text.splitlines()
+    block = _group_block(lines, group)
+    if block is None and not any(re.match(rf"^{re.escape(group)}:", line) for line in lines):
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines += ["", f"{group}:", f"  {leaf}: {scalar}"]
+    elif block is not None:
+        header, end, last = block
+        for i in range(header + 1, end):
+            if m := re.match(rf"^(\s+){re.escape(leaf)}:(\s|$)", lines[i]):
+                lines[i] = f"{m.group(1)}{leaf}: {scalar}"
+                break
+        else:
+            lines.insert(last + 1, f"  {leaf}: {scalar}")
+    new = "\n".join(lines) + "\n"
+    try:
+        ok = flatten(yaml.safe_load(new) or {}).get(key, object()) == value
+    except yaml.YAMLError:
+        ok = False
+    if ok:
+        return new
+    data = flatten({k: v for k, v in (yaml.safe_load(text) or {}).items() if k not in STRUCTURED})
+    data[key] = value
+    header_lines = "".join(line + "\n" for line in text.splitlines() if line.startswith("#")) or "# Lumi settings\n"
+    return render_file(data, header_lines)
+
+
+def set_value(folder: Path, name: str, text: str) -> tuple[Setting, Path]:
+    """Validate ``text`` for setting ``name`` and write it into the right file of ``folder`` (``secrets.yaml`` —
+    kept ``0600`` — for a secret). Raises :class:`SettingsError` naming the key and the allowed values; on a refusal
+    nothing is written."""
+    s = lookup(name)
+    if s is None:
+        raise SettingsError(f"unknown setting '{name}' — see settings.example.yaml / secrets.example.yaml")
+    value = parse_cli_value(s, text)
+    if value is None or to_env(s, value) is None:
+        raise SettingsError(f"{s.key} = {_shown(s, text)} is not valid — allowed: {_allowed(s)}")
+    path = Path(folder) / (SECRETS_FILE if s.secret else SETTINGS_FILE)
+    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    if not old:
+        old = (f"# Lumi {'secrets' if s.secret else 'settings'} — written by `lumi-cli config set`. Every setting is "
+               "described in settings.example.yaml / secrets.example.yaml.\n")
+    new = set_in_text(old, s.key, value)
+    if s.secret:
+        write_private(path, new)
+    else:
+        path.write_text(new, encoding="utf-8")
+    return s, path
+
+
+def check_folder(folder: Path) -> tuple[list[str], list[str]]:
+    """``(problems, warnings)`` for a settings folder — what ``lumi-cli config validate`` reports."""
+    try:
+        res = resolve({}, folder=Path(folder))
+    except SettingsError as exc:
+        lines = str(exc).splitlines()
+        return [line.strip().removeprefix("• ") for line in lines[1:]] or lines, []
+    return [], res.warnings
