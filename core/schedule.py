@@ -221,8 +221,11 @@ def _cron_match(expr: str, now: datetime) -> bool:
 
 
 # --- parsing core/schedule.yaml (v2.9; core/schedule.toml before) ----------------------------------
-# The keys that pick a row's trigger: an override that names one replaces the authored row's trigger.
-TRIGGER_KEYS = ("cron", "between", "at", "every", "idle", "days")
+# A row's trigger: one KIND key (first match wins, as _entry_from_row reads them) + its modifiers (`days` for `at`,
+# `every` for `between`). An override naming another kind replaces the authored trigger; its own kind or a modifier
+# merges (code review #4).
+TRIGGER_KINDS = ("cron", "between", "at", "every", "idle")
+TRIGGER_KEYS = (*TRIGGER_KINDS, "days")
 ROW_KEYS = ("name", "directive", "seeds", "topic", "enabled", "show", *TRIGGER_KEYS)
 
 
@@ -298,8 +301,9 @@ def _rows_yaml(text: str) -> list[dict]:
 
 def merge_rows(rows: list[dict], overrides: list[dict] | tuple = ()) -> list[dict]:
     """An instance's rows (v2.9, settings.yaml ``schedule:``) over the authored ones, by ``name``: an override's
-    fields win over the row of the same name (one that names a trigger key replaces the authored trigger); a new
-    name adds a row. Unnamed rows pass through untouched."""
+    fields win over the row of the same name; one that names another trigger kind replaces the authored trigger,
+    while its own kind or a modifier (``days`` for ``at``, ``every`` for ``between``) merges into it. A new name
+    adds a row. Unnamed rows pass through untouched."""
     out = [dict(r) for r in rows]
     index = {str(r.get("name")).strip(): i for i, r in enumerate(out) if str(r.get("name") or "").strip()}
     for override in overrides:
@@ -308,7 +312,10 @@ def merge_rows(rows: list[dict], overrides: list[dict] | tuple = ()) -> list[dic
             continue
         if name in index:
             base = out[index[name]]
-            if any(k in override for k in TRIGGER_KEYS):
+            kind = _kind(base)
+            named = [k for k in TRIGGER_KINDS if k in override]
+            same = all(k == kind or (k == "every" and kind == "between") for k in named)
+            if not same:  # another kind of trigger: the authored one goes, with its modifiers
                 base = {k: v for k, v in base.items() if k not in TRIGGER_KEYS}
             out[index[name]] = base | dict(override)
         else:
@@ -317,8 +324,21 @@ def merge_rows(rows: list[dict], overrides: list[dict] | tuple = ()) -> list[dic
     return out
 
 
-def _entries(rows: list[dict]) -> list[ScheduleEntry]:
-    return [e for row in rows if (e := _entry_from_row(row)) is not None]
+def _kind(row: dict) -> str | None:
+    """The trigger kind a row fires on — the first of ``TRIGGER_KINDS`` it names (``_entry_from_row``'s order)."""
+    return next((k for k in TRIGGER_KINDS if k in row), None)
+
+
+def _entries(rows: list[dict], overrides: list[dict] | tuple = ()) -> list[ScheduleEntry]:
+    named = {str(o.get("name") or "").strip() for o in overrides} - {""}
+    out = []
+    for row in rows:
+        entry = _entry_from_row(row)
+        if entry is not None:
+            out.append(entry)
+        elif str(row.get("name") or "").strip() in named:  # an instance's change made the row invalid — say so
+            _log.warning("schedule row %r (changed in settings.yaml) has no valid trigger — skipped", row.get("name"))
+    return out
 
 
 def parse_schedule(text: str) -> list[ScheduleEntry]:
@@ -329,7 +349,7 @@ def parse_schedule(text: str) -> list[ScheduleEntry]:
 def parse_schedule_yaml(text: str, overrides: list[dict] | tuple = ()) -> list[ScheduleEntry]:
     """Parse ``schedule.yaml`` text (v2.9) → entries, an instance's ``overrides`` merged by name. Malformed rows
     are skipped (never fatal)."""
-    return _entries(merge_rows(_rows_yaml(text), overrides))
+    return _entries(merge_rows(_rows_yaml(text), overrides), overrides)
 
 
 _WARNED_TOML: set[str] = set()
@@ -347,8 +367,8 @@ def load_schedule(path: str | Path, overrides: list[dict] | tuple = ()) -> list[
         if str(p) not in _WARNED_TOML:
             _WARNED_TOML.add(str(p))
             _log.warning("%s is TOML — deprecated since v2.9; core/schedule.yaml is the format now", p)
-        return _entries(merge_rows(_rows_toml(text), overrides))
-    return _entries(merge_rows(_rows_yaml(text), overrides))
+        return _entries(merge_rows(_rows_toml(text), overrides), overrides)
+    return _entries(merge_rows(_rows_yaml(text), overrides), overrides)
 
 
 # --- schedule.state (last-fired per entry) ---------------------------------------------------------

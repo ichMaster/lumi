@@ -329,3 +329,41 @@ def test_the_schedule_section_never_belongs_in_secrets(tmp_path):
     (tmp_path / "secrets.yaml").chmod(0o600)
     with pytest.raises(SettingsError, match="belongs in settings.yaml"):
         load_config(load_env=False, settings_dir=tmp_path)
+
+
+# --- v2.9 code review #4: a trigger key in an override ---------------------------------------------------------
+
+_REVIEW4 = """schedule:
+  - name: brief
+    directive: brief
+    at: "08:00"
+    days: [mon, tue, wed, thu, fri]
+    topic: science
+  - name: catchup
+    directive: catchup
+    between: "08:30-23:30"
+    every: "3h"
+"""
+
+
+def test_review_4_a_modifier_merges_into_the_authored_trigger():
+    from core.schedule import parse_schedule_yaml
+
+    weekend = parse_schedule_yaml(_REVIEW4, [{"name": "brief", "days": ["sat", "sun"]}])
+    assert weekend[0].trigger.kind == "at" and weekend[0].trigger.at_hm == (8, 0)  # the row survives
+    assert weekend[0].days_raw == ("sat", "sun")
+    later = parse_schedule_yaml(_REVIEW4, [{"name": "brief", "at": "09:00"}])
+    assert later[0].trigger.at_hm == (9, 0) and later[0].days_raw == ("mon", "tue", "wed", "thu", "fri")
+    hourly = parse_schedule_yaml(_REVIEW4, [{"name": "catchup", "every": "1h"}])
+    assert hourly[1].trigger.kind == "between" and hourly[1].trigger.interval_s == 3600  # the window stays
+
+
+def test_review_4_another_kind_replaces_the_authored_trigger(caplog):
+    from core.schedule import parse_schedule_yaml
+
+    idle = parse_schedule_yaml(_REVIEW4, [{"name": "brief", "idle": "30m"}])
+    assert idle[0].trigger.kind == "idle" and idle[0].days_raw == ()  # `at` and its days are gone
+    with caplog.at_level("WARNING", logger="lumi.schedule"):
+        broken = parse_schedule_yaml(_REVIEW4, [{"name": "catchup", "between": "nonsense"}])
+    assert [e.name for e in broken] == ["brief"]
+    assert any("'catchup'" in r.getMessage() and "no valid trigger" in r.getMessage() for r in caplog.records)
