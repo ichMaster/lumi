@@ -7,6 +7,7 @@
   :root { --bg: #14171b; --card: #1d2228; --ink: #e6e9ed; --muted: #97a0ab; --line: #2c333b; }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }  /* a class's display (.login: grid) must never beat hidden */
 body { margin: 0; background: var(--bg); color: var(--ink); }
 header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--card);
   border-bottom: 1px solid var(--line); flex-wrap: wrap; }

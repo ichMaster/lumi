@@ -1,5 +1,5 @@
-// The Lumi admin panel (v2.10) — vanilla JS, no bundler. Everything rendered goes through textContent (never
-// innerHTML with data), so a log line is shown, never run. The token lives in sessionStorage only.
+// The Lumi admin panel (v2.10) — vanilla JS, no bundler. Everything rendered goes through textContent (no raw
+// HTML from data), so a log line is shown, never run. The token lives in sessionStorage only.
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);
@@ -196,8 +196,18 @@ function logout(reason) {
 
 $("#login-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  state.token = $("#token").value.trim();
-  sessionStorage.setItem("lumi-admin-token", state.token);
+  const err = $("#login-error");
+  err.hidden = false; err.textContent = "checking…";
+  const token = $("#token").value.trim();
+  const resp = await fetch("/api/overview", { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+  if (!resp || !resp.ok) {  // never switch to the app on a refused token or a dead panel — say why, stay here
+    err.textContent = !resp ? "the panel didn't answer" : resp.status === 401 ? "the token was refused"
+      : `the panel answered ${resp.status}`;
+    return;
+  }
+  state.token = token;
+  sessionStorage.setItem("lumi-admin-token", token);
+  err.hidden = true;
   $("#login").hidden = true; $("#app").hidden = false;
   show("overview");
 });
