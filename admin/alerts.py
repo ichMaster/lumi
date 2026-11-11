@@ -128,6 +128,9 @@ class Alerts:
     def on(self) -> bool:
         return self.sender is not None and self.cfg.off_reason is None
 
+    def _clean(self, instance: str, text: str) -> str:
+        return self.redact(instance, text) if self.redact is not None else text
+
     def _send(self, instance: str, text: str) -> bool:
         if self.redact is not None:
             text = self.redact(instance, text)
@@ -150,7 +153,8 @@ class Alerts:
             if red and not ep.failing:
                 ep.failing, ep.since, ep.alerted = True, now, False
             if red and not ep.alerted and (ep.last_alert is None or now - ep.last_alert >= self.rate):
-                checks = ", ".join(f"{r.name} ({_short(r.detail)})" if r.detail else r.name for r in red)
+                checks = ", ".join(f"{r.name} ({_short(self._clean(name, r.detail))})" if r.detail else r.name
+                                   for r in red)  # redacted before the cap: a cut secret can't be found (review #3)
                 if self._send(name, f"⚠ Lumi {name} failing: {checks}"):
                     ep.alerted, ep.last_alert = True, now
             elif not red and ep.failing:
