@@ -1207,6 +1207,57 @@ def set_value(folder: Path, name: str, text: str) -> tuple[Setting, Path]:
     return s, path
 
 
+def set_section(text: str, name: str, data: Any) -> str:
+    """``text`` with the top-level ``name`` section (``schedule`` / ``models``) replaced by ``data`` — rendered as
+    block YAML in its old place, or appended; an empty ``data`` (``None``, ``[]``, ``{}``) removes the section. Every
+    other line and comment stays (a comment inside the old section goes with it). Verified by re-parsing: unless the
+    section now holds ``data`` and everything else is exactly as before, it refuses (a :class:`SettingsError`)."""
+    import yaml
+
+    if name not in STRUCTURED:
+        raise SettingsError(f"unknown section {name!r} — one of {', '.join(STRUCTURED)}")
+    lines = text.splitlines()
+    at = next((i for i, line in enumerate(lines) if re.match(rf"^{re.escape(name)}:(\s|$)", line)), None)
+    if at is not None:
+        end, last = at + 1, at
+        while end < len(lines):
+            line = lines[end]
+            if line.strip() and line.startswith((" ", "\t", "-")):
+                last = end  # a member (a block list may sit at column 0: `- name: …`)
+            elif line.strip() and not line.startswith("#"):
+                break  # the next top-level key
+            end += 1
+        del lines[at:last + 1]
+    empty = data is None or data == [] or data == {}
+    if not empty:
+        block = yaml.safe_dump({name: data}, allow_unicode=True, sort_keys=False, default_flow_style=False,
+                               width=10**6).rstrip("\n").splitlines()
+        if at is None:
+            while lines and not lines[-1].strip():
+                lines.pop()
+            lines += ([""] if lines else []) + block
+        else:
+            lines[at:at] = block
+    elif at is not None and 0 < at <= len(lines) and not lines[at - 1].strip() and (
+            at == len(lines) or not lines[at].strip()):
+        del lines[at - 1]  # no double blank line where the section was
+    while lines and not lines[-1].strip():
+        lines.pop()
+    new = "\n".join(lines) + "\n" if lines else ""
+    before = parse_yaml(text, "the file") or {}
+    try:
+        after = parse_yaml(new, "the edited file") or {}
+    except SettingsError:
+        after = None
+    if isinstance(before, dict) and isinstance(after, dict):
+        rest_before = {k: v for k, v in before.items() if k != name}
+        rest_after = {k: v for k, v in after.items() if k != name}
+        if rest_before == rest_after and after.get(name) == (None if empty else data):
+            return new
+    raise SettingsError(f"can't replace the {name}: section of this file in place (its layout is unusual); nothing "
+                        "was written — edit it by hand")
+
+
 def check_texts(settings_text: str, secrets_text: str) -> tuple[list[str], list[str]]:
     """``(problems, warnings)`` for a ``settings.yaml`` + ``secrets.yaml`` pair given as text, before it is written —
     the same check an instance runs at start (v2.11: the admin panel refuses what would stop it). A problem names

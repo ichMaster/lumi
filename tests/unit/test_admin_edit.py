@@ -279,3 +279,109 @@ def test_check_texts_is_the_start_check_and_never_shows_a_secret():
 
 def test_last4_only_for_a_long_secret():
     assert st.last4("x" * 11) == "" and st.last4("abcdefgh1234") == "1234" and st.last4(None) == ""
+
+
+# --- LUMI-260: the schedule and model-profile editors ---------------------------------------------------------------
+
+
+def test_a_schedule_section_is_edited_previewed_applied_and_rolled_back(root):
+    clock = Clock()
+    text = "- name: morning-brief\n  enabled: false\n- name: evening-walk\n  directive: think\n  at: '19:00'\n"
+    plan = ed.plan_section(root, "schedule", text)
+    pub = plan.public()
+    assert pub["ok"] and pub["changes"] == {"schedule": "(section edited)"} and "+schedule:" in pub["diff"]
+    result = ed.apply(plan, pub["hashes"], clock=clock)
+    assert "evening-walk" in ed.section_text(root, "schedule")
+    assert "# a comment that stays" in (root / "settings.yaml").read_text()
+    rows = {r["name"]: r for r in ed.merged_section(root, "schedule")}
+    assert rows["morning-brief"]["enabled"] is False and rows["morning-brief"].get("directive")  # authored + override
+    assert rows["evening-walk"]["at"] == "19:00" and "muse-silent" in rows  # added; authored ids kept
+    back = ed.plan_rollback(root, result["ts"])
+    ed.apply(back, back.public()["hashes"], clock=clock)
+    assert (root / "settings.yaml").read_text() == SETTINGS_TEXT and ed.section_text(root, "schedule") == ""
+
+
+@pytest.mark.parametrize("name, text, word", [
+    ("schedule", "- name: walk\n  at: 19:00\n", "quoted time"),
+    ("schedule", "name: walk\n", "list of rows"),
+    ("models", "profiles:\n  anthropic: claude-sonnet-5\n", "must be a mapping"),
+    ("models", "aliases: [unclosed\n", "not valid YAML"),
+    ("crons", "- a\n", "unknown section"),
+])
+def test_an_invalid_section_is_refused_and_nothing_is_written(root, name, text, word):
+    before = _snapshot(root)
+    plan = ed.plan_section(root, name, text)
+    assert not plan.ok and word in " ".join(plan.problems)
+    with pytest.raises(ed.EditError):
+        ed.apply(plan, ed.hashes(plan.old))
+    assert _snapshot(root) == before
+
+
+def test_a_models_section_merges_over_the_authored_profiles(root):
+    plan = ed.plan_section(root, "models", "models:\n  profiles:\n    anthropic:\n      reply: claude-sonnet-5\n")
+    ed.apply(plan, plan.public()["hashes"], clock=Clock())
+    merged = ed.merged_section(root, "models")
+    assert merged["profiles"]["anthropic"]["reply"] == "claude-sonnet-5"
+    assert merged["profiles"]["anthropic"]["think"]  # the authored fields kept
+    removed = ed.plan_section(root, "models", "")
+    assert removed.ok and "models:" not in removed.new.settings
+
+
+# --- LUMI-260: promote dev → prod ----------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def pair(tmp_path, root):
+    prod = tmp_path / "prod"
+    prod.mkdir()
+    (prod / "settings.yaml").write_text("instance:\n  env: prod\nmemory:\n  window: 40\npersona:\n  think_show: off\n",
+                                        encoding="utf-8")
+    (prod / "secrets.yaml").write_text("server:\n  token: tok-PROD-SECRET-00000000\n", encoding="utf-8")
+    dev = ed.plan_settings(root, {"memory.window": "30", "persona.think_show": "open"})
+    ed.apply(dev, dev.public()["hashes"], clock=Clock())
+    sec = ed.plan_section(root, "schedule", "- name: morning-brief\n  enabled: false\n")
+    ed.apply(sec, sec.public()["hashes"], clock=Clock())
+    return root, prod
+
+
+def test_promotable_lists_the_differences_never_a_secret_or_an_instance_key(pair):
+    dev, prod = pair
+    keys = {d["key"]: d for d in ed.promotable(dev, prod)}
+    assert keys["memory.window"] == {"key": "memory.window", "source": 30, "target": 40}
+    assert keys["persona.think_show"]["source"] == "open" and "schedule" in keys and "scheduler.enabled" in keys
+    assert "instance.env" not in keys and "server.token" not in keys
+
+
+def test_promote_is_the_prod_diff_of_the_chosen_keys(pair):
+    dev, prod = pair
+    before = _snapshot(prod)
+    plan = ed.plan_promote(dev, prod, ["memory.window", "schedule"])
+    pub = plan.public()
+    assert pub["ok"] and pub["changes"] == {"memory.window": [40, 30], "schedule": "(section edited)"}
+    assert "env: prod" in plan.new.settings and "think_show: off" in plan.new.settings  # nothing else moves
+    assert _snapshot(prod) == before  # a plan writes nothing
+    with pytest.raises(ed.EditError):
+        ed.check_confirm("prod", None, "a promote")
+    with pytest.raises(ed.EditError):
+        ed.check_confirm("prod", "yes")
+    ed.check_confirm("prod", " prod ")
+    ed.check_confirm("dev", None)
+    ed.apply(plan, pub["hashes"], clock=Clock())
+    assert "  window: 30" in (prod / "settings.yaml").read_text()
+
+
+@pytest.mark.parametrize("key, word", [
+    ("server.token", "never promoted"), ("instance.env", "belongs to each instance"),
+    ("server.port", "belongs to each instance"), ("nope.key", "unknown setting"),
+])
+def test_promote_refuses_a_secret_and_a_per_instance_key(pair, key, word):
+    dev, prod = pair
+    plan = ed.plan_promote(dev, prod, [key])
+    assert not plan.ok and word in " ".join(plan.problems)
+
+
+def test_promote_a_key_dev_leaves_at_its_default_removes_it_on_prod(pair):
+    dev, prod = pair
+    (prod / "settings.yaml").write_text("instance:\n  env: prod\nvoice:\n  enabled: true\n", encoding="utf-8")
+    plan = ed.plan_promote(dev, prod, ["voice.enabled"])
+    assert plan.ok and plan.changes == {"voice.enabled": [True, None]}

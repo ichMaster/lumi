@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from admin.containers import PROD_CONFIRM
 from core import settings as st
 
 SETTINGS = st.SETTINGS_FILE
@@ -405,4 +406,116 @@ def plan_rollback(root: Path, ts: str) -> Plan:
         except OSError:
             raise EditError(f"history entry {ts} is missing its copy of {name}") from None
     plan = Plan("rollback", root, old, new, target=ts, of=ts)
+    return _finish(plan)
+
+
+# --- the structured sections: schedule + model profiles (LUMI-260) -----------------------------------------------
+
+
+def section_text(root: Path, name: str) -> str:
+    """An instance's ``schedule:`` / ``models:`` section as YAML text for the editor (``""`` when it has none)."""
+    import yaml
+
+    _, sections, _ = _parsed(read_files(root).settings, SETTINGS)
+    data = sections.get(name)
+    if data in (None, [], {}):
+        return ""
+    return yaml.safe_dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False, width=10**6)
+
+
+def merged_section(root: Path, name: str) -> Any:
+    """What the instance runs once its section is merged over the authored file (the panel image's copy):
+    the schedule rows, or ``{aliases, profiles}``."""
+    from core import config, schedule
+
+    _, sections, _ = _parsed(read_files(root).settings, SETTINGS)
+    data = sections.get(name)
+    if name == "schedule":
+        rows = [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
+        return schedule.merged_rows(config.DEFAULT_SCHEDULE_PATH, rows)
+    aliases, profiles = config.merged_models(data if isinstance(data, dict) else {})
+    return {"aliases": {k: f"{p}:{m}" for k, (p, m) in aliases.items()},
+            "profiles": {k: v._asdict() for k, v in profiles.items()}}
+
+
+def plan_section(root: Path, name: str, text: str | None) -> Plan:
+    """A plan that replaces the instance's ``name`` section with the YAML ``text`` (its body — a list of rows for
+    ``schedule``, a mapping for ``models``; a pasted ``schedule:`` header is accepted). Empty text removes the
+    section. Checked like every plan: an unquoted ``19:00`` or a profile that isn't a mapping is refused."""
+    old = read_files(root)
+    plan = Plan("section", Path(root), old, old, target=name)
+    if name not in st.STRUCTURED:
+        plan.problems.append(f"unknown section {name!r} — one of {', '.join(st.STRUCTURED)}")
+        return plan
+    try:
+        data = st.parse_yaml(text or "", f"the {name} section")
+        if isinstance(data, dict) and set(data) == {name}:
+            data = data[name]
+        plan.new = old.replace(SETTINGS, st.set_section(old.settings, name, data))
+    except st.SettingsError as exc:
+        plan.problems.append(str(exc).removeprefix("Lumi settings — "))
+        return plan
+    return _finish(plan)
+
+
+# --- promote dev → prod (LUMI-260) ---------------------------------------------------------------------------------
+
+# Never promoted: what names the instance itself (a secret never leaves its own instance either).
+PER_INSTANCE = ("instance.env", "instance.home", "instance.allow_dirty_prod", "server.host", "server.port",
+                "server.client_mode")
+
+
+def check_confirm(instance: str, confirm: str | None, what: str = "a change") -> None:
+    """A write to prod needs the typed confirmation ``prod`` (the v2.10 rule for the service actions)."""
+    if instance == "prod" and (confirm or "").strip() != PROD_CONFIRM:
+        raise EditError(f"{what} on prod needs the typed confirmation — type {PROD_CONFIRM!r}; nothing was written")
+
+
+def promotable(source: Path, target: Path) -> list[dict[str, Any]]:
+    """The plain settings and sections whose value differs between ``source`` (dev) and ``target`` (prod):
+    ``[{key, source, target}]`` — never a secret or a per-instance key."""
+    a, sa, _ = _parsed(read_files(source).settings, SETTINGS)
+    b, sb, _ = _parsed(read_files(target).settings, SETTINGS)
+    out = []
+    for s in st.SETTINGS:
+        if s.secret or s.key in PER_INSTANCE or s.key in CONTAINER_SET:
+            continue
+        if a.get(s.key) != b.get(s.key):
+            out.append({"key": s.key, "source": a.get(s.key), "target": b.get(s.key)})
+    for name in st.STRUCTURED:
+        if sa.get(name) != sb.get(name):
+            out.append({"key": name, "source": "(section)", "target": "(section)"})
+    return out
+
+
+def plan_promote(source: Path, target: Path, keys: list[str]) -> Plan:
+    """A plan for ``target`` (prod) that copies ``keys`` from ``source`` (dev): a plain setting's value (or its
+    absence — back to the default), or a whole ``schedule`` / ``models`` section. A secret or a per-instance key is
+    refused with the reason."""
+    src = read_files(source)
+    old = read_files(target)
+    plain, sections, _ = _parsed(src.settings, SETTINGS)
+    plan = Plan("promote", Path(target), old, old, target=", ".join(keys))
+    text = old.settings
+    if not keys:
+        plan.problems.append("choose the settings to promote")
+    for key in keys:
+        try:
+            if key in st.STRUCTURED:
+                text = st.set_section(text, key, sections.get(key))
+                continue
+            s = st.lookup(str(key))
+            if s is None:
+                plan.problems.append(f"unknown setting '{key}'")
+            elif s.secret:
+                plan.problems.append(f"{s.key} is a secret — never promoted; set prod's own in the Secrets editor")
+            elif s.key in PER_INSTANCE or s.key in CONTAINER_SET:
+                plan.problems.append(f"{s.key} belongs to each instance — never promoted")
+            elif plain.get(s.key) is None:
+                text = st.unset_in_text(text, s.key)
+            else:
+                text = _set(text, SETTINGS, s.key, plain[s.key])
+        except st.SettingsError as exc:
+            plan.problems.append(f"{key}: {exc}")
+    plan.new = old.replace(SETTINGS, text)
     return _finish(plan)
