@@ -484,7 +484,8 @@ def promotable(source: Path, target: Path) -> list[dict[str, Any]]:
             out.append({"key": s.key, "source": a.get(s.key), "target": b.get(s.key)})
     for name in st.STRUCTURED:
         if sa.get(name) != sb.get(name):
-            out.append({"key": name, "source": "(section)", "target": "(section)"})
+            out.append({"key": name, "source": "(section)" if sa.get(name) else None,
+                        "target": "(section)" if sb.get(name) else None})
     return out
 
 

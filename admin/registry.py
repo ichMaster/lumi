@@ -27,6 +27,7 @@ MIN_TOKEN = 32
 DEFAULT_PORT = 8767
 HOME_ENV = "LUMI_ADMIN_HOME"
 TOKEN_ENV = "LUMI_ADMIN_TOKEN"
+LOCK_ENV = "LUMI_AGENT_LOCK"
 
 
 class AdminConfigError(SystemExit):
@@ -61,6 +62,7 @@ class AdminConfig:
     host: str
     port: int
     alerts: AlertsConfig = AlertsConfig()
+    agent_lock: Path | None = None  # v2.11: the deploy agent's lock, mounted read-only (LUMI_AGENT_LOCK)
 
     def instance(self, name: str) -> Instance | None:
         return next((i for i in self.instances if i.name == name), None)
@@ -128,7 +130,9 @@ def load(home: Path | None = None, environ: dict | None = None) -> AdminConfig:
     alerts = _alerts(data.get("alerts"), secrets.get("alerts"), problems)
     if problems:
         raise AdminConfigError(f"Lumi admin — refusing to start ({home}):\n" + "\n".join(f"  • {p}" for p in problems))
-    return AdminConfig(home=home, token=token, instances=tuple(instances), host=host, port=port, alerts=alerts)
+    lock = (environ.get(LOCK_ENV) or "").strip()
+    return AdminConfig(home=home, token=token, instances=tuple(instances), host=host, port=port, alerts=alerts,
+                       agent_lock=Path(lock) if lock else None)
 
 
 def _alerts(block: object, secret: object, problems: list[str]) -> AlertsConfig:

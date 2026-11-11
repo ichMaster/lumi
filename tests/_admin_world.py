@@ -81,7 +81,11 @@ class FakeServers:
 
 def build_world(tmp_path: Path):
     instances = tuple(build_instance(tmp_path / n, n) for n in ("prod", "dev"))
-    cfg = AdminConfig(home=tmp_path / "admin", token=ADMIN_TOKEN, instances=instances, host="127.0.0.1", port=8767)
+    lock = tmp_path / "deploy" / "agent.lock"  # v2.11: the deploy agent's lock, free unless a test holds it
+    lock.parent.mkdir()
+    lock.write_text("")
+    cfg = AdminConfig(home=tmp_path / "admin", token=ADMIN_TOKEN, instances=instances, host="127.0.0.1", port=8767,
+                      agent_lock=lock)
     runner = ct.FakeRunner(["prod", "dev"])
     runner.log_lines[("dev", "server")] = ["serving on 0.0.0.0:8766", f"oops {SECRETS['dev']['server.token']}"]
     servers = FakeServers()

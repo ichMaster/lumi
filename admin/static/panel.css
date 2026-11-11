@@ -53,3 +53,24 @@ svg.chart { display: block; width: 100%; height: auto; max-height: 220px; }
   color: var(--ink); }
 svg text { fill: var(--muted); font-size: 10px; }
 svg rect.bar { fill: var(--accent); }
+/* v2.11: configure */
+td.edit button { border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 5px 10px;
+  border-radius: 6px; cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+button.danger { border-color: var(--prod); background: var(--prod); color: #fff; font-weight: 600; }
+details.group { margin-top: 10px; padding: 8px 16px; }
+details.group summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+td.key { width: 45%; } td.key code { font-weight: 600; } td.key .muted { margin-top: 2px; }
+td.edit { white-space: nowrap; } td.edit input, td.edit select, textarea { padding: 5px 8px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--ink); max-width: 260px; }
+td.edit button { margin-left: 6px; }
+tr.pending { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+tr.prodrow td:nth-child(3) { color: var(--prod); font-weight: 600; }
+textarea { width: 100%; max-width: none; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+pre.diff { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow: auto;
+  font: 12px/1.4 ui-monospace, Menlo, monospace; max-height: 50vh; }
+pre.diff .add { color: var(--green); } pre.diff .del { color: var(--red); }
+.preview ul.error { margin: 6px 0; padding-left: 18px; }
+.note { color: var(--amber); }
+.grid.wide { grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); }

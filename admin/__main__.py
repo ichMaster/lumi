@@ -28,7 +28,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real Docker
                     if cfg.instance(name) else text)
     health = hl.HealthRunner(list(cfg.instances), cfg.home / "health.jsonl",
                              services=lambda inst: runner.list(inst.name), on_run=alerts.observe)
-    app = create_app(cfg, runner, health)
+    app = create_app(cfg, runner, health, alerts=alerts)
     import uvicorn
 
     print(f"Lumi admin on {cfg.host}:{cfg.port} — instances: {', '.join(i.name for i in cfg.instances)}",
