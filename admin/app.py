@@ -248,14 +248,23 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
     def history(instance: str, limit: int = Query(default=50, ge=1, le=200)) -> dict:
         return {"entries": ed.history(instance_or_404(instance).root, limit)}
 
+    def rollback_plan_or_404(inst: rd.Instance, ts: str) -> ed.Plan:
+        try:
+            return ed.plan_rollback(inst.root, ts)
+        except ed.EditError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+
+    @app.post("/api/history/{instance}/{ts}/preview", dependencies=guarded)
+    def rollback_preview(instance: str, ts: str) -> dict:
+        """What a rollback would do — the diff, and the later changes it also undoes (code review #1)."""
+        return rollback_plan_or_404(instance_or_404(instance), ts).public()
+
     @app.post("/api/history/{instance}/{ts}/rollback", dependencies=guarded)
     def rollback(instance: str, ts: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
         inst = instance_or_404(instance)
-        try:
-            ed.plan_rollback(inst.root, ts)
-        except ed.EditError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from None
-        return write(inst, "rollback", ts, _str(payload, "confirm"), lambda: ed.plan_rollback(inst.root, ts), None)
+        rollback_plan_or_404(inst, ts)
+        return write(inst, "rollback", ts, _str(payload, "confirm"), lambda: ed.plan_rollback(inst.root, ts),
+                     _dict(payload, "hashes") or None)
 
     def section_or_404(name: str) -> str:
         if name not in st.STRUCTURED:

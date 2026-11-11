@@ -455,8 +455,9 @@ refused — preview again.
   instance); the deploy agent and the panel read it from the instance folder, so they follow by themselves.
 - **History & rollback** — each change first copies the files it changes into `~/lumi/<instance>/config-history/`
   (`<ts>-settings.yaml`, `<ts>-secrets.yaml` `0600`, a `<ts>.json` manifest that names a secret as `(secret)`);
-  "Roll back" restores them — the current files are kept first, so a rollback can be rolled back. The newest 200
-  entries are kept.
+  "Roll back" restores them — the current files are kept first, so a rollback can be rolled back. A file goes back
+  **whole**, so rolling back an older entry also undoes the later changes to that file: "Roll back" previews first
+  and its confirmation names them (dev asks too). The newest 200 entries are kept.
 - **Schedule & models** — the instance's `schedule:` / `models:` sections of `settings.yaml`, edited as YAML, with the
   merged result (the authored rows / profiles of the panel's image plus the instance's changes) beside them.
 - **Promote** — the settings and sections where dev and prod differ; pick some → the prod diff → apply with `prod`.

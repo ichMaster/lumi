@@ -142,6 +142,30 @@ def test_a_dev_setting_is_previewed_applied_with_its_restart_and_rolled_back(con
     assert [(a["action"], a["result"]) for a in _audit(client)] == [("rollback", "done"), ("settings", "done")]
 
 
+def test_review_1_a_rollback_is_previewed_and_a_stale_one_refused(conf):
+    client, runner, cfg, tmp_path = conf
+    for change in ({"memory.window": "30"}, {"persona.think_show": "open"}):
+        pv = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": change}).json()
+        assert client.post("/api/settings/dev/apply", headers=AUTH,
+                           json={"changes": change, "hashes": pv["hashes"]}).status_code == 200
+    newer, older = client.get("/api/history/dev", headers=AUTH).json()["entries"]
+    pv = client.post(f"/api/history/dev/{older['ts']}/preview", headers=AUTH).json()
+    assert pv["ok"] and pv["changes"] == {"memory.window": [30, None], "persona.think_show": ["open", None]}
+    assert newer["ts"] in pv["notes"][0] and "-  think_show: open" in pv["diff"]
+    assert client.post("/api/history/dev/20990101-000000Z/preview", headers=AUTH).status_code == 404
+    before = _file(tmp_path, "dev")
+    pv2 = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"memory.window": "31"}}).json()
+    client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "31"},
+                                                               "hashes": pv2["hashes"]})  # a change in between
+    after = _file(tmp_path, "dev")
+    r = client.post(f"/api/history/dev/{older['ts']}/rollback", headers=AUTH, json={"hashes": pv["hashes"]})
+    assert r.status_code == 409 and "changed since this preview" in r.json()["detail"]
+    assert _file(tmp_path, "dev") == after != before
+    fresh = client.post(f"/api/history/dev/{older['ts']}/preview", headers=AUTH).json()
+    r = client.post(f"/api/history/dev/{older['ts']}/rollback", headers=AUTH, json={"hashes": fresh["hashes"]})
+    assert r.status_code == 200 and "window" not in _file(tmp_path, "dev") and "think_show" not in _file(tmp_path, "dev")
+
+
 def test_a_stale_preview_and_an_invalid_value_are_refused_and_audited(conf):
     client, runner, cfg, tmp_path = conf
     before = _file(tmp_path, "dev")

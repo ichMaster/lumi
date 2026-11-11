@@ -36,6 +36,7 @@ CALLS = [
     ("POST", "/api/secrets/prod", {"key": "server.token", "value": SET_SECRET}),
     ("POST", "/api/secrets/dev", {"key": "providers.anthropic_api_key", "clear": True}),
     ("GET", "/api/history/dev", None), ("POST", "/api/history/dev/20990101-000000Z/rollback", {}),
+    ("POST", "/api/history/dev/20990101-000000Z/preview", None),
     ("GET", "/api/sections/dev/schedule", None), ("GET", "/api/sections/prod/models", None),
     ("POST", "/api/sections/dev/schedule/preview", {"text": "- name: morning-brief\n  enabled: false\n"}),
     ("POST", "/api/sections/dev/schedule/apply", {"text": "- name: morning-brief\n  enabled: false\n",
@@ -76,6 +77,7 @@ def test_1_every_api_route_needs_the_token(world):
                  "/api/settings/{instance}/apply": "/api/settings/dev/apply",
                  "/api/secrets/{instance}": "/api/secrets/dev", "/api/history/{instance}": "/api/history/dev",
                  "/api/history/{instance}/{ts}/rollback": "/api/history/dev/20990101-000000Z/rollback",
+                 "/api/history/{instance}/{ts}/preview": "/api/history/dev/20990101-000000Z/preview",
                  "/api/sections/{instance}/{name}": "/api/sections/dev/schedule",
                  "/api/sections/{instance}/{name}/preview": "/api/sections/dev/schedule/preview",
                  "/api/sections/{instance}/{name}/apply": "/api/sections/dev/schedule/apply"}

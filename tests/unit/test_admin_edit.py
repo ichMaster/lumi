@@ -184,6 +184,20 @@ def test_a_stale_preview_is_refused_and_nothing_is_written(root):
     assert _snapshot(root) == before and not (root / "config-history").exists()
 
 
+def test_review_1_rolling_back_an_older_entry_names_the_later_changes_it_also_undoes(root):
+    clock = Clock()
+    first = ed.apply(p := ed.plan_settings(root, {"memory.window": "30"}), p.public()["hashes"], clock=clock)
+    second = ed.apply(p := ed.plan_settings(root, {"scheduler.enabled": "false"}), p.public()["hashes"], clock=clock)
+    ed.apply(p := ed.plan_secret(root, "server.token", NEW_TOKEN), p.public()["hashes"], clock=clock)
+    older = ed.plan_rollback(root, first["ts"])
+    assert older.changes == {"memory.window": [30, 40], "scheduler.enabled": [False, True]}  # the file goes back whole
+    [note] = older.notes
+    assert second["ts"] in note and "scheduler.enabled" in note
+    assert "server.token" not in note  # a later change to the other file is not undone, so not named
+    assert ed.plan_rollback(root, second["ts"]).notes == []  # the newest change of its file: an exact undo
+    _no_secret(older.public())
+
+
 def test_rollback_refuses_an_unknown_or_malformed_entry(root):
     for ts in ("nope", "../../etc/passwd", "20261111-000000Z"):
         with pytest.raises(ed.EditError):
