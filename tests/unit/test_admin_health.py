@@ -154,3 +154,9 @@ def test_the_server_token_never_reaches_the_snapshot_or_history(instances, tmp_p
     runner.run_once()
     blob = json.dumps(runner.snapshot()) + (tmp_path / "h.jsonl").read_text()
     assert "tok-prod" not in blob and "tok-dev" not in blob
+
+
+
+def test_review_2_retries_alone_keep_the_model_check_green_and_are_named():
+    r = next(x for x in h.evaluate(_f(model_retries_1h=4)) if x.name == "model")
+    assert r.status == h.GREEN and "4 recovered retries" in r.detail

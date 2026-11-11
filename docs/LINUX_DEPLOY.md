@@ -422,8 +422,12 @@ python3 -c "import secrets; print('admin:\n  token: ' + secrets.token_urlsafe(32
 chmod 600 ~/lumi/admin/secrets.yaml                                         # the token — never printed
 LUMI_IMAGE_TAG=v2.10.0 docker compose --env-file ~/lumi/deploy/admin/admin.env \
   -f ~/lumi/deploy/admin/compose.yaml up -d
-sudo ufw allow from 192.168.1.0/24 to any port 8767 proto tcp              # the home subnet only
+sudo ufw allow from 192.168.1.0/24 to any port 8767 proto tcp              # keeps the box's rules consistent
 ```
+
+**What keeps it off other networks is the publish address**, not ufw: Docker publishes past ufw's input chain (as
+§1 explains), so `LUMI_PUBLISH_HOST` in `admin.env` (the LAN address, never `0.0.0.0`) is the fence, and the token
+the gate. Never forward port 8767 on the router.
 
 From the Mac: `http://192.168.1.197:8767`, and paste the token (`ssh slate-server 'cat ~/lumi/admin/secrets.yaml'`
 shows it to you). The page keeps it for the browser tab only (`sessionStorage`).

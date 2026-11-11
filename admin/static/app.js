@@ -4,7 +4,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const state = { token: sessionStorage.getItem("lumi-admin-token") || "", tab: "overview", instance: "dev",
-                instances: [] };
+                instances: [], lastAction: null };
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -112,22 +112,35 @@ async function renderServices() {
       el("button", { onclick: () => act(name, service, a) }, a)))));
   $("#services").replaceChildren(el("div", { class: `card ${name === "prod" ? "prod" : ""}` }, el("h2", {}, name),
     el("table", {}, el("tr", {}, ["service", "state", "up", "restarts", "image", ""].map((h) => el("th", {}, h))),
-      rows), el("p", { id: "act-result", class: "muted" })));
+      rows), actionLine()));
+}
+
+// The last action's outcome survives every re-render (code review #1: it was wiped after 1.5 s, and a refused prod
+// restart looked done).
+function actionLine() {
+  const a = state.lastAction;
+  return el("p", { id: "act-result", class: a && a.error ? "error" : "muted" },
+            a ? `${a.at} — ${a.text}` : "");
+}
+
+function setAction(text, error = false) {
+  state.lastAction = { text, error, at: new Date().toTimeString().slice(0, 8) };
+  const line = $("#act-result");
+  if (line) line.replaceWith(actionLine());
 }
 
 async function act(name, service, action) {
   let confirm;
   if (name === "prod") {
     confirm = prompt(`${action} ${service} on PROD — her session closes. Type "prod" to confirm:`);
-    if (confirm === null) return;
+    if (confirm === null) { setAction(`${action} prod/${service}: cancelled — nothing sent`, true); return; }
   }
-  const out = $("#act-result");
-  out.textContent = `${action} ${name}/${service} …`;
+  setAction(`${action} ${name}/${service} …`);
   try {
     const r = await api(`/api/services/${name}/${service}/${action}`, { method: "POST",
                                                                          body: JSON.stringify({ confirm }) });
-    out.textContent = `${action} ${name}/${service}: ${r.result}`;
-  } catch (e) { out.textContent = `refused: ${e.message}`; }
+    setAction(`${action} ${name}/${service}: ${r.result}`);
+  } catch (e) { setAction(`${action} ${name}/${service} refused: ${e.message}`, true); }
   setTimeout(renderServices, 1500);
 }
 

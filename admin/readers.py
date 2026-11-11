@@ -269,12 +269,19 @@ def _line_when(rec: dict, tz) -> datetime | None:
         return None
 
 
+def _model_failure(rec: dict) -> bool:
+    """A ``lumi.llm`` line that means the call did NOT answer: an ERROR, or a warning that a retry failed too
+    (``… again``). A retry or a fallback that answered (``asking once more``, ``forcing``, ``→ blocking loop``) is not
+    one (code review #2: those kept the model check amber on a recovering Gemini)."""
+    return rec["level"] in ("ERROR", "CRITICAL") or " again" in rec["message"]
+
+
 def errors(inst: Instance, *, now: datetime) -> dict[str, Any]:
-    """``ERROR`` lines in the last 24 h, model failures and timeouts (``lumi.llm`` WARNING/ERROR) in the last hour,
-    and the last error line (redacted)."""
+    """``ERROR`` lines in the last 24 h; model failures (a call that didn't answer) and model retries (a call that
+    recovered) in the last hour, from ``lumi.llm``; and the last error line (redacted)."""
     redact = redactor(inst)
     day_ago, hour_ago = now - timedelta(hours=24), now - timedelta(hours=1)
-    errors_24h = failures_1h = 0
+    errors_24h = failures_1h = retries_1h = 0
     last_error = None
     for raw in tail_lines(inst.data / "lumi.log"):
         rec = parse_log_line(raw)
@@ -287,8 +294,12 @@ def errors(inst: Instance, *, now: datetime) -> dict[str, Any]:
             errors_24h += 1
             last_error = f"{rec['date']} {rec['time']} {rec['source']}: {redact(rec['message'])}"
         if rec["source"].startswith("lumi.llm") and rec["level"] in ("WARNING", "ERROR") and when >= hour_ago:
-            failures_1h += 1
-    return {"errors_24h": errors_24h, "model_failures_1h": failures_1h, "last_error": last_error}
+            if _model_failure(rec):
+                failures_1h += 1
+            else:
+                retries_1h += 1
+    return {"errors_24h": errors_24h, "model_failures_1h": failures_1h, "model_retries_1h": retries_1h,
+            "last_error": last_error}
 
 
 def log_tail(inst: Instance, source: str = "lumi", *, level: str = "", q: str = "", tail: int = 200
