@@ -324,6 +324,16 @@ def merge_rows(rows: list[dict], overrides: list[dict] | tuple = ()) -> list[dic
     return out
 
 
+def merged_rows(path: str | Path, overrides: list[dict] | tuple = ()) -> list[dict]:
+    """The rows an instance runs: the authored ``schedule.yaml`` rows with its ``overrides`` merged by name
+    (v2.11 — the admin panel shows them). A missing/unreadable file → only the overrides (never raises)."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    return merge_rows(_rows_yaml(text), overrides)
+
+
 def _kind(row: dict) -> str | None:
     """The trigger kind a row fires on — the first of ``TRIGGER_KINDS`` it names (``_entry_from_row``'s order)."""
     return next((k for k in TRIGGER_KINDS if k in row), None)

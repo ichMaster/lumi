@@ -1,8 +1,11 @@
 # v2.10 (LUMI-257) — the admin panel, one per box: its own compose project from the same Lumi image. It shows prod
 # and dev side by side and drives their containers through the Docker API; it never runs the core, never writes a
-# data root (both instance folders are mounted read-only) and makes no paid call. Installed by hand with a tag:
-#   LUMI_IMAGE_TAG=v2.10.0 docker compose --env-file deploy/admin/admin.env -f deploy/admin/compose.yaml up -d
-# Nothing secret lives here: its token is ~/lumi/admin/secrets.yaml (0600), its registry ~/lumi/admin/admin.yaml.
+# data root and makes no paid call. v2.11 (LUMI-264): it edits each instance's settings.yaml / secrets.yaml and keeps
+# their config-history/ — so the instance folders are writable, with each data/ mounted read-only on top — and it
+# respects the deploy agent's lock (mounted read-only). Installed by hand with a tag:
+#   LUMI_IMAGE_TAG=v2.11.0 docker compose --env-file deploy/admin/admin.env -f deploy/admin/compose.yaml up -d
+# Nothing secret lives here: its token and the admin bot's are ~/lumi/admin/secrets.yaml (0600), its registry
+# ~/lumi/admin/admin.yaml.
 name: lumi-admin
 
 services:
@@ -13,14 +16,23 @@ services:
       LUMI_ADMIN_HOME: /admin
       LUMI_ADMIN_HOST: 0.0.0.0                     # the image's own interfaces; the publish rule decides exposure
       LUMI_ADMIN_PORT: "8767"
+      LUMI_AGENT_LOCK: /deploy/agent.lock          # v2.11: no panel action while a deploy step runs
       TZ: ${LUMI_TZ:-Europe/Kyiv}                  # "today" for the usage and the mood check
     ports:
       - "${LUMI_PUBLISH_HOST:?pass --env-file deploy/admin/admin.env}:8767:8767"   # the LAN address only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # the Docker API — root-equivalent: LAN-only, its own token
-      - ${LUMI_HOME_DIR:?pass --env-file deploy/admin/admin.env}/prod:/instances/prod:ro
-      - ${LUMI_HOME_DIR}/dev:/instances/dev:ro
-      - ${LUMI_HOME_DIR}/admin:/admin              # admin.yaml, secrets.yaml, health.jsonl — its only writable folder
+      - ${LUMI_HOME_DIR:?pass --env-file deploy/admin/admin.env}/prod:/instances/prod  # settings + history
+      - ${LUMI_HOME_DIR}/prod/data:/instances/prod/data:ro                               # her memory: never written
+      - ${LUMI_HOME_DIR}/dev:/instances/dev
+      - ${LUMI_HOME_DIR}/dev/data:/instances/dev/data:ro
+      - ${LUMI_HOME_DIR}/admin:/admin              # admin.yaml, secrets.yaml, health.jsonl, audit.jsonl
+      - type: bind                                 # the deploy agent's lock: held shared for a panel action
+        source: ${LUMI_HOME_DIR}/deploy/agent.lock
+        target: /deploy/agent.lock
+        read_only: true
+        bind:
+          create_host_path: false                  # never a directory in its place (the agent creates the file)
     user: "1000:1000"
     group_add: ["${DOCKER_GID:-999}"]              # the host's docker group: the socket is root:docker 0660
     init: true

@@ -1,10 +1,15 @@
-"""The admin panel's FastAPI app (v2.10, LUMI-256): a JSON API + the static page.
+"""The admin panel's FastAPI app (v2.10, LUMI-256; configure v2.11, LUMI-263): a JSON API + the static page.
 
 Every ``/api`` route needs ``Authorization: Bearer <admin token>``; only ``/`` (the static page), ``/static/*`` and
 ``/healthz`` are open. The panel never runs the core and never writes a data root — it reads through
 ``admin/readers.py``, asks each server (``/v1/health``, ``/v1/state`` with its token), and drives containers through
 the ``ContainerRunner`` seam, where a prod action needs the typed confirmation. No response carries a secret: the
 log lines are redacted, and the server state is reduced to the fields the panel shows.
+
+v2.11: the panel **writes** an instance's ``settings.yaml`` / ``secrets.yaml`` / ``config-history/`` through
+``admin/edit.py`` (never ``data/``). Every write — and every service action — runs inside the deploy agent's lock
+(``admin/guard.py``), needs ``prod`` typed on prod, restarts the instance's running services, and is audited
+(``admin/audit.py``) whether it is done, refused or failed. Secrets are write-only.
 """
 
 from __future__ import annotations
@@ -22,9 +27,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from admin import containers as ct
+from admin import edit as ed
+from admin import guard as gd
 from admin import health as hl
 from admin import readers as rd
+from admin.alerts import Alerts
+from admin.audit import AUDIT_FILE, Audit
 from admin.registry import AdminConfig
+from core import settings as st
 
 STATIC = Path(__file__).resolve().parent / "static"
 STATE_FIELDS = ("model", "provider", "profile", "mood", "theme", "session_id", "think_show", "stream_enabled")
@@ -40,9 +50,27 @@ def _state_view(state: Any) -> dict[str, Any]:
     return out
 
 
+def _dict(payload: Any, key: str) -> dict:
+    value = payload.get(key) if isinstance(payload, dict) else None
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or not all(isinstance(k, str) for k in value):
+        raise HTTPException(status_code=422, detail=f"{key} must be a mapping")
+    return value
+
+
+def _str(payload: Any, key: str) -> str | None:
+    value = payload.get(key) if isinstance(payload, dict) else None
+    if value is not None and not isinstance(value, str):
+        raise HTTPException(status_code=422, detail=f"{key} must be text")
+    return value
+
+
 def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRunner, *,
                http: hl.Http = hl.urllib_http, clock: Callable[[], datetime] = lambda: datetime.now().astimezone(),
-               background: bool = True, proc: Path = Path("/proc")) -> FastAPI:
+               background: bool = True, proc: Path = Path("/proc"), audit: Audit | None = None,
+               alerts: Alerts | None = None) -> FastAPI:
+    audit = audit or Audit(cfg.home / AUDIT_FILE, clock=clock)
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
         task = asyncio.create_task(health.loop()) if background else None
@@ -125,16 +153,174 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
     def services() -> dict:
         return {inst.name: runner.list(inst.name) for inst in cfg.instances}
 
+    def redact_all(text: str) -> str:
+        for inst in cfg.instances:
+            text = rd.redactor(inst)(text)
+        return text
+
+    def record(action: str, instance: str | None, target: str, result: str, changes: dict | None = None) -> None:
+        audit.record(action, instance, target, changes=changes, result=result, redact=redact_all)
+
     @app.post("/api/services/{instance}/{service}/{action}", dependencies=guarded)
     def act(instance: str, service: str, action: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
         instance_or_404(instance)
-        confirm = payload.get("confirm") if isinstance(payload, dict) else None
+        confirm = _str(payload, "confirm")
         try:
-            return runner.act(instance, service, action, confirm)
-        except ct.Refused as exc:
+            with gd.agent_lock(cfg.agent_lock):
+                out = runner.act(instance, service, action, confirm)
+        except (ct.Refused, gd.Busy) as exc:
+            record(action, instance, service, f"refused: {exc}")
             raise HTTPException(status_code=409, detail=str(exc)) from None
         except OSError as exc:
+            record(action, instance, service, f"failed: docker: {exc}")
             raise HTTPException(status_code=502, detail=f"docker: {exc}") from None
+        record(action, instance, service, "done")
+        return out
+
+    # --- v2.11: configure (every write audited, lock-guarded, prod confirmed) -----------------------------------
+
+    def restart_running(instance: str, confirm: str | None) -> dict[str, str]:
+        """Restart the instance's running services so they read the new files; a stopped one stays stopped."""
+        out: dict[str, str] = {}
+        states = runner.list(instance)
+        for service in ct.SERVICES:
+            if (states.get(service) or {}).get("state") != "running":
+                out[service] = "not running — reads the new settings when started"
+                continue
+            try:
+                runner.act(instance, service, "restart", confirm)
+                out[service] = "restarted"
+            except (ct.Refused, OSError) as exc:
+                out[service] = f"failed: {exc}"
+        return out
+
+    def write(inst: rd.Instance, action: str, target: str, confirm: str | None, build: Callable[[], ed.Plan],
+              expect: dict | None) -> dict:
+        """Confirm (prod) → the agent lock → plan → apply (history first) → restart → audit; a refusal is a 409."""
+        try:
+            ed.check_confirm(inst.name, confirm, f"this {action}")
+            with gd.agent_lock(cfg.agent_lock):
+                plan = build()
+                if not plan.ok:
+                    raise ed.EditError("; ".join(plan.public()["problems"]))
+                result = ed.apply(plan, expect if expect is not None else ed.hashes(plan.old))
+                restarted = restart_running(inst.name, confirm) if result["restart"] else {}
+        except (ed.EditError, gd.Busy) as exc:
+            record(action, inst.name, target, f"refused: {exc}")
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except OSError as exc:
+            record(action, inst.name, target, f"failed: {exc.strerror or type(exc).__name__}")
+            raise HTTPException(status_code=502, detail=f"the write failed: {exc.strerror or exc}") from None
+        failed = {s: r for s, r in restarted.items() if r.startswith("failed")}
+        record(action, inst.name, target, "done" + (f"; restart {failed}" if failed else ""), result["changes"])
+        return result | {"restarted": restarted}
+
+    @app.get("/api/settings/{instance}", dependencies=guarded)
+    def settings_view(instance: str) -> dict:
+        inst = instance_or_404(instance)
+        return ed.view(inst.root) | {"instance": inst.name, "deploy_busy": gd.agent_busy(cfg.agent_lock)}
+
+    @app.post("/api/settings/{instance}/preview", dependencies=guarded)
+    def settings_preview(instance: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
+        return ed.plan_settings(instance_or_404(instance).root, _dict(payload, "changes")).public()
+
+    @app.post("/api/settings/{instance}/apply", dependencies=guarded)
+    def settings_apply(instance: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
+        inst = instance_or_404(instance)
+        changes = _dict(payload, "changes")
+        return write(inst, "settings", ", ".join(changes), _str(payload, "confirm"),
+                     lambda: ed.plan_settings(inst.root, changes), _dict(payload, "hashes"))
+
+    @app.post("/api/secrets/{instance}", dependencies=guarded)
+    def secret_set(instance: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
+        inst = instance_or_404(instance)
+        key = _str(payload, "key") or ""
+        value = None if payload.get("clear") is True else _str(payload, "value")
+        if value is None and payload.get("clear") is not True:
+            raise HTTPException(status_code=422, detail="give a value, or clear: true")
+        out = write(inst, "secret clear" if value is None else "secret set", key, _str(payload, "confirm"),
+                    lambda: ed.plan_secret(inst.root, key, value), _dict(payload, "hashes") or None)
+        name = st.lookup(key).key  # the write succeeded, so the key is a known secret
+        shown = next(s for g in ed.view(inst.root)["groups"] for s in g["settings"] if s["key"] == name)
+        return out | {"secret": {"key": name, "set": shown["set"], "last4": shown["last4"]}}
+
+    @app.get("/api/history/{instance}", dependencies=guarded)
+    def history(instance: str, limit: int = Query(default=50, ge=1, le=200)) -> dict:
+        return {"entries": ed.history(instance_or_404(instance).root, limit)}
+
+    @app.post("/api/history/{instance}/{ts}/rollback", dependencies=guarded)
+    def rollback(instance: str, ts: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
+        inst = instance_or_404(instance)
+        try:
+            ed.plan_rollback(inst.root, ts)
+        except ed.EditError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        return write(inst, "rollback", ts, _str(payload, "confirm"), lambda: ed.plan_rollback(inst.root, ts), None)
+
+    def section_or_404(name: str) -> str:
+        if name not in st.STRUCTURED:
+            raise HTTPException(status_code=404, detail=f"unknown section {name!r}")
+        return name
+
+    @app.get("/api/sections/{instance}/{name}", dependencies=guarded)
+    def section_view(instance: str, name: str) -> dict:
+        inst, name = instance_or_404(instance), section_or_404(name)
+        return {"name": name, "text": ed.section_text(inst.root, name), "merged": ed.merged_section(inst.root, name),
+                "hashes": ed.hashes(ed.read_files(inst.root))}
+
+    @app.post("/api/sections/{instance}/{name}/preview", dependencies=guarded)
+    def section_preview(instance: str, name: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
+        inst, name = instance_or_404(instance), section_or_404(name)
+        return ed.plan_section(inst.root, name, _str(payload, "text")).public()
+
+    @app.post("/api/sections/{instance}/{name}/apply", dependencies=guarded)
+    def section_apply(instance: str, name: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
+        inst, name = instance_or_404(instance), section_or_404(name)
+        text = _str(payload, "text")
+        return write(inst, "section", name, _str(payload, "confirm"), lambda: ed.plan_section(inst.root, name, text),
+                     _dict(payload, "hashes"))
+
+    def pair() -> tuple[rd.Instance, rd.Instance]:
+        dev, prod = cfg.instance("dev"), cfg.instance("prod")
+        if dev is None or prod is None:
+            raise HTTPException(status_code=404, detail="promote needs both dev and prod in the registry")
+        return dev, prod
+
+    def keys_of(payload: Any) -> list[str]:
+        keys = payload.get("keys") if isinstance(payload, dict) else None
+        if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+            raise HTTPException(status_code=422, detail="keys must be a list of setting names")
+        return keys
+
+    @app.get("/api/promote", dependencies=guarded)
+    def promote_view() -> dict:
+        dev, prod = pair()
+        return {"differences": ed.promotable(dev.root, prod.root), "hashes": ed.hashes(ed.read_files(prod.root))}
+
+    @app.post("/api/promote/preview", dependencies=guarded)
+    def promote_preview(payload: dict = Body(default={})) -> dict:  # noqa: B008
+        dev, prod = pair()
+        return ed.plan_promote(dev.root, prod.root, keys_of(payload)).public()
+
+    @app.post("/api/promote/apply", dependencies=guarded)
+    def promote_apply(payload: dict = Body(default={})) -> dict:  # noqa: B008
+        dev, prod = pair()
+        keys = keys_of(payload)
+        return write(prod, "promote", ", ".join(keys), _str(payload, "confirm"),
+                     lambda: ed.plan_promote(dev.root, prod.root, keys), _dict(payload, "hashes"))
+
+    @app.get("/api/audit", dependencies=guarded)
+    def audit_view(instance: str | None = None, limit: int = Query(default=200, ge=1, le=1000)) -> dict:
+        if instance is not None:
+            instance_or_404(instance)
+        return {"entries": audit.read(limit, instance)}
+
+    @app.get("/api/alerts", dependencies=guarded)
+    def alerts_view() -> dict:
+        status = alerts.status() if alerts is not None else {"on": False, "why": cfg.alerts.off_reason or
+                                                             "alerts are off", "instances": list(cfg.alerts.instances),
+                                                             "failing": [], "last_sent": {}}
+        return status | {"deploy_busy": gd.agent_busy(cfg.agent_lock)}
 
     @app.get("/api/usage", dependencies=guarded)
     def usage(instance: str, days: int = Query(default=7, ge=1, le=31)) -> dict:

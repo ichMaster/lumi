@@ -1,11 +1,14 @@
-"""v2.10 LUMI-256 — the admin API over two fixture instances, a fake container runner and fake servers."""
+"""v2.10 LUMI-256 — the admin API over two fixture instances, a fake container runner and fake servers; v2.11
+LUMI-263 — configure: settings, secrets, history, sections, promote, the audit, the deploy-agent lock."""
 
 from __future__ import annotations
+
+import fcntl
 
 import pytest
 from fastapi.testclient import TestClient
 
-from tests._admin_world import AUTH, build_world
+from tests._admin_world import AUTH, SECRETS, build_world
 
 
 @pytest.fixture
@@ -97,3 +100,152 @@ def test_the_page_and_healthz_are_open(world):
     page = client.get("/")
     assert page.status_code == 200 and "Lumi admin" in page.text
     assert client.get("/static/app.js").status_code == 200
+
+
+# --- v2.11 LUMI-263: configure ---------------------------------------------------------------------------------------
+
+NEW_TOKEN = "tok-DEV-ROTATED-SECRET-9876"
+
+
+def _audit(client, **params):
+    return client.get("/api/audit", headers=AUTH, params=params).json()["entries"]
+
+
+def _file(tmp_path, instance, name="settings.yaml"):
+    return (tmp_path / instance / name).read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def conf(tmp_path):
+    app, cfg, runner, servers, health = build_world(tmp_path)
+    return TestClient(app), runner, cfg, tmp_path
+
+
+def test_a_dev_setting_is_previewed_applied_with_its_restart_and_rolled_back(conf):
+    client, runner, cfg, tmp_path = conf
+    view = client.get("/api/settings/dev", headers=AUTH).json()
+    assert view["deploy_busy"] is False and view["instance"] == "dev"
+    prev = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"persona.think_show": "open"}})
+    pv = prev.json()
+    assert pv["ok"] and pv["changes"] == {"persona.think_show": [None, "open"]} and "+  think_show: open" in pv["diff"]
+    assert "think_show" not in _file(tmp_path, "dev")  # a preview writes nothing
+    r = client.post("/api/settings/dev/apply", headers=AUTH,
+                    json={"changes": {"persona.think_show": "open"}, "hashes": pv["hashes"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["restarted"] == {s: "restarted" for s in ("server", "telegram-inbound", "telegram-outbound")}
+    assert [c for c in runner.calls if c[0] == "dev"] == [("dev", s, "restart")
+                                                           for s in ("server", "telegram-inbound", "telegram-outbound")]
+    assert "think_show: open" in _file(tmp_path, "dev")
+    [entry] = client.get("/api/history/dev", headers=AUTH).json()["entries"]
+    back = client.post(f"/api/history/dev/{entry['ts']}/rollback", headers=AUTH, json={})
+    assert back.status_code == 200 and "think_show" not in _file(tmp_path, "dev")
+    assert [(a["action"], a["result"]) for a in _audit(client)] == [("rollback", "done"), ("settings", "done")]
+
+
+def test_a_stale_preview_and_an_invalid_value_are_refused_and_audited(conf):
+    client, runner, cfg, tmp_path = conf
+    before = _file(tmp_path, "dev")
+    r = client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "30"}, "hashes": {}})
+    assert r.status_code == 409 and "changed since this preview" in r.json()["detail"]
+    pv = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"memory.window": "0"}}).json()
+    assert not pv["ok"] and "memory.window" in pv["problems"][0]
+    r = client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "0"},
+                                                                  "hashes": pv["hashes"]})
+    assert r.status_code == 409 and _file(tmp_path, "dev") == before and runner.calls == []
+    assert [a["result"].split(":")[0] for a in _audit(client)] == ["refused", "refused"]
+
+
+def test_prod_needs_the_confirmation_then_applies(conf):
+    client, runner, cfg, tmp_path = conf
+    before = _file(tmp_path, "prod")
+    pv = client.post("/api/settings/prod/preview", headers=AUTH, json={"changes": {"memory.window": "30"}}).json()
+    body = {"changes": {"memory.window": "30"}, "hashes": pv["hashes"]}
+    for confirm in (None, "yes"):
+        r = client.post("/api/settings/prod/apply", headers=AUTH, json=body | {"confirm": confirm})
+        assert r.status_code == 409 and "type 'prod'" in r.json()["detail"]
+    assert _file(tmp_path, "prod") == before and runner.calls == []
+    r = client.post("/api/settings/prod/apply", headers=AUTH, json=body | {"confirm": "prod"})
+    assert r.status_code == 200 and "window: 30" in _file(tmp_path, "prod")
+    assert ("prod", "server", "restart") in runner.calls
+    assert _audit(client, instance="prod")[0]["changes"] == {"memory.window": [None, 30]}
+
+
+def test_a_stopped_service_is_not_started_by_an_apply(conf):
+    client, runner, cfg, tmp_path = conf
+    runner.act("dev", "telegram-inbound", "stop")
+    pv = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"memory.window": "30"}}).json()
+    r = client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "30"},
+                                                                  "hashes": pv["hashes"]})
+    assert r.json()["restarted"]["telegram-inbound"].startswith("not running")
+    assert runner.state[("dev", "telegram-inbound")] == "stopped"
+
+
+def test_a_secret_is_rotated_and_never_echoed(conf):
+    client, runner, cfg, tmp_path = conf
+    r = client.post("/api/secrets/dev", headers=AUTH, json={"key": "server.token", "value": NEW_TOKEN})
+    assert r.status_code == 200 and NEW_TOKEN not in r.text
+    assert r.json()["secret"] == {"key": "server.token", "set": True, "last4": "9876"}
+    assert any("client" in n for n in r.json()["notes"])
+    assert NEW_TOKEN in _file(tmp_path, "dev", "secrets.yaml")
+    token = next(s for g in client.get("/api/settings/dev", headers=AUTH).json()["groups"] for s in g["settings"]
+                 if s["key"] == "server.token")
+    assert token["last4"] == "9876" and "value" not in token
+    r = client.post("/api/secrets/dev", headers=AUTH, json={"key": "providers.anthropic_api_key", "clear": True})
+    assert r.status_code == 200 and r.json()["secret"]["set"] is False
+    assert client.post("/api/secrets/dev", headers=AUTH, json={"key": "server.token"}).status_code == 422
+    assert client.post("/api/secrets/prod", headers=AUTH, json={"key": "server.token",
+                                                                "value": NEW_TOKEN}).status_code == 409
+    audit = (cfg.home / "audit.jsonl").read_text(encoding="utf-8")
+    assert NEW_TOKEN not in audit and SECRETS["dev"]["server.token"] not in audit and '"(secret)"' in audit
+
+
+def test_a_section_edit_and_a_promote(conf):
+    client, runner, cfg, tmp_path = conf
+    sec = client.get("/api/sections/dev/schedule", headers=AUTH).json()
+    assert sec["text"] == "" and any(r["name"] == "morning-brief" for r in sec["merged"])
+    text = "- name: morning-brief\n  enabled: false\n"
+    pv = client.post("/api/sections/dev/schedule/preview", headers=AUTH, json={"text": text}).json()
+    assert pv["ok"] and pv["changes"] == {"schedule": "(section edited)"}
+    r = client.post("/api/sections/dev/schedule/apply", headers=AUTH, json={"text": text, "hashes": pv["hashes"]})
+    assert r.status_code == 200
+    merged = client.get("/api/sections/dev/schedule", headers=AUTH).json()["merged"]
+    assert next(r for r in merged if r["name"] == "morning-brief")["enabled"] is False
+    assert client.get("/api/sections/dev/crontab", headers=AUTH).status_code == 404
+    bad = client.post("/api/sections/dev/schedule/preview", headers=AUTH, json={"text": "- name: x\n  at: 19:00\n"})
+    assert not bad.json()["ok"]
+
+    diffs = {d["key"] for d in client.get("/api/promote", headers=AUTH).json()["differences"]}
+    assert "schedule" in diffs and "instance.env" not in diffs
+    pv = client.post("/api/promote/preview", headers=AUTH, json={"keys": ["schedule"]}).json()
+    assert pv["ok"] and pv["changes"] == {"schedule": "(section edited)"}
+    body = {"keys": ["schedule"], "hashes": pv["hashes"]}
+    assert client.post("/api/promote/apply", headers=AUTH, json=body).status_code == 409  # no confirmation
+    r = client.post("/api/promote/apply", headers=AUTH, json=body | {"confirm": "prod"})
+    assert r.status_code == 200 and "morning-brief" in _file(tmp_path, "prod")
+    refused = client.post("/api/promote/preview", headers=AUTH, json={"keys": ["server.token"]}).json()
+    assert not refused["ok"] and "never promoted" in refused["problems"][0]
+    assert [a["action"] for a in _audit(client)][:3] == ["promote", "promote", "section"]
+
+
+def test_every_action_is_refused_while_the_deploy_agent_holds_its_lock(conf):
+    client, runner, cfg, tmp_path = conf
+    pv = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"memory.window": "30"}}).json()
+    before = _file(tmp_path, "dev")
+    with open(cfg.agent_lock, "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)  # the agent mid-deploy
+        assert client.get("/api/alerts", headers=AUTH).json()["deploy_busy"] is True
+        r = client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "30"},
+                                                                      "hashes": pv["hashes"]})
+        assert r.status_code == 409 and "deploy step is running" in r.json()["detail"]
+        r = client.post("/api/services/dev/server/restart", headers=AUTH, json={})
+        assert r.status_code == 409 and "deploy step is running" in r.json()["detail"]
+    assert _file(tmp_path, "dev") == before and runner.calls == []
+    assert [a["result"].split(":")[0] for a in _audit(client)] == ["refused", "refused"]
+    assert client.post("/api/services/dev/server/restart", headers=AUTH, json={}).status_code == 200
+    assert _audit(client)[0] == _audit(client)[0] | {"action": "restart", "target": "server", "result": "done"}
+
+
+def test_the_alerts_status_says_why_they_are_off(conf):
+    client, *_ = conf
+    status = client.get("/api/alerts", headers=AUTH).json()
+    assert status["on"] is False and "chat_id" in status["why"]

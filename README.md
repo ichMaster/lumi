@@ -12,6 +12,16 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.11 — The admin panel: configure.** The panel now changes the settings of either instance: a form per group
+generated from the schema (the default, the description, where each value comes from), a preview with the diff, an
+apply that writes atomically and restarts the instance's running services (prod asks for the typed confirmation
+`prod`). Secrets are write-only (`set •••1234` / `unset`; set, rotate, clear). Every change keeps the previous files
+in `~/lumi/<instance>/config-history/` and is rolled back with one click; the schedule and model profiles are edited
+as the instance's own sections; a setting tried on dev is promoted to prod; every action — refusals too — is in the
+audit log, never with a secret value. No action runs while the deploy agent is mid-step. A dedicated admin bot sends
+one Telegram message when prod turns red and one when it recovers. Guide: [docs/LINUX_DEPLOY.md](docs/LINUX_DEPLOY.md)
+§Changing settings from the panel (LUMI-259..265).
+
 **2.10 — The admin panel: watch.** One web panel on the box, `lumi-admin` (`python -m admin`, the same image, port
 8767 on the LAN, its own token), shows **prod and dev side by side**: up/down, version and image, uptime and
 restarts, model, today's mood, turns, tokens and cost, latency, errors and data-root size; eight health checks
@@ -487,7 +497,7 @@ Stop the voicer anytime — the chat is unaffected; on restart it resumes from w
 core/    canon, styles, config, llm seam, repository interface, the reply() turn
 tui/     the Textual terminal client (in-process in v0)
 state/   repository implementation + local storage (keyed by user_id)
-admin/   v2.10: the admin panel — one window onto the box's prod and dev (python -m admin, deploy/admin/)
+admin/   v2.10–v2.11: the admin panel — one window onto the box's prod and dev: watch + configure (python -m admin, deploy/admin/)
 docs/    implementation references (MEMORY.md, STYLES.md, CANON_SPEC.md)
 tests/   pytest: unit + integration (mock model — no paid APIs)
 ```

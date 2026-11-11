@@ -41,3 +41,40 @@ def test_review_1_an_actions_outcome_survives_the_re_render():
     assert "cancelled — nothing sent" in act
     assert "refused" in act and "true)" in act  # a refusal is shown as an error
     assert 'out.textContent' not in act
+
+
+def _js():
+    return (STATIC / "app.js").read_text(encoding="utf-8")
+
+
+def _fn(js, name):
+    start = js.index(f"function {name}(")
+    nxt = js.find("\nasync function ", start + 1)
+    nxt2 = js.find("\nfunction ", start + 1)
+    end = min(x for x in (nxt, nxt2, len(js)) if x > 0)
+    return js[start:end]
+
+
+def test_v2_11_every_write_asks_prod_for_its_confirmation_and_says_when_cancelled():
+    js = _js()
+    for name in ("applySettings", "saveSecret", "clearSecret", "rollback", "applySection", "applyPromote"):
+        body = _fn(js, name)
+        assert "askConfirm(" in body and "cancelled — nothing sent" in body, name
+    assert 'prompt(`${what} on PROD' in _fn(js, "askConfirm")
+
+
+def test_v2_11_a_secret_is_typed_into_a_password_field_and_never_shown():
+    js = _js()
+    row = _fn(js, "settingRow")
+    assert 'type: "password"' in row and 'autocomplete: "off"' in row
+    assert "s.value" not in row[:row.index("if (s.container)")]  # the secret branch shows set/unset + last4 only
+    assert 'input.value = ""' in _fn(js, "saveSecret")
+
+
+def test_v2_11_the_configure_tabs_exist_and_keep_their_outcome_on_the_page():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    for tab in ("settings", "sections", "history", "promote", "audit"):
+        assert f'data-tab="{tab}"' in html and f'<section id="{tab}"' in html
+    js = _js()
+    assert "setAction(" in _fn(js, "runWrite") and "actionLine()" in _fn(js, "settingsBar")
+    assert "actionLine()" in _fn(js, "renderHistory") and "actionLine()" in _fn(js, "renderPromote")

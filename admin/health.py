@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import urllib.error
 import urllib.request
@@ -23,6 +24,8 @@ from pathlib import Path
 from typing import Any
 
 from admin import readers as rd
+
+_log = logging.getLogger("lumi.admin.health")
 
 GREEN, AMBER, RED, OFF = "green", "amber", "red", "off"
 
@@ -218,8 +221,10 @@ class HealthRunner:
     def __init__(self, instances: list[rd.Instance], history_path: Path, *, http: Http = urllib_http,
                  services: Callable[[rd.Instance], dict] = lambda inst: {},
                  clock: Callable[[], datetime] = lambda: datetime.now().astimezone(),
-                 keep: int = 60, max_bytes: int = 5_000_000) -> None:
+                 keep: int = 60, max_bytes: int = 5_000_000,
+                 on_run: Callable[[dict[str, list[CheckResult]]], object] | None = None) -> None:
         self.instances = instances
+        self.on_run = on_run  # v2.11: the alerts look at every run's results
         self.history_path = Path(history_path)
         self.http = http
         self.services = services
@@ -245,6 +250,11 @@ class HealthRunner:
                           "checks": {r.name: r.status for r in results},
                           "details": {r.name: r.detail for r in results}})
         self.last_run = now.isoformat(timespec="seconds")
+        if self.on_run is not None:
+            try:
+                self.on_run(self.latest)
+            except Exception:  # noqa: BLE001 — an alert problem never stops the checks
+                _log.warning("the alert hook failed", exc_info=False)
         return self.latest
 
     def _append(self, row: dict) -> None:

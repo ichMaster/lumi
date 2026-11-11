@@ -628,19 +628,24 @@ def parse_yaml(text: str, name: str) -> Any:
         raise SettingsError(f"Lumi settings — {name} is not valid YAML") from None
 
 
+def parse_mapping(text: str, name: str) -> dict:
+    """A YAML mapping from a settings file's ``text`` (``{}`` when empty); a parse error or a non-mapping refuses."""
+    data = parse_yaml(text, name)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise SettingsError(f"Lumi settings — {name} must be a mapping of groups (e.g. `memory:`), not a "
+                            f"{type(data).__name__}")
+    return data
+
+
 def read_yaml(path: Path) -> dict:
     """A YAML mapping from ``path`` (``{}`` when missing or empty); a parse error or a non-mapping refuses."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
-    data = parse_yaml(text, str(path))
-    if data is None:
-        return {}
-    if not isinstance(data, dict):
-        raise SettingsError(f"Lumi settings — {path} must be a mapping of groups (e.g. `memory:`), not a "
-                            f"{type(data).__name__}")
-    return data
+    return parse_mapping(text, str(path))
 
 
 def flatten(data: Mapping, prefix: str = "") -> dict[str, Any]:
@@ -799,15 +804,15 @@ def _check_schedule(rows: Any, where: str) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
-def _file_layer(path: Path, *, secret: bool, sections: dict | None = None
+def _file_layer(path: Path, *, secret: bool, sections: dict | None = None, text: str | None = None
                 ) -> tuple[dict[str, str], list[str], list[str]]:
-    """``(alias → env string, problems, warnings)`` for one YAML file; its structured sections go into
-    ``sections`` (settings.yaml only)."""
+    """``(alias → env string, problems, warnings)`` for one YAML file (or its ``text``, not yet written); its
+    structured sections go into ``sections`` (settings.yaml only)."""
     values: dict[str, str] = {}
     problems: list[str] = []
     warnings: list[str] = []
     name = path.name
-    data = read_yaml(path)
+    data = read_yaml(path) if text is None else parse_mapping(text, name)
     for section in STRUCTURED:
         if section not in data:
             continue
@@ -1200,6 +1205,119 @@ def set_value(folder: Path, name: str, text: str) -> tuple[Setting, Path]:
     new = set_in_text(old, s.key, value)
     write_atomic(path, new, private=s.secret)
     return s, path
+
+
+def set_section(text: str, name: str, data: Any) -> str:
+    """``text`` with the top-level ``name`` section (``schedule`` / ``models``) replaced by ``data`` — rendered as
+    block YAML in its old place, or appended; an empty ``data`` (``None``, ``[]``, ``{}``) removes the section. Every
+    other line and comment stays (a comment inside the old section goes with it). Verified by re-parsing: unless the
+    section now holds ``data`` and everything else is exactly as before, it refuses (a :class:`SettingsError`)."""
+    import yaml
+
+    if name not in STRUCTURED:
+        raise SettingsError(f"unknown section {name!r} — one of {', '.join(STRUCTURED)}")
+    lines = text.splitlines()
+    at = next((i for i, line in enumerate(lines) if re.match(rf"^{re.escape(name)}:(\s|$)", line)), None)
+    if at is not None:
+        end, last = at + 1, at
+        while end < len(lines):
+            line = lines[end]
+            if line.strip() and line.startswith((" ", "\t", "-")):
+                last = end  # a member (a block list may sit at column 0: `- name: …`)
+            elif line.strip() and not line.startswith("#"):
+                break  # the next top-level key
+            end += 1
+        del lines[at:last + 1]
+    empty = data is None or data == [] or data == {}
+    if not empty:
+        block = yaml.safe_dump({name: data}, allow_unicode=True, sort_keys=False, default_flow_style=False,
+                               width=10**6).rstrip("\n").splitlines()
+        if at is None:
+            while lines and not lines[-1].strip():
+                lines.pop()
+            lines += ([""] if lines else []) + block
+        else:
+            lines[at:at] = block
+    elif at is not None and 0 < at <= len(lines) and not lines[at - 1].strip() and (
+            at == len(lines) or not lines[at].strip()):
+        del lines[at - 1]  # no double blank line where the section was
+    while lines and not lines[-1].strip():
+        lines.pop()
+    new = "\n".join(lines) + "\n" if lines else ""
+    before = parse_yaml(text, "the file") or {}
+    try:
+        after = parse_yaml(new, "the edited file") or {}
+    except SettingsError:
+        after = None
+    if isinstance(before, dict) and isinstance(after, dict):
+        rest_before = {k: v for k, v in before.items() if k != name}
+        rest_after = {k: v for k, v in after.items() if k != name}
+        if rest_before == rest_after and after.get(name) == (None if empty else data):
+            return new
+    raise SettingsError(f"can't replace the {name}: section of this file in place (its layout is unusual); nothing "
+                        "was written — edit it by hand")
+
+
+def check_texts(settings_text: str, secrets_text: str) -> tuple[list[str], list[str]]:
+    """``(problems, warnings)`` for a ``settings.yaml`` + ``secrets.yaml`` pair given as text, before it is written —
+    the same check an instance runs at start (v2.11: the admin panel refuses what would stop it). A problem names
+    a secret's key, never its value."""
+    problems: list[str] = []
+    warnings: list[str] = []
+    for text, name, secret in ((settings_text, SETTINGS_FILE, False), (secrets_text, SECRETS_FILE, True)):
+        try:
+            _, p, w = _file_layer(Path(name), secret=secret, sections=None if secret else {}, text=text)
+        except SettingsError as exc:
+            p, w = [str(exc).removeprefix("Lumi settings — ")], []
+        problems += p
+        warnings += w
+    return problems, warnings
+
+
+def last4(value: str | None) -> str:
+    """What a write-only secret shows of itself: its last four characters — only when the value is long enough
+    (12+) that four don't give most of it away; else nothing."""
+    return value[-4:] if isinstance(value, str) and len(value) >= 12 else ""
+
+
+def unset_in_text(text: str, key: str) -> str:
+    """``text`` without ``key`` (back to its default): its line — with a block value's own lines — is removed, and
+    its group header too when nothing (not even a comment) is left under it; every other line and comment stays.
+    A key the file doesn't set returns ``text`` unchanged. Verified by re-parsing like :func:`set_in_text`: unless
+    ``key`` is gone and everything else is exactly as before, it refuses (a :class:`SettingsError`)."""
+    group, leaf = key.split(".", 1)
+    lines = text.splitlines()
+    block = _group_block(lines, group)
+    if block is not None:
+        header, end, _ = block
+        for i in range(header + 1, end):
+            if m := re.match(rf"^(\s+){re.escape(leaf)}:(\s|$)", lines[i]):
+                j = i + 1
+                while j < end and (not lines[j].strip() or _indent(lines[j]) > len(m.group(1))):
+                    j += 1
+                while j > i + 1 and not lines[j - 1].strip():
+                    j -= 1
+                del lines[i:j]
+                header, end, _ = _group_block(lines, group) or (header, header + 1, header)
+                if all(not lines[k].strip() for k in range(header + 1, end)):
+                    del lines[header:end]
+                    while lines and not lines[-1].strip():
+                        lines.pop()
+                break
+    new = "\n".join(lines) + "\n" if lines else ""
+    before = parse_yaml(text, "the file") or {}
+    try:
+        after = parse_yaml(new, "the edited file") or {}
+    except SettingsError:
+        after = None
+    if isinstance(before, dict) and isinstance(after, dict):
+        want = flatten({k: v for k, v in before.items() if k not in STRUCTURED})
+        want.pop(key, None)
+        got = flatten({k: v for k, v in after.items() if k not in STRUCTURED})
+        if got == want and all(before.get(sec) == after.get(sec) for sec in STRUCTURED):
+            return new if want != flatten({k: v for k, v in before.items() if k not in STRUCTURED}) else text
+    raise SettingsError(f"can't remove {key} from this file line by line (its layout is unusual — an inline group, "
+                        "a duplicate key, mixed indentation); nothing was written — edit it by hand")
 
 
 def check_folder(folder: Path) -> tuple[list[str], list[str]]:

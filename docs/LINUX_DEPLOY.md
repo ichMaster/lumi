@@ -400,15 +400,17 @@ lumi() {  # lumi <dev|prod> <compose args…> — e.g. `lumi dev ps`, `lumi prod
 **Updates go through the agent** ([§Deploys](#deploys)) — merge into `main` for dev, tag + `confirm` for prod. Never
 `up` another tag by hand while the timer runs: the agent's state would no longer say what runs.
 
-## The admin panel (v2.10)
+## The admin panel (v2.10 watch, v2.11 configure)
 
 One panel for both instances — `lumi-admin`, its own compose project (`deploy/admin/`) from the **same image**
 (`python -m admin`). It shows prod and dev side by side (Overview: up/down, version + image, uptime + restarts,
 model, today's mood, turns, tokens and cost, latency, errors, data-root size, the box), eight health checks every
 minute with their history, the containers with start / stop / restart, usage per day / model / kind, and the logs.
-It **never runs the core, never writes a data root** (both instance folders are mounted read-only) and **makes no
-paid call** (only `/v1/health` and `/v1/state` of each server). A prod action asks for the typed confirmation
-`prod`. It holds `docker.sock` — root-equivalent on the box — so it is LAN-only, behind its own token.
+Since v2.11 it **changes the settings** too (below). It **never runs the core, never writes a data root** (each
+instance's `data/` is mounted read-only; only `settings.yaml`, `secrets.yaml` and `config-history/` beside it are
+written) and **makes no paid call** (only `/v1/health` and `/v1/state` of each server). A prod action asks for the
+typed confirmation `prod`. It holds `docker.sock` — root-equivalent on the box — so it is LAN-only, behind its own
+token.
 
 **Install** (once — a staged copy of `deploy/admin/` from `main`, like the agent's install):
 
@@ -420,7 +422,7 @@ mkdir -p ~/lumi/deploy/admin && cp "$stage"/deploy/admin/* ~/lumi/deploy/admin/ 
 cp ~/lumi/deploy/admin/admin.example.yaml ~/lumi/admin/admin.yaml          # the registry: prod + dev
 python3 -c "import secrets; print('admin:\n  token: ' + secrets.token_urlsafe(32))" > ~/lumi/admin/secrets.yaml
 chmod 600 ~/lumi/admin/secrets.yaml                                         # the token — never printed
-LUMI_IMAGE_TAG=v2.10.0 docker compose --env-file ~/lumi/deploy/admin/admin.env \
+LUMI_IMAGE_TAG=v2.11.0 docker compose --env-file ~/lumi/deploy/admin/admin.env \
   -f ~/lumi/deploy/admin/compose.yaml up -d
 sudo ufw allow from 192.168.1.0/24 to any port 8767 proto tcp              # keeps the box's rules consistent
 ```
@@ -433,7 +435,55 @@ From the Mac: `http://192.168.1.197:8767`, and paste the token (`ssh slate-serve
 shows it to you). The page keeps it for the browser tab only (`sessionStorage`).
 
 **Update** to a new release: the same `up -d` with the new `LUMI_IMAGE_TAG` (re-stage `deploy/admin/` first if the
-release changed it). The deploy agent doesn't manage the panel. **Stop:** `docker compose -p lumi-admin down`.
+release changed it — v2.11 did: the mounts and the agent lock). The deploy agent doesn't manage the panel.
+**Stop:** `docker compose -p lumi-admin down`.
+
+### Changing settings from the panel (v2.11)
+
+Every change goes the same way: **Preview** shows the diff (and refuses a wrong value, naming the key and the
+allowed values — the same check the instance runs at start), **Apply** writes it (prod asks for `prod` typed),
+the instance's **running** services restart so they read the new files (a stopped one stays stopped and reads them
+when started), and one line lands in the audit log. A preview that went stale (someone changed the file since) is
+refused — preview again.
+
+- **Settings** — every setting of the schema, by group, with its default, its description and where its value comes
+  from. "default" removes a line (back to the default). `instance.home`, `server.host` and `server.port` are set by
+  the instance's container (its compose `environment:`) — a file value would have no effect, so they aren't editable.
+- **Secrets are write-only.** A secret shows as `set •••1234` (the last four, only for values of 12+ characters) or
+  `unset`; set / rotate / clear it — the panel never shows or returns a value. **Rotating `server.token`:** every
+  client of that instance needs the new value in its own `secrets.yaml` (the Mac's TUI / `lumi-cli` tree for that
+  instance); the deploy agent and the panel read it from the instance folder, so they follow by themselves.
+- **History & rollback** — each change first copies the files it changes into `~/lumi/<instance>/config-history/`
+  (`<ts>-settings.yaml`, `<ts>-secrets.yaml` `0600`, a `<ts>.json` manifest that names a secret as `(secret)`);
+  "Roll back" restores them — the current files are kept first, so a rollback can be rolled back. The newest 200
+  entries are kept.
+- **Schedule & models** — the instance's `schedule:` / `models:` sections of `settings.yaml`, edited as YAML, with the
+  merged result (the authored rows / profiles of the panel's image plus the instance's changes) beside them.
+- **Promote** — the settings and sections where dev and prod differ; pick some → the prod diff → apply with `prod`.
+  Secrets and the per-instance keys (`instance.*`, `server.host` / `port` / `client_mode`) never move.
+- **Audit** — `~/lumi/admin/audit.jsonl`: every action the panel took **or refused** (`{ts, action, instance, target,
+  changes, result}`), a secret as `(secret)`, rotated at 2 MB.
+- **The deploy agent's lock** — a panel action holds `~/lumi/deploy/agent.lock` (mounted read-only) shared for its
+  duration: while the agent deploys, the panel refuses ("a deploy step is running — try again in a minute"), and
+  while the panel restarts something, the agent's own step waits for its next run.
+
+The same files can still be changed by hand on the box (`lumi-cli config set`, an editor) — the panel's next
+preview simply starts from them.
+
+### Alerts through the admin bot (v2.11)
+
+After each health run the panel sends the owner **one** Telegram message when a watched instance (prod by default)
+turns red — naming the red checks — and **one** when it recovers ("recovered after 3 min"); at most one failing
+message per instance per 10 minutes. It speaks through a **dedicated admin bot**, never her prod or dev bot:
+
+1. @BotFather → `/newbot` → a name like "Lumi admin" → its token.
+2. Put it into the panel's secrets (never printed): `~/lumi/admin/secrets.yaml` →
+   `alerts:` / `  telegram_token: <the token>` (the file stays `0600`).
+3. In `~/lumi/admin/admin.yaml`: `alerts:` / `  chat_id: <your Telegram id>` (the one on her allowlist) /
+   `  instances: [prod]`.
+4. Open the new bot in Telegram and press **Start** (a bot can't write to you first), then `up -d` the panel again.
+
+The Health tab says whether alerts are on, and why not.
 
 | You see | Meaning | Fix |
 |---|---|---|
@@ -443,6 +493,11 @@ release changed it). The deploy agent doesn't manage the panel. **Stop:** `docke
 | the `server` check red for a healthy instance | the panel can't reach the instance's published port | `curl` the URL from `admin.yaml` on the box; the instance's `deploy/compose/<i>.env` |
 | the `state` check amber | no `server.token` in the instance's `secrets.yaml` | migrate the instance (§2b) |
 | a 401 in the page | the token was refused | sign out, paste the token again |
+| `docker compose up`: `bind source path does not exist: …/deploy/agent.lock` | no deploy agent on this box yet | install the agent first (§The deploy agent), or `touch ~/lumi/deploy/agent.lock` |
+| an apply: `a deploy step is running` | the deploy agent holds its lock (a deploy, its stable minute, a rollback) | wait a minute, apply again |
+| an apply: `Permission denied` | the instance folder isn't the box user's (uid 1000) | `sudo chown ich: ~/lumi/<i> ~/lumi/<i>/settings.yaml ~/lumi/<i>/secrets.yaml` |
+| the Health tab: `alerts are off — no alerts.chat_id …` / `… telegram_token …` | the alerts block or the admin bot token is missing | §Alerts through the admin bot |
+| no Telegram message though prod is red | the admin bot was never started in its chat, or the token is wrong | press Start in the bot's chat; `docker logs lumi-admin-admin-1` shows `alert not sent — …` (never the token) |
 
 ## The way back: the v2.6 units
 

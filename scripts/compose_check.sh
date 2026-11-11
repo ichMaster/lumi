@@ -17,7 +17,7 @@ for instance in prod dev; do
 done
 # v2.10 (LUMI-257) — the admin panel's project: resolves with a tag, refuses without one
 admin=(--env-file "$here/deploy/admin/admin.env" -f "$here/deploy/admin/compose.yaml")
-mkdir -p "$tmp/prod" "$tmp/dev" "$tmp/admin"
+mkdir -p "$tmp/prod/data" "$tmp/dev/data" "$tmp/admin" "$tmp/deploy" && touch "$tmp/deploy/agent.lock"
 LUMI_HOME_DIR="$tmp" LUMI_IMAGE_TAG=check docker compose "${admin[@]}" config -q
 if LUMI_HOME_DIR="$tmp" docker compose "${admin[@]}" config -q 2>/dev/null; then
   echo "compose: admin resolved without an image tag — it must not" >&2

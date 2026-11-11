@@ -175,6 +175,16 @@ def _models_from_data(data: dict, base: dict[str, ModelProfile] | None = None, w
     return aliases, profiles
 
 
+def merged_models(section: dict | None, path: Path | None = None
+                  ) -> tuple[dict[str, tuple[str, str]], dict[str, ModelProfile]]:
+    """The aliases + profiles an instance gets before the env vars: the code defaults ← ``core/models.yaml`` ← its
+    settings.yaml ``models:`` ``section`` (v2.11 — the admin panel shows them; ``load_config``'s merge order)."""
+    file_aliases, file_profiles = _load_models_file(Path(path) if path else DEFAULT_MODELS_PATH)
+    base = dict(DEFAULT_MODEL_PROFILES) | file_profiles
+    inst_aliases, inst_profiles = _models_from_data(dict(section or {}), base=base)
+    return file_aliases | inst_aliases, base | inst_profiles
+
+
 def _parse_model_profiles(raw: str, base: dict[str, ModelProfile] | None = None) -> dict[str, ModelProfile]:
     """Parse ``LUMI_MODEL_PROFILES`` (``name=provider:reply,think,mood,housekeeping;…``) merged onto
     ``base`` (default: the code defaults). Entries are ``;``-separated (the tier list needs the

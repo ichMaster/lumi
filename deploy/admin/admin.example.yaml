@@ -1,5 +1,5 @@
 # The admin panel's registry (v2.10) — copy to ~/lumi/admin/admin.yaml on the box. Only the box's two instances.
-# root: the instance folder as the panel's container sees it (compose mounts ~/lumi/<i> read-only at /instances/<i>)
+# root: the instance folder as the panel's container sees it (compose mounts ~/lumi/<i> at /instances/<i>, its data/ read-only)
 # url: the instance's server as published on the LAN; project: its compose project (deploy/compose/<i>.env)
 instances:
   prod:
@@ -10,3 +10,12 @@ instances:
     root: /instances/dev
     url: "http://192.168.1.197:8766"
     project: lumi-dev
+
+# v2.11: alerts — one Telegram message when an instance turns red, one when it recovers (≤ 1 per 10 min), through a
+# DEDICATED admin bot (@BotFather → a new bot; its token goes into ~/lumi/admin/secrets.yaml as
+#   alerts:
+#     telegram_token: <the admin bot's token>
+# — never her prod or dev bot). Uncomment with the owner's Telegram id (the one on her allowlist):
+# alerts:
+#   chat_id: 123456789
+#   instances: [prod]

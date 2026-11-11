@@ -11,6 +11,8 @@ import sys
 
 def main() -> None:  # pragma: no cover - process glue (uvicorn, the real Docker socket); the app is tested directly
     from admin import health as hl
+    from admin import readers as rd
+    from admin.alerts import Alerts, TelegramSender
     from admin.app import create_app
     from admin.containers import DockerRunner
     from admin.registry import load
@@ -21,9 +23,12 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real Docker
     if problem := bind_problem(cfg.host, container=in_container()):
         raise SystemExit(f"Lumi admin — {problem}")
     runner = DockerRunner({i.name: i.project for i in cfg.instances})
+    sender = TelegramSender(cfg.alerts.token, cfg.alerts.chat_id) if cfg.alerts.off_reason is None else None
+    alerts = Alerts(cfg.alerts, sender, redact=lambda name, text: rd.redactor(cfg.instance(name))(text)
+                    if cfg.instance(name) else text)
     health = hl.HealthRunner(list(cfg.instances), cfg.home / "health.jsonl",
-                             services=lambda inst: runner.list(inst.name))
-    app = create_app(cfg, runner, health)
+                             services=lambda inst: runner.list(inst.name), on_run=alerts.observe)
+    app = create_app(cfg, runner, health, alerts=alerts)
     import uvicorn
 
     print(f"Lumi admin on {cfg.host}:{cfg.port} — instances: {', '.join(i.name for i in cfg.instances)}",

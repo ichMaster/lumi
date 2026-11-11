@@ -519,3 +519,37 @@ def test_review_14_a_missing_settings_folder_is_named(tmp_path):
     res = st.resolve({"LUMI_SETTINGS_DIR": str(tmp_path / "typo")})
     assert any("LUMI_SETTINGS_DIR" in w and "does not exist" in w for w in res.warnings)
     assert not st.resolve({"LUMI_SETTINGS_DIR": str(tmp_path)}).warnings  # an existing (empty) folder is fine
+
+
+# --- v2.11 LUMI-260: set_section — the admin panel's schedule / models editors -------------------------------------
+
+
+_SECTIONED = """# top
+memory:
+  window: 40
+schedule:
+- name: a        # a comment inside goes with the section
+  enabled: true
+# about the next group
+voice:
+  enabled: false
+"""
+
+
+def test_set_section_replaces_in_place_keeping_every_other_line():
+    out = st.set_section(_SECTIONED, "schedule", [{"name": "b", "at": "19:00"}])
+    assert out == ("# top\nmemory:\n  window: 40\nschedule:\n- name: b\n  at: '19:00'\n# about the next group\n"
+                   "voice:\n  enabled: false\n")
+
+
+def test_set_section_adds_and_removes():
+    added = st.set_section("memory:\n  window: 40\n", "models", {"profiles": {"anthropic": {"reply": "x"}}})
+    assert added == "memory:\n  window: 40\n\nmodels:\n  profiles:\n    anthropic:\n      reply: x\n"
+    assert st.set_section(added, "models", None) == "memory:\n  window: 40\n"
+    assert st.set_section(_SECTIONED, "schedule", []).count("schedule") == 0
+    assert st.set_section("", "schedule", [{"name": "x"}]) == "schedule:\n- name: x\n"
+
+
+def test_set_section_refuses_an_unknown_section():
+    with pytest.raises(st.SettingsError):
+        st.set_section(_SECTIONED, "memory", {"window": 1})

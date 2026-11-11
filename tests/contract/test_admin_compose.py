@@ -1,6 +1,7 @@
 """v2.10 LUMI-257 — the admin panel's compose contract, read from the files (Docker's parser runs in
-``scripts/compose_check.sh``): one service from the Lumi image, no image default, the instance folders read-only,
-its own folder the only writable one, the Docker socket, published on the LAN address only, nothing secret."""
+``scripts/compose_check.sh``): one service from the Lumi image, no image default, the Docker socket, published on
+the LAN address only, nothing secret. v2.11 LUMI-264: the instance folders writable (settings + history) with each
+``data/`` read-only on top, the deploy agent's lock read-only, nothing else writable but the panel's own folder."""
 
 from __future__ import annotations
 
@@ -24,15 +25,33 @@ def test_one_service_from_the_lumi_image_with_no_default_tag():
     assert SVC["command"] == ["python", "-m", "admin"]
 
 
-def test_the_instance_folders_are_read_only_and_the_admin_folder_is_the_only_writable_one():
-    vols = SVC["volumes"]
-    assert "/var/run/docker.sock:/var/run/docker.sock" in vols
-    instance = [v for v in vols if "/instances/" in v]
-    assert sorted(v.rsplit(":", 2)[1] for v in instance) == ["/instances/dev", "/instances/prod"]
-    assert all(v.endswith(":ro") for v in instance)
-    writable = [v for v in vols if not v.endswith(":ro") and "docker.sock" not in v]
-    assert writable == ["${LUMI_HOME_DIR}/admin:/admin"]
+def _short(v: str) -> tuple[str, str, bool]:
+    """``(source, target, read_only)`` of a short-syntax volume (a ``${…:?…}`` source may hold a colon)."""
+    ro = v.endswith(":ro")
+    body = v[:-3] if ro else v
+    source, target = body.rsplit(":", 1)
+    return source, target, ro
+
+
+def test_the_data_roots_are_read_only_under_the_writable_instance_folders():
+    short = [_short(v) for v in SVC["volumes"] if isinstance(v, str)]
+    by_target = {t: (s, ro) for s, t, ro in short}
+    for name in ("prod", "dev"):
+        folder, data = by_target[f"/instances/{name}"], by_target[f"/instances/{name}/data"]
+        assert folder[1] is False and folder[0].endswith(f"/{name}")  # settings.yaml / secrets.yaml / history
+        assert data[1] is True and data[0] == "${LUMI_HOME_DIR}/" + f"{name}/data"  # her memory: never written
+        order = [t for _, t, _ in short]
+        assert order.index(f"/instances/{name}") < order.index(f"/instances/{name}/data")  # data/ mounted on top
+    writable = sorted(t for _, t, ro in short if not ro)
+    assert writable == ["/admin", "/instances/dev", "/instances/prod", "/var/run/docker.sock"]
     assert SVC["environment"]["LUMI_ADMIN_HOME"] == "/admin"
+
+
+def test_the_deploy_agents_lock_is_mounted_read_only_and_named():
+    [lock] = [v for v in SVC["volumes"] if isinstance(v, dict)]
+    assert lock == {"type": "bind", "source": "${LUMI_HOME_DIR}/deploy/agent.lock", "target": "/deploy/agent.lock",
+                    "read_only": True, "bind": {"create_host_path": False}}
+    assert SVC["environment"]["LUMI_AGENT_LOCK"] == "/deploy/agent.lock"
 
 
 def test_published_on_the_lan_address_only():
