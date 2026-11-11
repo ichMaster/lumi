@@ -31,3 +31,13 @@ def test_the_charts_scale_to_their_card():
     assert 'setAttribute("viewBox"' in js and 'svg.setAttribute("width"' not in js
     assert "svg.chart { display: block; width: 100%" in css
     assert "min-width: 0; overflow-x: auto;" in css and "max-width: 244px" in css
+
+
+def test_review_1_an_actions_outcome_survives_the_re_render():
+    # live 2026-11-11: a refused (or cancelled) prod restart looked done — the line was wiped after 1.5 s
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    act = js[js.index("async function act("):js.index("async function renderUsage")]
+    assert "lastAction" in js and "actionLine()" in js[js.index("async function renderServices"):]
+    assert "cancelled — nothing sent" in act
+    assert "refused" in act and "true)" in act  # a refusal is shown as an error
+    assert 'out.textContent' not in act
