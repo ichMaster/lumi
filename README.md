@@ -12,6 +12,14 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.10 — The admin panel: watch.** One web panel on the box, `lumi-admin` (`python -m admin`, the same image, port
+8767 on the LAN, its own token), shows **prod and dev side by side**: up/down, version and image, uptime and
+restarts, model, today's mood, turns, tokens and cost, latency, errors and data-root size; eight health checks
+every minute with their history; the containers with start / stop / restart (a prod action asks for the typed
+confirmation `prod`); usage per day, model and kind; the logs, secrets redacted. It never runs the core, never writes
+a data root and makes no paid call. Prices live in `core/pricing.yaml`. Guide:
+[docs/LINUX_DEPLOY.md](docs/LINUX_DEPLOY.md) §The admin panel (LUMI-252..258).
+
 **2.9 — Settings as files.** Every setting of an instance lives in `settings.yaml` + `secrets.yaml` (`0600`),
 described by one typed schema (`core/settings.py`, 217 settings) that the loader, the generated example files
 (`settings.example.yaml` / `secrets.example.yaml`), the migration and `lumi-cli config` all read. Precedence: the

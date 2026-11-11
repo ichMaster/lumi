@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 2.10.0 (2026-11-11)
+---------------------------
+- LUMI-252: core/pricing.yaml — the model prices as data, the one source the usage report, /usage and the admin panel read (pricing_for keeps every old price; claude-sonnet-5 at $3/$15 since Sep 1, 2026 and claude-fable-5 at $10/$50 added; a missing or malformed file falls back to the built-in table).
+- LUMI-253: the admin readers (admin/readers.py) — read-only views of an instance folder and of the box: usage / cost / latency per day, model and kind (cache hit ratio, reply median/p95 with PRE/MODEL/POST, the slowest calls, turns today), errors and model failures, a filtered log tail with every instance secret redacted, today's mood, the scheduler, the bus pending, the env marker, the data-root size, the box.
+- LUMI-254: eight health checks (server, state, mood, model, telegram, scheduler, disk, marker) — pure functions over the gathered facts — and a runner every minute with a rotated health.jsonl history; no paid call (only /v1/health and /v1/state).
+- LUMI-255: the container seam (admin/containers.py) — the Docker Engine API over the unix socket, the three services by their compose labels, start / stop / restart with the 300 s grace, logs; a prod action needs the typed confirmation 'prod'.
+- LUMI-256: the admin app — python -m admin: a FastAPI JSON API (overview, health, services + actions, usage, logs) behind its own token on every /api route, a static page (prod and dev side by side, prod in red, inline-SVG charts), the registry (prod and dev only); contracts: the token everywhere, no write into a data root, no secret in any response.
+- LUMI-257: lumi-admin's compose project (deploy/admin/) — the same image, both instance folders read-only, its own folder writable, the Docker socket, port 8767 on the LAN address; LINUX_DEPLOY §The admin panel.
+- LUMI-258: the panel live on the box — prod and dev side by side, a dev server stopped and started from it (red → green within a minute), a prod restart after the typed confirmation; it writes no data root and makes no paid call.
+- Fixes found live and in review: the login really hides after Open; the cost chart and the health history fit their cards; an action's result stays on the Services page (a cancel or a refusal included); a recovered model retry is not a model failure; the LAN publish address — not ufw — is the panel's fence.
+
 Version 2.9.0 (2026-11-10)
 ---------------------------
 - LUMI-244: settings as files under one typed schema (core/settings.py: 217 settings in 27 groups — YAML key, env name, type, default, description, secret/restart flags, allowed values) and a loader: the built-in default < .env (deprecated for this release, warned) < settings.yaml / secrets.yaml (0600) < the process environment. A wrong value in a file refuses naming the file, the key and the allowed values (a secret's value never shown); load_config reads the merged values through its unchanged parsers.
