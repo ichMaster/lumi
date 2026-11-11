@@ -1,6 +1,6 @@
 # Admin panel — one window onto prod and dev (v2.9–v2.11)
 
-**Status:** v2.9 and v2.10 shipped; v2.11 planned (owner request, 2026-10-19). Three phases before the pywebview
+**Status:** v2.9, v2.10 and v2.11 shipped (owner request, 2026-10-19). Three phases before the pywebview
 client (now **v2.12**):
 **v2.9** settings as files → **v2.10** the panel: watch → **v2.11** the panel: configure. Builds on v2.7 (the
 pipelines; prod already on the box since 2026-10-20) and v2.8 (both instances as Docker containers on the box).
@@ -94,7 +94,7 @@ Docker-API container seam with the prod confirmation (`admin/containers.py`), th
   atomically and restarts what needs it. Prod: the diff shown + a typed confirmation.
 - **Secrets, write-only** — the panel shows set / unset and the last four characters; set, rotate, clear. The API never
   returns a secret. Rotating a server token says which clients need the new one.
-- **History and rollback** — every apply keeps the previous file (`~/lumi/<instance>/config-history/<ts>.yaml`);
+- **History and rollback** — every apply keeps the previous file (`~/lumi/<instance>/config-history/`);
   one click restores it.
 - **Schedule and model profiles** — edit the instance's overrides of `core/schedule.yaml` / `core/models.yaml`.
 - **Promote dev → prod** — a setting tried on dev is copied to prod (the diff + the confirmation).
@@ -103,6 +103,18 @@ Docker-API container seam with the prod confirmation (`admin/containers.py`), th
 - **Alerts** — a failing prod check or a unit that enters `failed` sends the owner one Telegram message (and one when
   it recovers), rate-limited — through a **dedicated admin bot** (its own BotFather token in the admin's own
   `secrets.yaml`, the owner's chat only), never through her prod or dev bot: alerts never mix with her conversation.
+
+**As built (v2.11, LUMI-259..265).** `admin/edit.py` turns every change into a **plan** checked by the instance's own
+start check (`core.settings.check_texts`) and applied under a lock against the preview's keyed hashes; the files it
+changes are first copied to `config-history/<ts>-settings.yaml` / `<ts>-secrets.yaml` (`0600`) with a `<ts>.json`
+manifest (a secret named as `(secret)`), and a rollback is itself a plan (so it can be rolled back). The sections are
+replaced in place by `core.settings.set_section`. Every write — and every v2.10 service action — needs `prod` typed
+on prod, holds the deploy agent's lock shared (`admin/guard.py`; refused while a deploy step runs — the v2.10 review
+#4), restarts the instance's **running** services and appends one line to the audit log, refusals included
+(`admin/audit.py`). Since v2.8 there are no units: a stopped or crashed container turns a check red, so "a failing
+check" covers both; any red check of a watched instance (`admin.yaml` `alerts.instances`, prod by default) opens an
+episode — one failing message, one recovery, at most one failing message per instance per 10 minutes
+(`admin/alerts.py`). The compose mounts each instance folder writable with its `data/` read-only on top.
 
 ## Rules
 
