@@ -4,8 +4,12 @@ The admin folder (``LUMI_ADMIN_HOME``; on the box ``~/lumi/admin``, mounted at `
 
 - ``admin.yaml`` — the registry: each instance's folder (mounted read-only), server URL and compose project
   (**only the box's two, prod and dev**), and where the panel listens;
-- ``secrets.yaml`` (``0600``) — ``admin.token``, the panel's own token (32+ characters);
-- ``health.jsonl`` — the health history the panel writes (its only write).
+- ``secrets.yaml`` (``0600``) — ``admin.token``, the panel's own token (32+ characters), and (v2.11)
+  ``alerts.telegram_token``, the **admin bot's** own BotFather token — never her prod or dev bot;
+- ``health.jsonl`` / ``audit.jsonl`` — the health history and the audit log the panel writes.
+
+``admin.yaml`` ``alerts:`` (v2.11) names the owner's Telegram ``chat_id`` and the ``instances`` that alert (prod by
+default); without the chat id or the bot token, alerts are off and the page says why.
 
 :func:`load` validates both and refuses with a readable message naming the key, like the instance settings do.
 """
@@ -13,7 +17,7 @@ The admin folder (``LUMI_ADMIN_HOME``; on the box ``~/lumi/admin``, mounted at `
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from admin.readers import Instance
@@ -33,12 +37,30 @@ class AdminConfigError(SystemExit):
 
 
 @dataclass(frozen=True)
+class AlertsConfig:
+    """Who the admin bot tells, about which instances; ``token`` is the admin bot's own (never shown)."""
+
+    chat_id: int | None = None
+    instances: tuple[str, ...] = ("prod",)
+    token: str = field(default="", repr=False)
+
+    @property
+    def off_reason(self) -> str | None:
+        if self.chat_id is None:
+            return "alerts are off — no alerts.chat_id in admin.yaml"
+        if not self.token:
+            return "alerts are off — no alerts.telegram_token (the admin bot's token) in the admin secrets.yaml"
+        return None
+
+
+@dataclass(frozen=True)
 class AdminConfig:
     home: Path
-    token: str
+    token: str = field(repr=False)
     instances: tuple[Instance, ...]
     host: str
     port: int
+    alerts: AlertsConfig = AlertsConfig()
 
     def instance(self, name: str) -> Instance | None:
         return next((i for i in self.instances if i.name == name), None)
@@ -103,6 +125,28 @@ def load(home: Path | None = None, environ: dict | None = None) -> AdminConfig:
         problems.append(f"secrets.yaml: admin.token is {'missing' if not token else 'too short'} — the panel never "
                         f"runs without a token of {MIN_TOKEN}+ characters "
                         "(python3 -c \"import secrets; print(secrets.token_urlsafe(32))\")")
+    alerts = _alerts(data.get("alerts"), secrets.get("alerts"), problems)
     if problems:
         raise AdminConfigError(f"Lumi admin — refusing to start ({home}):\n" + "\n".join(f"  • {p}" for p in problems))
-    return AdminConfig(home=home, token=token, instances=tuple(instances), host=host, port=port)
+    return AdminConfig(home=home, token=token, instances=tuple(instances), host=host, port=port, alerts=alerts)
+
+
+def _alerts(block: object, secret: object, problems: list[str]) -> AlertsConfig:
+    """``admin.yaml`` ``alerts: {chat_id, instances}`` + ``secrets.yaml`` ``alerts: {telegram_token}``."""
+    if block is None:
+        return AlertsConfig()
+    if not isinstance(block, dict):
+        problems.append("admin.yaml: alerts must be a mapping of chat_id, instances")
+        return AlertsConfig()
+    chat = block.get("chat_id")
+    if chat is not None and (isinstance(chat, bool) or not isinstance(chat, int)):
+        problems.append(f"admin.yaml: alerts.chat_id = {chat!r} is not valid — allowed: the owner's Telegram id "
+                        "(an integer)")
+        chat = None
+    names = block.get("instances", ["prod"])
+    if not isinstance(names, list) or not all(n in INSTANCES for n in names):
+        problems.append(f"admin.yaml: alerts.instances = {names!r} is not valid — allowed: a list of "
+                        + " / ".join(INSTANCES))
+        names = ["prod"]
+    token = secret.get("telegram_token") if isinstance(secret, dict) else None
+    return AlertsConfig(chat_id=chat, instances=tuple(names), token=str(token or "").strip())
