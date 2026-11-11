@@ -63,6 +63,7 @@ class Facts:
     hour: int = 0
     last_call_age_s: int | None = None
     model_failures_1h: int = 0
+    model_retries_1h: int = 0
     services: dict = field(default_factory=dict)   # service → state (running / stopped / …)
     bus: dict = field(default_factory=dict)
     scheduler: dict = field(default_factory=dict)
@@ -107,6 +108,8 @@ def check_model(f: Facts) -> CheckResult:
     if f.last_call_age_s is None:
         return CheckResult("model", AMBER, "no model call recorded")
     age = f"last call {f.last_call_age_s // 60} min ago"
+    if f.model_retries_1h:
+        age += f" · {f.model_retries_1h} recovered retr{'y' if f.model_retries_1h == 1 else 'ies'} in the last hour"
     if fails >= MODEL_FAILS_AMBER:
         return CheckResult("model", AMBER, f"{fails} failure(s) in the last hour · {age}")
     return CheckResult("model", AMBER if f.last_call_age_s > MODEL_STALE_S else GREEN, age)
@@ -194,6 +197,7 @@ def gather(inst: rd.Instance, now: datetime, *, http: Http, services: Callable[[
     f.mood = rd.mood_today(inst, today=now.date().isoformat())
     u = rd.errors(inst, now=now)
     f.model_failures_1h = u["model_failures_1h"]
+    f.model_retries_1h = u.get("model_retries_1h", 0)
     f.last_call_age_s = rd._last_call_age(inst, now)
     f.services = {name: info.get("state") for name, info in (services(inst) or {}).items()}
     f.bus = rd.bus(inst)

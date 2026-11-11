@@ -102,7 +102,7 @@ def test_usage_aggregates(inst):
 
 def test_errors_and_model_failures(inst):
     e = rd.errors(inst, now=NOW)
-    assert e["errors_24h"] == 1 and e["model_failures_1h"] == 1
+    assert e["errors_24h"] == 1 and e["model_failures_1h"] == 0 and e["model_retries_1h"] == 1  # "asking once more"
     assert e["last_error"].endswith("lumi.brain: inbox turn failed")
 
 
@@ -150,7 +150,8 @@ def test_every_reader_leaves_the_folder_untouched(inst):
 def test_missing_sources_never_raise(tmp_path):
     empty = rd.Instance("prod", tmp_path / "nothing", "http://127.0.0.1:8765", "lumi-prod")
     assert rd.usage(empty, now=NOW)["total"]["calls"] == 0
-    assert rd.errors(empty, now=NOW) == {"errors_24h": 0, "model_failures_1h": 0, "last_error": None}
+    assert rd.errors(empty, now=NOW) == {"errors_24h": 0, "model_failures_1h": 0, "model_retries_1h": 0,
+                                         "last_error": None}
     assert rd.log_tail(empty) == [] and rd.mood_today(empty, today="2026-11-10")["present"] is False
     assert rd.scheduler(empty, now=NOW)["newest"] is None and rd.marker(empty) is None
     assert rd.bus(empty)["inbox_pending"] is None and rd.data_size(empty) is None
@@ -176,3 +177,17 @@ def test_the_box(tmp_path):
     assert b["memory"] == {"total": 16000000 * 1024, "available": 8000000 * 1024}
     assert str(tmp_path) in b["disks"] and b["disks"][str(tmp_path)]["free"] > 0
     assert rd.box([], proc=tmp_path / "none") == {"uptime_s": None, "load": None, "memory": None, "disks": {}}
+
+
+
+def test_review_2_a_recovered_retry_is_not_a_model_failure(inst):
+    lines = [
+        "2026-11-10 17:10:00,001 WARNING lumi.llm: Gemini gemini-2.5-flash returned no answer (finish STOP) — asking once more",
+        "2026-11-10 17:11:00,001 WARNING lumi.llm: Gemini gemini-2.5-flash returned no answer — forcing the answer",
+        "2026-11-10 17:12:00,001 WARNING lumi.llm: Gemini tool-loop streaming failed → blocking loop",
+        "2026-11-10 17:13:00,001 WARNING lumi.llm: Gemini gemini-2.5-flash-lite returned no answer again (PROHIBITED)",
+        "2026-11-10 17:14:00,001 ERROR lumi.llm: the model didn't answer within 3 minutes",
+    ]
+    (inst.data / "lumi.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    e = rd.errors(inst, now=NOW)
+    assert e["model_failures_1h"] == 2 and e["model_retries_1h"] == 3
