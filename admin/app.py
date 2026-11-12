@@ -19,6 +19,7 @@ import contextlib
 import hmac
 from collections.abc import Callable
 from datetime import datetime
+from http.client import HTTPException as DockerProtocolError
 from pathlib import Path
 from typing import Any
 
@@ -171,7 +172,7 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
         except (ct.Refused, gd.Busy) as exc:
             record(action, instance, service, f"refused: {exc}")
             raise HTTPException(status_code=409, detail=str(exc)) from None
-        except OSError as exc:
+        except (OSError, ValueError, DockerProtocolError) as exc:  # code review #2: every Docker error
             record(action, instance, service, f"failed: docker: {exc}")
             raise HTTPException(status_code=502, detail=f"docker: {exc}") from None
         record(action, instance, service, "done")
@@ -180,17 +181,26 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
     # --- v2.11: configure (every write audited, lock-guarded, prod confirmed) -----------------------------------
 
     def restart_running(instance: str, confirm: str | None) -> dict[str, str]:
-        """Restart the instance's running services so they read the new files; a stopped one stays stopped."""
+        """Restart the instance's running services so they read the new files; a stopped one stays stopped. The files
+        are already written here, so every Docker error is that service's ``failed: …`` — never an exception that
+        would skip the audit line (code review #2)."""
         out: dict[str, str] = {}
-        states = runner.list(instance)
+        try:
+            states = runner.list(instance)
+        except Exception as exc:  # noqa: BLE001 — reported per service, never raised past the written files
+            return {s: f"failed: docker: {exc}" for s in ct.SERVICES}
         for service in ct.SERVICES:
-            if (states.get(service) or {}).get("state") != "running":
+            state = (states.get(service) or {}).get("state")
+            if state in (None, "unknown"):
+                out[service] = "failed: Docker can't say whether it runs — restart it from Services"
+                continue
+            if state != "running":
                 out[service] = "not running — reads the new settings when started"
                 continue
             try:
                 runner.act(instance, service, "restart", confirm)
                 out[service] = "restarted"
-            except (ct.Refused, OSError) as exc:
+            except Exception as exc:  # noqa: BLE001 — as above
                 out[service] = f"failed: {exc}"
         return out
 
@@ -248,14 +258,23 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
     def history(instance: str, limit: int = Query(default=50, ge=1, le=200)) -> dict:
         return {"entries": ed.history(instance_or_404(instance).root, limit)}
 
+    def rollback_plan_or_404(inst: rd.Instance, ts: str) -> ed.Plan:
+        try:
+            return ed.plan_rollback(inst.root, ts)
+        except ed.EditError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+
+    @app.post("/api/history/{instance}/{ts}/preview", dependencies=guarded)
+    def rollback_preview(instance: str, ts: str) -> dict:
+        """What a rollback would do — the diff, and the later changes it also undoes (code review #1)."""
+        return rollback_plan_or_404(instance_or_404(instance), ts).public()
+
     @app.post("/api/history/{instance}/{ts}/rollback", dependencies=guarded)
     def rollback(instance: str, ts: str, payload: dict = Body(default={})) -> dict:  # noqa: B008
         inst = instance_or_404(instance)
-        try:
-            ed.plan_rollback(inst.root, ts)
-        except ed.EditError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from None
-        return write(inst, "rollback", ts, _str(payload, "confirm"), lambda: ed.plan_rollback(inst.root, ts), None)
+        rollback_plan_or_404(inst, ts)
+        return write(inst, "rollback", ts, _str(payload, "confirm"), lambda: ed.plan_rollback(inst.root, ts),
+                     _dict(payload, "hashes") or None)
 
     def section_or_404(name: str) -> str:
         if name not in st.STRUCTURED:

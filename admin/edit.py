@@ -398,14 +398,20 @@ def plan_rollback(root: Path, ts: str) -> Plan:
         raise EditError(f"no history entry {ts!r}") from None
     old = read_files(root)
     new = old
-    for name in manifest.get("files") or []:
-        if name not in FILES:
-            continue
+    names = [name for name in manifest.get("files") or [] if name in FILES]
+    for name in names:
         try:
             new = new.replace(name, (hist / f"{ts}-{name}").read_text(encoding="utf-8"))
         except OSError:
             raise EditError(f"history entry {ts} is missing its copy of {name}") from None
     plan = Plan("rollback", root, old, new, target=ts, of=ts)
+    # A file goes back whole, so every later change to it goes too (code review #1): say which, before it is applied.
+    later = [e for e in history(root, HISTORY_KEEP)
+             if _ts_key(e["ts"]) > _ts_key(ts) and set(e.get("files") or []) & set(names)]
+    if later:
+        plan.notes.append("this also undoes the later changes to the same file — " + "; ".join(
+            f"{e['ts']} {e.get('action')} ({', '.join(e.get('changes') or {}) or 'no change'})"
+            for e in reversed(later)))
     return _finish(plan)
 
 

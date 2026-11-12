@@ -78,3 +78,10 @@ def test_v2_11_the_configure_tabs_exist_and_keep_their_outcome_on_the_page():
     js = _js()
     assert "setAction(" in _fn(js, "runWrite") and "actionLine()" in _fn(js, "settingsBar")
     assert "actionLine()" in _fn(js, "renderHistory") and "actionLine()" in _fn(js, "renderPromote")
+
+
+def test_review_1_a_rollback_is_previewed_and_confirmed_on_dev_too():
+    body = _fn(_js(), "rollback")
+    assert body.index("/preview`") < body.index("/rollback`")  # the diff and the later changes first
+    assert "window.confirm(" in body and "p.notes" in body and "hashes: p.hashes" in body
+

@@ -120,6 +120,14 @@ def test_a_message_is_redacted_and_its_details_capped():
     assert "SECRET-1" not in sender.sent[0] and len(sender.sent[0]) < 200
 
 
+def test_review_3_a_secret_cut_by_the_cap_is_still_redacted():
+    clock, sender = Clock(), al.FakeSender()
+    secret = "SECRET-1-A-LONGER-VALUE"
+    alerts = al.Alerts(CFG, sender, clock=clock, redact=lambda name, text: text.replace(secret, "•••"))
+    alerts.observe({"prod": [CheckResult("model", RED, "x" * 110 + " " + secret)]})  # the cap cuts it at 119
+    assert "SECRET" not in sender.sent[0] and "•••" in sender.sent[0]
+
+
 # --- the sender ------------------------------------------------------------------------------------------------
 
 

@@ -4,10 +4,12 @@ LUMI-263 — configure: settings, secrets, history, sections, promote, the audit
 from __future__ import annotations
 
 import fcntl
+import http.client
 
 import pytest
 from fastapi.testclient import TestClient
 
+from admin import containers as ct
 from tests._admin_world import AUTH, SECRETS, build_world
 
 
@@ -142,6 +144,30 @@ def test_a_dev_setting_is_previewed_applied_with_its_restart_and_rolled_back(con
     assert [(a["action"], a["result"]) for a in _audit(client)] == [("rollback", "done"), ("settings", "done")]
 
 
+def test_review_1_a_rollback_is_previewed_and_a_stale_one_refused(conf):
+    client, runner, cfg, tmp_path = conf
+    for change in ({"memory.window": "30"}, {"persona.think_show": "open"}):
+        pv = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": change}).json()
+        assert client.post("/api/settings/dev/apply", headers=AUTH,
+                           json={"changes": change, "hashes": pv["hashes"]}).status_code == 200
+    newer, older = client.get("/api/history/dev", headers=AUTH).json()["entries"]
+    pv = client.post(f"/api/history/dev/{older['ts']}/preview", headers=AUTH).json()
+    assert pv["ok"] and pv["changes"] == {"memory.window": [30, None], "persona.think_show": ["open", None]}
+    assert newer["ts"] in pv["notes"][0] and "-  think_show: open" in pv["diff"]
+    assert client.post("/api/history/dev/20990101-000000Z/preview", headers=AUTH).status_code == 404
+    before = _file(tmp_path, "dev")
+    pv2 = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"memory.window": "31"}}).json()
+    client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "31"},
+                                                               "hashes": pv2["hashes"]})  # a change in between
+    after = _file(tmp_path, "dev")
+    r = client.post(f"/api/history/dev/{older['ts']}/rollback", headers=AUTH, json={"hashes": pv["hashes"]})
+    assert r.status_code == 409 and "changed since this preview" in r.json()["detail"]
+    assert _file(tmp_path, "dev") == after != before
+    fresh = client.post(f"/api/history/dev/{older['ts']}/preview", headers=AUTH).json()
+    r = client.post(f"/api/history/dev/{older['ts']}/rollback", headers=AUTH, json={"hashes": fresh["hashes"]})
+    assert r.status_code == 200 and "window" not in _file(tmp_path, "dev") and "think_show" not in _file(tmp_path, "dev")
+
+
 def test_a_stale_preview_and_an_invalid_value_are_refused_and_audited(conf):
     client, runner, cfg, tmp_path = conf
     before = _file(tmp_path, "dev")
@@ -178,6 +204,36 @@ def test_a_stopped_service_is_not_started_by_an_apply(conf):
                                                                   "hashes": pv["hashes"]})
     assert r.json()["restarted"]["telegram-inbound"].startswith("not running")
     assert runner.state[("dev", "telegram-inbound")] == "stopped"
+
+
+def test_review_2_a_docker_error_after_the_write_is_reported_and_audited(conf, monkeypatch):
+    client, runner, cfg, tmp_path = conf
+    real_act = runner.act
+
+    def flaky(instance, service, action, confirm=None):
+        if service == "telegram-inbound":
+            raise http.client.BadStatusLine("")  # not an OSError: it escaped before, after the files were written
+        return real_act(instance, service, action, confirm)
+
+    monkeypatch.setattr(runner, "act", flaky)
+    pv = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"memory.window": "30"}}).json()
+    r = client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "30"},
+                                                                  "hashes": pv["hashes"]})
+    assert r.status_code == 200 and "window: 30" in _file(tmp_path, "dev")
+    assert r.json()["restarted"]["telegram-inbound"].startswith("failed")
+    assert r.json()["restarted"]["server"] == "restarted"
+    [line] = _audit(client)
+    assert line["result"].startswith("done; restart") and "telegram-inbound" in line["result"]
+    assert line["changes"] == {"memory.window": [None, 30]}
+    r = client.post("/api/services/dev/telegram-inbound/restart", headers=AUTH, json={})
+    assert r.status_code == 502 and _audit(client)[0]["result"].startswith("failed: docker")
+
+    monkeypatch.setattr(runner, "list", lambda instance: {s: {"state": "unknown"} for s in ct.SERVICES})
+    pv = client.post("/api/settings/dev/preview", headers=AUTH, json={"changes": {"memory.window": "31"}}).json()
+    r = client.post("/api/settings/dev/apply", headers=AUTH, json={"changes": {"memory.window": "31"},
+                                                                  "hashes": pv["hashes"]})
+    assert all(x.startswith("failed: Docker can't say") for x in r.json()["restarted"].values())
+    assert _audit(client)[0]["result"].startswith("done; restart")
 
 
 def test_a_secret_is_rotated_and_never_echoed(conf):

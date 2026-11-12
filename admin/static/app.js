@@ -371,11 +371,17 @@ async function renderHistory() {
       : el("p", {}, "no change yet"), actionLine()));
 }
 
-async function rollback(name, ts) {
-  const confirm = askConfirm(name, `roll back ${ts}`);
-  if (confirm === null) { setAction(`roll back ${ts} on prod: cancelled — nothing sent`, true); return; }
+async function rollback(name, ts) {  // preview first: a file goes back whole, later changes to it too (review #1)
+  let p;
+  try { p = await api(`/api/history/${name}/${ts}/preview`, { method: "POST", body: "{}" }); }
+  catch (e) { setAction(`roll back ${ts} refused: ${e.message}`, true); return; }
+  if (!p.ok) { setAction(`roll back ${ts} refused: ${p.problems.join("; ")}`, true); return; }
+  const what = [`roll back ${ts}: ${changesText(p.changes)}`, ...(p.notes || [])].join("\n");
+  const confirm = name === "prod" ? askConfirm(name, what)
+    : (window.confirm(`${what}\n\nRoll back on ${name}?`) ? undefined : null);
+  if (confirm === null) { setAction(`roll back ${ts} on ${name}: cancelled — nothing sent`, true); return; }
   await runWrite(`roll back ${ts} on ${name}`, () => api(`/api/history/${name}/${ts}/rollback`, { method: "POST",
-    body: JSON.stringify({ confirm }) }));
+    body: JSON.stringify({ confirm, hashes: p.hashes }) }));
   renderHistory();
 }
 
