@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 2.11.0 (2026-11-12)
+---------------------------
+- LUMI-259: the settings editor (admin/edit.py) — an instance's settings.yaml + secrets.yaml as a schema-driven view; every change checked by the instance's own start check, previewed as a diff, applied atomically against the preview's hashes with the previous files kept in config-history/ (0600, the newest 200), rolled back with one click; secrets write-only (set / rotate / clear, shown as set •••last4).
+- LUMI-260: the schedule: and models: sections edited as YAML with the merged result shown; promote dev → prod for chosen settings (never a secret or a per-instance key).
+- LUMI-261: the audit log (~/lumi/admin/audit.jsonl) — one line per action, done, refused or failed, a secret as (secret); every panel action holds the deploy agent's lock shared, so none runs mid-deploy and the agent waits for the panel.
+- LUMI-262: alerts through a dedicated admin bot — one message when a watched instance (prod by default) turns red, one when it recovers, at most one failing message per 10 minutes; off until alerts.chat_id + alerts.telegram_token are set.
+- LUMI-263: the API + the UI — the Settings, Schedule & models, History, Promote and Audit tabs; a write restarts the instance's running services (a stopped one stays stopped); prod asks for the typed confirmation 'prod'.
+- LUMI-264: compose — each instance folder writable with its data/ read-only on top, the agent lock mounted read-only; LINUX_DEPLOY §Changing settings from the panel + §Alerts.
+- LUMI-265: the panel on the box (mounts verified); the browser checks and the admin bot are deferred to the owner.
+- Review fixes: a rollback is previewed and names the later changes to the same file it also undoes; a Docker error after a write is reported per service and audited, never a 500; an alert's detail is redacted before it is capped.
+
 Version 2.10.0 (2026-11-11)
 ---------------------------
 - LUMI-252: core/pricing.yaml — the model prices as data, the one source the usage report, /usage and the admin panel read (pricing_for keeps every old price; claude-sonnet-5 at $3/$15 since Sep 1, 2026 and claude-fable-5 at $10/$50 added; a missing or malformed file falls back to the built-in table).
