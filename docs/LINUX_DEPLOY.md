@@ -298,6 +298,7 @@ changes nothing server-side.
 ```
 v2-dev ── merge (ff) ──► main ── CI: gates + image ──► :sha-<short> ── the agent ──► lumi-dev   (≤ 5 min)
                           └── /release-version ──► tag vA.B.C ── CI ──► :vA.B.C ── confirm ──► lumi-prod
+                                                                                        └── prod_update.py ──► the Mac prod client
 ```
 
 - **Branches.** Work lands on `v2-dev`; it reaches the box's dev when it is **merged into `main`**
@@ -317,7 +318,13 @@ v2-dev ── merge (ff) ──► main ── CI: gates + image ──► :sha-
     ran>.tar.gz` (~290 MB, about a minute) — and then `up -d` → smoke. A failed archive (a full disk) deploys
     nothing: prod is started again on its tag and the release waits for a fresh `confirm`. It never moves prod to an
     older tag.
-  - **The first container deploy** of an instance stops and disables its three v2.6 units before any container
+    - **The Mac prod client, in the same step** (the owner's rule, 2026-11-14 — a prod deploy is not done until it is
+    done): once the box's smoke is green, move the Mac's client checkout to the same tag —
+    `python3 scripts/prod_update.py --tag vA.B.C` (stop `~/lumi/prod/app`'s clients first: the TUI client,
+    `./lumi-desktop`). It archives the Mac-side fallback `data/`, checks out the tag and syncs every extra; it never
+    touches the settings. Then `cd ~/lumi/prod/app && ./lumi-cli status` must name the box's prod and its version.
+    A release that adds a client-side setting lists it in that script's "new in this release" warning.
+- **The first container deploy** of an instance stops and disables its three v2.6 units before any container
     starts (the port and the brain lock are free; two brains never share her root).
 - **The smoke** (no model is called): `/v1/health` answers as this instance (`env`) and the expected version (prod:
   the tag; dev: the commit's `VERSION`); `/v1/state` answers with the instance's token (read from its `secrets.yaml`

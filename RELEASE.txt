@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 2.12.2 (2026-11-14)
+---------------------------
+- LUMI-271: the face pick in the shell — her portrait from this client's own face pack (by intensity: low 02 · mid 01 · high 03), served locally by the window's proxy (/face, /faces/); no face crosses the network.
+- LUMI-272: the portrait panel — the portrait crossfades with each reply's emotion; the caption, the theme of the day, the closeness meter, the mood of the day; below 760 px a strip at the top.
+- LUMI-273: her inner voice streams above her reply while she thinks (show / collapse / hide); her quiet thoughts gather in a strip beside the portrait, never in the chat.
+- LUMI-276: her emotion under each of her replies — the TUI's emoji map, the caption on hover.
+- LUMI-270: Lili.app — the window as a Mac app with her portrait as the icon (scripts/make_mac_app.py).
+- LUMI-274/275: the docs; checked live by the owner. Pictures she sends stay Telegram-only (v4.3).
+- Review fixes: a face theme is a plain name; thoughts missed while offline count as new; the app's log rotates at 1 MB.
+
 Version 2.12.1 (2026-11-14)
 ---------------------------
 - LUMI-266: the desktop shell (desktop/, python -m desktop) — a pywebview window onto a local proxy on 127.0.0.1 that serves the page and forwards only the eight /v1 routes it uses, adding the client token itself (the token never enters the page); a per-launch key, the proxy's own Host and no CORS keep other apps and web pages out; streams relayed chunk by chunk; errors as {kind, detail}.

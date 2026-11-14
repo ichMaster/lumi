@@ -1122,7 +1122,7 @@ Two layers, no Лілі logic in either: a **tiny Python shell** (`desktop/` —
 **Sub-phases (each releasable as `2.12.x`):**
 
 - **v2.12.1 — The chat.** The shell + the page: connect with the token, send a turn, render the streamed reply + proactive pushes, slash commands pass through as today, reconnect cleanly; errors degrade to a readable line (the TUI rule).
-- **v2.12.2 — The face & state panel.** The portrait + emotion caption beside the chat (the v2.4 state event → the shell's local `face_for` pick), the status fields from the on-change pushes, the think-box, inline photos.
+- **v2.12.2 — The face & state panel.** The portrait + emotion caption beside the chat (the v2.4 state event → the shell's local pick), the status fields from the on-change pushes, the think-box. *(Reconciled 2026-11-14, the owner's decisions: the shell picks with the v0.11 resolver `viewer.face.resolve_variants` and serves the picture from the client's own pack through the local proxy (`/face`, `/faces/`, never forwarded); inside a folder named `01`/`02`/`03` **intensity chooses the file** (low 02, mid 01, high 03 — the packs' naming), any other folder keeps the viewer's random no-repeat pick; the replayed pushes' `replay: true` flag drives the thoughts' unread state and the missed count; **inline pictures are deferred to v4.3** — a picture she sends (v0.24 `send_image`) only reaches the server's Telegram outbox, and offering it to an API client needs a server route + a push field.)*
 
 **Tasks:**
 - `desktop/` — the window shell + the local proxy (`desktop/proxy.py`): config + token from the settings files, the page and the `/v1` routes it uses forwarded with the token; v2.12.2 adds the local faces pack path and the `face_for` pick per state event.
@@ -1458,6 +1458,7 @@ Add a **web UI** as a second client: a browser chat (login, input, scrollable hi
 - A web chat interface (login, input, scrollable history) over the server API.
 - Serve it from the server (or a static host); reuse the v4.2 auth/sessions.
 - Carry the `{reply, emotion, intensity}` field through to the browser unchanged.
+- Her pictures in the conversation (deferred from v2.12.2): a route that serves a picture she sends (v0.24 `send_image`) from her sandbox, owner-scoped, + an image field on the `message` push — the desktop window shows it too.
 
 **DoD:** the full chat with memory works in the browser, using the same accounts and sessions as the TUI client.
 

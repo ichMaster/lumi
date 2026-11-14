@@ -12,6 +12,8 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.12.2 — The desktop window: her face.** Beside the chat, her portrait now changes with each reply's emotion (by intensity, from the client's own face pack, served locally — no face crosses the network), with the caption, the theme of the day, the closeness and the mood of the day; her inner voice streams above her reply while she thinks; her quiet thoughts gather beside the portrait. `scripts/make_mac_app.py` builds `~/Applications/Lili.app` with her portrait as the icon. Pictures she sends still go to Telegram only (v4.3). Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop window (LUMI-270..275).
+
 **2.12.1 — The desktop window: the chat.** `./lumi-desktop` opens Лілі in one native window (pywebview), a client of the server beside the TUI: streamed replies, her unasked lines, Telegram and terminal lines tagged, slash commands and `%directives`, a queue while she answers, the status line, and a clean reconnect. The page (the owner's Claude Design handoff, English interface) reaches the server through a local proxy on `127.0.0.1` that adds the token, so the token never enters the page. The portrait panel arrives in 2.12.2. Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop window (LUMI-266..269).
 
 **2.11 — The admin panel: configure.** The panel now changes the settings of either instance: a form per group

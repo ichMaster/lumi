@@ -19,7 +19,12 @@ const st = {
   server: {}, conn: "connecting", answering: false, queue: [], lastEventId: null, everOnline: false,
   retryIdx: 0, countdown: 0, wake: null, replaying: false, replayTimer: null, missed: [], restored: null,
   slash: { open: false, items: [], index: 0, dismissed: false }, detailsOpen: false, rows: 0, chatSize: 16,
+  thinkMode: null, thinkBlocks: [], thoughts: [], thoughtsOpen: false,  // v2.12.2
+  emoji: {},  // LUMI-276: the TUI's emotion → emoji map, from the shell
 };
+const THINK_STORE = "lumi.desktop.thinkMode";
+const THINK_MODES = ["shown", "collapsed", "hidden"];
+const THINK_FROM_SERVER = { open: "shown", debug: "collapsed", off: "hidden" };  // the state's think_show → a first default
 
 /* ---------- small helpers ---------- */
 const $ = (id) => document.getElementById(id);
@@ -49,6 +54,9 @@ function el(tag, attrs, ...kids) {
 const ICONS = {
   "arrow-up": [["path", { d: "m5 12 7-7 7 7" }], ["path", { d: "M12 19V5" }]],
   "chevron-up": [["path", { d: "m18 15-6-6-6 6" }]],
+  "chevron-down": [["path", { d: "m6 9 6 6 6-6" }]],
+  "chevron-right": [["path", { d: "m9 18 6-6-6-6" }]],
+  cloud: [["path", { d: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" }]],
   send: [["path", { d: "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" }], ["path", { d: "m21.854 2.147-10.94 10.939" }]],
   terminal: [["polyline", { points: "4 17 10 11 4 5" }], ["line", { x1: "12", x2: "20", y1: "19", y2: "19" }]],
   "wifi-off": [["path", { d: "M12 20h.01" }], ["path", { d: "M8.5 16.429a5 5 0 0 1 7 0" }], ["path", { d: "M5 12.859a10 10 0 0 1 5.17-2.69" }], ["path", { d: "M19 12.859a10 10 0 0 0-2.007-1.523" }], ["path", { d: "M2 8.82a15 15 0 0 1 4.177-2.643" }], ["path", { d: "M22 8.82a15 15 0 0 0-11.288-3.764" }], ["path", { d: "m2 2 20 20" }]],
@@ -218,9 +226,11 @@ function stick(force) {
 
 function append(node) {
   const follow = nearBottom();
+  const wasEmpty = st.rows === 0;
   removeEmpty();
   $("col").append(node);
   st.rows++;
+  if (wasEmpty) renderPanel(); // the empty state is over: the panel shows its meta and the mood again
   stick(follow);
   return node;
 }
@@ -252,6 +262,23 @@ function addMine(text, opts = {}) {
   return r;
 }
 
+function band(intensity) {  // the TUI's bands: low < 0.34, mid, high >= 0.67
+  const x = Number(intensity);
+  return !Number.isFinite(x) ? 1 : x < 0.34 ? 0 : x < 0.67 ? 1 : 2;
+}
+
+function setEmotion(rowNode, emotion, intensity) {  // her emotion under "LILI": the glyph(s), the caption on hover
+  if (!rowNode || !emotion) return;
+  const map = st.emoji || {};
+  const glyphs = (map[emotion] || map.calm || [])[band(intensity)];
+  if (!glyphs) return;
+  const gutter = rowNode.querySelector(".gutter");
+  const old = gutter.querySelector(".emo");
+  if (old) old.remove();
+  const level = Number.isFinite(Number(intensity)) ? ` \u00b7 ${Number(intensity).toFixed(1)}` : "";
+  gutter.append(el("span", { class: "emo", title: `${captionOf(emotion)}${level}`, text: glyphs }));
+}
+
 function addHers(text, opts = {}) {
   const r = row("hers", opts);
   if (opts.first) r.content.append(el("div", { class: "first" }, el("span", { class: "bar" }), el("span", { class: "label", text: t("her.first") })));
@@ -259,6 +286,7 @@ function addHers(text, opts = {}) {
   if (text !== null) body.append(...markdown(text));
   r.content.append(body);
   append(r.node);
+  if (opts.emotion) setEmotion(r.node, opts.emotion, opts.intensity);
   return { ...r, body };
 }
 
@@ -303,18 +331,236 @@ function renderEmpty() {
   if (st.rows || $("empty") || !st.server.mood) return;
   $("col").append(el("div", { id: "empty", class: "empty" },
     el("span", { class: "kicker", text: t("empty.mood.kicker", { weekday: weekday(), date: dayMonth() }) }),
-    el("p", { class: "mood", lang: "uk", text: st.server.mood })));
+    el("p", { class: "empty-mood", lang: "uk", text: st.server.mood })));
+}
+
+/* ---------- the portrait panel (v2.12.2) ---------- */
+const NARROW = window.matchMedia("(max-width: 759px)");
+const face = { box: null, layers: [], front: 0, src: null, emotion: "calm", intensity: 0.5, theme: null, seq: 0, asked: false };
+const panel = { moodOpen: false, expanded: false };
+
+function captionOf(emotion) {  // the atmospheric line — never the emotion's own name
+  const caps = S.captions || {};
+  return caps[emotion] || caps.calm || "";
+}
+
+function portraitBox() {  // one box, two stacked layers: the new face loads hidden, then the opacities swap
+  if (!face.box) {
+    face.layers = [el("img", { class: "layer on", alt: "" }), el("img", { class: "layer", alt: "" })];
+    face.box = el("div", { class: "portrait" }, ...face.layers);
+  }
+  return face.box;
+}
+
+async function showFace(theme, emotion, intensity) {
+  face.asked = true;
+  face.theme = theme || null;
+  face.emotion = (S.captions && S.captions[emotion]) ? emotion : "calm";
+  face.intensity = intensity === null || intensity === undefined ? 0.5 : Number(intensity);
+  const seq = ++face.seq;
+  const q = new URLSearchParams({ theme: face.theme || "", emotion: face.emotion, intensity: String(face.intensity) });
+  let data = null;
+  try {
+    const res = await fetch(`/face?${q}`, { headers: headers() }); // the shell picks it from the local pack
+    if (res.ok) data = await res.json();
+  } catch (e) { data = null; }
+  if (seq !== face.seq) return; // a newer state asked meanwhile
+  for (const node of document.querySelectorAll(".face-caption")) node.textContent = captionOf(face.emotion);
+  if (!data || !data.src || data.src === face.src) return;
+  face.src = data.src;
+  const back = face.layers[1 - face.front];
+  back.onload = () => {
+    if (back.getAttribute("src") !== face.src) return;
+    back.classList.add("on");
+    face.layers[face.front].classList.remove("on");
+    face.front = 1 - face.front;
+  };
+  back.src = data.src;
+}
+
+function themeInfo(slug) {
+  const th = slug && S.themes ? S.themes[slug] : null;
+  return th ? { name: th.name, sub: `${slug} \u00b7 ${th.scene}` } : { name: t("panel.theme.everyday"), sub: "" };
+}
+
+function closenessLevel(s) {
+  const level = s.closeness ? Number(s.closeness.level) : NaN;
+  return level >= 1 && level <= 5 ? level : null;
+}
+
+function closenessName(level) {
+  return level && Array.isArray(S.closeness) ? S.closeness[level - 1] : "\u2014";
+}
+
+function metaGrid(s) {
+  const th = themeInfo(s.theme);
+  const level = closenessLevel(s);
+  const of = level ? t("panel.closeness.of", { n: level }) : "";
+  const meter = el("div", { class: "meter", role: "img", "aria-label": `${t("panel.closeness")} ${of}`.trim() },
+    ...[1, 2, 3, 4, 5].map((n) => el("span", { class: level && n <= level ? "on" : null })));
+  return el("div", { class: "meta" },
+    el("div", { class: "meta-cell" }, el("span", { class: "kicker", text: t("panel.theme") }), el("span", { class: "name", text: th.name }),
+      th.sub ? el("span", { class: "sub", text: th.sub }) : null),
+    el("div", { class: "meta-cell" }, el("span", { class: "kicker", text: t("panel.closeness") }),
+      el("span", { class: "name" }, closenessName(level), level ? el("span", { class: "of", text: ` ${of}` }) : null), meter));
+}
+
+function metaLine(s) {
+  const level = closenessLevel(s);
+  return [level ? `${closenessName(level)} \u00b7 ${level}/5` : null, themeInfo(s.theme).name].filter(Boolean).join(" \u00b7 ");
+}
+
+function toggleMood() { panel.moodOpen = !panel.moodOpen; renderPanel(); }
+
+function moodBlock(mood) {
+  return el("section", { class: `mood${panel.moodOpen ? " open" : ""}` },
+    el("div", { class: "mood-head" }, el("span", { class: "kicker", text: t("panel.mood") }),
+      el("button", { type: "button", class: "toggle", "aria-expanded": String(panel.moodOpen), onclick: toggleMood },
+        t(panel.moodOpen ? "panel.mood.collapse" : "panel.mood.expand"), icon("chevron-down"))),
+    el("p", { class: "mood-text", lang: "uk", text: mood }));
+}
+
+function moodRow(mood) {
+  return el("button", { type: "button", class: `mood-row${panel.moodOpen ? " open" : ""}`, "aria-expanded": String(panel.moodOpen),
+    onclick: toggleMood }, el("b", { text: `${t("panel.mood")} \u00b7 ` }), el("span", { lang: "uk", text: mood }));
+}
+
+function renderPanel() {
+  const aside = $("panel");
+  const narrow = NARROW.matches;
+  aside.classList.toggle("narrow", narrow);
+  document.querySelector(".body").classList.toggle("narrow", narrow);
+  const s = st.server || {};
+  const empty = st.rows === 0; // a new session: the portrait + caption only (the mood is large in the chat)
+  const caption = el("p", { class: `caption face-caption`, "aria-live": "polite", text: captionOf(face.emotion) });
+  const kids = [];
+  if (!narrow) {
+    kids.push(portraitBox(), el("div", { class: "caption-block" }, caption, empty ? null : metaGrid(s)));
+    if (!empty && s.mood) kids.push(moodBlock(s.mood));
+  } else {
+    const thumb = el("button", { type: "button", class: "thumb", "aria-expanded": String(panel.expanded),
+      "aria-label": t(panel.expanded ? "narrow.portrait.hide" : "narrow.portrait.show"),
+      onclick: () => { panel.expanded = !panel.expanded; renderPanel(); } });
+    if (!panel.expanded) thumb.append(portraitBox());
+    kids.push(el("div", { class: "strip-row" }, thumb,
+      el("div", { class: "strip-words" }, caption, empty ? null : el("span", { class: "strip-meta", text: metaLine(s) })),
+      el("div", { id: "thoughts-button" })));
+    if (panel.expanded) {
+      kids.push(el("div", { class: "expanded" }, portraitBox(),
+        el("button", { type: "button", class: "collapse", "aria-label": t("narrow.portrait.hide"),
+          onclick: () => { panel.expanded = false; renderPanel(); } }, icon("chevron-up"))));
+    }
+    if (!empty && s.mood) kids.push(moodRow(s.mood));
+  }
+  kids.push(el("div", { id: "thoughts" }));
+  aside.replaceChildren(...kids);
+  renderThoughts();
+}
+
+/* ---------- the think block (v2.12.2): her inner voice above her reply ---------- */
+function thinkBlock(her) {
+  const block = { text: "", override: null, node: el("div", { class: "think", hidden: true }) };
+  her.content.insertBefore(block.node, her.body);  // above the text; empty and hidden until a think frame comes
+  st.thinkBlocks.push(block);
+  return block;
+}
+
+function setThink(block, text) {
+  block.text = text;
+  renderThink(block);
+}
+
+function renderThink(block) {
+  const mode = block.override || st.thinkMode || "collapsed";
+  block.node.hidden = !block.text || mode === "hidden";
+  if (block.node.hidden) { block.node.replaceChildren(); return; }
+  const open = mode === "shown";
+  const flip = () => { block.override = open ? "collapsed" : "shown"; renderThink(block); };
+  const head = el("button", { type: "button", class: "think-head", "aria-expanded": String(open), onclick: flip },
+    icon(open ? "chevron-down" : "chevron-right"), el("span", { class: "label", text: t("think.label") }),
+    open ? null : el("span", { class: "first", lang: "uk", text: block.text.replace(/\s+/g, " ").trim() }));
+  const parts = [head];  // never a null into replaceChildren — it would print as text
+  if (open) parts.push(el("div", { class: "think-text", lang: "uk", text: block.text }));
+  block.node.replaceChildren(...parts);
+  block.node.classList.toggle("open", open);
+}
+
+function setThinkMode(mode) {
+  st.thinkMode = THINK_MODES.includes(mode) ? mode : "collapsed";
+  try { localStorage.setItem(THINK_STORE, st.thinkMode); } catch (e) { /* the mode lasts this window */ }
+  for (const block of st.thinkBlocks) { block.override = null; renderThink(block); }  // a new global mode clears overrides
+  if (st.detailsOpen) renderDetails();
+}
+
+/* ---------- the quiet-thoughts strip (v2.12.2): her thoughts beside the portrait, never in the chat ---------- */
+function onThought(data) {
+  if (data.origin && data.origin === CLIENT_ID) return;  // this window's own %directive — shown from its response
+  st.thoughts.unshift({ kind: String(data.kind || ""), text: String(data.text || ""), emotion: String(data.emotion || ""),
+    when: data.when, unread: !data.replay || st.collectMissed });  // history on the first connect; missed after a reconnect (review #2)
+  if (st.thoughts.length > 100) st.thoughts.length = 100;
+  renderThoughts();
+}
+
+function thoughtTime(when) {
+  const d = when ? new Date(when) : null;
+  return d && !Number.isNaN(d.getTime()) ? clock(d) : "";
+}
+
+function thoughtItem(th) {
+  const kind = (S.thoughtKinds && S.thoughtKinds[th.kind]) || th.kind;
+  return el("li", { class: "thought" },
+    el("div", { class: "thought-meta" }, th.unread ? el("span", { class: "sq", "aria-hidden": "true" }) : null,
+      el("span", { class: "kind", text: kind }), el("span", { text: thoughtTime(th.when) })),
+    el("p", { class: "thought-text", lang: "uk", text: th.text }),
+    S.captions && S.captions[th.emotion] ? el("span", { class: "thought-cap", text: S.captions[th.emotion] }) : null);
+}
+
+function toggleThoughts() {
+  if (st.thoughtsOpen) for (const th of st.thoughts) th.unread = false;  // read once the list is closed after opening
+  st.thoughtsOpen = !st.thoughtsOpen;
+  renderThoughts();
+}
+
+function renderThoughts() {
+  const slot = $("thoughts");
+  const button = $("thoughts-button");
+  const unread = st.thoughts.filter((th) => th.unread).length;
+  const narrow = NARROW.matches;
+  if (button) {  // the narrow strip's cloud button + its unread badge
+    button.replaceChildren(st.thoughts.length ? el("button", { type: "button", class: "cloud",
+      "aria-expanded": String(st.thoughtsOpen), "aria-label": t("panel.thoughts.badge", { n: st.thoughts.length }), onclick: toggleThoughts },
+    icon("cloud"), unread ? el("span", { class: "badge", text: String(unread) }) : null) : "");
+  }
+  if (!slot) return;
+  if (!st.thoughts.length || st.rows === 0 || (narrow && !st.thoughtsOpen)) { slot.replaceChildren(); slot.className = ""; return; }
+  const shown = st.thoughtsOpen ? st.thoughts : st.thoughts.slice(0, 1);
+  slot.className = "thoughts";
+  slot.replaceChildren(
+    el("div", { class: "thoughts-head" }, el("span", { class: "kicker", text: t("panel.thoughts") }),
+      unread ? el("span", { class: "new", text: unread === 1 ? t("panel.thoughts.new.one") : t("panel.thoughts.new.many", { n: unread }) }) : null,
+      el("button", { type: "button", class: "toggle", "aria-expanded": String(st.thoughtsOpen), onclick: toggleThoughts,
+        text: st.thoughtsOpen ? t("panel.thoughts.collapse") : t("panel.thoughts.all", { n: st.thoughts.length }) })),
+    el("ul", { class: "thought-list" }, shown.map(thoughtItem)));
 }
 
 /* ---------- state from the server ---------- */
 function absorb(state) {
   if (!state || typeof state !== "object") return;
+  const before = st.server || {};
   st.server = state;
+  if (!st.thinkMode) st.thinkMode = THINK_FROM_SERVER[state.think_show] || "collapsed";  // only when none is kept
+  if (!face.asked) {  // the first state: her last emotion in today's theme
+    const last = state.last_emotion || {};
+    showFace(state.theme, last.emotion || "calm", last.intensity);
+  } else if (state.theme !== before.theme) {
+    showFace(state.theme, face.emotion, face.intensity); // a new day's wardrobe
+  }
+  renderPanel();
   const theme = THEMES.includes(state.theme) ? state.theme : null;
   if (theme) document.documentElement.dataset.theme = theme;
   else delete document.documentElement.dataset.theme;
   const empty = $("empty");
-  if (empty && state.mood) empty.querySelector(".mood").textContent = state.mood;
+  if (empty && state.mood) empty.querySelector(".empty-mood").textContent = state.mood;
   renderStatus();
 }
 
@@ -360,7 +606,11 @@ function renderDetails() {
       el("span", { text: `${st.chatSize} px` }),
       el("button", { type: "button", text: "A+", "aria-label": "larger", onclick: () => setChatSize(st.chatSize + 1) })),
     el("span", { class: "hint-keys", text: "⌘ − / ⌘ +" }));
-  box.replaceChildren(grid, el("div", { class: "controls" }, size));
+  const voice = el("div", { class: "control" }, el("span", { class: "kicker", text: t("details.thinkMode") }),
+    el("div", { class: "seg", role: "group", "aria-label": t("details.thinkMode") }, THINK_MODES.map((m) =>
+      el("button", { type: "button", class: st.thinkMode === m ? "on" : null, "aria-pressed": String(st.thinkMode === m),
+        text: t(`think.modes.${m}`), onclick: () => setThinkMode(m) }))));
+  box.replaceChildren(grid, el("div", { class: "controls" }, voice, size));
 }
 
 function setChatSize(px) {
@@ -520,17 +770,20 @@ function backoff() {
 
 function onPush(event, data) {
   if (event === "state") { absorb(data.state); return; }
-  if (event !== "message") return; // "turn" and "thought" feed the portrait panel (v2.12.2)
+  if (event === "turn") { showFace(data.theme ?? st.server.theme, data.emotion, data.intensity); return; } // any client's turn
+  if (event === "thought") { if (st.replaying) armReplay(REPLAY_QUIET_MS); onThought(data); return; }
+  if (event !== "message") return;
   if (data.origin && data.origin === CLIENT_ID) return; // our own line — shown from the response
   if (st.replaying) armReplay(REPLAY_QUIET_MS);
-  if (st.collectMissed) {
+  if (st.collectMissed && data.replay) {  // only what the server replays counts as missed
     if (!st.missedDivider) st.missedDivider = addDivider(t("divider.missed", { n: 0 }), true);
     st.missed.push(data);
     st.missedDivider.querySelector(".kicker").textContent = t("divider.missed", { n: st.missed.length });
   }
-  const time = st.replaying ? undefined : clock();
+  const time = data.replay ? undefined : clock();  // a replayed line's moment isn't known
   if (data.role === "user") addMine(String(data.text || ""), { time, source: data.source, origin: data.origin });
-  else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge" });
+  else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge",
+    emotion: data.emotion, intensity: data.intensity });
 }
 
 /* ---------- turns, commands, directives ---------- */
@@ -571,6 +824,7 @@ async function turn(text, queuedRow, waited = false) {
     return turn(text, null, true);
   };
   const her = addHers(null, { time: clock() });
+  her.think = thinkBlock(her);  // v2.12.2: her inner voice fills the wait
   const waiting = el("div", { class: "thinking" }, el("i"), el("i"), el("i"), el("span", { text: t("thinking") }));
   her.body.append(waiting);
   stick(true);
@@ -595,7 +849,10 @@ async function turn(text, queuedRow, waited = false) {
     }
   }
   her.body.replaceChildren(...markdown(result.reply));
+  if (!her.think.text && result.thinking) setThink(her.think, String(result.thinking));  // nothing streamed: the whole of it
   if (result.state) absorb(result.state);
+  showFace((result.state && result.state.theme) ?? st.server.theme, result.emotion, result.intensity);
+  setEmotion(her.node, result.emotion, result.intensity);
   stick();
 }
 
@@ -614,11 +871,14 @@ async function streamTurn(body, her, waiting) {
       streamed.textContent = text;
       streamed.append(caret);
       stick();
+    } else if (frame.event === "think") {
+      setThink(her.think, her.think.text + String(frame.data.text || ""));  // v2.12.2: her inner voice as it comes
+      stick();
     } else if (frame.event === "done") {
       return frame.data;
     } else if (frame.event === "error") {
       throw new ApiError(500, "turn_error", String(frame.data.detail || ""));
-    } // "think" frames: the think block arrives with v2.12.2
+    }
   }
   return null; // the stream ended without an outcome — the caller asks the same turn_id the blocking way
 }
@@ -800,12 +1060,17 @@ function onKey(ev) {
 /* ---------- start ---------- */
 async function start() {
   try { S = await (await fetch("strings.en.json")).json(); } catch (e) { S = {}; }
+  try { st.emoji = await (await fetch("/emoji", { headers: headers() })).json(); } catch (e) { st.emoji = {}; }
   document.title = t("window.title");
   try {
     const saved = parseInt(localStorage.getItem(CHAT_SIZE.store), 10);
     st.chatSize = Number.isFinite(saved) ? saved : CHAT_SIZE.default;
   } catch (e) { st.chatSize = CHAT_SIZE.default; }
   setChatSize(st.chatSize);
+  try {
+    const kept = localStorage.getItem(THINK_STORE);
+    if (THINK_MODES.includes(kept)) st.thinkMode = kept;
+  } catch (e) { /* none kept — the server's think_show gives the first default */ }
   const input = $("input");
   $("input-label").textContent = t("input.label");
   input.setAttribute("aria-label", t("input.label"));
@@ -821,6 +1086,8 @@ async function start() {
     if (ev.key === "-") { ev.preventDefault(); setChatSize(st.chatSize - 1); }
     else if (ev.key === "=" || ev.key === "+") { ev.preventDefault(); setChatSize(st.chatSize + 1); }
   });
+  NARROW.addEventListener("change", () => { renderPanel(); stick(true); });  // a new width: back to the newest line
+  renderPanel();
   renderInput();
   renderStatus();
   input.focus();
