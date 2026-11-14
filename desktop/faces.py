@@ -12,12 +12,14 @@ back to the viewer's random pick without an immediate repeat. The old Tkinter vi
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from viewer.face import _band, _normalize, pick_variant, resolve_variants
 
 BY_BAND = {"low": "02.png", "mid": "01.png", "high": "03.png"}  # the place-faces naming
+THEME_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")  # a theme is a plain folder name, never a path (review #1)
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,8 @@ class FacePicker:
         """The portrait for the state, or ``None`` when the pack has no picture at all."""
         name = _normalize(emotion)
         band = _band(float(intensity)) if intensity is not None else "mid"
-        theme = theme if theme and (self.faces_dir / theme).is_dir() else None
+        plain = bool(theme) and THEME_NAME.fullmatch(theme) is not None
+        theme = theme if plain and (self.faces_dir / theme).is_dir() else None
         variants = resolve_variants(name, intensity, self.faces_dir, theme=theme, default_theme=self.default_theme)
         existing = [v for v in variants if v.is_file()]
         if not existing:

@@ -72,3 +72,22 @@ def test_lumi_276_the_emoji_table_follows_the_authored_map(tmp_path):
     assert table["joy"] == ["A", "B", "C"] and table["calm"] == ["X", "X", "X"]
     assert set(table) == {e.value for e in Emotion}  # total over the enum; an unknown name is skipped
     assert emoji_table(tmp_path / "missing.md")["sad"][0]  # no file → the built-in map
+
+
+def test_review_1_a_theme_is_a_plain_name_never_a_path(pack, monkeypatch):
+    import desktop.faces as df
+
+    seen = []
+    real = df.resolve_variants
+
+    def spy(emotion, intensity, faces_dir, **kw):
+        seen.append(kw.get("theme"))
+        return real(emotion, intensity, faces_dir, **kw)
+
+    monkeypatch.setattr(df, "resolve_variants", spy)
+    picker = FacePicker(pack)
+    for theme in ("..", "../..", "quiet/../..", "/etc", ".hidden"):
+        got = picker.pick(theme, "joy", 0.9)
+        assert got.rel == "joy_high.png", theme  # no such theme → the flat pack, never a folder outside
+    assert seen == [None] * 5  # the resolver never saw the path
+    assert picker.pick("quiet", "sad", 0.9).rel == "quiet/sad/03.png"  # a real theme still works
