@@ -45,6 +45,10 @@ PASS_REQUEST = ("Content-Type", "X-Lumi-Client", "Last-Event-ID")  # the page's 
 PASS_RESPONSE = ("Content-Type", "Cache-Control")  # the server's headers that reach the page
 MAX_BODY = 1_000_000  # a request body larger than this is refused (a typed line is a few KB)
 CONNECT_S = 5.0
+# Read timeouts towards the server, as tui/remote.py keeps them (code review #1): the push channel hears a heartbeat
+# every 15 s, so 45 s of silence is a dead stream; a turn may think for minutes, but not forever.
+EVENTS_READ_S = 45.0
+READ_S = 600.0
 _log = logging.getLogger("lumi.desktop")
 
 
@@ -97,17 +101,24 @@ class Proxy:
     port on ``127.0.0.1`` and serves on a daemon thread; :meth:`stop` closes it."""
 
     def __init__(self, upstream: Upstream, *, ui_dir: Path = UI_DIR, key: str | None = None,
-                 client: httpx.Client | None = None) -> None:
+                 client: httpx.Client | None = None, read_s: float = READ_S,
+                 events_read_s: float = EVENTS_READ_S) -> None:
         self.upstream = upstream
         self.ui_dir = ui_dir
         self.key = key or secrets.token_urlsafe(24)
-        self.http = client or httpx.Client(timeout=httpx.Timeout(connect=CONNECT_S, read=None, write=30.0,
-                                                                  pool=CONNECT_S))
+        self.read_s = read_s
+        self.events_read_s = events_read_s
+        self.http = client or httpx.Client(timeout=self.timeout_for(""))
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
     def __repr__(self) -> str:
         return f"Proxy(upstream={self.upstream.url!r}, port={self.port})"
+
+    def timeout_for(self, path: str) -> httpx.Timeout:
+        """A stalled read ends the relay and frees its thread: 45 s on the push channel, 600 s on a turn."""
+        read = self.events_read_s if path == "/v1/events" else self.read_s
+        return httpx.Timeout(connect=CONNECT_S, read=read, write=30.0, pool=CONNECT_S)
 
     @property
     def port(self) -> int | None:
@@ -196,7 +207,8 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             url = f"{up.url}{path}" + (f"?{query}" if query else "")
             started = False
             try:
-                with proxy.http.stream(method, url, headers=headers, content=body or None) as res:
+                with proxy.http.stream(method, url, headers=headers, content=body or None,
+                                       timeout=proxy.timeout_for(path)) as res:
                     if res.status_code == 401:
                         res.read()
                         self._json(401, "token_refused", _detail(res) or "the server refused the client token")

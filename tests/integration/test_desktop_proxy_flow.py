@@ -124,3 +124,28 @@ def test_the_whole_page_is_served_from_desktop_ui(world):
     html = request(proxy, "GET", "/", key=False)[2].decode()
     for ref in ("tokens.css", "style.css", "app.js"):
         assert f'"{ref}"' in html
+
+
+def test_review_1_a_stalled_stream_ends_at_the_read_timeout():
+    import time
+
+    from desktop.proxy import Proxy
+
+    server = FakeServer()  # its events stream sends one frame, then waits (up to 5 s) for a release that never comes
+    proxy = Proxy(Upstream(server.url, TOKEN), key=KEY, events_read_s=0.5)
+    proxy.start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", proxy.port, timeout=10)
+        conn.request("GET", "/v1/events", headers={KEY_HEADER: KEY})
+        res = conn.getresponse()
+        started = time.monotonic()
+        data = res.read()  # ends when the proxy gives up on the silent server, not when the server ends
+        elapsed = time.monotonic() - started
+        conn.close()
+        assert b"event: state" in data and b"event: message" not in data
+        assert elapsed < 3.0
+        assert proxy.timeout_for("/v1/events").read == 0.5 and proxy.timeout_for("/v1/turn").read == 600.0
+    finally:
+        server.release.set()
+        proxy.stop()
+        server.close()
