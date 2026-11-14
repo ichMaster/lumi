@@ -1,6 +1,11 @@
 Lumi — Release notes
 ====================
 
+Version 2.12.3 (2026-11-14)
+---------------------------
+- LUMI-277: an option to hide her portrait in the window — Details → Portrait: show / hide, kept between launches; hidden, the panel keeps the caption, the theme, the closeness, the mood and the thoughts without the picture.
+- Fix: the switches in Details showed raw keys (think.modes.shown) instead of their text — the string lookup now reaches a key nested under a flat one.
+
 Version 2.12.2 (2026-11-14)
 ---------------------------
 - LUMI-271: the face pick in the shell — her portrait from this client's own face pack (by intensity: low 02 · mid 01 · high 03), served locally by the window's proxy (/face, /faces/); no face crosses the network.
