@@ -496,7 +496,7 @@ function setThinkMode(mode) {
 function onThought(data) {
   if (data.origin && data.origin === CLIENT_ID) return;  // this window's own %directive — shown from its response
   st.thoughts.unshift({ kind: String(data.kind || ""), text: String(data.text || ""), emotion: String(data.emotion || ""),
-    when: data.when, unread: !data.replay });  // a replayed thought is history, never "new"
+    when: data.when, unread: !data.replay || st.collectMissed });  // history on the first connect; missed after a reconnect (review #2)
   if (st.thoughts.length > 100) st.thoughts.length = 100;
   renderThoughts();
 }

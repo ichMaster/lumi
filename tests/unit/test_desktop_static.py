@@ -136,7 +136,7 @@ def test_lumi_273_the_think_frames_fill_the_block_in_three_modes():
 def test_lumi_273_thoughts_go_to_the_strip_never_the_chat():
     js = _js()
     body = js[js.index("function onThought("):js.index("function thoughtTime(")]
-    assert "unread: !data.replay" in body
+    assert "unread: !data.replay || st.collectMissed" in body  # review #2: missed while offline = new
     for chat in ("addHers(", "addMine(", "addCommand(", "append("):
         assert chat not in body
     assert 'event === "thought"' in js and "onThought(data)" in js
