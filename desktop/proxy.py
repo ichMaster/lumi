@@ -200,7 +200,13 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
                 return
             body = b""
             if method == "POST":
-                length = int(self.headers.get("Content-Length") or 0)
+                try:
+                    length = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    length = -1
+                if length < 0:  # a malformed length gets an answer, not a traceback (code review #4)
+                    self._json(400, "bad_request", "a malformed Content-Length")
+                    return
                 if length > MAX_BODY:
                     self._json(413, "too_large", "the request is too large")
                     return

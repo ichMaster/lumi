@@ -157,3 +157,18 @@ def test_review_3_no_page_may_frame_the_chat(world):
         _, headers, _ = request(proxy, "GET", path, key=False)
         assert headers["x-frame-options"] == "DENY", path
         assert headers["content-security-policy"] == "frame-ancestors 'none'", path
+
+
+def test_review_4_a_malformed_length_gets_an_answer(world):
+    server, proxy = world
+    for length in ("abc", "-5"):
+        with socket.create_connection(("127.0.0.1", proxy.port), timeout=5) as s:
+            s.sendall((f"POST /v1/command HTTP/1.1\r\nHost: 127.0.0.1:{proxy.port}\r\n{KEY_HEADER}: {KEY}\r\n"
+                       f"Content-Type: application/json\r\nContent-Length: {length}\r\n\r\n").encode())
+            answer = b""
+            while chunk := s.recv(4096):
+                answer += chunk
+        head, _, body = answer.partition(b"\r\n\r\n")
+        assert head.split(b" ")[1] == b"400", length
+        assert json.loads(body)["kind"] == "bad_request"
+    assert server.requests == []
