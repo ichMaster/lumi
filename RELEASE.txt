@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 2.12.1 (2026-11-14)
+---------------------------
+- LUMI-266: the desktop shell (desktop/, python -m desktop) — a pywebview window onto a local proxy on 127.0.0.1 that serves the page and forwards only the eight /v1 routes it uses, adding the client token itself (the token never enters the page); a per-launch key, the proxy's own Host and no CORS keep other apps and web pages out; streams relayed chunk by chunk; errors as {kind, detail}.
+- LUMI-267: the page — the chat (desktop/ui/), built to the owner's Claude Design handoff (design/v2.12/) with an English interface: streamed replies by turn_id with the blocking fallback, her unasked lines ("wrote first"), Telegram and terminal lines tagged, slash commands, %directives, /new and /web, a queue while she answers, the status line with details and text size, the connection banners with a clean reconnect, the token-refused and no-server screens; markdown built as DOM nodes.
+- LUMI-268: ./lumi-desktop and the desktop extra (pywebview, kept out of the server image); SERVER_SETUP §The desktop window; ARCHITECTURE and ROADMAP reconciled (desktop/, the settings files, the local proxy).
+- LUMI-269: the window checked live by the owner against the dev server — the conversation, the commands, the TUI client in parallel, a line she wrote first, the reconnect.
+- Review fixes: read timeouts towards the server as the TUI keeps them (45 s push, 600 s otherwise); a busy retry notes once per line; the page can't be framed; a malformed Content-Length gets an answer.
+
 Version 2.11.0 (2026-11-12)
 ---------------------------
 - LUMI-259: the settings editor (admin/edit.py) — an instance's settings.yaml + secrets.yaml as a schema-driven view; every change checked by the instance's own start check, previewed as a diff, applied atomically against the preview's hashes with the previous files kept in config-history/ (0600, the newest 200), rolled back with one click; secrets write-only (set / rotate / clear, shown as set •••last4).
