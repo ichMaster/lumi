@@ -149,3 +149,11 @@ def test_review_1_a_stalled_stream_ends_at_the_read_timeout():
         server.release.set()
         proxy.stop()
         server.close()
+
+
+def test_review_3_no_page_may_frame_the_chat(world):
+    _, proxy = world
+    for path in ("/", "/app.js", "/style.css"):
+        _, headers, _ = request(proxy, "GET", path, key=False)
+        assert headers["x-frame-options"] == "DENY", path
+        assert headers["content-security-policy"] == "frame-ancestors 'none'", path

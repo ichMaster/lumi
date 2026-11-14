@@ -43,6 +43,7 @@ FORWARDED: frozenset[tuple[str, str]] = frozenset({
 })
 PASS_REQUEST = ("Content-Type", "X-Lumi-Client", "Last-Event-ID")  # the page's headers that reach the server
 PASS_RESPONSE = ("Content-Type", "Cache-Control")  # the server's headers that reach the page
+NO_FRAMING = (("X-Frame-Options", "DENY"), ("Content-Security-Policy", "frame-ancestors 'none'"))
 MAX_BODY = 1_000_000  # a request body larger than this is refused (a typed line is a few KB)
 CONNECT_S = 5.0
 # Read timeouts towards the server, as tui/remote.py keeps them (code review #1): the push channel hears a heartbeat
@@ -185,6 +186,8 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            for name, value in NO_FRAMING:  # no other page may frame the chat (code review #3)
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(data)
 
