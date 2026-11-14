@@ -79,3 +79,11 @@ def test_the_page_loads_only_local_files():
     refs = re.findall(r'(?:src|href)="([^"]+)"', html)
     assert refs and all(not r.startswith(("http", "//")) for r in refs)
     assert "fonts.googleapis" not in (UI / "tokens.css").read_text(encoding="utf-8")
+
+
+def test_review_2_a_busy_retry_notes_once_per_line():
+    js = _js()
+    body = js[js.index("async function turn("):js.index("async function streamTurn(")]
+    assert "async function turn(text, queuedRow, waited = false)" in body
+    assert 'if (!waited) addNote(t("note.busy"))' in body and "return turn(text, null, true)" in body
+    assert body.count('addNote(t("note.busy"))') == 1

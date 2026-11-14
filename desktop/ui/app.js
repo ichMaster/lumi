@@ -562,10 +562,13 @@ function settleMine(text, queuedRow) {
   return addMine(text, { time: clock() });
 }
 
-async function turn(text, queuedRow) {
+async function turn(text, queuedRow, waited = false) {
   const mine = settleMine(text, queuedRow);
-  const busy = async () => { // another client holds her: both rows go, the line is asked again in a moment
-    mine.node.remove(); her.node.remove(); addNote(t("note.busy")); await sleep(3000); return turn(text, null);
+  const busy = async () => { // another client holds her: both rows go, the line is asked again in a moment —
+    mine.node.remove(); her.node.remove(); // the note once per line, however long she stays busy (review #2)
+    if (!waited) addNote(t("note.busy"));
+    await sleep(3000);
+    return turn(text, null, true);
   };
   const her = addHers(null, { time: clock() });
   const waiting = el("div", { class: "thinking" }, el("i"), el("i"), el("i"), el("span", { text: t("thinking") }));
