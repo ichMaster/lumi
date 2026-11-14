@@ -176,6 +176,13 @@ details panel; text size ⌘− / ⌘+), and a clean reconnect: the server down 
 missed lines under "While offline". The interface is English; her words stay Ukrainian. Not yet: the portrait, the
 think block, the quiet-thoughts strip and pictures (v2.12.2); voice, dictation and `/image` from a file (the TUI).
 
+**As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
+portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another
+checkout, `--portrait` for another picture). It opens from Launchpad, Spotlight or the Dock, as one "Lili" tile. The
+bundle holds no client code: it runs `uv run --extra desktop` in that checkout, so `prod_update.py` moving the client to
+a new tag updates what the app runs. Rebuild it only to change the icon or the target. Its output goes to
+`~/Library/Logs/Lili.log`.
+
 | The window says | Why | Fix |
 |---|---|---|
 | "No server is set yet" | `server.host` or `server.token` missing in this tree | set them (`./lumi-cli config set server.host 192.168.1.197`, the port, and the token in `secrets.yaml`), then "Check" |
