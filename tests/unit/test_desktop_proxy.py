@@ -36,3 +36,14 @@ def test_a_static_path_never_leaves_the_ui_folder(tmp_path):
     for path in ("/../secret.txt", "/%2e%2e/secret.txt", "/missing.css", "/."):
         assert ui_file(path, tmp_path) is None, path
     assert UI_DIR.name == "ui" and UI_DIR.parent.name == "desktop"
+
+
+def test_without_pywebview_the_shell_says_how_to_get_it(monkeypatch, capsys):
+    import sys
+
+    from desktop import __main__ as shell
+
+    monkeypatch.setitem(sys.modules, "webview", None)  # an import of it now raises ImportError, installed or not
+    assert shell.main([]) == 1
+    err = capsys.readouterr().err
+    assert "pywebview" in err and "./lumi-desktop" in err

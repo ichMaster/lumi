@@ -87,6 +87,7 @@ Python, **Anthropic SDK — Claude Haiku (v0.1); more models (Claude tiers / Ope
 /tui            # terminal interface (Textual): in-process in v0, refactored to a server client in v3.1; Log/Emoji renderers
 /telegram       # later (v0.13): the Telegram bridge — two dumb daemons over a file bus (inbox/outbox JSONL FIFO); the TUI stays the brain, no core logic, no aiogram in the TUI
 /viewer         # later (v0.7): local desktop emotion-face window (Tkinter) + faces/ asset pack; polls a local signal
+/desktop        # v2.12: the desktop window — ./lumi-desktop: a pywebview shell + a local proxy on 127.0.0.1 (desktop/proxy.py: the page + the eight /v1 routes it uses, the token added there, never in the page) + the static page (desktop/ui/, the Claude Design handoff in design/v2.12/, English UI); v2.12.1 the chat, v2.12.2 the portrait panel
 /cli            # v2.2: CLI management utility — serve/status/memory/model/config over the API; manage users later (v4)
 /server         # v2.2: FastAPI over the core (API v1: turn/command/state/session, client token); streaming v2.3, pushes v2.4, the brain v2.5; multi-user later (v4)
 /web            # later (v3.4): web client (chat, portrait/animation, voice toggle, dictation, gallery/canvas) + admin panel (v3.5); Image/Animation renderers + asset packs
