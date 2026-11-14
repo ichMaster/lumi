@@ -23,12 +23,18 @@ def _strings() -> dict:
 
 
 def _has(strings: dict, key: str) -> bool:
-    node = strings
-    for part in key.split("."):
-        if not isinstance(node, dict) or part not in node:
-            return key in strings
-        node = node[part]
-    return True
+    """The page's lookup(): the longest flat prefix the strings have, then the nested rest — a string at the end."""
+    parts = key.split(".")
+    for i in range(len(parts), 0, -1):
+        head = ".".join(parts[:i])
+        if head not in strings:
+            continue
+        node = strings[head]
+        for part in parts[i:]:
+            node = node.get(part) if isinstance(node, dict) else None
+        if isinstance(node, str):
+            return True
+    return False
 
 
 def test_nothing_is_rendered_as_html():
@@ -46,7 +52,7 @@ def test_the_interface_is_english_and_every_string_key_exists():
     used = set(re.findall(r'"([a-z][A-Za-z]*(?:\.[A-Za-z]+)+)"', _js()))
     keys = {k for k in used if k.split(".")[0] in tops}
     assert {"input.placeholder", "status.ready", "reply.broken", "divider.missed", "auth.refused"} <= keys
-    missing = sorted(k for k in keys if not _has(strings, k))
+    missing = sorted(k for k in keys if not (_has(strings, k) or k in strings))  # a text, or a block (auth.refused)
     assert missing == []
     assert set(strings["captions"]) == {"joy", "calm", "playful", "tender", "thoughtful", "serious", "surprise",
                                         "doubt", "sad"}
@@ -165,3 +171,26 @@ def test_lumi_276_every_reply_of_hers_carries_its_emotion():
     assert "emotion: data.emotion, intensity: data.intensity" in js
     assert "setEmotion(her.node, result.emotion, result.intensity)" in js  # this window's own turn, at done
     assert 'fetch("/emoji", { headers: headers() })' in js
+
+
+
+def test_lumi_277_the_portrait_can_be_hidden_and_stays_so():
+    js = _js()
+    render = js[js.index("function renderPanel("):js.index("/* ---------- state from the server")]
+    assert "const pic = st.portraitShown" in render and "if (pic) kids.push(portraitBox())" in render
+    assert "pic ? thumb : null" in render and "if (pic && panel.expanded)" in render  # the narrow strip too
+    assert 'localStorage.setItem(PORTRAIT_STORE, st.portraitShown ? "shown" : "hidden")' in js
+    assert 'localStorage.getItem(PORTRAIT_STORE) !== "hidden"' in js  # shown unless hidden was kept
+    assert "setPortraitShown(m === \"shown\")" in js
+
+
+
+def test_the_switches_keys_resolve_to_text():
+    """The template-literal keys the regex above can't see (found live: the switches showed raw keys)."""
+    js, strings = _js(), _strings()
+    assert "t(`think.modes.${m}`)" in js and "t(`portrait.modes.${m}`)" in js
+    for key in ("think.modes.shown", "think.modes.collapsed", "think.modes.hidden", "portrait.modes.shown",
+                "portrait.modes.hidden", "auth.refused.title", "details.thinking.on", "details.style.normal"):
+        assert _has(strings, key), key
+    lookup = js[js.index("function lookup("):js.index("function t(")]
+    assert "parts.slice(0, i).join" in lookup  # the longest flat prefix first, like _has

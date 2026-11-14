@@ -254,5 +254,10 @@
   "note.busy": "She is answering another conversation — your line waits",
   "note.failed": "That didn't work: {detail}",
   "note.directive": "{kind} · {mode}",
-  "panel.theme.everyday": "Everyday"
+  "panel.theme.everyday": "Everyday",
+  "details.portrait": "Portrait",
+  "portrait.modes": {
+    "shown": "show",
+    "hidden": "hide"
+  }
 }

@@ -21,17 +21,30 @@ const st = {
   slash: { open: false, items: [], index: 0, dismissed: false }, detailsOpen: false, rows: 0, chatSize: 16,
   thinkMode: null, thinkBlocks: [], thoughts: [], thoughtsOpen: false,  // v2.12.2
   emoji: {},  // LUMI-276: the TUI's emotion → emoji map, from the shell
+  portraitShown: true,  // LUMI-277: the owner can hide her portrait (kept locally)
 };
 const THINK_STORE = "lumi.desktop.thinkMode";
+const PORTRAIT_STORE = "lumi.desktop.portrait";
 const THINK_MODES = ["shown", "collapsed", "hidden"];
 const THINK_FROM_SERVER = { open: "shown", debug: "collapsed", off: "hidden" };  // the state's think_show → a first default
 
 /* ---------- small helpers ---------- */
 const $ = (id) => document.getElementById(id);
 
+function lookup(key) {  // "a.b.c": the longest flat prefix the strings have ("think.modes"), then walk the rest
+  const parts = key.split(".");
+  for (let i = parts.length; i >= 1; i--) {
+    const head = parts.slice(0, i).join(".");
+    if (!(head in S)) continue;
+    let v = S[head];
+    for (const k of parts.slice(i)) v = v && typeof v === "object" && k in v ? v[k] : undefined;
+    if (typeof v === "string") return v;
+  }
+  return undefined;
+}
+
 function t(key, vars) {
-  let v = key.split(".").reduce((o, k) => (o && typeof o === "object" && k in o ? o[k] : undefined), S);
-  if (v === undefined) v = S[key];
+  const v = lookup(key);
   if (typeof v !== "string") return key;
   return v.replace(/\{(\w+)\}/g, (m, name) => (vars && name in vars ? String(vars[name]) : m));
 }
@@ -434,18 +447,20 @@ function renderPanel() {
   const empty = st.rows === 0; // a new session: the portrait + caption only (the mood is large in the chat)
   const caption = el("p", { class: `caption face-caption`, "aria-live": "polite", text: captionOf(face.emotion) });
   const kids = [];
+  const pic = st.portraitShown;  // LUMI-277: hidden → the panel without the picture
   if (!narrow) {
-    kids.push(portraitBox(), el("div", { class: "caption-block" }, caption, empty ? null : metaGrid(s)));
+    if (pic) kids.push(portraitBox());
+    kids.push(el("div", { class: "caption-block" }, caption, empty ? null : metaGrid(s)));
     if (!empty && s.mood) kids.push(moodBlock(s.mood));
   } else {
     const thumb = el("button", { type: "button", class: "thumb", "aria-expanded": String(panel.expanded),
       "aria-label": t(panel.expanded ? "narrow.portrait.hide" : "narrow.portrait.show"),
       onclick: () => { panel.expanded = !panel.expanded; renderPanel(); } });
     if (!panel.expanded) thumb.append(portraitBox());
-    kids.push(el("div", { class: "strip-row" }, thumb,
+    kids.push(el("div", { class: "strip-row" }, pic ? thumb : null,
       el("div", { class: "strip-words" }, caption, empty ? null : el("span", { class: "strip-meta", text: metaLine(s) })),
       el("div", { id: "thoughts-button" })));
-    if (panel.expanded) {
+    if (pic && panel.expanded) {
       kids.push(el("div", { class: "expanded" }, portraitBox(),
         el("button", { type: "button", class: "collapse", "aria-label": t("narrow.portrait.hide"),
           onclick: () => { panel.expanded = false; renderPanel(); } }, icon("chevron-up"))));
@@ -610,7 +625,20 @@ function renderDetails() {
     el("div", { class: "seg", role: "group", "aria-label": t("details.thinkMode") }, THINK_MODES.map((m) =>
       el("button", { type: "button", class: st.thinkMode === m ? "on" : null, "aria-pressed": String(st.thinkMode === m),
         text: t(`think.modes.${m}`), onclick: () => setThinkMode(m) }))));
-  box.replaceChildren(grid, el("div", { class: "controls" }, voice, size));
+  const portrait = el("div", { class: "control" }, el("span", { class: "kicker", text: t("details.portrait") }),
+    el("div", { class: "seg", role: "group", "aria-label": t("details.portrait") }, ["shown", "hidden"].map((m) => {
+      const on = (m === "shown") === st.portraitShown;
+      return el("button", { type: "button", class: on ? "on" : null, "aria-pressed": String(on), text: t(`portrait.modes.${m}`),
+        onclick: () => setPortraitShown(m === "shown") });
+    })));
+  box.replaceChildren(grid, el("div", { class: "controls" }, portrait, voice, size));
+}
+
+function setPortraitShown(shown) {  // LUMI-277: her picture on or off; everything else in the panel stays
+  st.portraitShown = Boolean(shown);
+  try { localStorage.setItem(PORTRAIT_STORE, st.portraitShown ? "shown" : "hidden"); } catch (e) { /* lasts this window */ }
+  renderPanel();
+  if (st.detailsOpen) renderDetails();
 }
 
 function setChatSize(px) {
@@ -1070,6 +1098,7 @@ async function start() {
   try {
     const kept = localStorage.getItem(THINK_STORE);
     if (THINK_MODES.includes(kept)) st.thinkMode = kept;
+    st.portraitShown = localStorage.getItem(PORTRAIT_STORE) !== "hidden";
   } catch (e) { /* none kept — the server's think_show gives the first default */ }
   const input = $("input");
   $("input-label").textContent = t("input.label");
