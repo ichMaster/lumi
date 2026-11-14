@@ -14,6 +14,53 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .body { flex: 1; min-height: 0; display: flex; }
 .chat { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
+/* — the portrait panel (v2.12.2) — */
+.panel { flex: none; width: var(--l-panel); border-right: var(--rule) solid var(--color-divider); overflow-y: auto;
+  display: flex; flex-direction: column; }
+.portrait { width: 100%; aspect-ratio: 1 / 1; background: var(--color-surface); position: relative; overflow: hidden; flex: none; }
+.portrait .layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0;
+  transition: opacity var(--t-portrait); }
+.portrait .layer.on { opacity: 1; }
+.caption-block { padding: 18px 24px 20px; display: flex; flex-direction: column; gap: 14px; }
+.caption { margin: 0; font: 800 var(--fs-caption)/1.08 var(--font-heading); letter-spacing: -.015em; text-wrap: balance; }
+.meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--l-hair); }
+.meta .cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.meta .cell:first-child { padding: 10px 12px 0 0; border-right: 1px solid var(--l-hair); }
+.meta .cell:last-child { padding: 10px 0 0 12px; }
+.meta .name { font-size: 14px; font-weight: 600; }
+.meta .of, .meta .sub { font-size: 12px; line-height: 1.35; color: var(--l-faint); font-weight: 400; }
+.meter { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; max-width: 120px; margin-top: 6px; }
+.meter span { height: 6px; background: var(--l-hair); }
+.meter span.on { background: var(--color-accent); }
+.mood { border-top: var(--rule) solid var(--color-divider); padding: 14px 24px 18px; display: flex; flex-direction: column; gap: 6px; }
+.mood-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.mood .toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--l-acc-text); }
+.mood .toggle:hover { color: var(--color-text); }
+.mood .toggle svg.icon { width: 12px; height: 12px; transition: transform var(--t-chevron); }
+.mood.open .toggle svg.icon { transform: rotate(180deg); }
+.mood-text { margin: 0; font-size: 14px; line-height: 1.5; color: var(--l-muted); display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; overflow: hidden; }
+.mood.open .mood-text { display: block; -webkit-line-clamp: unset; }
+
+/* the narrow layout (< 760px): the panel becomes the top strip */
+.body.narrow { flex-direction: column; }
+.panel.narrow { width: auto; border-right: 0; border-bottom: var(--rule) solid var(--color-divider); max-height: 72%; }
+.strip-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; }
+.thumb { width: 52px; height: 52px; flex: none; padding: 0; background: var(--color-surface); }
+.thumb .portrait { width: 52px; height: 52px; }
+.strip-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.panel.narrow .caption { font-size: 18px; line-height: 1.15; }
+.strip-meta { font-size: 12px; color: var(--l-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.expanded { position: relative; }
+.expanded .portrait { max-height: 420px; }
+.expanded .collapse { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--color-bg) 80%, transparent); }
+.expanded .collapse svg.icon { width: 18px; height: 18px; }
+.mood-row { display: block; width: 100%; border-top: 1px solid var(--l-hair); padding: 10px 16px; font-size: 13px; line-height: 1.45;
+  color: var(--l-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mood-row.open { white-space: normal; }
+.mood-row b { font-weight: 600; color: var(--color-text); }
+
 /* — the message list — */
 .list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 28px 40px 24px; }
 .col { margin-top: auto; display: flex; flex-direction: column; gap: var(--l-msg-gap); width: 100%; max-width: var(--l-measure); }
@@ -76,7 +123,7 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 
 /* — the empty state: the mood of the day, large — */
 .empty { display: flex; flex-direction: column; gap: 10px; max-width: 600px; }
-.empty .mood { margin: 0; font-size: var(--fs-mood-empty); line-height: 1.45; }
+.empty .empty-mood { margin: 0; font-size: var(--fs-mood-empty); line-height: 1.45; }
 
 /* — the input — */
 .composer { border-top: var(--rule) solid var(--color-divider); padding: 14px 40px 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -189,7 +236,7 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
   .screen .left { padding: 28px 20px; border-right: 0; border-bottom: var(--rule) solid var(--color-divider); }
   .screen .right { padding: 28px 20px; }
   .screen h1 { font-size: 32px; }
-  .empty .mood { font-size: 18px; }
+  .empty .empty-mood { font-size: 18px; }
   .status .open-details .label { display: none; }
   .send, .status .open-details { min-height: 44px; }
 }

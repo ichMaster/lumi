@@ -49,6 +49,9 @@ function el(tag, attrs, ...kids) {
 const ICONS = {
   "arrow-up": [["path", { d: "m5 12 7-7 7 7" }], ["path", { d: "M12 19V5" }]],
   "chevron-up": [["path", { d: "m18 15-6-6-6 6" }]],
+  "chevron-down": [["path", { d: "m6 9 6 6 6-6" }]],
+  "chevron-right": [["path", { d: "m9 18 6-6-6-6" }]],
+  cloud: [["path", { d: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" }]],
   send: [["path", { d: "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" }], ["path", { d: "m21.854 2.147-10.94 10.939" }]],
   terminal: [["polyline", { points: "4 17 10 11 4 5" }], ["line", { x1: "12", x2: "20", y1: "19", y2: "19" }]],
   "wifi-off": [["path", { d: "M12 20h.01" }], ["path", { d: "M8.5 16.429a5 5 0 0 1 7 0" }], ["path", { d: "M5 12.859a10 10 0 0 1 5.17-2.69" }], ["path", { d: "M19 12.859a10 10 0 0 0-2.007-1.523" }], ["path", { d: "M2 8.82a15 15 0 0 1 4.177-2.643" }], ["path", { d: "M22 8.82a15 15 0 0 0-11.288-3.764" }], ["path", { d: "m2 2 20 20" }]],
@@ -218,9 +221,11 @@ function stick(force) {
 
 function append(node) {
   const follow = nearBottom();
+  const wasEmpty = st.rows === 0;
   removeEmpty();
   $("col").append(node);
   st.rows++;
+  if (wasEmpty) renderPanel(); // the empty state is over: the panel shows its meta and the mood again
   stick(follow);
   return node;
 }
@@ -303,18 +308,148 @@ function renderEmpty() {
   if (st.rows || $("empty") || !st.server.mood) return;
   $("col").append(el("div", { id: "empty", class: "empty" },
     el("span", { class: "kicker", text: t("empty.mood.kicker", { weekday: weekday(), date: dayMonth() }) }),
-    el("p", { class: "mood", lang: "uk", text: st.server.mood })));
+    el("p", { class: "empty-mood", lang: "uk", text: st.server.mood })));
+}
+
+/* ---------- the portrait panel (v2.12.2) ---------- */
+const NARROW = window.matchMedia("(max-width: 759px)");
+const face = { box: null, layers: [], front: 0, src: null, emotion: "calm", intensity: 0.5, theme: null, seq: 0, asked: false };
+const panel = { moodOpen: false, expanded: false };
+
+function captionOf(emotion) {  // the atmospheric line — never the emotion's own name
+  const caps = S.captions || {};
+  return caps[emotion] || caps.calm || "";
+}
+
+function portraitBox() {  // one box, two stacked layers: the new face loads hidden, then the opacities swap
+  if (!face.box) {
+    face.layers = [el("img", { class: "layer on", alt: "" }), el("img", { class: "layer", alt: "" })];
+    face.box = el("div", { class: "portrait" }, ...face.layers);
+  }
+  return face.box;
+}
+
+async function showFace(theme, emotion, intensity) {
+  face.asked = true;
+  face.theme = theme || null;
+  face.emotion = (S.captions && S.captions[emotion]) ? emotion : "calm";
+  face.intensity = intensity === null || intensity === undefined ? 0.5 : Number(intensity);
+  const seq = ++face.seq;
+  const q = new URLSearchParams({ theme: face.theme || "", emotion: face.emotion, intensity: String(face.intensity) });
+  let data = null;
+  try {
+    const res = await fetch(`/face?${q}`, { headers: headers() }); // the shell picks it from the local pack
+    if (res.ok) data = await res.json();
+  } catch (e) { data = null; }
+  if (seq !== face.seq) return; // a newer state asked meanwhile
+  for (const node of document.querySelectorAll(".face-caption")) node.textContent = captionOf(face.emotion);
+  if (!data || !data.src || data.src === face.src) return;
+  face.src = data.src;
+  const back = face.layers[1 - face.front];
+  back.onload = () => {
+    if (back.getAttribute("src") !== face.src) return;
+    back.classList.add("on");
+    face.layers[face.front].classList.remove("on");
+    face.front = 1 - face.front;
+  };
+  back.src = data.src;
+}
+
+function themeInfo(slug) {
+  const th = slug && S.themes ? S.themes[slug] : null;
+  return th ? { name: th.name, sub: `${slug} \u00b7 ${th.scene}` } : { name: t("panel.theme.everyday"), sub: "" };
+}
+
+function closenessLevel(s) {
+  const level = s.closeness ? Number(s.closeness.level) : NaN;
+  return level >= 1 && level <= 5 ? level : null;
+}
+
+function closenessName(level) {
+  return level && Array.isArray(S.closeness) ? S.closeness[level - 1] : "\u2014";
+}
+
+function metaGrid(s) {
+  const th = themeInfo(s.theme);
+  const level = closenessLevel(s);
+  const of = level ? t("panel.closeness.of", { n: level }) : "";
+  const meter = el("div", { class: "meter", role: "img", "aria-label": `${t("panel.closeness")} ${of}`.trim() },
+    ...[1, 2, 3, 4, 5].map((n) => el("span", { class: level && n <= level ? "on" : null })));
+  return el("div", { class: "meta" },
+    el("div", { class: "cell" }, el("span", { class: "kicker", text: t("panel.theme") }), el("span", { class: "name", text: th.name }),
+      th.sub ? el("span", { class: "sub", text: th.sub }) : null),
+    el("div", { class: "cell" }, el("span", { class: "kicker", text: t("panel.closeness") }),
+      el("span", { class: "name" }, closenessName(level), level ? el("span", { class: "of", text: ` ${of}` }) : null), meter));
+}
+
+function metaLine(s) {
+  const level = closenessLevel(s);
+  return [level ? `${closenessName(level)} \u00b7 ${level}/5` : null, themeInfo(s.theme).name].filter(Boolean).join(" \u00b7 ");
+}
+
+function toggleMood() { panel.moodOpen = !panel.moodOpen; renderPanel(); }
+
+function moodBlock(mood) {
+  return el("section", { class: `mood${panel.moodOpen ? " open" : ""}` },
+    el("div", { class: "mood-head" }, el("span", { class: "kicker", text: t("panel.mood") }),
+      el("button", { type: "button", class: "toggle", "aria-expanded": String(panel.moodOpen), onclick: toggleMood },
+        t(panel.moodOpen ? "panel.mood.collapse" : "panel.mood.expand"), icon("chevron-down"))),
+    el("p", { class: "mood-text", lang: "uk", text: mood }));
+}
+
+function moodRow(mood) {
+  return el("button", { type: "button", class: `mood-row${panel.moodOpen ? " open" : ""}`, "aria-expanded": String(panel.moodOpen),
+    onclick: toggleMood }, el("b", { text: `${t("panel.mood")} \u00b7 ` }), el("span", { lang: "uk", text: mood }));
+}
+
+function renderPanel() {
+  const aside = $("panel");
+  const narrow = NARROW.matches;
+  aside.classList.toggle("narrow", narrow);
+  document.querySelector(".body").classList.toggle("narrow", narrow);
+  const s = st.server || {};
+  const empty = st.rows === 0; // a new session: the portrait + caption only (the mood is large in the chat)
+  const caption = el("p", { class: `caption face-caption`, "aria-live": "polite", text: captionOf(face.emotion) });
+  const kids = [];
+  if (!narrow) {
+    kids.push(portraitBox(), el("div", { class: "caption-block" }, caption, empty ? null : metaGrid(s)));
+    if (!empty && s.mood) kids.push(moodBlock(s.mood));
+  } else {
+    const thumb = el("button", { type: "button", class: "thumb", "aria-expanded": String(panel.expanded),
+      "aria-label": t(panel.expanded ? "narrow.portrait.hide" : "narrow.portrait.show"),
+      onclick: () => { panel.expanded = !panel.expanded; renderPanel(); } });
+    if (!panel.expanded) thumb.append(portraitBox());
+    kids.push(el("div", { class: "strip-row" }, thumb,
+      el("div", { class: "strip-words" }, caption, empty ? null : el("span", { class: "strip-meta", text: metaLine(s) })),
+      el("div", { id: "thoughts-button" })));
+    if (panel.expanded) {
+      kids.push(el("div", { class: "expanded" }, portraitBox(),
+        el("button", { type: "button", class: "collapse", "aria-label": t("narrow.portrait.hide"),
+          onclick: () => { panel.expanded = false; renderPanel(); } }, icon("chevron-up"))));
+    }
+    if (!empty && s.mood) kids.push(moodRow(s.mood));
+  }
+  kids.push(el("div", { id: "thoughts" }));
+  aside.replaceChildren(...kids);
 }
 
 /* ---------- state from the server ---------- */
 function absorb(state) {
   if (!state || typeof state !== "object") return;
+  const before = st.server || {};
   st.server = state;
+  if (!face.asked) {  // the first state: her last emotion in today's theme
+    const last = state.last_emotion || {};
+    showFace(state.theme, last.emotion || "calm", last.intensity);
+  } else if (state.theme !== before.theme) {
+    showFace(state.theme, face.emotion, face.intensity); // a new day's wardrobe
+  }
+  renderPanel();
   const theme = THEMES.includes(state.theme) ? state.theme : null;
   if (theme) document.documentElement.dataset.theme = theme;
   else delete document.documentElement.dataset.theme;
   const empty = $("empty");
-  if (empty && state.mood) empty.querySelector(".mood").textContent = state.mood;
+  if (empty && state.mood) empty.querySelector(".empty-mood").textContent = state.mood;
   renderStatus();
 }
 
@@ -520,6 +655,7 @@ function backoff() {
 
 function onPush(event, data) {
   if (event === "state") { absorb(data.state); return; }
+  if (event === "turn") { showFace(data.theme ?? st.server.theme, data.emotion, data.intensity); return; } // any client's turn
   if (event !== "message") return; // "turn" and "thought" feed the portrait panel (v2.12.2)
   if (data.origin && data.origin === CLIENT_ID) return; // our own line — shown from the response
   if (st.replaying) armReplay(REPLAY_QUIET_MS);
@@ -596,6 +732,7 @@ async function turn(text, queuedRow, waited = false) {
   }
   her.body.replaceChildren(...markdown(result.reply));
   if (result.state) absorb(result.state);
+  showFace((result.state && result.state.theme) ?? st.server.theme, result.emotion, result.intensity);
   stick();
 }
 
@@ -821,6 +958,8 @@ async function start() {
     if (ev.key === "-") { ev.preventDefault(); setChatSize(st.chatSize - 1); }
     else if (ev.key === "=" || ev.key === "+") { ev.preventDefault(); setChatSize(st.chatSize + 1); }
   });
+  NARROW.addEventListener("change", renderPanel);
+  renderPanel();
   renderInput();
   renderStatus();
   input.focus();

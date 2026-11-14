@@ -87,3 +87,34 @@ def test_review_2_a_busy_retry_notes_once_per_line():
     assert "async function turn(text, queuedRow, waited = false)" in body
     assert 'if (!waited) addNote(t("note.busy"))' in body and "return turn(text, null, true)" in body
     assert body.count('addNote(t("note.busy"))') == 1
+
+
+# --- v2.12.2 LUMI-272: the portrait panel ---------------------------------------------------------------------
+
+
+def test_lumi_272_the_portrait_crossfades_between_two_layers_from_face_only():
+    js, css = _js(), (UI / "style.css").read_text(encoding="utf-8")
+    assert 'id="panel"' in (UI / "index.html").read_text(encoding="utf-8")
+    box = js[js.index("function portraitBox("):js.index("async function showFace(")]
+    assert '"layer on"' in box and '{ class: "layer", alt: "" }' in box  # two stacked layers, one shown
+    show = js[js.index("async function showFace("):js.index("function themeInfo(")]
+    assert "fetch(`/face?${q}`" in show and "back.src = data.src" in show  # /face is the only portrait source
+    assert "data.src === face.src" in show  # the same picture → no swap
+    assert ".portrait .layer" in css and "transition: opacity var(--t-portrait)" in css
+    assert "--t-portrait: 480ms" in (UI / "tokens.css").read_text(encoding="utf-8")
+
+
+def test_lumi_272_the_caption_is_never_the_emotions_name():
+    js = _js()
+    cap = js[js.index("function captionOf("):js.index("function portraitBox(")]
+    assert "S.captions" in cap and "caps.calm" in cap
+    assert "text: face.emotion" not in js and "text: emotion" not in js
+
+
+def test_lumi_272_the_panel_follows_every_driver_and_both_widths():
+    js = _js()
+    assert 'event === "turn"' in js and "showFace(data.theme" in js  # any client's turn
+    assert "showFace((result.state && result.state.theme)" in js  # this window's own turn
+    assert "state.last_emotion" in js and "state.theme !== before.theme" in js  # connect + a new day's theme
+    assert 'matchMedia("(max-width: 759px)")' in js and 'NARROW.addEventListener("change", renderPanel)' in js
+    assert '"aria-label": `${t("panel.closeness")} ${of}`' in js  # the meter reads "Closeness N of 5"

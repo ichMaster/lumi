@@ -253,5 +253,6 @@
   "note.cancelled": "Cancelled — nothing was done",
   "note.busy": "She is answering another conversation — your line waits",
   "note.failed": "That didn't work: {detail}",
-  "note.directive": "{kind} · {mode}"
+  "note.directive": "{kind} · {mode}",
+  "panel.theme.everyday": "Everyday"
 }
