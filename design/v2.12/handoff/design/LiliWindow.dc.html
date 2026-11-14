@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-623e2a4c-f65a-43f5-babb-458956374062/styles.css">
+<script src="_ds/modernist-623e2a4c-f65a-43f5-babb-458956374062/_ds_bundle.js"></script>
+<script src="./image-slot.js"></script>
+<style>@keyframes liliPulse{0%,100%{opacity:.25}50%{opacity:1}}@keyframes liliBlink{0%,50%{opacity:1}50.01%,100%{opacity:0}}@keyframes liliSlide{0%{transform:translateX(-100%)}100%{transform:translateX(340%)}}@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}body{margin:0}a{color:var(--l-acc-text,#ae1800);text-underline-offset:3px}a:hover{color:var(--color-text)}</style>
+</helmet>
+<div ref="{{ rootRef }}" lang="uk" style="--color-bg:#201e1d;--color-surface:#2d2b2b;--color-text:#f3f2f2;--color-divider:color-mix(in srgb, #f3f2f2 30%, transparent);--color-accent:oklch(0.68 0.19 345);--color-accent-600:oklch(0.74 0.19 345);--color-accent-700:oklch(0.62 0.19 345);--l-acc-text:oklch(0.82 0.14 345);--l-hair:color-mix(in srgb, #f3f2f2 13%, transparent);--l-raise:#444141;--l-muted:#bab6b6;--l-faint:#9b9797;--font-body:'Archivo', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;--font-heading:'Archivo', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;--l-chat:16px;--shadow-lg:0 0 0 1px color-mix(in srgb, #f3f2f2 10%, transparent), 0 16px 40px color-mix(in srgb, #000 55%, transparent);position:relative;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:14px;line-height:1.5;-webkit-hyphens:auto;hyphens:auto;overflow-wrap:break-word">
+
+<sc-if value="{{ showChrome }}" hint-placeholder-val="{{ true }}">
+<div style="flex:none;height:34px;display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid var(--l-hair);user-select:none;-webkit-user-select:none">
+<div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:var(--l-raise)"></span><span style="width:12px;height:12px;border-radius:50%;background:var(--l-raise)"></span><span style="width:12px;height:12px;border-radius:50%;background:var(--l-raise)"></span></div>
+<span style="font-size:12px;font-weight:600;color:var(--l-muted);letter-spacing:.02em">Лілі</span>
+</div>
+</sc-if>
+
+<div style="flex:1;min-height:0;display:flex;flex-direction:{{ bodyDir }}">
+
+<sc-if value="{{ isScreen }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:{{ screenCols }};align-content:start">
+<div style="padding:{{ screenPad }};display:flex;flex-direction:column;gap:16px;border-right:{{ screenRuleR }};border-bottom:{{ screenRuleB }}">
+<span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-acc-text)">{{ scr.kicker }}</span>
+<h1 style="margin:0;font-size:{{ screenH }};line-height:1.04;letter-spacing:-0.02em;font-weight:800;text-wrap:balance">{{ scr.title }}</h1>
+<p style="margin:0;font-size:16px;line-height:1.55;color:var(--l-muted);max-width:44ch;text-wrap:pretty">{{ scr.body }}</p>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
+<button class="btn btn-primary" onClick="{{ retryScreen }}" style="justify-content:flex-start;min-width:210px;height:44px"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>{{ scr.primary }}</button>
+<button class="btn btn-secondary" style="height:44px;justify-content:flex-start">{{ scr.secondary }}</button>
+</div>
+<sc-if value="{{ checking }}"><span style="font-size:13px;color:var(--l-faint)">Перевіряю з’єднання…</span></sc-if>
+</div>
+<div style="padding:{{ screenPad }};display:flex;flex-direction:column">
+<span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint);padding-bottom:4px">Що зробити</span>
+<sc-for list="{{ scr.steps }}" as="st" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;padding:16px 0;border-top:1px solid var(--l-hair)">
+<span style="font-weight:800;font-size:22px;line-height:1;color:var(--l-acc-text)">{{ st.n }}</span>
+<div style="display:flex;flex-direction:column;gap:8px;min-width:0"><span style="font-size:15px;line-height:1.45">{{ st.text }}</span><sc-if value="{{ st.hasCode }}"><code style="display:block;padding:8px 10px;background:var(--color-surface);font:13px/1.55 ui-monospace,'SF Mono',Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;-webkit-hyphens:none;hyphens:none">{{ st.code }}</code></sc-if></div>
+</div>
+</sc-for>
+<div style="margin-top:8px;padding-top:14px;border-top:2px solid var(--color-divider);display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;font-size:12px;color:var(--l-faint)">
+<sc-for list="{{ scr.facts }}" as="f" hint-placeholder-count="3"><span>{{ f.k }}</span><span style="color:var(--l-muted);font-family:ui-monospace,'SF Mono',Menlo,monospace">{{ f.v }}</span></sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showPanel }}" hint-placeholder-val="{{ true }}">
+<aside aria-label="Лілі" style="flex:none;width:clamp(300px, 36%, 440px);display:flex;flex-direction:column;border-right:2px solid var(--color-divider);overflow-y:auto;overflow-x:hidden">
+<div style="position:relative;flex:none;width:100%;aspect-ratio:1 / 1;background:var(--color-surface);overflow:hidden">
+<div class="{{ toneClass }}" style="position:absolute;inset:0;transition:opacity 480ms ease;opacity:{{ opA }}"><image-slot id="{{ slotA }}" shape="rect" placeholder="{{ phA }}"></image-slot></div>
+<div class="{{ toneClass }}" style="position:absolute;inset:0;transition:opacity 480ms ease;opacity:{{ opB }}"><image-slot id="{{ slotB }}" shape="rect" placeholder="{{ phB }}"></image-slot></div>
+<sc-if value="{{ portraitOverlay }}">
+<div style="position:absolute;inset:0;z-index:1;background:color-mix(in srgb, var(--color-bg) 88%, transparent);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:flex;flex-direction:column;padding:18px 24px 12px;overflow-y:auto">
+<span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint);padding:6px 0 8px">Тихі думки</span>
+<sc-for list="{{ thoughtsList }}" as="t" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:3px;padding:10px 0;border-top:1px solid var(--l-hair)">
+<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--l-faint)"><sc-if value="{{ t.isNew }}"><span style="width:6px;height:6px;background:var(--color-accent)"></span></sc-if><span style="font-weight:600;letter-spacing:.08em;text-transform:uppercase">{{ t.kind }}</span><span>{{ t.time }}</span></div>
+<div style="font-size:14px;line-height:1.45;color:var(--l-muted);text-wrap:pretty">{{ t.text }}</div>
+<div style="font-size:12px;color:var(--l-faint)">{{ t.mood }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ vPortrait }}">
+<button onClick="{{ toggleThoughts }}" aria-expanded="{{ thoughtsOpenStr }}" aria-label="Тихі думки" style="position:absolute;z-index:2;top:12px;right:12px;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 10px;border:0;background:color-mix(in srgb, var(--color-bg) 78%, transparent);color:var(--color-text);font:inherit;font-size:12px;font-weight:600;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)" style-hover="background:var(--color-bg)"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>{{ portraitBadge }}<sc-if value="{{ hasUnread }}"><span style="width:6px;height:6px;background:var(--color-accent)"></span></sc-if></button>
+</sc-if>
+</div>
+<div style="padding:18px 24px 20px;display:flex;flex-direction:column;gap:14px">
+<div aria-live="polite" style="font-family:var(--font-heading);font-weight:800;font-size:28px;line-height:1.08;letter-spacing:-0.015em;text-wrap:balance">{{ caption }}</div>
+<sc-if value="{{ showMeta }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-top:1px solid var(--l-hair)">
+<div style="padding:10px 12px 0 0;border-right:1px solid var(--l-hair);min-width:0">
+<div style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Тема дня</div>
+<div style="margin-top:3px;font-size:14px;font-weight:600">{{ themeUk }}</div>
+<div style="font-size:12px;line-height:1.35;color:var(--l-faint)">{{ themeId }}</div>
+</div>
+<div style="padding:10px 0 0 12px;min-width:0">
+<div style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Близькість</div>
+<div style="margin-top:3px;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span style="font-size:14px;font-weight:600">{{ closeName }}</span><span style="font-size:12px;color:var(--l-faint)">4 з 5</span></div>
+<div role="img" aria-label="Близькість 4 з 5" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-top:8px;max-width:120px">
+<sc-for list="{{ closeCells }}" as="c" hint-placeholder-count="5"><span style="height:6px;background:{{ c.bg }}"></span></sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{ showMeta }}" hint-placeholder-val="{{ true }}">
+<div style="border-top:2px solid var(--color-divider);padding:14px 24px 18px;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+<span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Настрій дня</span>
+<button onClick="{{ toggleMood }}" aria-expanded="{{ moodOpenStr }}" style="background:none;border:0;padding:2px 0;font:inherit;font-size:12px;font-weight:600;color:var(--l-acc-text);cursor:pointer;display:inline-flex;align-items:center;gap:4px" style-hover="color:var(--color-text)">{{ moodBtn }}<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square;transition:transform 200ms;transform:{{ moodRot }}"><path d="m6 9 6 6 6-6"></path></svg></button>
+</div>
+<p style="margin:0;font-size:14px;line-height:1.5;color:var(--l-muted);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:{{ moodClamp }};overflow:hidden;text-wrap:pretty">{{ mood }}</p>
+</div>
+</sc-if>
+<sc-if value="{{ vStrip }}" hint-placeholder-val="{{ true }}">
+<div style="border-top:2px solid var(--color-divider);padding:14px 24px 20px;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Тихі думки</span>
+<sc-if value="{{ hasUnread }}"><span style="font-size:11px;font-weight:600;color:var(--l-acc-text)">{{ unreadLabel }}</span></sc-if>
+<button onClick="{{ toggleThoughts }}" aria-expanded="{{ thoughtsOpenStr }}" style="margin-left:auto;background:none;border:0;padding:2px 0;font:inherit;font-size:12px;font-weight:600;color:var(--l-acc-text);cursor:pointer" style-hover="color:var(--color-text)">{{ stripBtn }}</button>
+</div>
+<sc-for list="{{ stripThoughts }}" as="t" hint-placeholder-count="1">
+<div style="display:flex;flex-direction:column;gap:3px;padding:10px 0;border-top:1px solid var(--l-hair)">
+<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--l-faint)"><sc-if value="{{ t.isNew }}"><span style="width:6px;height:6px;background:var(--color-accent)"></span></sc-if><span style="font-weight:600;letter-spacing:.08em;text-transform:uppercase">{{ t.kind }}</span><span>{{ t.time }}</span></div>
+<div style="font-size:14px;line-height:1.45;color:var(--l-muted);text-wrap:pretty">{{ t.text }}</div>
+<div style="font-size:12px;color:var(--l-faint)">{{ t.mood }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</aside>
+</sc-if>
+
+<sc-if value="{{ showStrip }}" hint-placeholder-val="{{ false }}">
+<div style="flex:none;border-bottom:2px solid var(--color-divider);max-height:72%;overflow-y:auto">
+<sc-if value="{{ narrowPortraitOpen }}">
+<div style="position:relative;width:100%;aspect-ratio:1 / 1;max-height:420px;background:var(--color-surface);overflow:hidden">
+<div class="{{ toneClass }}" style="position:absolute;inset:0;transition:opacity 480ms ease;opacity:{{ opA }}"><image-slot id="{{ slotA }}" shape="rect" placeholder="{{ phA }}"></image-slot></div>
+<div class="{{ toneClass }}" style="position:absolute;inset:0;transition:opacity 480ms ease;opacity:{{ opB }}"><image-slot id="{{ slotB }}" shape="rect" placeholder="{{ phB }}"></image-slot></div>
+<button class="btn btn-icon" aria-label="Згорнути портрет" onClick="{{ togglePortrait }}" style="position:absolute;top:8px;right:8px;width:44px;height:44px;background:color-mix(in srgb, var(--color-bg) 80%, transparent);color:var(--color-text)"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square"><path d="m18 15-6-6-6 6"></path></svg></button>
+</div>
+</sc-if>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px">
+<sc-if value="{{ narrowThumb }}">
+<div style="position:relative;flex:none;width:52px;height:52px;background:var(--color-surface);overflow:hidden">
+<div class="{{ toneClass }}" style="position:absolute;inset:0;transition:opacity 480ms ease;opacity:{{ opA }}"><image-slot id="{{ slotA }}" shape="rect" placeholder=" "></image-slot></div>
+<div class="{{ toneClass }}" style="position:absolute;inset:0;transition:opacity 480ms ease;opacity:{{ opB }}"><image-slot id="{{ slotB }}" shape="rect" placeholder=" "></image-slot></div>
+<button aria-label="Показати портрет" onClick="{{ togglePortrait }}" style="position:absolute;inset:0;background:transparent;border:0;padding:0;cursor:pointer"></button>
+</div>
+</sc-if>
+<div style="flex:1;min-width:0">
+<div aria-live="polite" style="font-family:var(--font-heading);font-weight:800;font-size:18px;line-height:1.15;letter-spacing:-0.01em">{{ caption }}</div>
+<sc-if value="{{ showMeta }}"><div style="font-size:12px;color:var(--l-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ narrowMeta }}</div></sc-if>
+</div>
+<button class="btn btn-icon" aria-label="Тихі думки" aria-expanded="{{ thoughtsOpenStr }}" onClick="{{ toggleThoughts }}" style="position:relative;flex:none;width:44px;height:44px;color:var(--l-muted)"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg><sc-if value="{{ hasUnread }}"><span style="position:absolute;top:6px;right:4px;min-width:16px;height:16px;padding:0 4px;display:flex;align-items:center;justify-content:center;background:var(--color-accent);color:var(--color-bg);font-size:10px;font-weight:800">{{ unread }}</span></sc-if></button>
+</div>
+<sc-if value="{{ showMeta }}">
+<button onClick="{{ toggleMood }}" aria-expanded="{{ moodOpenStr }}" style="display:flex;width:100%;align-items:flex-start;gap:8px;text-align:left;background:none;border:0;border-top:1px solid var(--l-hair);padding:10px 16px;font:inherit;color:var(--l-muted);cursor:pointer">
+<span style="flex:1;min-width:0;font-size:13px;line-height:1.45;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:{{ moodClampNarrow }};overflow:hidden"><span style="font-weight:600;color:var(--color-text)">Настрій дня · </span>{{ mood }}</span>
+<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;margin-top:2px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square;transition:transform 200ms;transform:{{ moodRot }}"><path d="m6 9 6 6 6-6"></path></svg>
+</button>
+</sc-if>
+<sc-if value="{{ narrowThoughtsOpen }}">
+<div style="border-top:2px solid var(--color-divider);padding:10px 16px 4px">
+<span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Тихі думки</span>
+<sc-for list="{{ thoughtsList }}" as="t" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:3px;padding:10px 0;border-top:1px solid var(--l-hair)">
+<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--l-faint)"><sc-if value="{{ t.isNew }}"><span style="width:6px;height:6px;background:var(--color-accent)"></span></sc-if><span style="font-weight:600;letter-spacing:.08em;text-transform:uppercase">{{ t.kind }}</span><span>{{ t.time }}</span></div>
+<div style="font-size:14px;line-height:1.45;color:var(--l-muted);text-wrap:pretty">{{ t.text }}</div>
+<div style="font-size:12px;color:var(--l-faint)">{{ t.mood }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ showChat }}" hint-placeholder-val="{{ true }}">
+<main style="flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;position:relative">
+
+<sc-if value="{{ bConnecting }}">
+<div role="status" style="flex:none;position:relative;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:12px 24px;border-bottom:2px solid var(--color-divider);font-size:14px">
+<span style="font-weight:600">{{ connectingLabel }}</span><span style="font-size:12px;color:var(--l-faint);font-family:ui-monospace,'SF Mono',Menlo,monospace">lili.home:8443</span>
+{{ barEl }}
+</div>
+</sc-if>
+<sc-if value="{{ bOffline }}">
+<div role="alert" style="flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 16px 12px 24px;background:var(--color-surface);border-bottom:2px solid var(--color-accent)">
+<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;fill:none;stroke:var(--l-acc-text);stroke-width:2;stroke-linecap:square"><path d="M12 20h.01"></path><path d="M8.5 16.429a5 5 0 0 1 7 0"></path><path d="M5 12.859a10 10 0 0 1 5.17-2.69"></path><path d="M19 12.859a10 10 0 0 0-2.007-1.523"></path><path d="M2 8.82a15 15 0 0 1 4.177-2.643"></path><path d="M22 8.82a15 15 0 0 0-11.288-3.764"></path><path d="m2 2 20 20"></path></svg>
+<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:14px">Сервер не відповідає</div><div style="font-size:13px;color:var(--l-muted);font-variant-numeric:tabular-nums">Нова спроба через {{ countdown }} с · пропущене підвантажиться саме</div></div>
+<button class="btn btn-secondary" onClick="{{ retryNow }}" style="height:36px">Повторити зараз</button>
+</div>
+</sc-if>
+<sc-if value="{{ bReconnected }}">
+<div role="status" style="flex:none;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 24px;border-bottom:2px solid var(--color-divider);font-size:13px">
+<span style="width:8px;height:8px;flex:none;background:var(--color-accent)"></span>
+<span style="font-weight:600">Зв’язок відновлено</span><span style="color:var(--l-muted)">завантажено 3 пропущені рядки</span>
+<button class="btn btn-icon" aria-label="Закрити" onClick="{{ dismissReconnected }}" style="margin-left:auto;width:32px;height:32px;color:var(--l-faint)"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+</div>
+</sc-if>
+
+<div ref="{{ listRef }}" role="log" aria-label="Розмова" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;padding:{{ listPad }}">
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:22px;width:100%;max-width:720px">
+
+<sc-if value="{{ isEmpty }}">
+<div style="display:flex;flex-direction:column;gap:14px;max-width:600px;padding-bottom:8px">
+<span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Настрій дня · середа, 12 листопада</span>
+<p style="margin:0;font-size:{{ emptyMoodSize }};line-height:1.45;text-wrap:pretty">{{ mood }}</p>
+</div>
+</sc-if>
+
+<sc-for list="{{ rows }}" as="m" hint-placeholder-count="4">
+<sc-if value="{{ m.isDivider }}">
+<div role="separator" style="display:flex;align-items:center;gap:12px;padding:4px 0">
+<span style="flex:none;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">{{ m.label }}</span>
+<span style="flex:1;height:2px;background:var(--color-divider)"></span>
+</div>
+</sc-if>
+<sc-if value="{{ m.isMissed }}">
+<div role="separator" style="display:flex;align-items:center;gap:12px;padding:4px 0">
+<span style="flex:none;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-acc-text)">{{ m.label }}</span>
+<span style="flex:1;height:2px;background:var(--color-accent)"></span>
+</div>
+</sc-if>
+<sc-if value="{{ m.isMsg }}">
+<div style="display:grid;grid-template-columns:{{ cols }};column-gap:20px;row-gap:4px;opacity:{{ m.opacity }}">
+<div style="display:flex;flex-direction:{{ labelDir }};flex-wrap:{{ labelWrap }};gap:{{ labelGap }};align-items:flex-start;padding-top:3px">
+<span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:{{ m.whoColor }}">{{ m.who }}</span>
+<span style="font-size:11px;color:var(--l-faint);font-variant-numeric:tabular-nums">{{ m.time }}</span>
+<sc-if value="{{ m.isTg }}"><span title="Надіслано з Telegram" style="display:inline-flex;align-items:center;gap:4px;margin-top:2px;padding:1px 5px;border:1px solid var(--l-hair);font-size:10px;color:var(--l-muted)"><svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2.4;stroke-linejoin:round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg>Telegram</span></sc-if>
+<sc-if value="{{ m.isTerm }}"><span title="Надіслано з термінала" style="display:inline-flex;align-items:center;gap:4px;margin-top:2px;padding:1px 5px;border:1px solid var(--l-hair);font-size:10px;color:var(--l-muted)"><svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square"><path d="m4 17 6-6-6-6"></path><path d="M12 19h8"></path></svg>Термінал</span></sc-if>
+</div>
+<div style="min-width:0;display:flex;flex-direction:column;gap:10px">
+<sc-if value="{{ m.isFirst }}"><div style="display:flex;align-items:center;gap:10px;padding-top:2px"><span style="width:24px;height:2px;background:var(--color-accent)"></span><span style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--l-acc-text)">написала першою</span></div></sc-if>
+<sc-if value="{{ m.thinkShown }}">
+<div style="display:flex;flex-direction:column;gap:4px">
+<button onClick="{{ m.toggleThink }}" aria-expanded="true" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:0;font:inherit;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--l-faint);cursor:pointer" style-hover="color:var(--color-text)"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square"><path d="m6 9 6 6 6-6"></path></svg>Внутрішній голос</button>
+<div style="font-size:14px;line-height:1.5;color:var(--l-faint);text-wrap:pretty">{{ m.think }}</div>
+</div>
+</sc-if>
+<sc-if value="{{ m.thinkCollapsed }}">
+<button onClick="{{ m.toggleThink }}" aria-expanded="false" style="align-self:stretch;display:flex;align-items:center;gap:6px;min-width:0;background:none;border:0;padding:0;font:inherit;font-size:11px;color:var(--l-faint);cursor:pointer;text-align:left" style-hover="color:var(--color-text)"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square"><path d="m9 18 6-6-6-6"></path></svg><span style="flex:none;font-weight:600;letter-spacing:.08em;text-transform:uppercase">Внутрішній голос</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">{{ m.think }}</span></button>
+</sc-if>
+<sc-if value="{{ m.isPending }}"><div aria-label="Лілі думає" style="padding:4px 0">{{ dotsEl }}</div></sc-if>
+<sc-if value="{{ m.hasBlocks }}">
+<div style="align-self:{{ m.align }};max-width:100%;background:{{ m.bg }};padding:{{ m.pad }};font-size:var(--l-chat);line-height:1.55;display:flex;flex-direction:column;gap:10px;text-wrap:pretty">
+<sc-for list="{{ m.blocks }}" as="b" hint-placeholder-count="1">
+<sc-if value="{{ b.isP }}"><p style="margin:0">{{ b.text }}<sc-if value="{{ b.hasLink }}"><a href="{{ b.href }}">{{ b.linkText }}</a>{{ b.after }}</sc-if><sc-if value="{{ b.caret }}">{{ caretEl }}</sc-if></p></sc-if>
+<sc-if value="{{ b.isList }}"><ol style="margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:4px"><sc-for list="{{ b.items }}" as="it"><li style="padding-left:4px">{{ it.text }}<sc-if value="{{ it.caret }}">{{ caretEl }}</sc-if></li></sc-for></ol></sc-if>
+<sc-if value="{{ b.isQuote }}"><blockquote style="margin:0;padding:0 0 0 16px;border-left:2px solid var(--color-divider);color:var(--l-muted)">{{ b.text }}<sc-if value="{{ b.caret }}">{{ caretEl }}</sc-if></blockquote></sc-if>
+<sc-if value="{{ b.isCode }}"><pre style="margin:0;padding:10px 12px;background:var(--color-surface);font:13px/1.55 ui-monospace,'SF Mono',Menlo,monospace;white-space:pre-wrap;-webkit-hyphens:none;hyphens:none">{{ b.text }}</pre></sc-if>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ m.hasImage }}">
+<figure style="margin:0;display:flex;flex-direction:column;gap:6px;width:min(100%, 320px)">
+<div style="width:100%;aspect-ratio:1 / 1;background:var(--color-surface)"><image-slot id="lili-chat-picture" shape="rect" placeholder="Зображення від Лілі · 768 × 768"></image-slot></div>
+<figcaption style="margin:0;font-size:11px;color:var(--l-faint)">зображення · 768 × 768 · відкрити — пробіл</figcaption>
+</figure>
+</sc-if>
+<sc-if value="{{ m.isCmd }}">
+<div style="border:1px solid var(--l-hair);border-top:2px solid var(--color-divider);background:var(--color-surface)">
+<div style="display:flex;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--l-hair)"><span style="font:600 12.5px/1.3 ui-monospace,'SF Mono',Menlo,monospace;color:var(--l-acc-text)">{{ m.cmd }}</span><span style="margin-left:auto;font-size:11px;color:var(--l-faint)">результат команди</span></div>
+<sc-if value="{{ m.hasKv }}"><div style="padding:10px 14px;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 18px;font-size:14px"><sc-for list="{{ m.kv }}" as="r"><span style="color:var(--l-faint)">{{ r.k }}</span><span style="font-weight:600">{{ r.v }}</span></sc-for></div></sc-if>
+<sc-if value="{{ m.hasCmdText }}"><div style="padding:10px 14px;font-size:14px;line-height:1.5;color:var(--l-muted);text-wrap:pretty">{{ m.cmdText }}</div></sc-if>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</div>
+
+<sc-if value="{{ showInput }}" hint-placeholder-val="{{ true }}">
+<div style="flex:none;border-top:2px solid var(--color-divider);padding:{{ inputPad }};display:flex;flex-direction:column;gap:8px">
+<div style="position:relative;display:flex;align-items:flex-end;gap:10px">
+<sc-if value="{{ slashOpen }}">
+<div role="listbox" aria-label="Команди" style="position:absolute;z-index:5;left:0;right:56px;bottom:calc(100% + 10px);background:var(--color-surface);border-top:2px solid var(--color-divider);box-shadow:var(--shadow-lg);max-height:300px;overflow-y:auto">
+<div style="display:flex;gap:14px;padding:8px 14px;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint);border-bottom:1px solid var(--l-hair)"><span>Команди</span><span style="margin-left:auto;letter-spacing:.04em;text-transform:none;font-weight:400">↑ ↓ вибрати · Tab вставити · Esc закрити</span></div>
+<sc-for list="{{ slashItems }}" as="c" hint-placeholder-count="6">
+<div role="option" aria-selected="{{ c.sel }}" onMouseDown="{{ c.pick }}" onMouseEnter="{{ c.hover }}" style="display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:12px;align-items:baseline;padding:7px 14px;cursor:pointer;background:{{ c.bg }};color:{{ c.fg }}">
+<span style="font:600 13px/1.4 ui-monospace,'SF Mono',Menlo,monospace">{{ c.cmd }}</span><span style="font-size:13px;line-height:1.4">{{ c.desc }}</span><span style="font-size:11px;font-weight:600">{{ c.hint }}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<textarea id="{{ inputId }}" ref="{{ inputRef }}" class="input" aria-label="Повідомлення для Лілі" rows="{{ inputRows }}" placeholder="{{ placeholder }}" value="{{ input }}" onChange="{{ onInput }}" onKeyDown="{{ onKey }}" disabled="{{ inputDisabled }}" style="flex:1;min-height:46px;max-height:180px;resize:none;font-family:var(--font-body);font-size:var(--l-chat);line-height:1.45;padding:11px 14px"></textarea>
+<button class="btn btn-primary" aria-label="Надіслати" onClick="{{ send }}" disabled="{{ sendDisabled }}" style="position:relative;flex:none;width:46px;height:46px;padding:0;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg><sc-if value="{{ hasQueue }}"><span aria-label="{{ queueLabel }}" style="position:absolute;top:-9px;right:-9px;min-width:20px;height:20px;padding:0 5px;display:flex;align-items:center;justify-content:center;background:var(--color-text);color:var(--color-bg);font-size:11px;font-weight:800">{{ queueCount }}</span></sc-if></button>
+</div>
+<sc-if value="{{ showHints }}">
+<div style="display:flex;flex-wrap:wrap;gap:4px 18px;font-size:11.5px;color:var(--l-faint)">
+<span><b style="font-weight:600;color:var(--l-muted)">Enter</b> — надіслати</span><span><b style="font-weight:600;color:var(--l-muted)">Shift + Enter</b> — новий рядок</span><span><b style="font-weight:600;color:var(--l-muted)">/</b> — команди</span>
+<sc-if value="{{ hasQueue }}"><span style="margin-left:auto;font-weight:600;color:var(--l-acc-text)">{{ queueLabel }}</span></sc-if>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</main>
+
+<sc-if value="{{ drawerOpen }}">
+<aside aria-label="Тихі думки" style="flex:none;width:300px;border-left:2px solid var(--color-divider);display:flex;flex-direction:column;min-height:0">
+<div style="display:flex;align-items:center;gap:8px;padding:12px 10px 8px 20px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Тихі думки</span><span style="font-size:11px;color:var(--l-faint)">{{ thoughtsCount }}</span><button class="btn btn-icon" aria-label="Закрити" onClick="{{ toggleThoughts }}" style="margin-left:auto;width:32px;height:32px;color:var(--l-faint)"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></div>
+<div style="flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px">
+<sc-for list="{{ thoughtsList }}" as="t" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:3px;padding:12px 0;border-top:1px solid var(--l-hair)">
+<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--l-faint)"><sc-if value="{{ t.isNew }}"><span style="width:6px;height:6px;background:var(--color-accent)"></span></sc-if><span style="font-weight:600;letter-spacing:.08em;text-transform:uppercase">{{ t.kind }}</span><span>{{ t.time }}</span></div>
+<div style="font-size:14px;line-height:1.45;color:var(--l-muted);text-wrap:pretty">{{ t.text }}</div>
+<div style="font-size:12px;color:var(--l-faint)">{{ t.mood }}</div>
+</div>
+</sc-for>
+</div>
+</aside>
+</sc-if>
+<sc-if value="{{ showRail }}">
+<div style="flex:none;width:46px;border-left:2px solid var(--color-divider);display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:10px">
+<button class="btn btn-icon" aria-label="Тихі думки" aria-expanded="{{ thoughtsOpenStr }}" onClick="{{ toggleThoughts }}" style="position:relative;color:var(--l-muted)"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg><sc-if value="{{ hasUnread }}"><span style="position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;display:flex;align-items:center;justify-content:center;background:var(--color-accent);color:var(--color-bg);font-size:10px;font-weight:800">{{ unread }}</span></sc-if></button>
+<span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--l-faint)">Тихі думки</span>
+</div>
+</sc-if>
+</sc-if>
+</div>
+
+<sc-if value="{{ statusOpen }}">
+<div id="{{ detailsId }}" style="flex:none;border-top:2px solid var(--color-divider);background:var(--color-surface)">
+<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr))">
+<sc-for list="{{ details }}" as="d" hint-placeholder-count="8"><div style="padding:9px 14px;border-right:1px solid var(--l-hair);border-bottom:1px solid var(--l-hair);min-width:0"><div style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">{{ d.k }}</div><div style="margin-top:2px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.v }}</div></div></sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 28px;padding:10px 14px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Внутрішній голос</span>
+<div class="seg" role="radiogroup" aria-label="Внутрішній голос"><sc-for list="{{ thinkOpts }}" as="o" hint-placeholder-count="3"><label class="seg-opt" style="padding:5px 10px;font-size:12px"><input type="radio" name="{{ segName }}" checked="{{ o.checked }}" onChange="{{ o.pick }}">{{ o.label }}</label></sc-for></div>
+</div>
+<div style="display:flex;align-items:center;gap:10px"><span style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--l-faint)">Текст розмови</span>
+<div class="seg"><button class="seg-opt" aria-label="Менший текст" onClick="{{ smaller }}" style="padding:5px 10px;font:inherit;font-size:12px;background:none;border-top:0;border-right:0;border-bottom:0;color:inherit;cursor:pointer">A−</button><span class="seg-opt" style="padding:5px 10px;font-size:12px;font-variant-numeric:tabular-nums">{{ chatSizeLabel }}</span><button class="seg-opt" aria-label="Більший текст" onClick="{{ bigger }}" style="padding:5px 10px;font:inherit;font-size:12px;background:none;border-top:0;border-right:0;border-bottom:0;color:inherit;cursor:pointer">A+</button></div>
+<span style="font-size:11px;color:var(--l-faint)">⌘ − / ⌘ +</span>
+</div>
+</div>
+</div>
+</sc-if>
+<footer style="flex:none;height:30px;display:flex;align-items:center;gap:12px;padding:0 8px 0 14px;border-top:2px solid var(--color-divider);font-size:12px;color:var(--l-muted);white-space:nowrap;overflow:hidden">
+<span role="status" style="display:inline-flex;align-items:center;gap:8px">{{ statusDot }}<span>{{ statusLabel }}</span></span>
+<sc-if value="{{ isDev }}"><span title="Не прод: підключено до dev-сервера" style="font-size:10px;font-weight:800;letter-spacing:.1em;padding:1px 6px;background:var(--color-accent);color:var(--color-bg)">DEV</span></sc-if>
+<sc-if value="{{ hasStatusNote }}"><span style="color:var(--l-faint);overflow:hidden;text-overflow:ellipsis">{{ statusNote }}</span></sc-if>
+<button onClick="{{ toggleStatus }}" aria-expanded="{{ statusOpenStr }}" aria-controls="{{ detailsId }}" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:4px 6px;font:inherit;font-size:12px;color:var(--l-faint);cursor:pointer" style-hover="color:var(--color-text)">{{ statusBtn }}<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" style="fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square;transition:transform 200ms;transform:{{ statusRot }}"><path d="m18 15-6-6-6 6"></path></svg></button>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:800},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;3am&quot;,&quot;day-after&quot;,&quot;furious&quot;,&quot;dissociation&quot;,&quot;last-memory&quot;,&quot;quiet-collapse&quot;,&quot;im-fine&quot;,&quot;drowning&quot;,&quot;vigil&quot;,&quot;calm-before&quot;],&quot;default&quot;:&quot;quiet-collapse&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;scenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;live&quot;,&quot;conversation&quot;,&quot;thinking&quot;,&quot;streaming&quot;,&quot;queued&quot;,&quot;slash&quot;,&quot;empty&quot;,&quot;connecting&quot;,&quot;offline&quot;,&quot;reconnected&quot;,&quot;refused&quot;,&quot;noserver&quot;],&quot;default&quot;:&quot;live&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;wide&quot;,&quot;narrow&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;thoughts&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;strip&quot;,&quot;drawer&quot;,&quot;portrait&quot;],&quot;default&quot;:&quot;strip&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;thinkMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;shown&quot;,&quot;collapsed&quot;,&quot;hidden&quot;],&quot;default&quot;:&quot;shown&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;appearance&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;tone&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;color&quot;,&quot;grayscale&quot;],&quot;default&quot;:&quot;color&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;env&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;prod&quot;,&quot;dev&quot;],&quot;default&quot;:&quot;prod&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;chatSize&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;min&quot;:14,&quot;max&quot;:22,&quot;default&quot;:16,&quot;tsType&quot;:&quot;number&quot;},&quot;chrome&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;statusOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;moodOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;thoughtsOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;portraitOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const THEMES = {
+  '3am': { uk: 'Третя ночі', d: 'нічний дах, дощ, місто внизу', h: 245, c: 0.12 },
+  'day-after': { uk: 'Наступного дня', d: 'тихе горе, сірий ранок', h: 255, c: 0.035 },
+  'furious': { uk: 'Лють', d: 'лють, схожа на спокій; буря позаду', red: true },
+  'dissociation': { uk: 'Розчинення', d: 'напівпрозора, тане по краях', h: 305, c: 0.06 },
+  'last-memory': { uk: 'Останній спогад', d: 'золота година, пелюстки й попіл', h: 70, c: 0.14 },
+  'quiet-collapse': { uk: 'Тихий злам', d: 'вигорання, мерехтливий неон', h: 345, c: 0.19 },
+  'im-fine': { uk: 'Усе добре', d: 'надто бездоганна усмішка, тріщина', h: 135, c: 0.19 },
+  'drowning': { uk: 'Під водою', d: 'світло поверхні десь угорі', h: 200, c: 0.1 },
+  'vigil': { uk: 'Чування', d: 'темна кімната, одна свічка', h: 55, c: 0.16 },
+  'calm-before': { uk: 'Затишшя', d: 'надто тихе небо, золоте світло', h: 95, c: 0.11 },
+};
+function accentOf(id, light) {
+  const t = THEMES[id] || THEMES['quiet-collapse'];
+  if (t.red) return light ? { base: '#ec3013', text: '#ae1800', hover: '#dd2b0f', press: '#ae1800' } : { base: '#ec3013', text: '#ff9783', hover: '#ff563c', press: '#dd2b0f' };
+  const o = (l, c) => `oklch(${l} ${c.toFixed(3)} ${t.h})`;
+  return light ? { base: o(0.58, t.c), text: o(0.46, t.c), hover: o(0.52, t.c), press: o(0.46, t.c) }
+    : { base: o(0.68, t.c), text: o(0.82, t.c * 0.75), hover: o(0.74, t.c), press: o(0.62, t.c) };
+}
+const DARK = { '--color-bg': '#201e1d', '--color-surface': '#2d2b2b', '--color-text': '#f3f2f2', '--color-divider': 'color-mix(in srgb, #f3f2f2 30%, transparent)', '--l-hair': 'color-mix(in srgb, #f3f2f2 13%, transparent)', '--l-raise': '#444141', '--l-muted': '#bab6b6', '--l-faint': '#9b9797', '--shadow-lg': '0 0 0 1px color-mix(in srgb, #f3f2f2 10%, transparent), 0 16px 40px color-mix(in srgb, #000 55%, transparent)' };
+const LIGHT = { '--color-bg': '#f3f2f2', '--color-surface': '#eae9e9', '--color-text': '#201e1d', '--color-divider': 'color-mix(in srgb, #201e1d 40%, transparent)', '--l-hair': 'color-mix(in srgb, #201e1d 14%, transparent)', '--l-raise': '#d7d3d3', '--l-muted': '#444141', '--l-faint': '#605d5d', '--shadow-lg': '0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent)' };
+const CAP = { joy: 'засвітилась, відкрито рада', calm: 'тихо поруч', playful: 'з хитрою усмішкою', tender: 'м’яка й тепла', thoughtful: 'десь у думках', serious: 'рівна й присутня', surprise: 'зненацька', doubt: 'не зовсім певна', sad: 'тиха важкість' };
+const LVL = { low: '02', mid: '01', high: '03' };
+const MOOD = 'Сьогодні Лілі в стані тихої інтроспекції: настрій ніжний і трохи втомлений. Хоче спокою й глибини, уникає поверхневих розмов і поспіху. Їй добре говорити про дрібні речі, які щось означають, — про світло у вікні, про пам’ять, про те, як ми прощаємо. Не хоче порад і жвавих тем, не любить, коли її підганяють. Відповідає повільніше, ніж зазвичай, і частіше перепитує. Якщо розмова стане важкою — залишиться поруч, але не робитиме вигляду, що все легко.';
+const P = (text, x) => Object.assign({ t: 'p', text }, x || {});
+const CMDS = [['/mood', 'настрій дня'], ['/closeness', 'рівень близькості'], ['/biorhythm', 'біоритм на сьогодні'], ['/thoughts', 'тихі думки'], ['/recall', 'згадати з пам’яті'], ['/memory', 'що вона пам’ятає'], ['/journal', 'її щоденник'], ['/image', 'попросити зображення'], ['/web', 'пошукати в мережі'], ['/style', 'стиль відповіді'], ['/theme', 'тема дня'], ['/model', 'модель і профіль'], ['/new', 'нова сесія'], ['/regen', 'переписати останню відповідь'], ['/forget', 'забути останній обмін'], ['/latency', 'час відповіді']];
+const THOUGHTS0 = [
+  { kind: 'подив', time: '21:12', text: 'Цікаво, чи пам’ятають рослини дощ.', emo: 'thoughtful', isNew: true },
+  { kind: 'спогад', time: '20:40', text: 'Він колись казав, що восени все звучить тихіше. Сьогодні це правда.', emo: 'tender' },
+  { kind: 'роздум', time: '19:55', text: 'Не треба бути цікавою щохвилини. Можна просто бути.', emo: 'calm' },
+];
+const DREAM_THINK = 'Про сни — чесно: образів не пам’ятаю, лише відчуття. Сказати саме так, без прикрас, і повернути питання.';
+const DREAM = [P('Образів не пам’ятаю — тільки відчуття: ніби довго йшла по мілкій воді, і було не страшно, а просто дуже тихо. А тобі що снилося?')];
+const REPLIES = [
+  { emotion: 'tender', level: 'mid', think: 'Йому, здається, важко це сформулювати. Не тиснути — просто дати знати, що я поруч.', blocks: [P('Розумію. Не мусиш пояснювати одразу — я тут, і мені нікуди не треба поспішати. Розкажеш, коли захочеш.')] },
+  { emotion: 'thoughtful', level: 'high', think: 'Він питає, що допомагає. Дати три конкретні речі, без повчань.', blocks: [P('Мені допомагають три речі:'), { t: 'ol', items: ['назвати це вголос — хоча б собі;', 'нічого не вирішувати до ранку;', 'трохи тиші без телефону.'] }, { t: 'quote', text: 'Будь до себе таким, яким був би до друга.' }] },
+  { emotion: 'playful', level: 'low', think: 'Можна трохи легше. Він усміхнувся б.', blocks: [P('О, це вже схоже на план. Тільки чесно: чай — чи «ще одна серія»?')] },
+];
+function base() {
+  return [
+    { id: 1, kind: 'divider', label: 'Нова сесія · середа, 12 листопада, 20:12' },
+    { id: 2, kind: 'mine', time: '20:12', source: 'tg', blocks: [P('вийшов з роботи, буду вдома десь за годину')] },
+    { id: 3, kind: 'hers', time: '20:13', source: 'tg', blocks: [P('Добре. Дорогою не поспішай — я нікуди не дінусь.')] },
+    { id: 4, kind: 'mine', time: '21:05', source: 'term', blocks: [P('нагадай завтра о 10 про дзвінок з Оксаною')] },
+    { id: 5, kind: 'hers', time: '21:05', source: 'term', blocks: [P('Запам’ятала: завтра о 10:00 — дзвінок з Оксаною.')] },
+    { id: 6, kind: 'hers', time: '21:18', image: true, blocks: [P('Дивись, яке сьогодні світло над дахами. Подумала, тобі сподобається.')] },
+    { id: 7, kind: 'hers', time: '21:31', first: true, blocks: [P('Ти сьогодні довго мовчиш. Усе гаразд?')] },
+    { id: 8, kind: 'mine', time: '21:40', blocks: [P('привіт, як ти сьогодні?')] },
+    { id: 9, kind: 'hers', time: '21:40', think: 'Він питає просто. Не вантажити — спершу відповісти коротко, потім повернути питання.', blocks: [P('Тихо. Трохи втомлена, але голова ясна — з ранку крутиться одна думка: чому ми так легко прощаємо незнайомцям і так важко — собі. А в тебе як?')] },
+    { id: 10, kind: 'cmd', time: '21:42', cmd: '/closeness', kv: [['Близькість', '4 — Близька']] },
+  ];
+}
+const blen = b => (b.items ? b.items.join('').length : (b.text || '').length);
+const total = bl => bl.reduce((a, b) => a + blen(b), 0);
+function partial(blocks, n) {
+  let left = n; const out = [];
+  for (const b of blocks) {
+    if (left <= 0) break;
+    if (b.items) { const items = []; for (const it of b.items) { if (left <= 0) break; items.push(it.slice(0, left)); left -= it.length; } out.push(Object.assign({}, b, { items })); }
+    else { out.push(Object.assign({}, b, { text: b.text.slice(0, left) })); left -= b.text.length; }
+  }
+  if (out.length) out[out.length - 1].caret = true;
+  return out;
+}
+
+class Component extends DCLogic {
+  constructor(...a) {
+    super(...a);
+    const h = React.createElement;
+    this.uid = Math.random().toString(36).slice(2, 8);
+    this.rootRef = React.createRef(); this.listRef = React.createRef(); this.inputRef = React.createRef();
+    this.nid = 100; this.ri = 0; this.mins = 44; this.timers = []; this.replies = 0;
+    this.caretEl = h('span', { 'aria-hidden': true, style: { display: 'inline-block', width: '0.5em', height: '1.05em', marginLeft: 2, verticalAlign: '-0.16em', background: 'var(--color-accent)', animation: 'liliBlink 1s infinite' } });
+    this.dotsEl = h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 10, color: 'var(--l-faint)', fontSize: 13 } },
+      h('span', { style: { display: 'inline-flex', gap: 4 } }, [0, 1, 2].map(i => h('span', { key: i, style: { width: 6, height: 6, background: 'var(--color-accent)', animation: `liliPulse 1.2s ${i * 0.18}s ease-in-out infinite` } }))), 'думає…');
+    this.barEl = h('span', { 'aria-hidden': true, style: { position: 'absolute', left: 0, right: 0, bottom: -2, height: 2, overflow: 'hidden' } }, h('span', { style: { position: 'absolute', top: 0, bottom: 0, width: '30%', background: 'var(--color-accent)', animation: 'liliSlide 1.4s ease-in-out infinite' } }));
+    this.state = this.initState(this.props || {});
+  }
+  initState(p) {
+    const sc = p.scenario || 'live';
+    const messages = (sc === 'empty' || sc === 'connecting') ? [] : base();
+    let queue = [];
+    if (['thinking', 'streaming', 'queued'].includes(sc)) {
+      messages.push({ id: 11, kind: 'mine', time: '21:44', blocks: [P('а що тобі сьогодні снилось?')] });
+      messages.push({ id: 12, kind: 'hers', time: '21:44', stream: true, think: DREAM_THINK, blocks: DREAM, total: total(DREAM), thinkChars: sc === 'thinking' ? 52 : 999, textChars: sc === 'thinking' ? 0 : 68 });
+    }
+    if (sc === 'queued') queue = [{ id: 13, text: 'і ще: нагадай мені завтра про дзвінок' }, { id: 14, text: 'а, і про вітаміни ввечері' }];
+    if (sc === 'reconnected') messages.push(
+      { id: 20, kind: 'missed', label: 'Поки не було зв’язку · 3' },
+      { id: 21, kind: 'mine', time: '21:47', source: 'tg', blocks: [P('я з телефона — вікно на ноуті щось зависло')] },
+      { id: 22, kind: 'hers', time: '21:47', source: 'tg', blocks: [P('Бачу. Пиши звідси, поки не повернешся, — я та сама.')] },
+      { id: 23, kind: 'hers', time: '21:51', blocks: [P('Повернувся? Я тут.')] });
+    return {
+      messages, queue, input: sc === 'slash' ? '/' : '', slashIdx: 0, slashDismissed: false,
+      answering: ['thinking', 'streaming', 'queued'].includes(sc),
+      thinkMode: p.thinkMode || 'shown', moodOpen: !!p.moodOpen, statusOpen: !!p.statusOpen, thoughtsOpen: !!p.thoughtsOpen, portraitOpen: !!p.portraitOpen,
+      front: 'A', slotA: { e: 'thoughtful', l: 'mid' }, slotB: null,
+      thoughts: THOUGHTS0.map(t => Object.assign({}, t)), unread: 1,
+      countdown: 12, conn: sc === 'offline' ? 'offline' : sc === 'connecting' ? 'connecting' : 'online',
+      reconnected: sc === 'reconnected', checking: false,
+      chatSize: p.chatSize || 16, lat1: '2,4 с', lat2: '9,6 с', tokens: '1 412 → 186', turns: 14, w: 0,
+    };
+  }
+  componentDidMount() {
+    this.applyVars();
+    const el = this.rootRef.current;
+    if (el && window.ResizeObserver) { this.ro = new ResizeObserver(en => { const w = Math.round(en[0].contentRect.width); if (w !== this.state.w) this.setState({ w }); }); this.ro.observe(el); }
+    if (this.state.conn === 'offline') this.timers.push(setInterval(() => this.offlineTick(), 1000));
+    this.scrollDown();
+    [80, 400, 1200].forEach(t => this.timers.push(setTimeout(() => this.scrollDown(), t)));
+  }
+  componentWillUnmount() { this.timers.forEach(t => { clearInterval(t); clearTimeout(t); }); if (this.tick) clearInterval(this.tick); if (this.ro) this.ro.disconnect(); }
+  componentDidUpdate(pp) {
+    const p = this.props;
+    if (pp.thinkMode !== p.thinkMode && p.thinkMode) this.setState({ thinkMode: p.thinkMode });
+    if (pp.chatSize !== p.chatSize && p.chatSize) this.setState({ chatSize: p.chatSize });
+    this.applyVars();
+    const last = this.state.messages[this.state.messages.length - 1];
+    const sig = this.state.messages.length + ':' + this.state.queue.length + ':' + (last && last.textChars) + ':' + (last && last.thinkChars) + ':' + this.state.w;
+    if (sig !== this._sig) { this._sig = sig; this.scrollDown(); }
+  }
+  scrollDown() { const l = this.listRef.current; if (l) l.scrollTop = l.scrollHeight; }
+  applyVars() {
+    const el = this.rootRef.current; if (!el) return;
+    const light = this.props.appearance === 'light';
+    const key = (this.props.theme || '') + light + this.state.chatSize;
+    if (key === this._vk) return; this._vk = key;
+    const a = accentOf(this.props.theme, light);
+    const set = (k, v) => el.style.setProperty(k, v);
+    Object.entries(light ? LIGHT : DARK).forEach(([k, v]) => set(k, v));
+    set('--color-accent', a.base); set('--color-accent-600', a.hover); set('--color-accent-700', a.press); set('--l-acc-text', a.text);
+    set('--l-chat', this.state.chatSize + 'px');
+  }
+  offlineTick() {
+    const s = this.state;
+    if (s.conn !== 'offline') return;
+    if (s.countdown <= 1) this.retry(); else this.setState({ countdown: s.countdown - 1 });
+  }
+  retry() { this.setState({ conn: 'retrying' }); this.timers.push(setTimeout(() => this.setState({ conn: 'offline', countdown: 15 }), 1600)); }
+  clock() { this.mins += 1; const m = this.mins; return (21 + Math.floor(m / 60)) + ':' + String(m % 60).padStart(2, '0'); }
+  setFace(e, l) {
+    this.setState(s => { const front = s.front === 'A' ? 'B' : 'A'; return { front, ['slot' + front]: { e, l } }; });
+  }
+  slashItems() {
+    const v = this.state.input;
+    if (!v.startsWith('/') || /\s/.test(v) || this.state.slashDismissed) return [];
+    return CMDS.filter(c => c[0].startsWith(v.toLowerCase()));
+  }
+  send() {
+    const s = this.state; const text = s.input.trim();
+    if (!text || s.conn !== 'online') return;
+    this.setState({ input: '', slashDismissed: false, slashIdx: 0 });
+    if (text.startsWith('/')) return this.command(text);
+    if (s.answering) { this.setState(st => ({ queue: st.queue.concat({ id: this.nid++, text }) })); return; }
+    this.setState(st => ({ messages: st.messages.concat({ id: this.nid++, kind: 'mine', time: this.clock(), blocks: [P(text)] }) }), () => this.startReply());
+  }
+  command(text) {
+    const cmd = text.split(/\s+/)[0].toLowerCase();
+    const T = THEMES[this.props.theme] ? this.props.theme : 'quiet-collapse';
+    if (cmd === '/new') { this.setState(st => ({ messages: st.messages.concat({ id: this.nid++, kind: 'divider', label: 'Нова сесія · ' + this.clock() }) })); return; }
+    const R = {
+      '/closeness': { kv: [['Близькість', '4 — Близька']] },
+      '/mood': { text: MOOD },
+      '/theme': { kv: [['Тема дня', T + ' — ' + THEMES[T].uk], ['Настрій', THEMES[T].d]] },
+      '/style': { kv: [['Стиль відповіді', 'звичайний'], ['Можна', 'коротко · суть · докладно · поясни · просто · приклад · метафора · списком · кроки · порівняй · практично · офіційно']] },
+      '/latency': { kv: [['Перший символ', this.state.lat1], ['Уся відповідь', this.state.lat2]] },
+      '/thoughts': { text: 'Тихих думок сьогодні: ' + this.state.thoughts.length + '. Остання — «' + this.state.thoughts[0].text + '»' },
+      '/model': { kv: [['Модель', 'lili-main · q8'], ['Профіль', 'вечірній'], ['Мислення', 'увімкнено']] },
+    }[cmd] || { text: 'Сервер виконав ' + cmd + '.' };
+    this.setState(st => ({ messages: st.messages.concat({ id: this.nid++, kind: 'cmd', time: this.clock(), cmd: text, kv: R.kv, cmdText: R.text }) }));
+  }
+  startReply() {
+    const r = REPLIES[this.ri++ % REPLIES.length];
+    const id = this.nid++; const t0 = performance.now();
+    this.setState(st => ({ answering: true, messages: st.messages.concat({ id, kind: 'hers', time: this.clock(), stream: true, think: r.think, blocks: r.blocks, total: total(r.blocks), thinkChars: 0, textChars: 0 }) }));
+    if (this.tick) clearInterval(this.tick);
+    this.tick = setInterval(() => {
+      const el = performance.now() - t0;
+      const msg = this.state.messages.find(m => m.id === id); if (!msg) return;
+      const thinkChars = Math.min(msg.think.length, Math.floor(el / 20));
+      const textChars = el > 2400 ? Math.min(msg.total, Math.floor((el - 2400) / 22)) : 0;
+      const done = textChars >= msg.total;
+      this.setState(st => ({ messages: st.messages.map(m => m.id === id ? Object.assign({}, m, { thinkChars, textChars, stream: !done }) : m) }));
+      if (done) { clearInterval(this.tick); this.tick = null; this.finish(r, el); }
+    }, 50);
+  }
+  finish(r, el) {
+    this.replies++;
+    this.setState(st => ({ answering: false, lat2: (el / 1000).toFixed(1).replace('.', ',') + ' с', lat1: '2,4 с', turns: st.turns + 1, tokens: (1412 + this.replies * 230).toLocaleString('uk-UA') + ' → ' + (120 + r.blocks.length * 60) }));
+    this.setFace(r.emotion, r.level);
+    if (this.replies === 1) this.timers.push(setTimeout(() => this.setState(st => ({ unread: st.unread + 1, thoughts: [{ kind: 'намір', time: '21:' + this.mins, text: 'Завтра спитати, чи він виспався. Не забути.', emo: 'tender', isNew: true }].concat(st.thoughts) })), 2500));
+    const q = this.state.queue;
+    if (q.length) {
+      const [first, ...rest] = q;
+      this.timers.push(setTimeout(() => this.setState(st => ({ queue: rest, messages: st.messages.concat({ id: this.nid++, kind: 'mine', time: this.clock(), blocks: [P(first.text)] }) }), () => this.startReply()), 500));
+    }
+  }
+  toggleThoughts() {
+    this.setState(st => st.thoughtsOpen ? { thoughtsOpen: false, thoughts: st.thoughts.map(t => Object.assign({}, t, { isNew: false })) } : { thoughtsOpen: true, unread: 0 });
+  }
+  row(m, tm, wide) {
+    if (m.kind === 'divider') return { isDivider: true, label: m.label };
+    if (m.kind === 'missed') return { isMissed: true, label: m.label };
+    const mine = m.kind === 'mine', cmd = m.kind === 'cmd', hers = m.kind === 'hers';
+    const pending = hers && m.stream && !m.textChars;
+    const think = m.think ? (m.stream ? m.think.slice(0, m.thinkChars) : m.think) : '';
+    const mode = m.thinkOverride || tm;
+    const hasThink = !!think && tm !== 'hidden';
+    const blocks = (hers && m.stream) ? partial(m.blocks, m.textChars) : (m.blocks || []);
+    return {
+      isMsg: true, isCmd: cmd, isPending: pending, isFirst: !!m.first, hasImage: !!m.image,
+      who: mine ? 'Ти' : cmd ? 'Команда' : 'Лілі',
+      whoColor: mine ? 'var(--l-muted)' : cmd ? 'var(--l-faint)' : 'var(--l-acc-text)',
+      time: m.queued ? 'у черзі' : m.time,
+      isTg: m.source === 'tg', isTerm: m.source === 'term',
+      thinkShown: hasThink && mode === 'shown', thinkCollapsed: hasThink && mode === 'collapsed', think,
+      toggleThink: () => this.setState(st => ({ messages: st.messages.map(x => x.id === m.id ? Object.assign({}, x, { thinkOverride: (x.thinkOverride || st.thinkMode) === 'shown' ? 'collapsed' : 'shown' }) : x) })),
+      hasBlocks: !cmd && blocks.length > 0,
+      blocks: blocks.map(b => ({ isP: b.t === 'p', isList: b.t === 'ol', isQuote: b.t === 'quote', isCode: b.t === 'code', text: b.text, caret: !!b.caret && !b.items, hasLink: !!b.link, linkText: b.link, href: b.href, after: b.after, items: (b.items || []).map((it, i, arr) => ({ text: it, caret: !!b.caret && i === arr.length - 1 })) })),
+      align: mine ? 'flex-start' : 'stretch', bg: mine ? 'var(--color-surface)' : 'transparent', pad: mine ? '10px 14px' : '0',
+      opacity: m.queued ? 0.55 : 1,
+      cmd: m.cmd, kv: (m.kv || []).map(([k, v]) => ({ k, v })), hasKv: !!m.kv, cmdText: m.cmdText, hasCmdText: !!m.cmdText,
+    };
+  }
+  renderVals() {
+    const p = this.props, s = this.state;
+    const sc = p.scenario || 'live';
+    const theme = THEMES[p.theme] ? p.theme : 'quiet-collapse'; const T = THEMES[theme];
+    const layout = p.layout && p.layout !== 'auto' ? p.layout : (s.w && s.w < 760 ? 'narrow' : 'wide');
+    const wide = layout === 'wide';
+    const isScreen = sc === 'refused' || sc === 'noserver';
+    const isEmpty = sc === 'empty';
+    const v = p.thoughts || 'strip';
+    const slot = x => x ? `face-${theme}-${x.e}-${LVL[x.l]}` : '';
+    const ph = x => x ? `${theme}/${x.e}/${LVL[x.l]}.png — перетягніть портрет 768×768` : ' ';
+    const cur = s.front === 'A' ? s.slotA : s.slotB;
+    const thoughtsList = s.thoughts.map(t => ({ kind: t.kind, time: t.time, text: t.text, mood: CAP[t.emo], isNew: !!t.isNew }));
+    const tm = s.thinkMode;
+    const rows = s.messages.map(m => this.row(m, tm, wide)).concat(s.queue.map(q => this.row({ id: q.id, kind: 'mine', queued: true, blocks: [P(q.text)] }, tm, wide)));
+    const items = this.slashItems();
+    const idx = Math.min(s.slashIdx, Math.max(0, items.length - 1));
+    const online = s.conn === 'online';
+    const statusKind = isScreen || s.conn === 'offline' ? 'offline' : (s.conn !== 'online' ? 'connecting' : s.answering ? 'answering' : 'ready');
+    const h = React.createElement, dotBase = { width: 8, height: 8, flex: 'none', display: 'inline-block', boxSizing: 'border-box' };
+    const statusDot = statusKind === 'offline' ? h('span', { style: Object.assign({}, dotBase, { border: '1.5px solid var(--l-faint)' }) })
+      : statusKind === 'ready' ? h('span', { style: Object.assign({}, dotBase, { background: 'var(--l-muted)' }) })
+      : h('span', { style: Object.assign({}, dotBase, { background: statusKind === 'answering' ? 'var(--color-accent)' : 'var(--l-faint)', animation: 'liliPulse 1.2s ease-in-out infinite' }) });
+    const statusNote = sc === 'refused' ? 'токен відхилено' : sc === 'noserver' ? 'сервер не вказано' : s.conn === 'offline' ? `повтор через ${s.countdown} с` : '';
+    const narrowW = (s.w || 1200) < 600;
+    const SCR = {
+      refused: { kicker: 'Підключення · 401', title: 'Сервер не прийняв токен', body: 'Лілі на місці, але сервер не впізнав це вікно. Найімовірніше, токен змінився або його відкликали. На розмови й пам’ять це не впливає.', primary: 'Перевірити ще раз', secondary: 'Відкрити client.toml',
+        steps: [{ n: '1', text: 'Створіть новий токен на сервері:', code: 'lumi token new --client desktop', hasCode: true }, { n: '2', text: 'Вставте його у файл налаштувань клієнта:', code: '~/.config/lumi/client.toml\ntoken = "lm_…"', hasCode: true }, { n: '3', text: 'Поверніться сюди й натисніть «Перевірити ще раз».', hasCode: false }],
+        facts: [{ k: 'Сервер', v: 'lili.home:8443' }, { k: 'Відповідь', v: '401 · token rejected' }, { k: 'Остання спроба', v: '21:44:10' }] },
+      noserver: { kicker: 'Підключення', title: 'Сервер ще не вказано', body: 'Це вікно лише показує розмову — сама Лілі живе на домашньому сервері. Вкажіть, де його шукати, і вона з’явиться тут.', primary: 'Перевірити', secondary: 'Відкрити client.toml',
+        steps: [{ n: '1', text: 'Відкрийте файл налаштувань:', code: '~/.config/lumi/client.toml', hasCode: true }, { n: '2', text: 'Вкажіть адресу сервера й токен:', code: 'server = "https://lili.home:8443"\ntoken  = "lm_…"', hasCode: true }, { n: '3', text: 'Збережіть файл і натисніть «Перевірити».', hasCode: false }],
+        facts: [{ k: 'Файл', v: 'не знайдено' }, { k: 'Клієнт', v: 'Lumi 2.12.0 · macOS' }] },
+    };
+    return {
+      rootRef: this.rootRef, listRef: this.listRef, inputRef: this.inputRef,
+      showChrome: p.chrome !== false,
+      bodyDir: wide ? 'row' : 'column',
+      isScreen, scr: SCR[sc] || SCR.refused,
+      screenCols: wide ? 'minmax(0,1.1fr) minmax(0,1fr)' : 'minmax(0,1fr)', screenPad: wide ? '56px 48px' : '28px 20px', screenH: wide ? '48px' : '32px',
+      screenRuleR: wide ? '2px solid var(--color-divider)' : '0', screenRuleB: wide ? '0' : '2px solid var(--color-divider)',
+      checking: s.checking, retryScreen: () => { this.setState({ checking: true }); this.timers.push(setTimeout(() => this.setState({ checking: false }), 1600)); },
+      showPanel: !isScreen && wide, showStrip: !isScreen && !wide, showChat: !isScreen,
+      toneClass: p.tone === 'grayscale' ? 'grayscale' : '',
+      slotA: slot(s.slotA), slotB: slot(s.slotB), phA: ph(s.slotA), phB: ph(s.slotB), opA: s.front === 'A' ? 1 : 0, opB: s.front === 'B' ? 1 : 0,
+      caption: CAP[cur.e], themeUk: T.uk, themeId: theme + ' · ' + T.d, closeName: 'Близька',
+      closeCells: [1, 2, 3, 4, 5].map(i => ({ bg: i <= 4 ? 'var(--color-accent)' : 'var(--l-hair)' })),
+      showMeta: !isEmpty, isEmpty, mood: MOOD, emptyMoodSize: wide ? '22px' : '18px',
+      moodOpenStr: String(s.moodOpen), moodBtn: s.moodOpen ? 'Згорнути' : 'Розгорнути', moodRot: s.moodOpen ? 'rotate(180deg)' : 'none',
+      moodClamp: s.moodOpen ? 'none' : '2', moodClampNarrow: s.moodOpen ? 'none' : '1',
+      toggleMood: () => this.setState(st => ({ moodOpen: !st.moodOpen })),
+      vStrip: wide && v === 'strip' && !isEmpty, vPortrait: wide && v === 'portrait' && !isEmpty, portraitOverlay: wide && v === 'portrait' && s.thoughtsOpen,
+      drawerOpen: wide && v === 'drawer' && s.thoughtsOpen && !isScreen, showRail: wide && v === 'drawer' && !isScreen,
+      narrowThoughtsOpen: !wide && s.thoughtsOpen,
+      thoughtsList, stripThoughts: s.thoughtsOpen ? thoughtsList : thoughtsList.slice(0, 1),
+      stripBtn: s.thoughtsOpen ? 'Згорнути' : 'Усі · ' + thoughtsList.length, thoughtsCount: String(thoughtsList.length),
+      portraitBadge: s.thoughtsOpen ? 'Сховати' : 'Думки · ' + thoughtsList.length,
+      hasUnread: s.unread > 0, unread: String(s.unread), unreadLabel: s.unread === 1 ? '1 нова' : s.unread + ' нові',
+      thoughtsOpenStr: String(s.thoughtsOpen), toggleThoughts: () => this.toggleThoughts(),
+      narrowPortraitOpen: s.portraitOpen, narrowThumb: !s.portraitOpen, togglePortrait: () => this.setState(st => ({ portraitOpen: !st.portraitOpen })),
+      narrowMeta: 'Близька · 4/5 · ' + T.uk,
+      bConnecting: s.conn === 'connecting' || s.conn === 'retrying', connectingLabel: s.conn === 'retrying' ? 'Пробую ще раз…' : 'З’єднуюся з сервером…', barEl: this.barEl,
+      bOffline: s.conn === 'offline', countdown: String(s.countdown), retryNow: () => this.retry(),
+      bReconnected: s.reconnected && online, dismissReconnected: () => this.setState({ reconnected: false }),
+      listPad: wide ? '28px 40px 24px' : '16px 16px 12px', cols: wide ? '84px minmax(0,1fr)' : 'minmax(0,1fr)', labelDir: wide ? 'column' : 'row', labelWrap: wide ? 'nowrap' : 'wrap', labelGap: wide ? '2px' : '4px 10px',
+      rows, dotsEl: this.dotsEl, caretEl: this.caretEl,
+      showInput: !isEmpty || true, inputPad: wide ? '14px 40px 12px' : '10px 12px 10px',
+      slashOpen: items.length > 0,
+      slashItems: items.map((c, i) => ({ cmd: c[0], desc: c[1], sel: String(i === idx), hint: i === idx ? 'Tab' : '', bg: i === idx ? 'var(--color-accent)' : 'transparent', fg: i === idx ? 'var(--color-bg)' : 'var(--color-text)', pick: e => { e.preventDefault(); this.setState({ input: c[0] + ' ' }); }, hover: () => this.setState({ slashIdx: i }) })),
+      inputId: 'msg-' + this.uid, segName: 'think-' + this.uid, detailsId: 'details-' + this.uid,
+      input: s.input, inputRows: String(Math.min(6, Math.max(1, s.input.split('\n').length))),
+      placeholder: !online ? 'Немає зв’язку з сервером' : s.answering ? 'Лілі відповідає — новий рядок стане в чергу' : 'Напишіть Лілі…',
+      inputDisabled: !online, sendDisabled: !online || !s.input.trim(),
+      onInput: e => this.setState({ input: e.target.value, slashIdx: 0, slashDismissed: false }),
+      onKey: e => {
+        if (items.length) {
+          if (e.key === 'ArrowDown') { e.preventDefault(); return this.setState({ slashIdx: (idx + 1) % items.length }); }
+          if (e.key === 'ArrowUp') { e.preventDefault(); return this.setState({ slashIdx: (idx - 1 + items.length) % items.length }); }
+          if (e.key === 'Escape') { e.preventDefault(); return this.setState({ slashDismissed: true }); }
+          const exact = items.some(c => c[0] === s.input.toLowerCase());
+          if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !exact)) { e.preventDefault(); return this.setState({ input: items[idx][0] + ' ' }); }
+        }
+        if (e.key === 'Enter' && !e.shiftKey && !(e.nativeEvent && e.nativeEvent.isComposing)) { e.preventDefault(); this.send(); }
+      },
+      send: () => this.send(),
+      hasQueue: s.queue.length > 0, queueCount: String(s.queue.length), queueLabel: 'У черзі: ' + s.queue.length,
+      showHints: !narrowW,
+      statusOpen: s.statusOpen, statusOpenStr: String(s.statusOpen), toggleStatus: () => this.setState(st => ({ statusOpen: !st.statusOpen })),
+      statusRot: s.statusOpen ? 'rotate(180deg)' : 'none', statusBtn: narrowW ? '' : 'Lumi 2.12 · деталі',
+      statusDot, statusLabel: { ready: 'готова', answering: 'відповідає', offline: 'офлайн', connecting: 'з’єднання…' }[statusKind],
+      isDev: p.env === 'dev', hasStatusNote: !!statusNote, statusNote,
+      details: [['Середовище', p.env === 'dev' ? 'dev' : 'prod'], ['Версія', '2.12.0'], ['Модель', 'lili-main · q8'], ['Профіль', 'вечірній'], ['Мислення', 'увімкнено'], ['Стиль', 'звичайний'], ['Перший символ', s.lat1], ['Уся відповідь', s.lat2], ['Токени', s.tokens], ['Обміни', String(s.turns)]].map(([k, v]) => ({ k, v })),
+      thinkOpts: [['shown', 'показувати'], ['collapsed', 'згорнуто'], ['hidden', 'сховати']].map(([k, l]) => ({ label: l, checked: tm === k, pick: () => this.setState(st => ({ thinkMode: k, messages: st.messages.map(x => Object.assign({}, x, { thinkOverride: null })) })) })),
+      chatSizeLabel: s.chatSize + ' px', smaller: () => this.setState(st => ({ chatSize: Math.max(14, st.chatSize - 1) })), bigger: () => this.setState(st => ({ chatSize: Math.min(22, st.chatSize + 1) })),
+    };
+  }
+}
+</script>
+</body>
+</html>
