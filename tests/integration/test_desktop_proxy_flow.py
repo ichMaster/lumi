@@ -112,3 +112,15 @@ def test_no_answer_carries_a_cors_header(world):
                request(proxy, "GET", "/v1/state", key=False), request(proxy, "OPTIONS", "/v1/state")]
     assert answers[-1][0] == 405
     assert all(not any(h.startswith("access-control-") for h in headers) for _, headers, _ in answers)
+
+
+def test_the_whole_page_is_served_from_desktop_ui(world):
+    _, proxy = world
+    kinds = {"/": "text/html", "/app.js": "javascript", "/style.css": "text/css", "/tokens.css": "text/css",
+             "/strings.en.json": "application/json"}
+    for path, kind in kinds.items():
+        status, headers, body = request(proxy, "GET", path, key=False)
+        assert status == 200 and kind in headers["content-type"] and body, path
+    html = request(proxy, "GET", "/", key=False)[2].decode()
+    for ref in ("tokens.css", "style.css", "app.js"):
+        assert f'"{ref}"' in html
