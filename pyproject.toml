@@ -51,6 +51,9 @@ embed = [
 models = [
     "openai>=1",  # v0.18 OpenAI-compatible backend (OpenAI / DeepSeek / local server); imported lazily
 ]
+desktop = [
+    "pywebview>=6",  # v2.12 the desktop window (python -m desktop / ./lumi-desktop); imported lazily, macOS WebKit
+]
 
 [tool.uv]
 package = false

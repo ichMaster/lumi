@@ -12,6 +12,8 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**2.12.1 — The desktop window: the chat.** `./lumi-desktop` opens Лілі in one native window (pywebview), a client of the server beside the TUI: streamed replies, her unasked lines, Telegram and terminal lines tagged, slash commands and `%directives`, a queue while she answers, the status line, and a clean reconnect. The page (the owner's Claude Design handoff, English interface) reaches the server through a local proxy on `127.0.0.1` that adds the token, so the token never enters the page. The portrait panel arrives in 2.12.2. Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop window (LUMI-266..269).
+
 **2.11 — The admin panel: configure.** The panel now changes the settings of either instance: a form per group
 generated from the schema (the default, the description, where each value comes from), a preview with the diff, an
 apply that writes atomically and restarts the instance's running services (prod asks for the typed confirmation

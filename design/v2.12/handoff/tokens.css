@@ -1,0 +1,113 @@
+/* Лілі · Lumi v2.12 — design tokens. Modernist system, inverted for dark.
+   Usage: <html lang="uk" data-appearance="dark" data-theme="quiet-collapse"> */
+
+:root {
+  /* type */
+  --font-body: 'Archivo', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: 'Archivo', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --l-chat: 16px;              /* user-adjustable 14–22 */
+  --fs-caption: 28px;          /* 800, lh 1.08, ls -0.015em */
+  --fs-title: 48px;            /* auth screen, 800, lh 1.04, ls -0.02em */
+  --fs-mood-empty: 22px;
+  --fs-secondary: 14px;
+  --fs-meta: 12px;
+  --fs-time: 11px;
+  --fs-kicker: 10.5px;         /* 600, uppercase, ls .1em */
+
+  /* space (system scale) */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+
+  /* layout */
+  --l-gutter: 84px;
+  --l-gutter-gap: 20px;
+  --l-msg-gap: 22px;
+  --l-panel: clamp(300px, 36%, 440px);
+  --l-measure: 720px;
+  --l-titlebar: 34px;
+  --l-status: 30px;
+  --l-control: 46px;
+  --l-breakpoint: 760px;       /* below → narrow strip layout (use in JS / media query) */
+
+  /* shape */
+  --radius-sm: 0; --radius-md: 0; --radius-lg: 0;
+  --rule: 2px; --hair: 1px;
+
+  /* motion */
+  --t-portrait: 480ms ease;
+  --t-chevron: 200ms;
+  --t-pulse: 1.2s ease-in-out;
+  --t-caret: 1s;
+}
+
+/* — dark (default) — */
+:root, [data-appearance="dark"] {
+  --color-bg: #201e1d;
+  --color-surface: #2d2b2b;
+  --color-text: #f3f2f2;       /* 15.6:1 */
+  --l-muted: #bab6b6;          /* 8.3:1 */
+  --l-faint: #9b9797;          /* 5.7:1 */
+  --l-raise: #444141;
+  --color-divider: color-mix(in srgb, #f3f2f2 30%, transparent);
+  --l-hair: color-mix(in srgb, #f3f2f2 13%, transparent);
+  --shadow-lg: 0 0 0 1px color-mix(in srgb, #f3f2f2 10%, transparent), 0 16px 40px color-mix(in srgb, #000 55%, transparent);
+  --acc-l: 0.68; --acc-text-l: 0.82; --acc-hover-l: 0.74; --acc-press-l: 0.62; --acc-text-c: 0.75;
+}
+
+/* — light — */
+[data-appearance="light"] {
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201e1d;
+  --l-muted: #444141;
+  --l-faint: #605d5d;
+  --l-raise: #d7d3d3;
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --l-hair: color-mix(in srgb, #201e1d 14%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+  --acc-l: 0.58; --acc-text-l: 0.46; --acc-hover-l: 0.52; --acc-press-l: 0.46; --acc-text-c: 1;
+}
+
+/* — theme of the day: hue + chroma; the accent is derived — */
+:root                          { --acc-h: 345; --acc-c: 0.19; }  /* fallback = quiet-collapse */
+[data-theme="3am"]             { --acc-h: 245; --acc-c: 0.12; }
+[data-theme="day-after"]       { --acc-h: 255; --acc-c: 0.035; }
+[data-theme="dissociation"]    { --acc-h: 305; --acc-c: 0.06; }
+[data-theme="last-memory"]     { --acc-h: 70;  --acc-c: 0.14; }
+[data-theme="quiet-collapse"]  { --acc-h: 345; --acc-c: 0.19; }
+[data-theme="im-fine"]         { --acc-h: 135; --acc-c: 0.19; }
+[data-theme="drowning"]        { --acc-h: 200; --acc-c: 0.10; }
+[data-theme="vigil"]           { --acc-h: 55;  --acc-c: 0.16; }
+[data-theme="calm-before"]     { --acc-h: 95;  --acc-c: 0.11; }
+
+[data-theme], :root {
+  --color-accent:     oklch(var(--acc-l) var(--acc-c) var(--acc-h));                              /* fills, rules, icons */
+  --l-acc-text:       oklch(var(--acc-text-l) calc(var(--acc-c) * var(--acc-text-c)) var(--acc-h)); /* names, links, kickers */
+  --color-accent-600: oklch(var(--acc-hover-l) var(--acc-c) var(--acc-h));                        /* hover */
+  --color-accent-700: oklch(var(--acc-press-l) var(--acc-c) var(--acc-h));                        /* pressed */
+}
+
+/* furious keeps the Modernist system red */
+[data-theme="furious"] {
+  --color-accent: #ec3013; --l-acc-text: #ff9783; --color-accent-600: #ff563c; --color-accent-700: #dd2b0f;
+}
+[data-appearance="light"][data-theme="furious"],
+[data-appearance="light"] [data-theme="furious"] {
+  --l-acc-text: #ae1800; --color-accent-600: #dd2b0f; --color-accent-700: #ae1800;
+}
+
+/* base */
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--color-bg); color: var(--color-text); font: 14px/1.5 var(--font-body);
+  -webkit-hyphens: auto; hyphens: auto; overflow-wrap: break-word; }
+code, pre { font-family: var(--font-mono); -webkit-hyphens: none; hyphens: none; }
+a { color: var(--l-acc-text); text-underline-offset: 3px; }
+a:hover { color: var(--color-text); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+@keyframes liliPulse { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
+@keyframes liliBlink { 0%, 50% { opacity: 1 } 50.01%, 100% { opacity: 0 } }
+@keyframes liliSlide { 0% { transform: translateX(-100%) } 100% { transform: translateX(340%) } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

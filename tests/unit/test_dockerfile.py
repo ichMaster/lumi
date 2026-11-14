@@ -29,6 +29,7 @@ def test_it_builds_from_the_lock_with_the_runtime_extras():
     sync = [r for r in runs if "uv sync" in r]
     assert len(sync) == 1 and "--frozen" in sync[0] and "--all-extras" in sync[0]
     assert "--no-extra dev" in sync[0]  # the test tools stay out of the image
+    assert "--no-extra desktop" in sync[0]  # v2.12: no window in the server image
     assert any(i.startswith("FROM python:3.13-slim") for i in _instructions())  # CI's Python
 
 

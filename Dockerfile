@@ -14,9 +14,10 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
     PYTHONUNBUFFERED=1 PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
-# The lock exactly, with every runtime extra (as ./lumi-server runs today) — the test tools stay out.
+# The lock exactly, with every runtime extra (as ./lumi-server runs today) — the test tools and the desktop window
+# (v2.12: pywebview, a Mac client's) stay out.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --all-extras --no-extra dev --no-install-project
+RUN uv sync --frozen --all-extras --no-extra dev --no-extra desktop --no-install-project
 COPY . .
 
 # The box's user (uid 1000 owns both data roots) — the bind-mounted /data stays theirs.

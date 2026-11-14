@@ -157,6 +157,32 @@ LUMI_SCHEDULE_PATH=/tmp/lumi-quick.yaml LUMI_SCHED_SHOW_TO_OUTBOX=on ./lumi-serv
 Within two minutes a thought arrives in Telegram (and in the client, if one is open). Restart without the
 variables to go back to her real schedule.
 
+## The desktop window (v2.12)
+
+`./lumi-desktop` opens Лілі in one native window (pywebview — the first run installs the `desktop` extra). It is a
+**client** like `./lumi-client`: it reads the same files of this tree — `server.host` / `server.port` in
+`settings.yaml`, `server.token` in `secrets.yaml` — and talks to that server; it holds no core. Both clients can run
+at once and show the same conversation (a line typed in one appears in the other, tagged "Terminal").
+
+**Why a local proxy.** The page in the window can't call the server directly: the server sends no CORS headers. So
+the window's Python shell starts a small server on `127.0.0.1` (a free port, `desktop/proxy.py`) that serves the page
+(`desktop/ui/`) and forwards the eight `/v1` routes it uses, adding the token itself — the token never enters the
+page. Every `/v1` request must carry this launch's random key (templated into the page), and the `Host` must be the
+proxy's own, so another app or a web page on the Mac can't borrow the token. No server change.
+
+**v2.12.1 (the chat):** streamed replies, her unasked lines ("wrote first"), lines from Telegram and the terminal,
+slash commands, `%directives`, `/new`, `/web`, a queue while she answers, the status line (DEV when not prod; the
+details panel; text size ⌘− / ⌘+), and a clean reconnect: the server down → a banner with a countdown, back → the
+missed lines under "While offline". The interface is English; her words stay Ukrainian. Not yet: the portrait, the
+think block, the quiet-thoughts strip and pictures (v2.12.2); voice, dictation and `/image` from a file (the TUI).
+
+| The window says | Why | Fix |
+|---|---|---|
+| "No server is set yet" | `server.host` or `server.token` missing in this tree | set them (`./lumi-cli config set server.host 192.168.1.197`, the port, and the token in `secrets.yaml`), then "Check" |
+| "The server refused the token" | the instance's `server.token` changed (e.g. rotated in the admin panel) | put the new value into this tree's `secrets.yaml`, then "Check again" |
+| "The server isn't answering" + countdown | the server is down or unreachable | start it (the admin panel, or the box); the window reconnects by itself |
+| "the desktop window needs pywebview" | `python -m desktop` without the extra | use `./lumi-desktop` |
+
 ## What client mode doesn't do yet
 
 The **voice mode** (`/mode-set voice`), the **voicer** and **dictation** need the local mic and speakers next

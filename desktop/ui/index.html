@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-appearance="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lili</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="root">
+  <div class="body">
+    <main class="chat" id="chat">
+      <div id="banner"></div>
+      <section id="screen" class="screen" hidden></section>
+      <div id="list" class="list" role="log" aria-live="polite">
+        <div id="col" class="col"></div>
+      </div>
+      <form id="composer" class="composer" autocomplete="off">
+        <div class="composer-row">
+          <div id="slash" class="slash" role="listbox" hidden></div>
+          <label for="input" class="visually-hidden" id="input-label"></label>
+          <textarea id="input" class="input" rows="1"></textarea>
+          <button id="send" class="btn btn-primary send" type="submit"></button>
+          <span id="queue-count" class="queue-count" hidden></span>
+        </div>
+        <div id="hints" class="hints"></div>
+      </form>
+    </main>
+  </div>
+  <section id="details" class="details" hidden></section>
+  <footer id="status" class="status"></footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

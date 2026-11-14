@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Lili's desktop window (v2.12): the chat in one native window, a client of the server this tree's settings name
+# (server.host / server.port in settings.yaml, server.token in secrets.yaml — the same as ./lumi-client).
+# (Named lumi-desktop, not ./desktop — the desktop/ package dir would collide.)
+cd "$(dirname "$0")" && exec uv run --extra desktop python -m desktop "$@"
