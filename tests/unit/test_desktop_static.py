@@ -154,3 +154,14 @@ def test_no_null_is_ever_handed_to_replace_children():
         # a ternary's null as the call's last argument prints "null" (found live twice); a null inside a nested
         # el(...) is dropped by el() and fine
         assert not call.rstrip().endswith(": null"), call
+
+
+
+def test_lumi_276_every_reply_of_hers_carries_its_emotion():
+    js = _js()
+    setter = js[js.index("function setEmotion("):js.index("function addHers(")]
+    assert "captionOf(emotion)" in setter and "title:" in setter  # the hover says the caption, not the name
+    assert "if (opts.emotion) setEmotion(r.node, opts.emotion, opts.intensity)" in js  # pushed + replayed lines
+    assert "emotion: data.emotion, intensity: data.intensity" in js
+    assert "setEmotion(her.node, result.emotion, result.intensity)" in js  # this window's own turn, at done
+    assert 'fetch("/emoji", { headers: headers() })' in js

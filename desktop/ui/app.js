@@ -20,6 +20,7 @@ const st = {
   retryIdx: 0, countdown: 0, wake: null, replaying: false, replayTimer: null, missed: [], restored: null,
   slash: { open: false, items: [], index: 0, dismissed: false }, detailsOpen: false, rows: 0, chatSize: 16,
   thinkMode: null, thinkBlocks: [], thoughts: [], thoughtsOpen: false,  // v2.12.2
+  emoji: {},  // LUMI-276: the TUI's emotion → emoji map, from the shell
 };
 const THINK_STORE = "lumi.desktop.thinkMode";
 const THINK_MODES = ["shown", "collapsed", "hidden"];
@@ -261,6 +262,23 @@ function addMine(text, opts = {}) {
   return r;
 }
 
+function band(intensity) {  // the TUI's bands: low < 0.34, mid, high >= 0.67
+  const x = Number(intensity);
+  return !Number.isFinite(x) ? 1 : x < 0.34 ? 0 : x < 0.67 ? 1 : 2;
+}
+
+function setEmotion(rowNode, emotion, intensity) {  // her emotion under "LILI": the glyph(s), the caption on hover
+  if (!rowNode || !emotion) return;
+  const map = st.emoji || {};
+  const glyphs = (map[emotion] || map.calm || [])[band(intensity)];
+  if (!glyphs) return;
+  const gutter = rowNode.querySelector(".gutter");
+  const old = gutter.querySelector(".emo");
+  if (old) old.remove();
+  const level = Number.isFinite(Number(intensity)) ? ` \u00b7 ${Number(intensity).toFixed(1)}` : "";
+  gutter.append(el("span", { class: "emo", title: `${captionOf(emotion)}${level}`, text: glyphs }));
+}
+
 function addHers(text, opts = {}) {
   const r = row("hers", opts);
   if (opts.first) r.content.append(el("div", { class: "first" }, el("span", { class: "bar" }), el("span", { class: "label", text: t("her.first") })));
@@ -268,6 +286,7 @@ function addHers(text, opts = {}) {
   if (text !== null) body.append(...markdown(text));
   r.content.append(body);
   append(r.node);
+  if (opts.emotion) setEmotion(r.node, opts.emotion, opts.intensity);
   return { ...r, body };
 }
 
@@ -763,7 +782,8 @@ function onPush(event, data) {
   }
   const time = data.replay ? undefined : clock();  // a replayed line's moment isn't known
   if (data.role === "user") addMine(String(data.text || ""), { time, source: data.source, origin: data.origin });
-  else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge" });
+  else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge",
+    emotion: data.emotion, intensity: data.intensity });
 }
 
 /* ---------- turns, commands, directives ---------- */
@@ -832,6 +852,7 @@ async function turn(text, queuedRow, waited = false) {
   if (!her.think.text && result.thinking) setThink(her.think, String(result.thinking));  // nothing streamed: the whole of it
   if (result.state) absorb(result.state);
   showFace((result.state && result.state.theme) ?? st.server.theme, result.emotion, result.intensity);
+  setEmotion(her.node, result.emotion, result.intensity);
   stick();
 }
 
@@ -1039,6 +1060,7 @@ function onKey(ev) {
 /* ---------- start ---------- */
 async function start() {
   try { S = await (await fetch("strings.en.json")).json(); } catch (e) { S = {}; }
+  try { st.emoji = await (await fetch("/emoji", { headers: headers() })).json(); } catch (e) { st.emoji = {}; }
   document.title = t("window.title");
   try {
     const saved = parseInt(localStorage.getItem(CHAT_SIZE.store), 10);

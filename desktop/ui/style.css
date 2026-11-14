@@ -103,6 +103,7 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .who.her { color: var(--l-acc-text); }
 .who.cmd { color: var(--l-faint); }
 .time { font-size: var(--fs-time); color: var(--l-faint); font-variant-numeric: tabular-nums; }
+.emo { margin-top: 3px; font-size: 13px; line-height: 1.2; white-space: nowrap; cursor: default; }
 .source { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 5px; align-self: flex-start;
   border: 1px solid var(--l-hair); font-size: 10px; color: var(--l-muted); }
 .content { display: flex; flex-direction: column; gap: 10px; min-width: 0; }

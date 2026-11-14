@@ -211,3 +211,19 @@ def test_lumi_271_the_portrait_is_picked_and_served_locally(tmp_path):
         assert status == 404 and json.loads(body)["kind"] == "no_faces"
     finally:
         bare.stop()
+
+
+def test_lumi_276_the_emoji_map_is_served_locally():
+    from desktop.proxy import Proxy
+
+    server = FakeServer()
+    proxy = Proxy(Upstream(server.url, TOKEN), key=KEY, emoji={"joy": ["a", "b", "c"]})
+    proxy.start()
+    try:
+        status, headers, body = request(proxy, "GET", "/emoji")
+        assert status == 200 and json.loads(body) == {"joy": ["a", "b", "c"]}
+        assert request(proxy, "GET", "/emoji", key=False)[0] == 403
+        assert server.requests == []  # the map never comes from, nor goes to, the server
+    finally:
+        proxy.stop()
+        server.close()

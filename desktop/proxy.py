@@ -103,10 +103,12 @@ class Proxy:
 
     def __init__(self, upstream: Upstream, *, ui_dir: Path = UI_DIR, key: str | None = None,
                  client: httpx.Client | None = None, read_s: float = READ_S,
-                 events_read_s: float = EVENTS_READ_S, faces: Any = None) -> None:
+                 events_read_s: float = EVENTS_READ_S, faces: Any = None,
+                 emoji: dict[str, list[str]] | None = None) -> None:
         self.upstream = upstream
         self.ui_dir = ui_dir
         self.faces = faces  # v2.12.2: a desktop.faces.FacePicker over the client's own pack (None → no portrait)
+        self.emoji = emoji or {}  # LUMI-276: the TUI's emotion → emoji map, {emotion: [low, mid, high]}
         self.key = key or secrets.token_urlsafe(24)
         self.read_s = read_s
         self.events_read_s = events_read_s
@@ -283,6 +285,18 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             path = parts.path
             if not self._host_ok():
                 self._json(403, "forbidden", "a foreign Host")
+                return
+            if path == "/emoji":  # LUMI-276: the TUI's emoji map, read by the shell (the key; never forwarded)
+                if not self._key_ok():
+                    self._json(403, "forbidden", "a request without this window's key")
+                    return
+                body = json.dumps(proxy.emoji, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
                 return
             if path == "/face":  # the page asks which portrait; the key like /v1 (nothing leaves this machine)
                 if not self._key_ok():

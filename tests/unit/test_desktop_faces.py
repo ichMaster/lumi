@@ -60,3 +60,15 @@ def test_a_folder_not_named_by_intensity_picks_at_random_without_a_repeat(pack):
 def test_no_pack_means_no_portrait(tmp_path):
     picker = FacePicker(tmp_path / "nowhere")
     assert not picker.available and picker.pick("quiet", "calm", 0.5) is None
+
+
+def test_lumi_276_the_emoji_table_follows_the_authored_map(tmp_path):
+    from core.emotion import Emotion
+    from desktop.faces import emoji_table
+
+    authored = tmp_path / "emoji.md"
+    authored.write_text("# mine\njoy = A | B | C\ncalm = X\nbogus = Z\n", encoding="utf-8")
+    table = emoji_table(authored)
+    assert table["joy"] == ["A", "B", "C"] and table["calm"] == ["X", "X", "X"]
+    assert set(table) == {e.value for e in Emotion}  # total over the enum; an unknown name is skipped
+    assert emoji_table(tmp_path / "missing.md")["sad"][0]  # no file → the built-in map

@@ -70,3 +70,12 @@ class FacePicker:
             return None
         used = rel.split("/")[0] if "/" in rel else None
         return Pick(rel=rel, theme=used, emotion=name, band=band)
+
+
+def emoji_table(path: Path) -> dict[str, list[str]]:
+    """The TUI's authored emotion → emoji map (``core/emoji.md``, ``LUMI_EMOJI_PATH``) as JSON-ready data:
+    ``{emotion: [low, mid, high]}``, total over the enum (LUMI-276 — her emotion under each reply)."""
+    from core.emoji import load_emoji_map
+
+    return {emotion.value: list(row) for emotion, row in load_emoji_map(path).items()}
+
