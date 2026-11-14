@@ -36,3 +36,13 @@ def test_the_page_is_only_desktop_ui_and_the_token_stays_in_the_proxy():
     assert set(px.PASS_RESPONSE) == {"Content-Type", "Cache-Control"}  # nothing else of the server reaches the page
     up = px.Upstream("http://192.168.1.197:8766", "TOKEN-never-shown-0123456789")
     assert "TOKEN-never-shown" not in repr(up) and "TOKEN-never-shown" not in repr(px.Proxy(up))
+
+
+def test_face_files_never_ride_the_server_api():
+    """v2.12.2: the portrait is picked and served by the proxy from the client's own pack — the forwarded routes
+    stay exactly the page's /v1 set, and nothing about faces is among them."""
+    assert set(px.FORWARDED) == PAGE_ROUTES
+    assert not any("face" in path for _, path in px.FORWARDED)
+    from desktop import faces
+
+    assert faces.BY_BAND == {"low": "02.png", "mid": "01.png", "high": "03.png"}  # the place-faces naming

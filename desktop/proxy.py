@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import httpx
 
@@ -103,9 +103,10 @@ class Proxy:
 
     def __init__(self, upstream: Upstream, *, ui_dir: Path = UI_DIR, key: str | None = None,
                  client: httpx.Client | None = None, read_s: float = READ_S,
-                 events_read_s: float = EVENTS_READ_S) -> None:
+                 events_read_s: float = EVENTS_READ_S, faces: Any = None) -> None:
         self.upstream = upstream
         self.ui_dir = ui_dir
+        self.faces = faces  # v2.12.2: a desktop.faces.FacePicker over the client's own pack (None → no portrait)
         self.key = key or secrets.token_urlsafe(24)
         self.read_s = read_s
         self.events_read_s = events_read_s
@@ -191,6 +192,44 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(data)
 
+        # --- the portrait (v2.12.2): picked here, served from the local pack — never the server's ----------------
+        def _face(self, query: str) -> None:
+            picker = proxy.faces
+            if picker is None or not picker.available:
+                self._json(404, "no_faces", "this client has no face pack")
+                return
+            q = {k: v[0] for k, v in parse_qs(query).items() if v}
+            try:
+                intensity = float(q["intensity"]) if q.get("intensity") else None
+            except ValueError:
+                intensity = None
+            got = picker.pick(q.get("theme") or None, q.get("emotion") or "calm", intensity)
+            if got is None:
+                self._json(404, "no_faces", "no picture for this state in the pack")
+                return
+            body = json.dumps({"src": "/faces/" + quote(got.rel), "theme": got.theme, "emotion": got.emotion,
+                               "band": got.band}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _face_file(self, path: str) -> None:
+            picker = proxy.faces
+            target = ui_file(path[len("/faces/"):], picker.faces_dir) if picker is not None else None
+            if target is None or target.suffix.lower() != ".png":
+                self._json(404, "not_found", "no such portrait")
+                return
+            data = target.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            self.wfile.write(data)
+
         # --- the forwarding --------------------------------------------------------------------------------
         def _forward(self, method: str, path: str, query: str) -> None:
             up = proxy.upstream
@@ -244,6 +283,20 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             path = parts.path
             if not self._host_ok():
                 self._json(403, "forbidden", "a foreign Host")
+                return
+            if path == "/face":  # the page asks which portrait; the key like /v1 (nothing leaves this machine)
+                if not self._key_ok():
+                    self._json(403, "forbidden", "a request without this window's key")
+                elif method != "GET":
+                    self._json(405, "not_allowed", "only GET")
+                else:
+                    self._face(parts.query)
+                return
+            if path.startswith("/faces/"):  # an <img> can't send the key; the Host check above still holds
+                if method != "GET":
+                    self._json(405, "not_allowed", "only GET")
+                else:
+                    self._face_file(path)
                 return
             if path.startswith("/v1/") or path == "/v1":
                 if not self._key_ok():

@@ -23,9 +23,11 @@ def main(argv: list[str] | None = None) -> int:
         print(MISSING, file=sys.stderr)
         return 1
     from core.config import load_config
+    from desktop.faces import FacePicker
     from desktop.proxy import Proxy, upstream_from
 
-    proxy = Proxy(upstream_from(load_config()))
+    cfg = load_config()
+    proxy = Proxy(upstream_from(cfg), faces=FacePicker.for_pack(cfg.faces_dir))  # v2.12.2: her local portraits
     url = proxy.start()
     try:
         webview.create_window(TITLE, url, width=SIZE[0], height=SIZE[1], min_size=MIN_SIZE)

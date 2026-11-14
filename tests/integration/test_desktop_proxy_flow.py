@@ -172,3 +172,42 @@ def test_review_4_a_malformed_length_gets_an_answer(world):
         assert head.split(b" ")[1] == b"400", length
         assert json.loads(body)["kind"] == "bad_request"
     assert server.requests == []
+
+
+def test_lumi_271_the_portrait_is_picked_and_served_locally(tmp_path):
+    from PIL import Image
+
+    from desktop.faces import FacePicker
+    from desktop.proxy import Proxy
+
+    pack = tmp_path / "faces"
+    for n in ("01", "02", "03"):
+        (pack / "quiet" / "sad").mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (4, 4)).save(pack / "quiet" / "sad" / f"{n}.png")
+    Image.new("RGB", (4, 4)).save(pack / "calm.png")
+    (pack / "notes.txt").write_text("not a picture")
+    (tmp_path / "secret.png").write_bytes(b"outside the pack")
+    server = FakeServer()
+    proxy = Proxy(Upstream(server.url, TOKEN), key=KEY, faces=FacePicker(pack))
+    proxy.start()
+    try:
+        status, _, body = request(proxy, "GET", "/face?theme=quiet&emotion=sad&intensity=0.9")
+        assert status == 200 and json.loads(body) == {"src": "/faces/quiet/sad/03.png", "theme": "quiet",
+                                                       "emotion": "sad", "band": "high"}
+        status, headers, png = request(proxy, "GET", "/faces/quiet/sad/03.png", key=False)
+        assert status == 200 and headers["content-type"] == "image/png" and png.startswith(b"\x89PNG")
+        assert request(proxy, "GET", "/face?emotion=sad", key=False)[0] == 403  # the key, like /v1
+        assert request(proxy, "GET", "/face?emotion=sad", headers={"Host": f"evil.example:{proxy.port}"})[0] == 403
+        for path in ("/faces/../secret.png", "/faces/%2e%2e/secret.png", "/faces/notes.txt", "/faces/nope.png"):
+            assert request(proxy, "GET", path, key=False)[0] == 404, path
+        assert server.requests == []  # no portrait question ever reaches the server
+    finally:
+        proxy.stop()
+        server.close()
+    bare = Proxy(Upstream(None, ""), key=KEY)
+    bare.start()
+    try:
+        status, _, body = request(bare, "GET", "/face?emotion=calm")
+        assert status == 404 and json.loads(body)["kind"] == "no_faces"
+    finally:
+        bare.stop()
