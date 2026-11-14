@@ -19,7 +19,10 @@ install prod once, migrate her memory once, then update / roll back with one scr
 >   `deploy_agent.py confirm vA.B.C`, then archives her data (the box's `~/lumi/prod/backups/`, the naming below)
 >   and deploys with a smoke and an automatic rollback; `deploy_agent.py rollback prod` is the one-command rollback
 >   ([LINUX_DEPLOY §Deploys](LINUX_DEPLOY.md)). `prod_update.py` below now only
->   moves this Mac client's checkout.
+>   moves this Mac client's checkout — and **every prod deploy runs it** with the same tag right after the box's
+>   `confirm` (the owner's rule, 2026-11-14). The client moved from `v2.6.0` to `v2.12.1` on 2026-11-14; its
+>   `.env` became `~/lumi/prod/settings.yaml` + `secrets.yaml` (`.env.migrated` kept), and `./lumi-desktop` there
+>   opens the window on prod.
 > - **Back to the Mac** (if the box fails her): stop the box's prod services, copy the box's `~/lumi/prod/data`
 >   back here if it is newer than the fallback (it is, after any conversation), restore
 >   `~/lumi/prod/.env.bak-premove-20261020-0118`, start the Mac prod and its Telegram daemons — never both machines'
