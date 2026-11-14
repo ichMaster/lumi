@@ -93,3 +93,15 @@ def test_the_builder_refuses_a_checkout_without_the_window(tmp_path, capsys, mon
     monkeypatch.setattr(mk.shutil, "which", lambda name: "/usr/bin/iconutil")
     assert mk.main(["--app-dir", str(tmp_path), "--dest", str(tmp_path / "out")]) == 1
     assert "v2.12.1+" in capsys.readouterr().err and not (tmp_path / "out").exists()
+
+
+def test_review_3_the_log_rotates_past_its_cap(tmp_path):
+    text = mk.launcher(Path("/Users/me/lumi/prod/app"))
+    assert f'-gt {mk.LOG_MAX} ]; then mv -f "$LOG" "$LOG.1"' in text and '>>"$LOG" 2>&1' in text
+    if shutil.which("bash"):  # run the rotation line alone against a big and a small log
+        rotate = next(line for line in text.splitlines() if line.startswith("if [ -f"))
+        for size, rotated in ((mk.LOG_MAX + 1, True), (10, False)):
+            log = tmp_path / f"Lili-{size}.log"
+            log.write_bytes(b"x" * size)
+            subprocess.run(["bash", "-c", f'LOG="{log}"; {rotate}'], check=True)
+            assert (tmp_path / f"Lili-{size}.log.1").exists() is rotated and log.exists() is not rotated

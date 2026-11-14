@@ -44,6 +44,7 @@ TILE_RADIUS = 185
 DEFAULT_CROP = (0.55, 0.30, 0.62)  # centre x, centre y, side
 ICONSET = [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), (256, 1), (256, 2), (512, 1), (512, 2)]
 LOG = "~/Library/Logs/Lili.log"
+LOG_MAX = 1_000_000  # the launcher rotates the log past this (code review #3)
 
 
 def crop_box(width: int, height: int, crop: tuple[float, float, float]) -> tuple[int, int, int, int]:
@@ -100,7 +101,9 @@ export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 RES="$(cd "$(dirname "$0")/../Resources" && pwd)"
 cd {target} || exit 1
 mkdir -p "$HOME/Library/Logs"
-exec uv run --extra desktop python "$RES/launch.py" >>"$HOME/Library/Logs/Lili.log" 2>&1
+LOG="$HOME/Library/Logs/Lili.log"
+if [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt {LOG_MAX} ]; then mv -f "$LOG" "$LOG.1"; fi  # one generation kept
+exec uv run --extra desktop python "$RES/launch.py" >>"$LOG" 2>&1
 """
 
 
