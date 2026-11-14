@@ -173,8 +173,15 @@ proxy's own, so another app or a web page on the Mac can't borrow the token. No 
 **v2.12.1 (the chat):** streamed replies, her unasked lines ("wrote first"), lines from Telegram and the terminal,
 slash commands, `%directives`, `/new`, `/web`, a queue while she answers, the status line (DEV when not prod; the
 details panel; text size ⌘− / ⌘+), and a clean reconnect: the server down → a banner with a countdown, back → the
-missed lines under "While offline". The interface is English; her words stay Ukrainian. Not yet: the portrait, the
-think block, the quiet-thoughts strip and pictures (v2.12.2); voice, dictation and `/image` from a file (the TUI).
+missed lines under "While offline". The interface is English; her words stay Ukrainian.
+
+**v2.12.2 (the face & state panel):** her portrait beside the chat changes with each reply's emotion — the file chosen
+by intensity from **this client's own face pack** (`viewer.faces_dir`, default `viewer/faces`; the window's proxy
+serves it on `127.0.0.1`, no face crosses the network) — with the caption, the theme of the day, the closeness meter
+and the mood of the day. While she thinks, her inner voice streams into a block above her reply (Details → Inner
+voice: show / collapse / hide). Her quiet thoughts gather in a strip under the mood, never in the chat. Below 760 px
+the panel becomes a strip at the top. Not yet: pictures she sends still arrive only in Telegram (v4.3); voice,
+dictation and `/image` from a file stay in the TUI.
 
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another
