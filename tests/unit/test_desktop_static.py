@@ -116,5 +116,41 @@ def test_lumi_272_the_panel_follows_every_driver_and_both_widths():
     assert 'event === "turn"' in js and "showFace(data.theme" in js  # any client's turn
     assert "showFace((result.state && result.state.theme)" in js  # this window's own turn
     assert "state.last_emotion" in js and "state.theme !== before.theme" in js  # connect + a new day's theme
-    assert 'matchMedia("(max-width: 759px)")' in js and 'NARROW.addEventListener("change", renderPanel)' in js
+    assert 'matchMedia("(max-width: 759px)")' in js and 'NARROW.addEventListener("change", () => { renderPanel(); stick(true); })' in js
     assert '"aria-label": `${t("panel.closeness")} ${of}`' in js  # the meter reads "Closeness N of 5"
+
+
+# --- v2.12.2 LUMI-273: the think block + the quiet-thoughts strip ---------------------------------------------------
+
+
+def test_lumi_273_the_think_frames_fill_the_block_in_three_modes():
+    js = _js()
+    stream = js[js.index("async function streamTurn("):js.index("function brokenReply(")]
+    assert 'frame.event === "think"' in stream and "setThink(her.think" in stream
+    assert "result.thinking" in js  # nothing streamed → the done payload's thinking
+    assert 'THINK_MODES = ["shown", "collapsed", "hidden"]' in js
+    assert 'THINK_FROM_SERVER = { open: "shown", debug: "collapsed", off: "hidden" }' in js
+    assert "block.override = null" in js and "localStorage.setItem(THINK_STORE" in js
+
+
+def test_lumi_273_thoughts_go_to_the_strip_never_the_chat():
+    js = _js()
+    body = js[js.index("function onThought("):js.index("function thoughtTime(")]
+    assert "unread: !data.replay" in body
+    for chat in ("addHers(", "addMine(", "addCommand(", "append("):
+        assert chat not in body
+    assert 'event === "thought"' in js and "onThought(data)" in js
+
+
+def test_lumi_273_the_replay_flag_decides_times_and_the_missed_count():
+    js = _js()
+    push = js[js.index("function onPush("):js.index("/* ---------- turns, commands, directives")]
+    assert "st.collectMissed && data.replay" in push and "data.replay ? undefined : clock()" in push
+
+
+def test_no_null_is_ever_handed_to_replace_children():
+    js = _js()
+    for call in re.findall(r"replaceChildren\(([^;]*)\);", js):
+        # a ternary's null as the call's last argument prints "null" (found live twice); a null inside a nested
+        # el(...) is dropped by el() and fine
+        assert not call.rstrip().endswith(": null"), call

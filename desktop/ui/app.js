@@ -19,7 +19,11 @@ const st = {
   server: {}, conn: "connecting", answering: false, queue: [], lastEventId: null, everOnline: false,
   retryIdx: 0, countdown: 0, wake: null, replaying: false, replayTimer: null, missed: [], restored: null,
   slash: { open: false, items: [], index: 0, dismissed: false }, detailsOpen: false, rows: 0, chatSize: 16,
+  thinkMode: null, thinkBlocks: [], thoughts: [], thoughtsOpen: false,  // v2.12.2
 };
+const THINK_STORE = "lumi.desktop.thinkMode";
+const THINK_MODES = ["shown", "collapsed", "hidden"];
+const THINK_FROM_SERVER = { open: "shown", debug: "collapsed", off: "hidden" };  // the state's think_show → a first default
 
 /* ---------- small helpers ---------- */
 const $ = (id) => document.getElementById(id);
@@ -376,9 +380,9 @@ function metaGrid(s) {
   const meter = el("div", { class: "meter", role: "img", "aria-label": `${t("panel.closeness")} ${of}`.trim() },
     ...[1, 2, 3, 4, 5].map((n) => el("span", { class: level && n <= level ? "on" : null })));
   return el("div", { class: "meta" },
-    el("div", { class: "cell" }, el("span", { class: "kicker", text: t("panel.theme") }), el("span", { class: "name", text: th.name }),
+    el("div", { class: "meta-cell" }, el("span", { class: "kicker", text: t("panel.theme") }), el("span", { class: "name", text: th.name }),
       th.sub ? el("span", { class: "sub", text: th.sub }) : null),
-    el("div", { class: "cell" }, el("span", { class: "kicker", text: t("panel.closeness") }),
+    el("div", { class: "meta-cell" }, el("span", { class: "kicker", text: t("panel.closeness") }),
       el("span", { class: "name" }, closenessName(level), level ? el("span", { class: "of", text: ` ${of}` }) : null), meter));
 }
 
@@ -431,6 +435,93 @@ function renderPanel() {
   }
   kids.push(el("div", { id: "thoughts" }));
   aside.replaceChildren(...kids);
+  renderThoughts();
+}
+
+/* ---------- the think block (v2.12.2): her inner voice above her reply ---------- */
+function thinkBlock(her) {
+  const block = { text: "", override: null, node: el("div", { class: "think", hidden: true }) };
+  her.content.insertBefore(block.node, her.body);  // above the text; empty and hidden until a think frame comes
+  st.thinkBlocks.push(block);
+  return block;
+}
+
+function setThink(block, text) {
+  block.text = text;
+  renderThink(block);
+}
+
+function renderThink(block) {
+  const mode = block.override || st.thinkMode || "collapsed";
+  block.node.hidden = !block.text || mode === "hidden";
+  if (block.node.hidden) { block.node.replaceChildren(); return; }
+  const open = mode === "shown";
+  const flip = () => { block.override = open ? "collapsed" : "shown"; renderThink(block); };
+  const head = el("button", { type: "button", class: "think-head", "aria-expanded": String(open), onclick: flip },
+    icon(open ? "chevron-down" : "chevron-right"), el("span", { class: "label", text: t("think.label") }),
+    open ? null : el("span", { class: "first", lang: "uk", text: block.text.replace(/\s+/g, " ").trim() }));
+  const parts = [head];  // never a null into replaceChildren — it would print as text
+  if (open) parts.push(el("div", { class: "think-text", lang: "uk", text: block.text }));
+  block.node.replaceChildren(...parts);
+  block.node.classList.toggle("open", open);
+}
+
+function setThinkMode(mode) {
+  st.thinkMode = THINK_MODES.includes(mode) ? mode : "collapsed";
+  try { localStorage.setItem(THINK_STORE, st.thinkMode); } catch (e) { /* the mode lasts this window */ }
+  for (const block of st.thinkBlocks) { block.override = null; renderThink(block); }  // a new global mode clears overrides
+  if (st.detailsOpen) renderDetails();
+}
+
+/* ---------- the quiet-thoughts strip (v2.12.2): her thoughts beside the portrait, never in the chat ---------- */
+function onThought(data) {
+  if (data.origin && data.origin === CLIENT_ID) return;  // this window's own %directive — shown from its response
+  st.thoughts.unshift({ kind: String(data.kind || ""), text: String(data.text || ""), emotion: String(data.emotion || ""),
+    when: data.when, unread: !data.replay });  // a replayed thought is history, never "new"
+  if (st.thoughts.length > 100) st.thoughts.length = 100;
+  renderThoughts();
+}
+
+function thoughtTime(when) {
+  const d = when ? new Date(when) : null;
+  return d && !Number.isNaN(d.getTime()) ? clock(d) : "";
+}
+
+function thoughtItem(th) {
+  const kind = (S.thoughtKinds && S.thoughtKinds[th.kind]) || th.kind;
+  return el("li", { class: "thought" },
+    el("div", { class: "thought-meta" }, th.unread ? el("span", { class: "sq", "aria-hidden": "true" }) : null,
+      el("span", { class: "kind", text: kind }), el("span", { text: thoughtTime(th.when) })),
+    el("p", { class: "thought-text", lang: "uk", text: th.text }),
+    S.captions && S.captions[th.emotion] ? el("span", { class: "thought-cap", text: S.captions[th.emotion] }) : null);
+}
+
+function toggleThoughts() {
+  if (st.thoughtsOpen) for (const th of st.thoughts) th.unread = false;  // read once the list is closed after opening
+  st.thoughtsOpen = !st.thoughtsOpen;
+  renderThoughts();
+}
+
+function renderThoughts() {
+  const slot = $("thoughts");
+  const button = $("thoughts-button");
+  const unread = st.thoughts.filter((th) => th.unread).length;
+  const narrow = NARROW.matches;
+  if (button) {  // the narrow strip's cloud button + its unread badge
+    button.replaceChildren(st.thoughts.length ? el("button", { type: "button", class: "cloud",
+      "aria-expanded": String(st.thoughtsOpen), "aria-label": t("panel.thoughts.badge", { n: st.thoughts.length }), onclick: toggleThoughts },
+    icon("cloud"), unread ? el("span", { class: "badge", text: String(unread) }) : null) : "");
+  }
+  if (!slot) return;
+  if (!st.thoughts.length || st.rows === 0 || (narrow && !st.thoughtsOpen)) { slot.replaceChildren(); slot.className = ""; return; }
+  const shown = st.thoughtsOpen ? st.thoughts : st.thoughts.slice(0, 1);
+  slot.className = "thoughts";
+  slot.replaceChildren(
+    el("div", { class: "thoughts-head" }, el("span", { class: "kicker", text: t("panel.thoughts") }),
+      unread ? el("span", { class: "new", text: unread === 1 ? t("panel.thoughts.new.one") : t("panel.thoughts.new.many", { n: unread }) }) : null,
+      el("button", { type: "button", class: "toggle", "aria-expanded": String(st.thoughtsOpen), onclick: toggleThoughts,
+        text: st.thoughtsOpen ? t("panel.thoughts.collapse") : t("panel.thoughts.all", { n: st.thoughts.length }) })),
+    el("ul", { class: "thought-list" }, shown.map(thoughtItem)));
 }
 
 /* ---------- state from the server ---------- */
@@ -438,6 +529,7 @@ function absorb(state) {
   if (!state || typeof state !== "object") return;
   const before = st.server || {};
   st.server = state;
+  if (!st.thinkMode) st.thinkMode = THINK_FROM_SERVER[state.think_show] || "collapsed";  // only when none is kept
   if (!face.asked) {  // the first state: her last emotion in today's theme
     const last = state.last_emotion || {};
     showFace(state.theme, last.emotion || "calm", last.intensity);
@@ -495,7 +587,11 @@ function renderDetails() {
       el("span", { text: `${st.chatSize} px` }),
       el("button", { type: "button", text: "A+", "aria-label": "larger", onclick: () => setChatSize(st.chatSize + 1) })),
     el("span", { class: "hint-keys", text: "⌘ − / ⌘ +" }));
-  box.replaceChildren(grid, el("div", { class: "controls" }, size));
+  const voice = el("div", { class: "control" }, el("span", { class: "kicker", text: t("details.thinkMode") }),
+    el("div", { class: "seg", role: "group", "aria-label": t("details.thinkMode") }, THINK_MODES.map((m) =>
+      el("button", { type: "button", class: st.thinkMode === m ? "on" : null, "aria-pressed": String(st.thinkMode === m),
+        text: t(`think.modes.${m}`), onclick: () => setThinkMode(m) }))));
+  box.replaceChildren(grid, el("div", { class: "controls" }, voice, size));
 }
 
 function setChatSize(px) {
@@ -656,15 +752,16 @@ function backoff() {
 function onPush(event, data) {
   if (event === "state") { absorb(data.state); return; }
   if (event === "turn") { showFace(data.theme ?? st.server.theme, data.emotion, data.intensity); return; } // any client's turn
-  if (event !== "message") return; // "turn" and "thought" feed the portrait panel (v2.12.2)
+  if (event === "thought") { if (st.replaying) armReplay(REPLAY_QUIET_MS); onThought(data); return; }
+  if (event !== "message") return;
   if (data.origin && data.origin === CLIENT_ID) return; // our own line — shown from the response
   if (st.replaying) armReplay(REPLAY_QUIET_MS);
-  if (st.collectMissed) {
+  if (st.collectMissed && data.replay) {  // only what the server replays counts as missed
     if (!st.missedDivider) st.missedDivider = addDivider(t("divider.missed", { n: 0 }), true);
     st.missed.push(data);
     st.missedDivider.querySelector(".kicker").textContent = t("divider.missed", { n: st.missed.length });
   }
-  const time = st.replaying ? undefined : clock();
+  const time = data.replay ? undefined : clock();  // a replayed line's moment isn't known
   if (data.role === "user") addMine(String(data.text || ""), { time, source: data.source, origin: data.origin });
   else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge" });
 }
@@ -707,6 +804,7 @@ async function turn(text, queuedRow, waited = false) {
     return turn(text, null, true);
   };
   const her = addHers(null, { time: clock() });
+  her.think = thinkBlock(her);  // v2.12.2: her inner voice fills the wait
   const waiting = el("div", { class: "thinking" }, el("i"), el("i"), el("i"), el("span", { text: t("thinking") }));
   her.body.append(waiting);
   stick(true);
@@ -731,6 +829,7 @@ async function turn(text, queuedRow, waited = false) {
     }
   }
   her.body.replaceChildren(...markdown(result.reply));
+  if (!her.think.text && result.thinking) setThink(her.think, String(result.thinking));  // nothing streamed: the whole of it
   if (result.state) absorb(result.state);
   showFace((result.state && result.state.theme) ?? st.server.theme, result.emotion, result.intensity);
   stick();
@@ -751,11 +850,14 @@ async function streamTurn(body, her, waiting) {
       streamed.textContent = text;
       streamed.append(caret);
       stick();
+    } else if (frame.event === "think") {
+      setThink(her.think, her.think.text + String(frame.data.text || ""));  // v2.12.2: her inner voice as it comes
+      stick();
     } else if (frame.event === "done") {
       return frame.data;
     } else if (frame.event === "error") {
       throw new ApiError(500, "turn_error", String(frame.data.detail || ""));
-    } // "think" frames: the think block arrives with v2.12.2
+    }
   }
   return null; // the stream ended without an outcome — the caller asks the same turn_id the blocking way
 }
@@ -943,6 +1045,10 @@ async function start() {
     st.chatSize = Number.isFinite(saved) ? saved : CHAT_SIZE.default;
   } catch (e) { st.chatSize = CHAT_SIZE.default; }
   setChatSize(st.chatSize);
+  try {
+    const kept = localStorage.getItem(THINK_STORE);
+    if (THINK_MODES.includes(kept)) st.thinkMode = kept;
+  } catch (e) { /* none kept — the server's think_show gives the first default */ }
   const input = $("input");
   $("input-label").textContent = t("input.label");
   input.setAttribute("aria-label", t("input.label"));
@@ -958,7 +1064,7 @@ async function start() {
     if (ev.key === "-") { ev.preventDefault(); setChatSize(st.chatSize - 1); }
     else if (ev.key === "=" || ev.key === "+") { ev.preventDefault(); setChatSize(st.chatSize + 1); }
   });
-  NARROW.addEventListener("change", renderPanel);
+  NARROW.addEventListener("change", () => { renderPanel(); stick(true); });  // a new width: back to the newest line
   renderPanel();
   renderInput();
   renderStatus();

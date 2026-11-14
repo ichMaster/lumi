@@ -12,7 +12,7 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 
 .root { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--color-bg); color: var(--color-text); }
 .body { flex: 1; min-height: 0; display: flex; }
-.chat { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
 /* — the portrait panel (v2.12.2) — */
 .panel { flex: none; width: var(--l-panel); border-right: var(--rule) solid var(--color-divider); overflow-y: auto;
@@ -24,9 +24,9 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .caption-block { padding: 18px 24px 20px; display: flex; flex-direction: column; gap: 14px; }
 .caption { margin: 0; font: 800 var(--fs-caption)/1.08 var(--font-heading); letter-spacing: -.015em; text-wrap: balance; }
 .meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--l-hair); }
-.meta .cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.meta .cell:first-child { padding: 10px 12px 0 0; border-right: 1px solid var(--l-hair); }
-.meta .cell:last-child { padding: 10px 0 0 12px; }
+.meta .meta-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.meta .meta-cell:first-child { padding: 10px 12px 0 0; border-right: 1px solid var(--l-hair); }
+.meta .meta-cell:last-child { padding: 10px 0 0 12px; }
 .meta .name { font-size: 14px; font-weight: 600; }
 .meta .of, .meta .sub { font-size: 12px; line-height: 1.35; color: var(--l-faint); font-weight: 400; }
 .meter { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; max-width: 120px; margin-top: 6px; }
@@ -60,6 +60,36 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
   color: var(--l-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mood-row.open { white-space: normal; }
 .mood-row b { font-weight: 600; color: var(--color-text); }
+
+/* the think block (v2.12.2): her inner voice above her reply */
+.think { display: flex; flex-direction: column; gap: 6px; }
+.think-head { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--l-faint); }
+.think-head:hover { color: var(--color-text); }
+.think-head svg.icon { width: 12px; height: 12px; }
+.think-head .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+.think-head .first { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.think-text { font-size: 14px; line-height: 1.5; color: var(--l-faint); white-space: pre-wrap; }
+
+/* the quiet-thoughts strip (v2.12.2) */
+.thoughts { border-top: var(--rule) solid var(--color-divider); padding: 14px 24px 20px; }
+.thoughts-head { display: flex; align-items: center; gap: 10px; }
+.thoughts-head .new { font-size: 11px; font-weight: 600; color: var(--l-acc-text); }
+.thoughts-head .toggle { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--l-acc-text); }
+.thoughts-head .toggle:hover { color: var(--color-text); }
+.thought-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.thought { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-top: 1px solid var(--l-hair); }
+.thought:first-child { border-top: 0; }
+.thought-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--l-faint); }
+.thought-meta .sq { width: 6px; height: 6px; background: var(--color-accent); }
+.thought-meta .kind { font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.thought-text { margin: 0; font-size: 14px; line-height: 1.45; color: var(--l-muted); }
+.thought-cap { font-size: 12px; color: var(--l-faint); }
+.cloud { position: relative; width: 44px; height: 44px; display: grid; place-items: center; }
+.cloud svg.icon { width: 20px; height: 20px; }
+.cloud .badge { position: absolute; top: 4px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; display: grid;
+  place-items: center; background: var(--color-accent); color: var(--color-bg); font-size: 10px; font-weight: 800; }
+.panel.narrow .thoughts { padding: 10px 16px 14px; }
+.seg button.on { background: var(--color-accent); color: var(--color-bg); }
 
 /* — the message list — */
 .list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 28px 40px 24px; }
