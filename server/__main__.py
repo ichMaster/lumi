@@ -237,7 +237,11 @@ def agora_space_of(cfg, core):
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         housekeeping_llm=build_space_llm(cfg),  # v3.2: the room's digest and gists on a client of their own
         today_lines=cfg.agora_today_lines, today_digest_words=cfg.agora_today_digest_words,
-        gist_words=cfg.agora_gist_words)
+        gist_words=cfg.agora_gist_words,
+        # v3.2: the space recipe — her day (a read of the core's mood), recall over the room in his recall's budget,
+        # his real names read «Ich» in the room's prompt
+        mood=lambda: core.mood, private_names=cfg.agora_private_names,
+        recall_k=cfg.rag_k, recall_floor=cfg.rag_floor, recall_max_chars=cfg.rag_max_chars)
 
 
 SPACE_HOUSEKEEPING_S = 60.0  # v3.2: how often the room's digest and day gists are brought up to date
