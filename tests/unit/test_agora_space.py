@@ -273,3 +273,41 @@ def test_a_long_room_line_is_cut_in_the_prompt_but_kept_whole(tmp_path):
     transcript = llm.calls[0][1][0]["content"]
     assert len(transcript) < PROMPT_LINE_MAX + 500 and "слово…" in transcript
     assert space.store.get("agora", "$long", "user").text == article  # the store keeps the line whole
+
+
+def test_the_stop_waits_for_a_room_turn_in_flight(tmp_path):
+    # code review #4: closing the store under a running turn failed it on a closed database (a 500)
+    hold = threading.Event()
+    space = _space(tmp_path, FakeRoomModel(hold=hold))
+    results: list = []
+    runner = threading.Thread(target=lambda: results.append(space.turn("Ада", "Лілі?", "$1")))
+    runner.start()
+    assert space._llm.entered.wait(5)
+    closer = threading.Thread(target=space.close)
+    closer.start()
+    closer.join(0.2)
+    assert closer.is_alive()  # the close waits for the turn
+    hold.set()
+    runner.join(5)
+    closer.join(5)
+    assert results and results[0].outcome == "reply"
+    reopened = SqliteSpaceStore(tmp_path / "spaces.sqlite")
+    assert reopened.get("agora", "$1", "lili") is not None  # her reply landed before the store closed
+
+
+def test_the_stop_never_hangs_on_a_stuck_turn(tmp_path):
+    hold = threading.Event()
+    space = _space(tmp_path, FakeRoomModel(hold=hold))
+    runner = threading.Thread(target=lambda: _swallow(space.turn, "Ада", "Лілі?", "$1"))
+    runner.start()
+    assert space._llm.entered.wait(5)
+    space.close(wait_s=0.05)  # returns: the wait is bounded
+    hold.set()
+    runner.join(5)
+
+
+def _swallow(fn, *args):
+    try:
+        fn(*args)
+    except Exception:  # noqa: BLE001 — the store is closed under it; the stop already went on
+        pass

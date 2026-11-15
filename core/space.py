@@ -384,8 +384,19 @@ class AgoraSpace:
 
             logging.getLogger("lumi.space").warning("logging the room's usage failed", exc_info=True)
 
-    def close(self) -> None:
-        self.store.close()
+    def close(self, wait_s: float | None = None) -> None:
+        """Close the room's store at the stop — after a room turn still in flight ends (bounded by its budget plus
+        a grace), so a redeploy never pulls the database out from under it (code review #4)."""
+        got = self._turn_lock.acquire(timeout=self.timeout_s + 2.0 if wait_s is None else wait_s)
+        if not got:
+            import logging
+
+            logging.getLogger("lumi.space").warning("a room turn was still running at the stop — closing anyway")
+        try:
+            self.store.close()
+        finally:
+            if got:
+                self._turn_lock.release()
 
 
 def build_space_llm(cfg: object) -> object:
