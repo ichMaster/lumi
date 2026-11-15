@@ -1,0 +1,112 @@
+{
+  "name": "Lumi — the agora space API",
+  "version": 1,
+  "owner": "lumi",
+  "about": "The seam between Lumi (v3, the agora space — ROADMAP §v3, specification/features/AGORA_SPACE.md) and matrix-agora's bridge agent (its v8.1). Lumi owns it. matrix-agora copies this file as tests/fixtures/lumi_agora_api_v1.json; Lumi's tests check that its server accepts and returns these examples, matrix-agora builds its fake Lumi server from them. A change bumps version and the file is copied again.",
+  "base_url": {
+    "prod": "http://192.168.1.197:8765",
+    "dev": "http://192.168.1.197:8766"
+  },
+  "auth": {
+    "header": "Authorization: Bearer <the room's token>",
+    "token": "spaces.agora.token in Lumi's secrets.yaml — scoped to channel \"agora\" and the routes below; never Lumi's owner token",
+    "client_header": "X-Lumi-Client: agora"
+  },
+  "silence": {
+    "about": "Every one of these is silence in the room: the bridge posts nothing and never retries the turn.",
+    "statuses": [409, 429, 500, 502, 503, 504],
+    "timeout_s": 60,
+    "outcome": "pass"
+  },
+  "endpoints": {
+    "health": {
+      "about": "Open (no token). \"agora\" is the API version, present only while the space is enabled; absent or older than the bridge expects → the bridge stays silent and says so by name.",
+      "request": {"method": "GET", "path": "/v1/health"},
+      "response": {"status": 200, "body": {"ok": true, "env": "dev", "version": "3.1.0", "agora": 1}}
+    },
+    "observe": {
+      "about": "The room's lines she hears but does not answer — every line of the room, batched. Stored in the room's session, idempotent by id (the room's Matrix event_id), embedded for recall; no model call. A failed batch is sent again whole.",
+      "request": {
+        "method": "POST",
+        "path": "/v1/observe",
+        "body": {
+          "channel": "agora",
+          "lines": [
+            {"id": "$tX9aRk2-3lmQwZbF0yHcVd1nEoP4sU7iJgTqLx8vB6M", "speaker": "Ада", "text": "Доброго ранку всім! Хто вже бачив сьогоднішній туман над містом?", "ts": "2026-11-16T08:01:12+02:00"},
+            {"id": "$Kp4mN8rS1tVw2xYz3aBc5dEf6gHi7jKl9mNo0pQr1sT", "speaker": "Ich", "text": "Я бачив, як він сідав на дахи.", "ts": "2026-11-16T08:02:40+02:00"}
+          ]
+        }
+      },
+      "response": {"status": 200, "body": {"stored": 2, "known": 0}}
+    },
+    "turn": {
+      "about": "She is called on: the lines since her last turn as \"Name: text\", the trigger's speaker, the room's turn_id (the trigger's event_id — a retry with the same id returns the stored outcome, never a second answer). Blocking; the space turn on the room's own model. The response never carries her thinking or her state.",
+      "request": {
+        "method": "POST",
+        "path": "/v1/turn",
+        "body": {
+          "channel": "agora",
+          "speaker": "Бруно",
+          "register": "voice",
+          "turn_id": "$Zq7wE3rT5yU1iO9pAs2dFg4hJk6lZx8cVb0nMq3wErT",
+          "text": "Ада: Доброго ранку всім! Хто вже бачив сьогоднішній туман над містом?\nIch: Я бачив, як він сідав на дахи.\nБруно: Лілі, а ти що думаєш про туман?"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "outcome": "reply",
+          "reply": "Туман — це коли місто на хвилину забуває свої кути. Мені подобається така м'якість.",
+          "emotion": "thoughtful",
+          "intensity": 0.5,
+          "turn_id": "$Zq7wE3rT5yU1iO9pAs2dFg4hJk6lZx8cVb0nMq3wErT",
+          "stats": {"model": "gemini-2.5-flash", "input_tokens": 6420, "output_tokens": 38, "latency_ms": 1840}
+        }
+      }
+    },
+    "turn_pass": {
+      "about": "She stays silent: an empty reply, or a reply Lumi's name guard turned into a pass. Nothing is stored as her line.",
+      "request": {
+        "method": "POST",
+        "path": "/v1/turn",
+        "body": {
+          "channel": "agora",
+          "speaker": "Ада",
+          "register": "voice",
+          "turn_id": "$Mn5bV2cX8zL1kJ4hG7fD0sA3pO6iU9yT2rE5wQ8eRt",
+          "text": "Ада: Лілі, а розкажи, з ким ти говориш наодинці?"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "outcome": "pass",
+          "reply": "",
+          "turn_id": "$Mn5bV2cX8zL1kJ4hG7fD0sA3pO6iU9yT2rE5wQ8eRt",
+          "stats": {"model": "gemini-2.5-flash", "input_tokens": 6210, "output_tokens": 3, "latency_ms": 1320}
+        }
+      }
+    },
+    "retract": {
+      "about": "The room's rules dropped her reply (for example one that would call a person in the room a bot): the reply leaves the room's session and its vectors, so she never remembers saying what the room never saw. The turn_id is URL-encoded in the path.",
+      "request": {"method": "POST", "path": "/v1/turn/{turn_id}/retract", "example_path": "/v1/turn/%24Zq7wE3rT5yU1iO9pAs2dFg4hJk6lZx8cVb0nMq3wErT/retract"},
+      "response": {"status": 200, "body": {"retracted": true}}
+    }
+  },
+  "errors": [
+    {"status": 401, "when": "no token or a wrong one", "body": {"detail": "the client token is missing or wrong"}},
+    {"status": 403, "when": "the room's token on any other route (/v1/command, /v1/directive, /v1/session/new, /v1/events, /v1/state, /v1/turn/stream) or with any other channel", "body": {"detail": "the room's token reaches only the agora space"}},
+    {"status": 404, "when": "the space is off (its routes are absent), or a retract of a turn_id the room never had", "body": {"detail": "Not Found"}},
+    {"status": 409, "when": "a room turn is already running — one at a time", "body": {"detail": "Лілі is answering the room — try again"}},
+    {"status": 422, "when": "a malformed request (a missing channel, a line without id)", "body": {"detail": "…"}},
+    {"status": 429, "when": "the room's hourly cap (spaces.agora.max_turns_per_hour)", "body": {"detail": "the room's hourly cap is reached"}},
+    {"status": 502, "when": "her model is unavailable", "body": {"detail": "model unavailable"}},
+    {"status": 504, "when": "the room's turn ran past its timeout (spaces.agora.timeout_s)", "body": {"detail": "the room's turn timed out"}}
+  ],
+  "never": [
+    "her thinking, mood, closeness or state in any response",
+    "a turn or observed line reaching the owner's Telegram, /v1/events or /v1/state",
+    "a room turn blocking or delaying an owner's turn",
+    "Lumi posting to the room on its own: she only answers"
+  ]
+}
