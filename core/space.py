@@ -208,6 +208,7 @@ GIST_SYSTEM = (
     "{words} слів, лише сам підсумок, без вступу."
 )
 GIST_MAX_LINES = 200  # a day's lines beyond its digest fed to the gist, at most (the newest)
+HK_BACKOFF_S = (300.0, 900.0, 3600.0)  # a failed or empty housekeeping job waits 5, 15, then 60 min (review #1)
 
 
 def speaker_problem(speaker: object) -> str | None:
@@ -328,6 +329,7 @@ class AgoraSpace:
         self._recall_k = max(0, int(recall_k))
         self._recall_floor = float(recall_floor)
         self._recall_max_chars = max(0, int(recall_max_chars))
+        self._hk_backoff: dict[str, tuple[int, float]] = {}  # job → (failures, monotonic time it may run again)
 
     # --- hearing --------------------------------------------------------------------------------------------
     def _tz(self):
@@ -557,25 +559,39 @@ class AgoraSpace:
         done: list[str] = []
         today = now.astimezone(self._tz()).date() if getattr(now, "tzinfo", None) else now.date()
         sid = self.today_session(now)
-        if sid is not None:
+        if sid is not None and self._hk_ready(f"digest {sid}"):
             try:
                 if self._digest_due(sid):
-                    self._write_digest(sid)
-                    done.append(f"digest {sid}")
-            except Exception:  # noqa: BLE001 — retried on the next tick
+                    self._hk_result(f"digest {sid}", self._write_digest(sid), done)
+            except Exception:  # noqa: BLE001 — retried after its backoff
                 log.warning("the room's running digest failed", exc_info=True)
+                self._hk_result(f"digest {sid}", False, done)
         have = {g.day for g in self.store.gists(self.channel)}
         since = (today - timedelta(days=7)).isoformat()
         days = sorted({self._day_of(s) for s in self.store.session_ids(self.channel)})
         for day in days:
-            if not day or day >= today.isoformat() or day < since or day in have:
+            if not day or day >= today.isoformat() or day < since or day in have or not self._hk_ready(f"gist {day}"):
                 continue
             try:
-                if self._write_gist(day):
-                    done.append(f"gist {day}")
+                self._hk_result(f"gist {day}", self._write_gist(day), done)
             except Exception:  # noqa: BLE001
                 log.warning("the room's day gist for %s failed", day, exc_info=True)
+                self._hk_result(f"gist {day}", False, done)
         return done
+
+    def _hk_ready(self, job: str) -> bool:
+        """Whether a housekeeping job may run now — a failed or empty one waits its backoff (code review #1)."""
+        entry = self._hk_backoff.get(job)
+        return entry is None or self._now_s() >= entry[1]
+
+    def _hk_result(self, job: str, ok: bool, done: list[str]) -> None:
+        if ok:
+            self._hk_backoff.pop(job, None)
+            done.append(job)
+            return
+        failures = self._hk_backoff.get(job, (0, 0.0))[0] + 1
+        wait = HK_BACKOFF_S[min(failures, len(HK_BACKOFF_S)) - 1]
+        self._hk_backoff[job] = (failures, self._now_s() + wait)
 
     def _day_of(self, session_id: str) -> str:
         rest = session_id[len(self.channel) + 1:]
@@ -588,7 +604,7 @@ class AgoraSpace:
         upto = digest.upto if digest else 0
         return len(older) - upto >= self.today_lines
 
-    def _write_digest(self, sid: str) -> None:
+    def _write_digest(self, sid: str) -> bool:
         lines = self.store.session_lines(self.channel, sid)
         older = lines[:-self.today_lines]
         digest = self.store.get_digest(self.channel, sid)
@@ -599,6 +615,7 @@ class AgoraSpace:
         text = cut_words(self._hk_reply(system, user, sid), self.today_digest_words)
         if text:
             self.store.set_digest(SpaceDigest(self.channel, sid, text, len(older)))
+        return bool(text)
 
     def _write_gist(self, day: str) -> bool:
         parts: list[str] = []

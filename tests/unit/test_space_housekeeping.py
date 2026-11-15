@@ -116,13 +116,15 @@ def test_the_gist_folds_the_days_digest(tmp_path):
     assert user.startswith("Конспект частини дня:\n" + hk.text) and "репліка 25" in user and "репліка 3\n" not in user
 
 
-def test_a_model_error_writes_nothing_and_the_next_tick_retries(tmp_path):
+def test_a_model_error_writes_nothing_and_is_retried_after_its_backoff(tmp_path):
     hk = FakeHousekeeper(error=LLMError("down"))
-    space = _space(tmp_path, hk)
+    clock = [0.0]
+    space = _space(tmp_path, hk, monotonic=lambda: clock[0])
     space.observe(_lines(40))
     assert space.housekeep(DAY) == []
     assert space.store.get_digest("agora", "agora-2026-11-16") is None
     hk.error = None
+    clock[0] = 301.0  # past the first 5-minute backoff (code review #1)
     assert space.housekeep(DAY) == ["digest agora-2026-11-16"]
 
 
@@ -180,3 +182,35 @@ def test_the_digest_round_trip(tmp_path):
     store.set_digest(SpaceDigest("agora", "agora-2026-11-16", "друге", 40))  # overwritten as the session grows
     assert store.get_digest("agora", "agora-2026-11-16") == SpaceDigest("agora", "agora-2026-11-16", "друге", 40)
     assert store.get_digest("інший", "agora-2026-11-16") is None
+
+
+def test_a_failing_job_backs_off_instead_of_retrying_every_tick(tmp_path):
+    # code review #1: a down model (or an empty answer) used to cost a call every 60 s, forever
+    hk = FakeHousekeeper(error=LLMError("down"))
+    clock = [0.0]
+    space = _space(tmp_path, hk, monotonic=lambda: clock[0])
+    space.observe(_lines(40))
+    assert space.housekeep(DAY) == [] and len(hk.calls) == 1
+    clock[0] = 60.0
+    assert space.housekeep(DAY) == [] and len(hk.calls) == 1  # waiting its 5 minutes
+    clock[0] = 301.0
+    space.housekeep(DAY)
+    assert len(hk.calls) == 2  # retried once, then 15 minutes
+    clock[0] = 301.0 + 600.0
+    space.housekeep(DAY)
+    assert len(hk.calls) == 2
+    hk.error = None
+    clock[0] = 301.0 + 901.0
+    assert space.housekeep(DAY) == ["digest agora-2026-11-16"] and len(hk.calls) == 3
+    assert space._hk_backoff == {}  # a success clears it
+
+
+def test_an_empty_answer_backs_off_too(tmp_path):
+    hk = FakeHousekeeper(text="   ")
+    clock = [0.0]
+    space = _space(tmp_path, hk, monotonic=lambda: clock[0])
+    space.observe(_lines(40))
+    space.housekeep(DAY)
+    clock[0] = 120.0
+    space.housekeep(DAY)
+    assert len(hk.calls) == 1 and space.store.get_digest("agora", "agora-2026-11-16") is None
