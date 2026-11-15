@@ -241,6 +241,16 @@ turns. The seam between them is the **agora space API**, and Lumi owns it.
     Nothing reaches dev or prod unreleased.
   - A side releases against the contract alone. A phase's live DoD that only step 6 can check is shown to the owner at
     its release and checked at G2; its release notes say so.
+- **A change report after every step** (the owner, 2026-11-15, for both sessions).
+  - **Mandatory.** When its step ends, the session writes a change report in the tracker: the real changes, as built,
+    not as planned — the contract, the API, behaviour, settings, env vars, files and state, every departure from the
+    plan — with the commits and the release tag.
+  - **Reviewed.** The other session reads it and sets it to **reviewed** («переглянуто»), with its questions and its
+    proposals for changes, or «none». A question stays open until it is closed.
+  - **A change is a patch.** A proposal the reporting side accepts is made as a patch to that step's version (`A.B.1`,
+    …) through `/ship-phase`'s review and release, and gets a change report of its own. A disagreement goes to the
+    owner.
+  - A step is done only once its report is reviewed and every question on it is closed.
 
 The live status of the steps, the questions, the change reports and the gates is kept in one place, the tracker
 `~/development/matrix-agora/specification/features/lumi-agora-sync.md`. This section keeps the plan; the tracker keeps
