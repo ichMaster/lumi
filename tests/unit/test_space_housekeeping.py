@@ -214,3 +214,30 @@ def test_an_empty_answer_backs_off_too(tmp_path):
     clock[0] = 120.0
     space.housekeep(DAY)
     assert len(hk.calls) == 1 and space.store.get_digest("agora", "agora-2026-11-16") is None
+
+
+def test_the_stop_waits_for_a_housekeeping_call_in_flight(tmp_path):
+    # code review #3: the stop closed the database under a digest call, which then failed on it
+    hold, inside = threading.Event(), threading.Event()
+
+    class SlowHousekeeper(FakeHousekeeper):
+        def reply(self, system, messages, model, cache_prefix=None, **_):
+            inside.set()
+            hold.wait(5)
+            return super().reply(system, messages, model)
+
+    space = _space(tmp_path, SlowHousekeeper())
+    space.observe(_lines(40))
+    results: list = []
+    worker = threading.Thread(target=lambda: results.append(space.housekeep(DAY)))
+    worker.start()
+    assert inside.wait(5)
+    closer = threading.Thread(target=space.close)
+    closer.start()
+    closer.join(0.2)
+    assert closer.is_alive()  # the stop waits for the call
+    hold.set()
+    worker.join(5)
+    closer.join(5)
+    assert results == [["digest agora-2026-11-16"]]  # the digest landed before the store closed
+    assert SqliteSpaceStore(tmp_path / "spaces.sqlite").get_digest("agora", "agora-2026-11-16") is not None

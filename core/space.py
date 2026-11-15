@@ -314,6 +314,7 @@ class AgoraSpace:
         self._cache_log_path = cache_log_path
         self._now_s = monotonic or time.monotonic
         self._turn_lock = threading.Lock()
+        self._hk_lock = threading.Lock()  # one housekeeping pass at a time; the stop waits for it (review v3.2 #3)
         self._state_lock = threading.Lock()  # the store-or-drop decision vs abandon (code review #1)
         self._running: str | None = None
         self._abandoned: set[str] = set()
@@ -550,6 +551,11 @@ class AgoraSpace:
         return sid
 
     def housekeep(self, now: object) -> list[str]:
+        """One housekeeping pass under its own lock (the stop waits for a pass in flight) — see :meth:`_housekeep`."""
+        with self._hk_lock:
+            return self._housekeep(now)
+
+    def _housekeep(self, now: object) -> list[str]:
         """What's due, on the room's own housekeeping client: today's running digest (once the lines scrolled out of
         the last ``today_lines`` and not yet digested reach ``today_lines``) and a gist for each past local day the
         room spoke with none yet (the last 7 days). Never raises — a failed call is logged and retried next tick.
@@ -695,16 +701,20 @@ class AgoraSpace:
     def close(self, wait_s: float | None = None) -> None:
         """Close the room's store at the stop — after a room turn still in flight ends (bounded by its budget plus
         a grace), so a redeploy never pulls the database out from under it (code review #4)."""
-        got = self._turn_lock.acquire(timeout=self.timeout_s + 2.0 if wait_s is None else wait_s)
-        if not got:
+        wait = self.timeout_s + 2.0 if wait_s is None else wait_s
+        got = self._turn_lock.acquire(timeout=wait)
+        got_hk = self._hk_lock.acquire(timeout=wait)  # and for a housekeeping call in flight (review v3.2 #3)
+        if not (got and got_hk):
             import logging
 
-            logging.getLogger("lumi.space").warning("a room turn was still running at the stop — closing anyway")
+            logging.getLogger("lumi.space").warning("the room was still busy at the stop — closing anyway")
         try:
             self.store.close()
         finally:
             if got:
                 self._turn_lock.release()
+            if got_hk:
+                self._hk_lock.release()
 
 
 def build_space_llm(cfg: object) -> object:
