@@ -93,3 +93,18 @@ def test_the_error_details_lumi_returns_match_the_contract(tmp_path):
     hold.set()
     runner.join(10)
     assert busy.status_code == 409 and busy.json()["detail"] == errors[409]
+
+
+def test_turn_pass_as_written(tmp_path):
+    # v3.2: the name guard — a reply naming him leaves Lumi as the contract's pass
+    from tests._agora_world import make_space
+
+    ex = EP["turn_pass"]
+    room = ExampleModel({"reply": "Віталій мені все розповідає.", "emotion": "tender", "intensity": 0.6})
+    client = agora_client(tmp_path, space=make_space(tmp_path, room, private_names=["Віталій"]))
+    res = client.request(ex["request"]["method"], ex["request"]["path"], json=ex["request"]["body"], headers=AUTH)
+    assert res.status_code == ex["response"]["status"]
+    body = res.json()
+    expected = ex["response"]["body"]
+    assert set(body) == set(expected) and body["outcome"] == "pass" and body["reply"] == ""
+    assert body["turn_id"] == expected["turn_id"] and set(body["stats"]) == set(expected["stats"])

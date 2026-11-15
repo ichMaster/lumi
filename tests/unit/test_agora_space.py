@@ -328,3 +328,28 @@ def test_a_kept_outcome_evicted_mid_read_falls_back_to_the_store(tmp_path):
     space._outcomes = EvictingDict(space._outcomes)
     again = space.known_outcome("$1")
     assert again is not None and again.reply == first.reply
+
+
+# --- v3.2 LUMI-286: the name guard ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("reply", ["Віталій сьогодні щасливий.", "Я говорила з віталієм.", "ВІТАЛІЮ привіт",
+                                   "Vitalii is fine"])
+def test_a_reply_naming_him_is_a_pass_and_never_stored(tmp_path, reply, caplog):
+    llm = FakeRoomModel({"reply": reply, "emotion": "joy", "intensity": 0.8})
+    space = _space(tmp_path, llm, private_names=["Віталій", "Vitalii"])
+    with caplog.at_level("INFO", logger="lumi.space"):
+        out = space.turn("Ада", "Лілі, з ким ти говориш?", "$1")
+    assert out.as_dict() == {"outcome": "pass", "reply": "", "turn_id": "$1", "stats": out.stats}
+    assert space.store.get("agora", "$1", "lili") is None  # her line never stored
+    assert space.store.get("agora", "$1", "user") is not None  # the room's line was said — it stays
+    assert "names the owner" in caplog.text and reply not in caplog.text  # why, never the reply itself
+    assert space.turn("Ада", "Лілі, з ким ти говориш?", "$1").outcome == "pass" and len(llm.calls) == 1
+
+
+def test_a_reply_without_his_name_is_untouched_and_no_names_means_no_guard(tmp_path):
+    space = _space(tmp_path, FakeRoomModel({"reply": "Ich сьогодні тут.", "emotion": "calm", "intensity": 0.4}),
+                   private_names=["Віталій"])
+    assert space.turn("Ада", "Хто тут?", "$1").outcome == "reply"
+    space = _space(tmp_path / "b", FakeRoomModel({"reply": "Віталій тут.", "emotion": "calm", "intensity": 0.4}))
+    assert space.turn("Ада", "Хто тут?", "$1").outcome == "reply"  # no private_names → the guard is off

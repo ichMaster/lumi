@@ -243,7 +243,7 @@ class ObservedLine:
 class SpaceOutcome:
     """A room turn's answer, as the agora space API v1 returns it — never her thinking or her state."""
 
-    outcome: str  # "reply" (v3.3 adds "pass")
+    outcome: str  # "reply" | "pass" (v3.2: the name guard; v3.3: an empty reply)
     reply: str
     emotion: str | None
     intensity: float | None
@@ -491,11 +491,18 @@ class AgoraSpace:
         reply = SpaceMessage(channel=self.channel, session_id=assign_session(self.store, self.channel, ts, self._tz()),
                              speaker="Лілі", role="lili", text=state.reply, ts=ts, source_id=turn_id,
                              emotion=state.emotion.value, intensity=state.intensity)
-        outcome = SpaceOutcome("reply", state.reply, state.emotion.value, state.intensity, turn_id, stats)
+        names_him = self._names is not None and self._names.search(state.reply) is not None
+        outcome = (SpaceOutcome("pass", "", None, None, turn_id, stats) if names_him  # v3.2: the name guard
+                   else SpaceOutcome("reply", state.reply, state.emotion.value, state.intensity, turn_id, stats))
         with self._state_lock:  # store-or-drop, atomic with abandon (code review #1)
             if turn_id in self._abandoned or elapsed_ms > self.timeout_s * 1000:
                 raise SpaceTimeout("the room's turn ran past its timeout — its reply is dropped")
-            self._embed(self.store.add_lines([reply]))
+            if names_him:  # never her line — she never remembers saying what never reached the room
+                import logging
+
+                logging.getLogger("lumi.space").info("room reply passed: names the owner (turn %s)", turn_id)
+            else:
+                self._embed(self.store.add_lines([reply]))
             self._keep(outcome)
         self._log_usage(stats, reply.session_id)
         return outcome
