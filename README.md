@@ -12,6 +12,10 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
+**Version 2 is complete** (v2.1 – v2.12, last release 2.12.3): her brain runs on the always-on Linux box in
+Docker (prod + dev), with CI and a deploy agent, settings as files, an admin panel, and two clients — the TUI and
+the desktop window (`./lumi-desktop`, `Lili.app`). Next: v3 — personality.
+
 **2.12.3** — her portrait can be hidden in the window (Details → Portrait); the Details switches show their text again.
 
 **2.12.2 — The desktop window: her face.** Beside the chat, her portrait now changes with each reply's emotion (by intensity, from the client's own face pack, served locally — no face crosses the network), with the caption, the theme of the day, the closeness and the mood of the day; her inner voice streams above her reply while she thinks; her quiet thoughts gather beside the portrait. `scripts/make_mac_app.py` builds `~/Applications/Lili.app` with her portrait as the icon. Pictures she sends still go to Telegram only (v4.3). Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop window (LUMI-270..275).
