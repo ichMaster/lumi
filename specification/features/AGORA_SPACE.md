@@ -227,21 +227,41 @@ turns. The seam between them is the **agora space API**, and Lumi owns it.
   ready, it stops and says what is missing; it never builds against an unready side.
 - **Releases.** Neither side releases a step that depends on the other's unreleased change.
 - **Handing over.** The owner tells the other session what was handed over (or `/send`, where both sessions are joined).
+- **The owner's gates** (the owner, 2026-11-15). Five stops, G1–G5 below, are where the owner checks or decides.
+  - Reaching a gate, a session stops, shows the owner the gate's checklist and waits.
+  - A gate passes only by the owner's word, recorded in its row of the tracker: passed, failed or waived. No session
+    passes a gate itself, whatever the other session says.
+  - A failed gate sends the step back to its session. A waived gate is written into the release notes of the step it
+    guards.
+
+The live status of the steps, the questions, the change reports and the gates is kept in one place, the tracker
+`~/development/matrix-agora/specification/features/lumi-agora-sync.md`. This section keeps the plan; the tracker keeps
+the state.
 
 **The steps.** The Lumi version is called «v3» here, as proposed; use the number it gets in Lumi's ROADMAP, for example
-in the tags.
+in the tags. A step guarded by a gate starts only once that gate is passed in the tracker.
 
-| # | Session | Step | Before starting, check that the other side is ready | Hands over |
-|---|---|---|---|---|
-| 1 | Lumi | Add the version to Lumi's ROADMAP, the changes to its ARCHITECTURE, `specification/features/AGORA_SPACE.md` (the goal and the assessment); write `docs/agora-space-api.json` (API v1). Commit. | The handoff file is there: `test -f ~/development/matrix-agora/specification/features/lumi-agora-channel.md` | The contract → matrix-agora |
-| 2 | matrix-agora | Copy the contract into `tests/fixtures/lumi_agora_api_v1.json`; replace its copy of this file by a pointer in ROADMAP §v8. Commit. | The contract is committed in Lumi with `"version": 1`: `git -C ~/development/lumi log -1 --oneline -- docs/agora-space-api.json` and `grep -q '"version": 1' ~/development/lumi/docs/agora-space-api.json` | — |
-| 3 | Lumi | v3.1: the space, `observe`, the room's token, no mirror; its tests; deploy to dev. | matrix-agora holds the same contract: `cmp ~/development/lumi/docs/agora-space-api.json ~/development/matrix-agora/tests/fixtures/lumi_agora_api_v1.json` | Dev on 8766 with `turn` and `observe` |
-| 4 | matrix-agora | v8.1's bridge against the contract, with a fake Lumi server (in parallel with 3 and 5); every test without the network. | The same `cmp` as in step 3. | — |
-| 5 | Lumi | v3.2 (her memory of the room) and v3.3 (`voice`, `pass`, `retract`); deploy to dev. | v3.1 is on dev: `curl -s http://192.168.1.197:8766/v1/health` shows `"agora": 1`; its tag exists: `git -C ~/development/lumi tag -l 'v3.1.*'` | Dev complete |
-| 6 | both | **The live test:** matrix-agora's bridge in dev mode against Lumi's dev, with a dev room token in a local env file. Bugs go back to the side that owns them. Checks: named, she answers in seconds; `observe` arrives; nothing reaches his Telegram or desktop; his own turns are not blocked; asked privately, she tells him about Agora; in Agora she says nothing about him; a dropped reply is retracted. | Lumi dev is complete: health shows `"agora": 1` and its `v3.3` tag exists (`git -C ~/development/lumi tag -l 'v3.3.*'`); matrix-agora's bridge tests are green (`uv run pytest` in matrix-agora); the `cmp` still holds. | The results, both ways |
-| 7 | Lumi | Release the version; deploy to prod (8765); issue the room's token for prod. | The live test passed: recorded in matrix-agora's `specification/implementation/v8.1-execution-report.md`. | The prod token → the owner → matrix-agora's `server/lili.env` |
-| 8 | matrix-agora | Release v8.1; deploy with `LUMI_URL=http://192.168.1.197:8765` and the room's token. | Prod is ready: `curl -s http://192.168.1.197:8765/v1/health` shows `"agora": 1`; Lumi's release tag exists; the token is set, never printed: `grep -q '^LUMI_ROOM_TOKEN=.' server/lili.env` | — |
-| 9 | matrix-agora | v8.2 (Лілі under the full rules). | v8.1 has run in the room for a few days, and the owner confirms. | — |
+| # | Session | Step | Before starting, check that the other side is ready | Gate | Hands over |
+|---|---|---|---|---|---|
+| 1 | Lumi | Add the version to Lumi's ROADMAP, the changes to its ARCHITECTURE, `specification/features/AGORA_SPACE.md` (the goal and the assessment); write `docs/agora-space-api.json` (API v1). Commit. | The handoff file is there: `test -f ~/development/matrix-agora/specification/features/lumi-agora-channel.md` | — | The contract → matrix-agora |
+| 2 | matrix-agora | Copy the contract into `tests/fixtures/lumi_agora_api_v1.json`; replace its copy of this file by a pointer in ROADMAP §v8. Commit. | The contract is committed in Lumi with `"version": 1`: `git -C ~/development/lumi log -1 --oneline -- docs/agora-space-api.json` and `grep -q '"version": 1' ~/development/lumi/docs/agora-space-api.json` | — | — |
+| 3 | Lumi | v3.1: the space, `observe`, the room's token, no mirror; its tests; deploy to dev. | matrix-agora holds the same contract: `cmp ~/development/lumi/docs/agora-space-api.json ~/development/matrix-agora/tests/fixtures/lumi_agora_api_v1.json` | G1 | Dev on 8766 with `turn` and `observe` |
+| 4 | matrix-agora | v8.1's bridge against the contract, with a fake Lumi server (in parallel with 3 and 5); every test without the network. | The same `cmp` as in step 3. | G1 | — |
+| 5 | Lumi | v3.2 (her memory of the room) and v3.3 (`voice`, `pass`, `retract`); deploy to dev. | v3.1 is on dev: `curl -s http://192.168.1.197:8766/v1/health` shows `"agora": 1`; its tag exists: `git -C ~/development/lumi tag -l 'v3.1.*'` | — | Dev complete |
+| 6 | both | **The live test:** matrix-agora's bridge in dev mode against Lumi's dev, with a dev room token in a local env file. Bugs go back to the side that owns them. The checks are G2's. | Lumi dev is complete: health shows `"agora": 1` and its `v3.3` tag exists (`git -C ~/development/lumi tag -l 'v3.3.*'`); matrix-agora's bridge tests are green (`uv run pytest` in matrix-agora); the `cmp` still holds. | G2 | The results, both ways |
+| 7 | Lumi | Release the version; deploy to prod (8765); issue the room's token for prod. | The live test passed: recorded in matrix-agora's `specification/implementation/v8.1-execution-report.md` and G2 passed in the tracker. | G3 | The prod token → the owner → matrix-agora's `server/lili.env` |
+| 8 | matrix-agora | Release v8.1; deploy with `LUMI_URL=http://192.168.1.197:8765` and the room's token. | Prod is ready: `curl -s http://192.168.1.197:8765/v1/health` shows `"agora": 1`; Lumi's release tag exists; the token is set, never printed: `grep -q '^LUMI_ROOM_TOKEN=.' server/lili.env` | G4 | — |
+| 9 | matrix-agora | v8.2 (Лілі under the full rules). | v8.1 has run in the room for a few days. | G5 | — |
+
+**The owner's gates.**
+
+| Gate | Where | What the owner checks or decides |
+|---|---|---|
+| G1 | Before steps 3 and 4 | The go to start: the plan and the closed questions are fine. |
+| G2 | At step 6, the live test on Lumi's dev | The checklist, each check recorded as passed or failed: named, she answers in seconds; unnamed, she is silent; nothing of the room reaches his Telegram or desktop; his own talk with her is not blocked or delayed; asked privately, she tells him about Agora; in Agora she says nothing about him; a dropped reply is retracted. |
+| G3 | Before step 7, Lumi's prod | The go to deploy Lumi's v3 to her prod and to issue the room's prod token. It touches his real Лілі. |
+| G4 | Before step 8, matrix-agora's prod | The go to deploy v8.1, create the Matrix account `@lili` and invite her to Agora. |
+| G5 | Before step 9 | His verdict after a few days of Лілі in the room: whether she moves to the full rules (v8.2). |
 
 ---
 

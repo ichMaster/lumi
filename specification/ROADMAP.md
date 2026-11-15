@@ -1185,6 +1185,11 @@ later lets a space's member list hold real users. Depends on: v2.
 **Built with matrix-agora by turns** — two repositories, two Claude sessions; the seam is the **agora space API**,
 which Lumi owns: contract first (`docs/agora-space-api.json`, API v1, copied into matrix-agora as its test fixture),
 dev before prod, each side checks the other is ready before its step (AGORA_SPACE.md §Synchronization, nine steps).
+**The owner's gates G1–G5** stop the work where he checks or decides: G1 the go before v3.1 (and matrix-agora's
+bridge); G2 the live test's checklist on Lumi's dev; G3 the go before v3's prod deploy and the room's prod token (his
+real Лілі); G4 the go before matrix-agora's prod and `@lili`; G5 his verdict before v8.2. A session reaching a gate
+stops and waits; only the owner's word passes it, recorded in the tracker; a waived gate goes into the release notes
+of the step it guards.
 
 ### v3.1 — The channel: the room's store, `observe`, its token, its own turn path
 
