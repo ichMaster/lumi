@@ -402,6 +402,18 @@ class Config:
     server_port: int = 8765              # v2.2 LUMI_SERVER_PORT — one port per instance (prod/dev)
     server_token: str = ""               # v2.2 LUMI_SERVER_TOKEN — the client token (required to serve; never logged)
     server: bool = False                 # v2.2 LUMI_SERVER — the TUI runs as a CLIENT of that server (no core in-process)
+    # v3 Agora — matrix-agora's room as a space of her own (agora.* in settings.yaml; off by default)
+    agora: bool = False                  # LUMI_AGORA — off → the room's routes are absent
+    agora_token: str = field(default="", repr=False)  # LUMI_AGORA_TOKEN — the room's scoped token (never logged)
+    agora_model: str = "gemini-2.5-flash"  # LUMI_AGORA_MODEL — the room's own Gemini client
+    agora_timeout_s: int = 20            # LUMI_AGORA_TIMEOUT_S — a room turn's budget (→ 504)
+    agora_window: int = 40               # LUMI_AGORA_WINDOW — the room's latest lines in its prompt
+    agora_private_names: tuple[str, ...] = ()  # LUMI_AGORA_PRIVATE_NAMES — v3.2's name guard
+    agora_max_turns_per_hour: int = 20   # LUMI_AGORA_MAX_TURNS_PER_HOUR — v3.3's cap (→ 429)
+    agora_today_lines: int = 20          # LUMI_AGORA_TODAY_LINES — v3.2's «Агора сьогодні»
+    agora_today_digest_words: int = 150  # LUMI_AGORA_TODAY_DIGEST_WORDS — v3.2's running digest
+    agora_gist_words: int = 40           # LUMI_AGORA_GIST_WORDS — v3.2's day gist
+    agora_store_path: Path = DEFAULT_DATA_ROOT / "spaces.sqlite"  # the room's own store (follows the data root)
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
     compaction_batch: int = DEFAULT_COMPACTION_BATCH
@@ -831,6 +843,17 @@ def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> C
         server_port=int(_get("LUMI_SERVER_PORT") or 8765),
         server_token=(_get("LUMI_SERVER_TOKEN") or "").strip(),
         server=(_get("LUMI_SERVER") or "off").strip().lower() in _TRUTHY,  # v2.2 client mode, off by default
+        agora=_parse_bool(_get("LUMI_AGORA")),  # v3: off by default
+        agora_token=(_get("LUMI_AGORA_TOKEN") or "").strip(),
+        agora_model=(_get("LUMI_AGORA_MODEL") or "gemini-2.5-flash").strip(),
+        agora_timeout_s=max(1, int(_get("LUMI_AGORA_TIMEOUT_S") or 20)),
+        agora_window=max(1, int(_get("LUMI_AGORA_WINDOW") or 40)),
+        agora_private_names=tuple(n for n in _csv(_get("LUMI_AGORA_PRIVATE_NAMES"), "").split(",") if n),
+        agora_max_turns_per_hour=max(0, int(_get("LUMI_AGORA_MAX_TURNS_PER_HOUR") or 20)),
+        agora_today_lines=max(0, int(_get("LUMI_AGORA_TODAY_LINES") or 20)),
+        agora_today_digest_words=max(0, int(_get("LUMI_AGORA_TODAY_DIGEST_WORDS") or 150)),
+        agora_gist_words=max(0, int(_get("LUMI_AGORA_GIST_WORDS") or 40)),
+        agora_store_path=data_root / "spaces.sqlite",
         store_path=store_path,
         memory_window=memory_window,
         compaction_batch=compaction_batch,

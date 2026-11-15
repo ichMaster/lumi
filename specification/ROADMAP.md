@@ -1167,11 +1167,11 @@ room never blocks or delays him.
   channel over one core" isn't safe without a large refactor. A room turn runs a separate **space turn**: its own prompt
   recipe, its own model client, its own store. It never takes the core lock, so his turns are never blocked or
   delayed, and it never writes his state. One room turn at a time (its own lock; busy → `409` at once = silence).
-- **Its own fast model: Gemini 2.5 Flash** by default (`spaces.agora.model`, switchable) — no thinking, no tools:
+- **Its own fast model: Gemini 2.5 Flash** by default (`agora.model`, switchable) — no thinking, no tools:
   seconds per reply, the room's own pace (matrix-agora's room runs on 2.5 Flash too).
 - **Nothing of his in the room's prompt** — by construction (the space recipe never reads his relationship memory, and
   never her thoughts, plans or needs text, which may carry him), pinned by a sentinel test; plus a **name guard**: a
-  room reply naming him (`spaces.agora.private_names`) becomes a `pass` before it leaves Lumi.
+  room reply naming him (`agora.private_names`) becomes a `pass` before it leaves Lumi.
 - **His visible state untouched:** no `turn` / `message` / `state` push, no Telegram, no idle-clock reset, nothing in
   his totals; the room's usage goes to the ledgers with `channel: agora`.
 - **Its own store and vectors, keyed by the space** — never `user_id`; the isolation contract test extended.
@@ -1179,7 +1179,7 @@ room never blocks or delays him.
 **What it does not change.** His channel (Telegram, the desktop, the TUI) behaves exactly as today: a turn with no
 `channel` is today's, byte for byte. No accounts for the room's speakers (they are names in its lines); Lumi does not
 join Matrix herself (the bridge stays the room's member); she never starts a conversation in the room; the
-de-identified cross-pollination (v6.3) is unchanged. **Off by default** (`spaces.agora.enabled`). Multi-user (v5.2)
+de-identified cross-pollination (v6.3) is unchanged. **Off by default** (`agora.enabled`). Multi-user (v5.2)
 later lets a space's member list hold real users. Depends on: v2.
 
 **Built with matrix-agora by turns** — two repositories, two Claude sessions; the seam is the **agora space API**,
@@ -1211,19 +1211,19 @@ his desktop or his turns.
 - **A session per space:** opened on its first observation or turn, rolled at her local midnight or by size; it never
   closes his session, and his `/v1/session/new` never closes it; a redeploy closes both cleanly.
 - **The space turn:** a turn with `channel: "agora"` never calls `Core.reply` and never takes the core lock. It builds
-  the room's prompt, calls its own model client (`spaces.agora.model`, Gemini 2.5 Flash by default — no thinking, no
+  the room's prompt, calls its own model client (`agora.model`, Gemini 2.5 Flash by default — no thinking, no
   tools), validates `{reply, emotion, intensity}` through the emotion gate, stores the room's line and her reply, and
-  answers. One room turn at a time (busy → `409` at once); its own timeout (`spaces.agora.timeout_s`, 20 → `504`).
+  answers. One room turn at a time (busy → `409` at once); its own timeout (`agora.timeout_s`, 20 → `504`).
 - **Hearing without answering:** `POST /v1/observe {channel: "agora", lines: [{id, speaker, text, ts}]}` — stored in the
   room's session, idempotent by `id` (the room's `event_id`), embedded for recall (the shared embedder behind its own
   short lock), no model call.
-- **The room's token:** `spaces.agora.token` (secret) — `POST /v1/turn` and `POST /v1/observe` with that channel,
+- **The room's token:** `agora.token` (secret) — `POST /v1/turn` and `POST /v1/observe` with that channel,
   `POST /v1/turn/{turn_id}/retract` (v3.3) and `GET /v1/health`; `403` everywhere else (`/v1/command`,
   `/v1/directive`, `/v1/session/new`, `/v1/events`, `/v1/state`) and on any other channel. The owner's token keeps its
   full reach.
 - **No mirror, no trace on his side:** nothing of the room reaches his Telegram outbox, `/v1/events`, `/v1/state`, his
   totals or the idle clock; the room's usage lines carry `channel: "agora"`.
-- **Settings** (the v2.9 schema): `spaces.agora.enabled` (off → the room's routes are absent), `.token`, `.model`
+- **Settings** (the v2.9 schema): `agora.enabled` (off → the room's routes are absent), `.token`, `.model`
   (`gemini-2.5-flash`), `.timeout_s` (20), `.window` (the room's live lines in its own prompt, 40), `.private_names`,
   `.max_turns_per_hour` (20 — matrix-agora's R5), `.today_lines` (20), `.today_digest_words` (150), `.gist_words` (40 —
   one or two sentences a day).
@@ -1253,7 +1253,7 @@ and in Agora she says nothing about him.
   ваші розмови наодинці. Не обговорюй, хто з присутніх людина, а хто ні. Якщо тобі нема чого додати — можна
   промовчати.»). His real name never enters the room's prompt (matrix-agora's R3, refined). **Never:** his facts, summaries, impressions, recall,
   closeness — and never her thoughts, plans or needs text, which may carry him.
-- **The name guard:** a room reply that names him (`spaces.agora.private_names`) becomes a `pass` before it leaves
+- **The name guard:** a room reply that names him (`agora.private_names`) becomes a `pass` before it leaves
   Lumi, and the log says why.
 - **The room's lines are the speakers' words:** no closeness nudge, no facts or impressions about him from the room;
   his own lines there (speaker «Ich») stay the room's, his public words.
@@ -1297,7 +1297,7 @@ room never showed.
   went, `{retracted: false}` when that turn stored nothing (a pass, a timeout, never received, already retracted) —
   idempotent; a retract during a running turn drops its reply when it ends.
 - **`outcome`** (`reply` | `pass`) and `stats` (model, tokens, latency) on the response, for the room's accounting.
-- **A rate cap:** `spaces.agora.max_turns_per_hour` → `429` = silence in the room.
+- **A rate cap:** `agora.max_turns_per_hour` → `429` = silence in the room.
 
 **DoD:** a room turn answers in seconds; a pass is a 200 with nothing stored; a retracted reply is gone from her
 memory of the room.

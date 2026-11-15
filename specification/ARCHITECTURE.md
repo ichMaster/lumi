@@ -147,13 +147,13 @@ phases: ROADMAP §v3.
 
 - **A space turn of its own, never `Core.reply`.** One `Core` holds shared state (`last_emotion`, `last_stats`, `totals`,
   the face signal, the prompt cache, the session), so a room turn runs a separate path: its own prompt recipe, its own
-  model client (`spaces.agora.model`, Gemini 2.5 Flash by default — no thinking, no tools), its own store. It never takes
+  model client (`agora.model`, Gemini 2.5 Flash by default — no thinking, no tools), its own store. It never takes
   the core lock (his turns are never blocked or delayed) and never writes his state. One room turn at a time (busy →
   `409`); its own timeout (`504`) and hourly cap (`429`). The emotion gate validates its `{reply, emotion, intensity}`;
   an empty reply is a `pass` there (still an error in his channel).
 - **Two recipes.** *The space recipe:* canon + the mood's resolution + the space's window, gists and recall + the room
   rule — **never** his facts, summaries, impressions, recall or closeness, and never her thoughts, plans or needs text;
-  pinned by a sentinel test, backed by a **name guard** (`spaces.agora.private_names` → `pass`). *His private recipe:*
+  pinned by a sentinel test, backed by a **name guard** (`agora.private_names` → `pass`). *His private recipe:*
   today's, plus «Агора сьогодні» (the room session's running digest + its last `today_lines` lines — the whole day — in
   the prompt's tail), space recall labelled in the shared budget, the space's day gist inside his day/week digests. In
   the room he is «Ich»: the room rule tells her «Ich» is the one she talks with privately and to call him only so — his
@@ -162,7 +162,7 @@ phases: ROADMAP §v3.
   his totals; the space's usage lines carry `channel: "agora"`.
 - **Hearing without answering:** `observe` stores the room's lines (idempotent by the room's event id) and embeds them,
   no model call. **Retract** removes a reply the room never showed.
-- Off by default (`spaces.agora.enabled`). Multi-user later lets a space's member list hold real users.
+- Off by default (`agora.enabled`). Multi-user later lets a space's member list hold real users.
 
 ## Voice
 
@@ -260,7 +260,7 @@ The system prompt for a turn with user X = `canon` + recent `SharedMemoryItem`s 
 - **One brain per data root (v2.2).** Every process that runs the core over a data root — the server, the in-process TUI — holds a process-lifetime exclusive `flock` on `<data root>/brain.lock` (`core/brainlock.py`, taken right after the env guard); a second brain on the same root is refused readably (role, pid, since; a server holder → "use ./lumi-client"). The OS drops the lock on exit, so a crash never leaves it stale. Bus peers (the Telegram daemons, voicer, dictator), the viewer, the TUI client and the CLI never take it. Pinned by `tests/unit/test_brainlock.py`.
 - **Where the server listens, and where a client dials (v2.6).** `LUMI_SERVER_HOST` + `LUMI_SERVER_PORT` name both: on the server they are the bind address (loopback by default; on the always-on Linux box its LAN or Tailscale address), on a client the server it dials (`server_url(cfg)` in `tui/remote.py` — the box's Tailscale IP or MagicDNS name; an IPv6 literal bracketed). The server binds **LAN/Tailscale only**: `bind_problem` (`server/__main__.py`) refuses a wildcard (`0.0.0.0`, `::`), a public address or any hostname but `localhost` before anything runs — only loopback, RFC 1918, 100.64.0.0/10 (Tailscale) and IPv6 ULA (fc00::/7) pass. **v2.8 — in the image** (the same `in_container` test) the wildcard is allowed: the container's interfaces are private, and the compose publish rule exposes it on the box's LAN address only; a public address or a hostname stays refused. No TLS on the wire yet (v4.1); the client token is the only gate. Pinned by `tests/unit/test_server_main.py`.
 - **The model sits behind a thin `LLMClient` seam** the core depends on (never a concrete SDK; mockable in tests). **v0.1 has one backend — Anthropic Claude Haiku** (official SDK). **v0.18 adds more** behind the same seam: other Anthropic models (Opus/Sonnet/Haiku), **OpenAI** and **DeepSeek** (a shared OpenAI-compatible adapter, different base_url/key), and **MiniMax** (its API). The active model id (and provider, from v0.18) are config values, so switching is a config change, not a code change. **Structured output is implemented per provider** (Anthropic tool output; OpenAI/DeepSeek JSON-schema `response_format`; MiniMax JSON) and always passes the v0.3 validation gate.
-- **Spaces (v3).** `spaces.agora.enabled` (off → the routes are absent), `.token` (secret — the room's scoped token), `.model` (`gemini-2.5-flash`), `.timeout_s` (20), `.window` (40), `.private_names`, `.max_turns_per_hour`, `.today_lines` (20), `.gist_words` (40) — the v2.9 schema.
+- **Spaces (v3).** The `agora` group (`LUMI_AGORA_*`; v3.1 — two-level keys like every group of the v2.9 schema, so not `spaces.agora.*` as first written): `agora.enabled` (off → the routes are absent), `.token` (secret — the room's scoped token), `.model` (`gemini-2.5-flash`, still served — checked 2026-11-15, R4), `.timeout_s` (20), `.window` (40), `.private_names`, `.max_turns_per_hour` (20), `.today_lines` (20), `.today_digest_words` (150), `.gist_words` (40). The room's store is `<data root>/spaces.sqlite` (no setting).
 
 ## Security, auth, and access
 

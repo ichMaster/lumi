@@ -89,6 +89,7 @@ def test_the_secrets_are_the_keys_and_tokens():
         "LUMI_SERVER_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "MINIMAX_API_KEY",
         "GEMINI_API_KEY", "VOYAGE_API_KEY", "LUMI_NEWS_API_KEY", "LUMI_TELEGRAM_TOKEN", "ELEVENLABS_API_KEY",
         "DEEPGRAM_API_KEY",
+        "LUMI_AGORA_TOKEN",  # v3: the room's scoped token
     }
 
 

@@ -25,6 +25,26 @@ server:
   # The TUI runs as a client of that server (no core in-process). · env LUMI_SERVER
   # client_mode: false
 
+agora:
+  # The Agora space: the room's routes (/v1/observe, a turn with channel agora). Off → the routes are absent. · env LUMI_AGORA
+  # enabled: false
+  # The room's own model (a Gemini id; no thinking, no tools) — never the reply model. · env LUMI_AGORA_MODEL
+  # model: gemini-2.5-flash
+  # A room turn's budget in seconds (past it → 504). · an integer ≥ 1 · env LUMI_AGORA_TIMEOUT_S
+  # timeout_s: 20
+  # The room's latest lines in its own prompt. · an integer ≥ 1 · env LUMI_AGORA_WINDOW
+  # window: 40
+  # Names a room reply must never carry (v3.2's name guard → a pass). · a list of strings (or one comma-separated string) · env LUMI_AGORA_PRIVATE_NAMES
+  # private_names: []
+  # The room's hourly cap of turns (v3.3 → 429). · an integer ≥ 0 · env LUMI_AGORA_MAX_TURNS_PER_HOUR
+  # max_turns_per_hour: 20
+  # The room's latest lines in her private prompt (v3.2's «Агора сьогодні»). · an integer ≥ 0 · env LUMI_AGORA_TODAY_LINES
+  # today_lines: 20
+  # The room session's running digest in her private prompt, in words (v3.2). · an integer ≥ 0 · env LUMI_AGORA_TODAY_DIGEST_WORDS
+  # today_digest_words: 150
+  # The room's day gist, in words (v3.2). · an integer ≥ 0 · env LUMI_AGORA_GIST_WORDS
+  # gist_words: 40
+
 model:
   # The model provider behind the LLMClient seam. · one of anthropic, openai, deepseek, minimax, local, gemini · env LUMI_PROVIDER
   # provider: anthropic

@@ -57,7 +57,7 @@ It becomes a fifth scope, **space memory**:
 - a space's records are readable only in that space's context and in its members' private contexts, labelled as the
   space's.
 
-**Membership:** Agora's members are `[owner]` for now (`spaces.agora.members`). Its other speakers — Ада, Бруно, the cat,
+**Membership:** Agora's members are `[owner]` for now (`agora.members`). Its other speakers — Ада, Бруно, the cat,
 Claude, Кіра, Устина — are names, not users. Once accounts exist (v5.2), a member list can hold real users.
 
 **Why not a pseudo-user `agora`.** The isolation invariant would then forbid the one thing asked for: her telling
@@ -79,7 +79,7 @@ Claude, Кіра, Устина — are names, not users. Once accounts exist (v5
 | Scheduler and proactive acts (`server/brain.py`) | may push to every listener | They never post to a space. Reading the room for thoughts is a later choice. | S |
 | The emotion field (`core/emotion.py`) | an empty reply → `EmotionError` → 500 | In a space, an empty reply is `pass` (200). | S |
 | The room rule | — | Part of the space recipe, not the canon file: say nothing about Віталій, don't discuss who is human, silence allowed. | S |
-| Settings (v2.9 schema) | — | `spaces.agora.enabled`, `.members`, `.token` (secret), `.window`, `.gist_words`, `.today_lines`. | S |
+| Settings (v2.9 schema) | — | `agora.enabled`, `.members`, `.token` (secret), `.window`, `.gist_words`, `.today_lines`. | S |
 | Admin panel (v2.10–v2.11) | — | The agora space's card: today's lines, the last turn, its token set (masked). Optional. | S |
 
 ### Contracts that change in Lumi's ARCHITECTURE
@@ -155,7 +155,7 @@ and `pass` are silence in the room).
    writes his state. It reads only what is global and read-only for it (the canon text, the mood's resolution, the
    embedder behind a short lock). One room turn runs at a time (its own lock; busy → `409` at once); its own timeout
    (`504`).
-2. **Its own fast model — Gemini 2.5 Flash by default** (`spaces.agora.model`, switchable like a profile role): no
+2. **Its own fast model — Gemini 2.5 Flash by default** (`agora.model`, switchable like a profile role): no
    thinking, no tools, a short prompt (canon + mood + the room's window and gists) — a reply in about 1–3 s, the room's
    own pace (matrix-agora's room runs on 2.5 Flash too, `AGORA_REPLY_MODEL`). Cheaper than her private model by an
    order of magnitude. The trade: Flash holds her voice a little less firmly than 3.1 Pro on long, deep turns — room
@@ -165,7 +165,7 @@ and `pass` are silence in the room).
      beyond the handoff, never her **thoughts, plans or needs text** either, which may carry him (a thought about their
      evening). Only the mood's **resolution** (her day) enters.
    - A sentinel test: his records and her thoughts carry a sentinel string; the room's prompt holds none of it.
-   - A deterministic **name guard**: a room reply naming him (`spaces.agora.private_names` — his name forms) becomes a
+   - A deterministic **name guard**: a room reply naming him (`agora.private_names` — his name forms) becomes a
      `pass` before it leaves Lumi, and the log says why. The room rule asks; the guard makes sure.
 4. **His visible state untouched.** Beyond the push filter: no `turn` / `message` / `state` event, nothing in
    `/v1/state` (`last_emotion` — his window's portrait —, `totals`, the last latency), no idle-clock reset, no Telegram.
@@ -173,8 +173,8 @@ and `pass` are silence in the room).
 5. **Its own store and vectors, keyed by the space** (never `user_id`): `SpaceMessage`, `SpaceGist`, a vector
    collection of its own. The isolation contract test is extended: his records never in the room's prompt; the room's
    records readable in his private context only labelled («в Агорі, Ада: …»).
-6. **Bounded:** `spaces.agora.max_turns_per_hour` (`429`), the timeout, one room turn at a time; `observe` makes no
-   model call (it embeds ~140 lines a day). Off by default (`spaces.agora.enabled`).
+6. **Bounded:** `agora.max_turns_per_hour` (`429`), the timeout, one room turn at a time; `observe` makes no
+   model call (it embeds ~140 lines a day). Off by default (`agora.enabled`).
 
 7. **Her prompt stays small** (the owner, 2026-11-15). Her private prompt is ≈ 16–17 K tokens on prod (Gemini 3.1 Pro,
    2026-11-15); the room adds ≈ 1–1.5 K (+6–9 %):
@@ -199,6 +199,8 @@ and `pass` are silence in the room).
   without his real name, so the name never enters the room's prompt; the name guard then rarely fires.
 - **R4** — the default stays `gemini-2.5-flash`, switchable; v3.1 checks the model's status on the box at build time
   (a reported route to `gemini-3.5-flash-lite` from 2026-12-01) and pins the current Flash id.
+  Checked 2026-11-15 (LUMI-278): `models/gemini-2.5-flash` is served as the stable version `001`; `gemini-3.5-flash-lite`
+  and `gemini-3.5-flash` are served too, so a switch is one setting (`agora.model`).
 - **R5** — `max_turns_per_hour` 20, in the contract's `limits`.
 - **R6** — the contract holds health, turn (reply and pass), observe (`stored` / `known`), retract, `403`, `409`, `429`,
   `504` and the rest.

@@ -9,7 +9,7 @@
   },
   "auth": {
     "header": "Authorization: Bearer <the room's token>",
-    "token": "spaces.agora.token in Lumi's secrets.yaml — scoped to channel \"agora\" and the routes below; never Lumi's owner token",
+    "token": "agora.token in Lumi's secrets.yaml — scoped to channel \"agora\" and the routes below; never Lumi's owner token",
     "client_header": "X-Lumi-Client: agora"
   },
   "silence": {
@@ -191,7 +191,7 @@
     },
     {
       "status": 429,
-      "when": "the room's hourly cap (spaces.agora.max_turns_per_hour, 20 by default)",
+      "when": "the room's hourly cap (agora.max_turns_per_hour, 20 by default)",
       "body": {
         "detail": "the room's hourly cap is reached"
       }
@@ -205,7 +205,7 @@
     },
     {
       "status": 504,
-      "when": "the room's turn ran past its timeout (spaces.agora.timeout_s)",
+      "when": "the room's turn ran past its timeout (agora.timeout_s)",
       "body": {
         "detail": "the room's turn timed out"
       }
@@ -218,7 +218,7 @@
     "Lumi posting to the room on its own: she only answers"
   ],
   "limits": {
-    "about": "Lumi's defaults (spaces.agora.*); the owner may change them.",
+    "about": "Lumi's defaults (agora.*); the owner may change them.",
     "max_turns_per_hour": 20,
     "timeout_s": 20,
     "observe_batch_max": 200
