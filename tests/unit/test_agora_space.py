@@ -311,3 +311,20 @@ def _swallow(fn, *args):
         fn(*args)
     except Exception:  # noqa: BLE001 — the store is closed under it; the stop already went on
         pass
+
+
+def test_a_kept_outcome_evicted_mid_read_falls_back_to_the_store(tmp_path):
+    # code review #6: `in` then `[]` raced the turn thread's eviction → KeyError → a 500 for a retry
+    from collections import OrderedDict
+
+    class EvictingDict(OrderedDict):
+        def __contains__(self, key):  # the eviction lands right after the membership check
+            found = super().__contains__(key)
+            self.pop(key, None)
+            return found
+
+    space = _space(tmp_path)
+    first = space.turn("Ада", "Лілі?", "$1")
+    space._outcomes = EvictingDict(space._outcomes)
+    again = space.known_outcome("$1")
+    assert again is not None and again.reply == first.reply

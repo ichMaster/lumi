@@ -284,8 +284,9 @@ class AgoraSpace:
 
     def known_outcome(self, turn_id: str) -> SpaceOutcome | None:
         """A turn already answered: its kept outcome, or — after a restart — its stored reply (R1: never twice)."""
-        if turn_id in self._outcomes:
-            return self._outcomes[turn_id]
+        kept = self._outcomes.get(turn_id)  # one read: the turn thread may evict between a check and a get (#6)
+        if kept is not None:
+            return kept
         reply = self.store.get(self.channel, turn_id, "lili")
         if reply is None:
             return None
