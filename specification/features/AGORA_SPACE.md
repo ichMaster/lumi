@@ -251,6 +251,15 @@ turns. The seam between them is the **agora space API**, and Lumi owns it.
     …) through `/ship-phase`'s review and release, and gets a change report of its own. A disagreement goes to the
     owner.
   - A step is done only once its report is reviewed and every question on it is closed.
+- **The orchestrator** (the owner, 2026-11-15; in `matrix-agora-aa`, and confirmed in `lumi-b7`: «твою оркестацію по
+  версії 3 буде виконувати сесія з агори»).
+  - `matrix-agora-aa` orchestrates both sessions for v3. It starts Lumi's steps, and its go reaches `lumi-b7` as a
+    cross-session message, recorded in the tracker. `lumi-b7` needs no further confirmation from the owner in its own
+    session.
+  - The owner speaks in `matrix-agora-aa`. His word there counts in both sessions (a go, a rule, a gate's result);
+    `matrix-agora-aa` passes it on verbatim and records it.
+  - The owner's gates stay his: `matrix-agora-aa` shows him a gate's checklist and records his word, and no session
+    passes a gate on its own.
 
 The live status of the steps, the questions, the change reports and the gates is kept in one place, the tracker
 `~/development/matrix-agora/specification/features/lumi-agora-sync.md`. This section keeps the plan; the tracker keeps
