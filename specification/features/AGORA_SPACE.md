@@ -189,6 +189,20 @@ and `pass` are silence in the room).
    mood's resolution + the room's 40-line window + its gists and recall + the rule ≈ 6–7 K tokens a turn — a fraction
    of a cent on 2.5 Flash, nothing on her private prompt.
 
+**matrix-agora's recommendations R1–R6 (2026-11-15), all accepted** (the tracker:
+`~/development/matrix-agora/specification/features/lumi-agora-sync.md`):
+- **R1** — a room turn carries the trigger only (`turn_id` = its event_id, `speaker`, its own line in `text`); Lumi
+  stores it idempotently and builds the prompt from its own window — no line twice. In the contract.
+- **R2** — «Агора сьогодні» covers the whole day: the room session's running digest (≤ 150 words) + its last 20 lines;
+  her prompt grows ≈ 1.5–2 K tokens instead of 1–1.5 K.
+- **R3** — refined: the room rule tells her «Ich» is the one she talks with privately and to call him only «Ich» there —
+  without his real name, so the name never enters the room's prompt; the name guard then rarely fires.
+- **R4** — the default stays `gemini-2.5-flash`, switchable; v3.1 checks the model's status on the box at build time
+  (a reported route to `gemini-3.5-flash-lite` from 2026-12-01) and pins the current Flash id.
+- **R5** — `max_turns_per_hour` 20, in the contract's `limits`.
+- **R6** — the contract holds health, turn (reply and pass), observe (`stored` / `known`), retract, `403`, `409`, `429`,
+  `504` and the rest.
+
 The phases with these answers built in: ROADMAP §v3 (v3.1 the channel and its own turn path, v3.2 her memory of the
 room, v3.3 fast, pass, retract).
 

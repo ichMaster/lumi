@@ -44,3 +44,12 @@ def test_silence_and_errors_are_spelled_out():
     statuses = {e["status"] for e in api["errors"]}
     assert {401, 403, 404, 409, 422, 429, 502, 504} <= statuses
     assert any("owner" in rule for rule in api["never"])
+
+
+def test_r1_a_turn_carries_the_trigger_only_and_r5_names_the_cap():
+    api = _api()
+    for name in ("turn", "turn_pass"):
+        body = api["endpoints"][name]["request"]["body"]
+        assert "\n" not in body["text"]  # the trigger's own line — earlier lines come from observe, never twice
+        assert set(body) == {"channel", "speaker", "register", "turn_id", "text"}
+    assert api["limits"]["max_turns_per_hour"] == 20 and api["limits"]["timeout_s"] == 20

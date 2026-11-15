@@ -1195,7 +1195,9 @@ his desktop or his turns.
 - **The contract first:** `docs/agora-space-api.json` (API v1 — request and response examples for `turn`, `observe`,
   `retract`, `health`; `"version": 1`) and ARCHITECTURE §Contracts; `GET /v1/health` reports `"agora": 1`.
 - **The turn:** `TurnRequest` gains `channel` (`"owner"` by default — today's path; `"agora"`), `speaker` (who said the
-  line she answers) and `register`; the room's lines arrive as `"Name: text"`, as matrix-agora's transcripts are.
+  line she answers) and `register`. A room turn carries **the trigger only** — `turn_id` (its event_id, already
+  observed), its speaker and its own line in `text`; Lumi stores that line idempotently under `turn_id` and builds the
+  room's prompt from its own window of observed lines, so no line is stored twice (matrix-agora's R1).
 - **The store:** the room's records live in a store of their own — `SpaceMessage{channel, session_id, speaker, role,
   text, emotion?, intensity?, ts, source_id}`, `SpaceGist{channel, day, text}`, the space's own vector collection —
   keyed by the space, never in the relationship tables; a rollback drops it whole.
@@ -1216,7 +1218,8 @@ his desktop or his turns.
   totals or the idle clock; the room's usage lines carry `channel: "agora"`.
 - **Settings** (the v2.9 schema): `spaces.agora.enabled` (off → the room's routes are absent), `.token`, `.model`
   (`gemini-2.5-flash`), `.timeout_s` (20), `.window` (the room's live lines in its own prompt, 40), `.private_names`,
-  `.max_turns_per_hour`, `.today_lines` (20), `.gist_words` (40 — one or two sentences a day).
+  `.max_turns_per_hour` (20 — matrix-agora's R5), `.today_lines` (20), `.today_digest_words` (150), `.gist_words` (40 —
+  one or two sentences a day).
 
 **DoD:**
 - An agora turn and observed lines never appear in his Telegram, his desktop or his TUI, never close his session, and
@@ -1239,16 +1242,19 @@ and in Agora she says nothing about him.
 **Tasks:**
 - **The room's prompt (the space recipe):** her canon; the mood's resolution (her day — not his); the room's own memory
   — the room session's window, its day gists, recall over the room alone; the room rule («В Агорі ти серед кількох
-  співрозмовників. Нічого не розповідай про Віталія і ваші розмови наодинці. Не обговорюй, хто з присутніх людина, а
-  хто ні. Якщо тобі нема чого додати — можна промовчати.»). **Never:** his facts, summaries, impressions, recall,
+  співрозмовників. «Ich» — це той, з ким ти говориш і наодинці: тут називай його лише «Ich» і нічого не розповідай про
+  ваші розмови наодинці. Не обговорюй, хто з присутніх людина, а хто ні. Якщо тобі нема чого додати — можна
+  промовчати.»). His real name never enters the room's prompt (matrix-agora's R3, refined). **Never:** his facts, summaries, impressions, recall,
   closeness — and never her thoughts, plans or needs text, which may carry him.
 - **The name guard:** a room reply that names him (`spaces.agora.private_names`) becomes a `pass` before it leaves
   Lumi, and the log says why.
 - **The room's lines are the speakers' words:** no closeness nudge, no facts or impressions about him from the room;
   his own lines there (speaker «Ich») stay the room's, his public words.
-- **With him (his private recipe), kept small** (≈ +1–1.5 K tokens on her ≈ 16–17 K, measured on prod 2026-11-15):
-  - «Агора сьогодні» — the room's last `today_lines` (20) lines of the day with their speakers, only on a day the room
-    spoke; placed in the prompt's **tail**, after the stable start, so a new room line never breaks the cached prefix;
+- **With him (his private recipe), kept small** (≈ +1.5–2 K tokens on her ≈ 16–17 K, measured on prod 2026-11-15):
+  - «Агора сьогодні» — **the whole day**: the room session's running digest (its in-session compaction, ≤
+    `today_digest_words` 150) + its last `today_lines` (20) lines with their speakers, only on a day the room spoke
+    (matrix-agora's R2: ~140 lines a day, so 20 lines alone are about three hours); placed in the prompt's **tail**,
+    after the stable start, so a new room line never breaks the cached prefix;
   - recall over his memory **and** his spaces in the **same** per-turn budget as today (`recall.rag_k` 4,
     `recall.rag_max_chars` 1200) — the room's lines compete for those places, they add none; each room line labelled
     with its place and speaker («в Агорі, Ада: …»), never as his words;
@@ -1266,8 +1272,8 @@ and in Agora she says nothing about him.
 the room's prompt holds none of it but holds the room rule; the name guard (a reply naming him → `pass`); his prompt
 holds «Агора сьогодні» and labelled recall; closeness and facts unmoved by room lines; the gist in the digests,
 labelled; **the size bound** — on a fixture day of 140 room lines his prompt grows by at most `today_lines` lines + the
-gists (≈ 1.5 K tokens), the recall block stays within `rag_max_chars`, and «Агора сьогодні» sits after the stable
-start; no room → no block. **No paid calls.**
+running digest + the gists (≈ 2 K tokens), the recall block stays within `rag_max_chars`, and «Агора сьогодні» sits
+after the stable start; no room → no block; the room's prompt never holds his real name (`private_names`). **No paid calls.**
 
 ### v3.3 — The room's turn: fast, allowed to pass, retractable
 
