@@ -170,6 +170,26 @@ phases: ROADMAP §v3.
   is dropped when it ends. The core's embedder is shared through `LockedEmbedder` (one short lock) only while the space
   is on. v3.1's room prompt is the canon + a short framing + the window (`agora.window` lines by `ts`, the trigger last)
   as one quoted transcript; the room rule, the mood, the recall and the name guard are v3.2.
+- **As built (v3.2) — her memory of the room.**
+  - **The space recipe** (`AgoraSpace.build_prompt`), in order: the canon, the room rule (authored,
+    `core/agora_room.md`), her day (the mood's resolution, read through a callable — never a call), the room's last
+    7 day gists, today's running digest, recall over the room alone (his `rag_k` / `rag_floor` / `rag_max_chars`),
+    then the window.
+  - **His real names** (`agora.private_names`) read «Ich» in everything the room's prompt holds, the room's own lines
+    included. A room reply that still names him becomes a `pass`: not stored, the outcome kept for a retry.
+  - **The room's housekeeping.** A `SpaceDigest` per session (the running digest, re-written once `today_lines`
+    more lines scroll out of the last `today_lines`) and a `SpaceGist` per past day (≤ `gist_words`). Both are
+    written by the room's **own** housekeeping client (`agora.model`) on a server thread every 60 s, never his
+    housekeeping model (a departure from the first plan, so every room call stays off his core's client and lock).
+  - **His private recipe.** `Core.attach_space(memory)` — the owner's core only, while the space is on.
+    - «Агора сьогодні» sits in the tail: the digest plus the last `today_lines` lines, hers as «я».
+    - The room's lines compete in his recall for the same `rag_k` places, floor and `rag_max_chars`, each labelled
+      «в Агорі, <speaker>: …».
+    - A day's gist rides inside his day digest line («; в Агорі: …»), and a week's joined gists inside his week line,
+      rendered at prompt time, so his records are unchanged.
+    - Unattached, or a silent room → his prompt is byte-identical.
+  - **Pins:** the sentinel test (`tests/contract/test_space_sentinel.py`); labelled-only in his context
+    (`test_isolation.py`); the size bound (140 lines → ≈ 2.2 K characters, `tests/integration/test_agora_memory.py`).
 - Off by default (`agora.enabled`). Multi-user later lets a space's member list hold real users.
 
 ## Voice

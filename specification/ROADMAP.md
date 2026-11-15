@@ -1288,6 +1288,14 @@ labelled; **the size bound** — on a fixture day of 140 room lines his prompt g
 running digest + the gists (≈ 2 K tokens), the recall block stays within `rag_max_chars`, and «Агора сьогодні» sits
 after the stable start; no room → no block; the room's prompt never holds his real name (`private_names`). **No paid calls.**
 
+**As built (LUMI-284..288, 2026-11-15):**
+- The room's digest (`SpaceDigest`) and day gists are written by the **room's own** client (`agora.model`) every
+  60 s, not his housekeeping model — every room call stays off his core.
+- His real names read «Ich» in all of the room's prompt, the room's own lines included; the name guard catches what
+  still slips.
+- The gists ride in his digests at render time (his records unchanged).
+- Measured: 140 room lines grow his prompt by ≈ 2.2 K characters (≈ 0.9 K tokens).
+
 ### v3.3 — The room's turn: fast, allowed to pass, retractable
 
 **Goal:** what a room turn needs — a reply in seconds, the freedom to stay silent, and a way to take back a reply the

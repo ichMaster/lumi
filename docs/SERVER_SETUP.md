@@ -223,6 +223,22 @@ the TUI's event stream, `/v1/state`, his totals or the idle clock; a room turn n
 the room's. The room's lines live in `<data root>/spaces.sqlite`, a file of its own (deleting it forgets the room
 whole); his memory files never hold a room line. The room's model calls show in `cache-log.jsonl` as `kind: "agora"`.
 
+**What she remembers of the room (v3.2).**
+- **In the room** she speaks from:
+  - her canon;
+  - the room rule (`core/agora_room.md`: the owner is «Ich» there, nothing of their private talks);
+  - her mood of the day;
+  - the room's own past: its day gists, today's running digest and recall over the room alone.
+
+  None of the owner's memory enters the room's prompt. His real names (`agora.private_names` — set them) read «Ich»
+  there, and a reply that still names him is a silent `pass`.
+- **With the owner** she knows the room:
+  - «Агора сьогодні» at the end of her prompt, on a day the room spoke;
+  - the room's lines in her recall, labelled «в Агорі, Ада: …»;
+  - each day's gist inside her day and week digests.
+
+  The digest and the gists are written by the room's own client every minute (`kind: "agora"` in the cache log).
+
 | Status | Meaning in the room |
 |---|---|
 | `409` | a room turn is already running — silence |
