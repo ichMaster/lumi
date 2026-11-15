@@ -162,6 +162,12 @@ with the settings it had — the ones from before the migration. A v2.9+ image n
 For the "scheduled thought" check later, turn the scheduler on as in
 [SERVER_SETUP §Her time on the server](SERVER_SETUP.md) (its quick-check schedule recipe).
 
+**The Agora space (v3.1)** is off on both instances until it is turned on per instance — dev first, prod only at the
+synchronization's step 7 (the owner's gate G3): `agora.enabled: true` in that instance's `settings.yaml`, the room's
+own `agora.token` in its `secrets.yaml` (`0600`, never the `server.token`), then `cfg <instance> validate && lumi
+<instance> restart`. Its store is `~/lumi/<instance>/data/spaces.sqlite`; the steps and what the room reaches are in
+[SERVER_SETUP §Agora](SERVER_SETUP.md).
+
 ### 3. Prod — with her memory, never empty
 
 Prod's directory is the same shape (`~/lumi/prod/{settings.yaml,secrets.yaml,data,app}`, port 8765, its own token
@@ -296,13 +302,13 @@ changes nothing server-side.
 ## Deploys
 
 ```
-v2-dev ── merge (ff) ──► main ── CI: gates + image ──► :sha-<short> ── the agent ──► lumi-dev   (≤ 5 min)
+v3-dev ── merge (ff) ──► main ── CI: gates + image ──► :sha-<short> ── the agent ──► lumi-dev   (≤ 5 min)
                           └── /release-version ──► tag vA.B.C ── CI ──► :vA.B.C ── confirm ──► lumi-prod
                                                                                         └── prod_update.py ──► the Mac prod client
 ```
 
-- **Branches.** Work lands on `v2-dev`; it reaches the box's dev when it is **merged into `main`**
-  (`git checkout main && git merge --ff-only v2-dev && git push`, then back to `v2-dev`). A release is a tag cut by
+- **Branches.** Work lands on `v3-dev`; it reaches the box's dev when it is **merged into `main`**
+  (`git checkout main && git merge --ff-only v3-dev && git push`, then back to `v3-dev`). A release is a tag cut by
   `/release-version`; prod runs only release images.
 - **CI** (`.github/workflows/`): `ci.yml` runs ruff + pytest; `image.yml` checks the compose files, builds the image,
   starts it with a test config (`/v1/health` must answer, a stop must exit 0) and only then pushes it. The agent
@@ -542,8 +548,8 @@ v2.9 a unit reads `~/lumi/<instance>/settings.yaml` + `secrets.yaml` (the repo's
 | TUI: `… rejected the token — no pushes until a restart` | the server restarted with another token | fix the token, restart the client |
 | no Telegram messages arrive, `telegram-inbound.log` shows a *Conflict* (another getUpdates) | another machine polls the same bot | stop the other poller (setup §5) |
 | her day starts at the wrong hour (mood, quiet hours) | the container's clock zone | `LUMI_TZ` in `deploy/compose/<i>.env` (default `Europe/Kyiv`) |
-| `status`: `waiting: main <sha> (CI pending)` / `(CI red)` / `(CI none)` | CI (gates or image) hasn't finished, failed, or hasn't started | wait / fix it on `v2-dev` and merge again |
-| `status`: `waiting: main <sha> (behind what dev runs)` | dev runs a commit `main` doesn't contain | merge `v2-dev` into `main` (fast-forward) |
+| `status`: `waiting: main <sha> (CI pending)` / `(CI red)` / `(CI none)` | CI (gates or image) hasn't finished, failed, or hasn't started | wait / fix it on `v3-dev` and merge again |
+| `status`: `waiting: main <sha> (behind what dev runs)` | dev runs a commit `main` doesn't contain | merge `v3-dev` into `main` (fast-forward) |
 | `status`: `prod … waiting: vA.B.C` | a release awaits your approval | `deploy_agent.py confirm vA.B.C` |
 | `status`: `bad: …`, `last deploy …: rolled back: <reasons>` | a deploy failed its smoke and went back | read the reasons + `deploy.log`; fix forward with a new commit / patch tag |
 | `another deploy step is running — try again in a minute` | the timer's step holds the lock (a deploy can take minutes) | wait, then repeat the command |

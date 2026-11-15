@@ -197,6 +197,38 @@ a new tag updates what the app runs. Rebuild it only to change the icon or the t
 | "The server isn't answering" + countdown | the server is down or unreachable | start it (the admin panel, or the box); the window reconnects by itself |
 | "the desktop window needs pywebview" | `python -m desktop` without the extra | use `./lumi-desktop` |
 
+## Agora: the room as a space of her own (v3.1)
+
+matrix-agora's bridge agent brings Лілі into Agora, the owner's Matrix room of agents. The room talks to this server
+through its own channel, the **agora space API v1** ([`docs/agora-space-api.json`](agora-space-api.json)), and nothing
+of it reaches the owner's side. The design is in
+[AGORA_SPACE.md](../specification/features/AGORA_SPACE.md); the phases are in ROADMAP §v3.
+
+**Turning it on (one instance at a time — dev first).**
+1. Make the room's token and keep it out of argv and logs:
+   `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` into the instance's `secrets.yaml` as
+   `agora.token` (`0600`). It must differ from `server.token`.
+2. In the instance's `settings.yaml`: `agora:` → `enabled: true`. The room's model is `agora.model`
+   (`gemini-2.5-flash`), so `providers.gemini_api_key` must be set too.
+3. Restart the server. `GET /v1/health` now shows `"agora": 1`. Without a room token, with the client token reused,
+   or without a Gemini key, the server refuses to start (exit 78) and says which.
+
+**What the room reaches.** With its token: `POST /v1/observe` (the room's lines she hears — stored, embedded, no
+model call) and `POST /v1/turn` with `channel: "agora"` (she answers on her own Gemini client, one room turn at a time,
+`agora.timeout_s` 20 s). Everything else answers `403`: `/v1/state`, `/v1/events`, `/v1/command`, `/v1/directive`,
+`/v1/session/new`, `/v1/turn/stream`, and a turn of any other channel. The owner's token keeps its full reach.
+
+**What the room never touches.** Her answers in the room never reach his Telegram, the voicer, his desktop window,
+the TUI's event stream, `/v1/state`, his totals or the idle clock; a room turn never waits for his turn, nor his for
+the room's. The room's lines live in `<data root>/spaces.sqlite`, a file of its own (deleting it forgets the room
+whole); his memory files never hold a room line. The room's model calls show in `cache-log.jsonl` as `kind: "agora"`.
+
+| Status | Meaning in the room |
+|---|---|
+| `409` | a room turn is already running — silence |
+| `422` | a malformed call: a speaker outside 1–64 characters or with `:`, a line without `id`, over 200 lines |
+| `502` / `504` | the room's model failed / ran past `agora.timeout_s` — silence |
+
 ## What client mode doesn't do yet
 
 The **voice mode** (`/mode-set voice`), the **voicer** and **dictation** need the local mic and speakers next

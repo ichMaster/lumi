@@ -159,9 +159,17 @@ phases: ROADMAP §v3.
   the room he is «Ich»: the room rule tells her «Ich» is the one she talks with privately and to call him only so — his
   real name never enters the room's prompt.
 - **Nothing on his side:** no Telegram, no `/v1/events` push, nothing in `/v1/state`, no idle-clock reset, nothing in
-  his totals; the space's usage lines carry `channel: "agora"`.
+  his totals; the space's model calls go to the per-call ledger (`cache-log.jsonl`) as `kind: "agora"` (v3.1 — his
+  per-session usage ledger gets no room row, so his sessions per day stay his).
 - **Hearing without answering:** `observe` stores the room's lines (idempotent by the room's event id) and embeds them,
   no model call. **Retract** removes a reply the room never showed.
+- **As built (v3.1).** `core/space.py` holds the records, the store seam and `AgoraSpace` (`observe`, `turn`,
+  `abandon`); `state/space_store.py` keeps them in `<data root>/spaces.sqlite` (one connection under one lock; a
+  rollback deletes the file). The room's own client is `build_space_llm` (a `GeminiClient`, thinking off, its turn
+  deadline = `agora.timeout_s`); the server waits the budget plus a 2 s grace, then answers `504` and the turn's reply
+  is dropped when it ends. The core's embedder is shared through `LockedEmbedder` (one short lock) only while the space
+  is on. v3.1's room prompt is the canon + a short framing + the window (`agora.window` lines by `ts`, the trigger last)
+  as one quoted transcript; the room rule, the mood, the recall and the name guard are v3.2.
 - Off by default (`agora.enabled`). Multi-user later lets a space's member list hold real users.
 
 ## Voice
@@ -248,7 +256,7 @@ The system prompt for a turn with user X = `canon` + recent `SharedMemoryItem`s 
 - Session history is trimmed to a rolling window before each model call: the most recent messages are kept **verbatim**, and older messages of the *current* session are folded into a running **session digest** (in-session compaction) instead of being dropped. The verbatim window **floats** between `memory_window` and `memory_window + compaction_batch`: when it would exceed the upper bound, the oldest overflow batch is summarized into the digest (a `SessionDigest{session_id, summary, compacted_count}`, per-session, behind `repository`) and the verbatim tail drops back to `memory_window`. The digest is injected into the system prompt (after summaries/facts), so a long single session keeps its earlier context. This is **distinct from** the end-of-session `ShortSummary`, which compresses the *whole* finished session for *future* sessions. Compaction runs as best-effort housekeeping (extended thinking off; a failure keeps the prior digest, never breaks the turn) and is auto-triggered — the count of just-folded messages is surfaced for the client to show.
 - At startup the core rehydrates context **for that user**: canon + shared experience (`SharedMemoryItem`s) + the user's last few `ShortSummary` records + the user's long-term facts.
 - Memory can be viewed and cleared via the TUI/CLI (v0.2 / v3.1) and the admin panel (v3.5); `clear` wipes the current user's relationship memory (short + long-term). Purging a user's contributions to the shared layer is a separate, explicit action (§Cross-pollination).
-- **A session per space (v3).** The agora session belongs to no user: opened on its first observation or turn, rolled at her local midnight or by size (its day gist written at the roll); it never closes his session and his `/v1/session/new` never closes it; a redeploy closes both.
+- **A session per space (v3).** The agora session belongs to no user: opened on its first observation or turn, rolled at her local midnight or by size (its day gist written at the roll); it never closes his session and his `/v1/session/new` never closes it; a redeploy closes both. As built (v3.1): a line's session is the one of **her local day of its own `ts`** (`agora-YYYY-MM-DD`, then `…-2` past 1000 lines), so a late line lands in its day; the window is ordered by `ts`, not by arrival.
 
 ## Configuration and secrets
 

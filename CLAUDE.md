@@ -84,7 +84,7 @@ These are cross-cutting and defined once; respect them in every version:
 Python, **Anthropic SDK — Claude Haiku (v0.1); more models (Claude tiers / OpenAI / DeepSeek / MiniMax) switchable v0.18**, Textual (TUI), FastAPI (server, v3+), ElevenLabs (TTS; later STT). Planned top-level layout from ARCHITECTURE.md:
 
 ```
-/core           # canon, per-user memory + shared experience, llm (thin LLMClient seam — Claude Haiku v0.1; more models v0.18), emotion field + validation, mood/temperament (model-based daily mood + resolution, v0.6), repository interface (user-scoped)
+/core           # canon, per-user memory + shared experience, llm (thin LLMClient seam — Claude Haiku v0.1; more models v0.18), emotion field + validation, mood/temperament (model-based daily mood + resolution, v0.6), repository interface (user-scoped); v3.1: core/space.py — the Agora space (records, the store seam, AgoraSpace: observe + the room's own turn on its Gemini client, never Core.reply)
 /tui            # terminal interface (Textual): in-process in v0, refactored to a server client in v3.1; Log/Emoji renderers
 /telegram       # later (v0.13): the Telegram bridge — two dumb daemons over a file bus (inbox/outbox JSONL FIFO); the TUI stays the brain, no core logic, no aiogram in the TUI
 /viewer         # later (v0.7): local desktop emotion-face window (Tkinter) + faces/ asset pack; polls a local signal
@@ -96,7 +96,7 @@ Python, **Anthropic SDK — Claude Haiku (v0.1); more models (Claude tiers / Ope
 /mcp            # later (v5.2+): MCP client + web_search (v5.2), world-context/knowledge (v5.3), image/music generators (v6.3/v6.5); untrusted-content handling
 /deploy         # v2.6: systemd user units for the Linux box (server + Telegram daemons per instance; the way back since v2.8); v2.7: + lumi-deploy.service/.timer (the deploy agent, scripts/deploy_agent.py); v2.8: compose/ (compose.yaml + prod.env/dev.env) beside the root Dockerfile; the Docker image + compose per instance (the units retired)
 /admin          # v2.10: the admin panel — a container (deploy/admin/, the same image, python -m admin), FastAPI + static UI over both instances: readers (read-only), health checks, the Docker-API container seam, usage, logs; v2.11: the settings editor (edit.py), the audit (audit.py), the agent-lock guard (guard.py), the admin-bot alerts (alerts.py)
-/state          # repository implementation + local storage (JSON/SQLite) + gallery files (v6), keyed by user_id
+/state          # repository implementation + local storage (JSON/SQLite) + gallery files (v6), keyed by user_id; v3.1: space_store.py — the room's own SQLite file (<data root>/spaces.sqlite), keyed by the space, never user_id
 /tests          # pytest: unit, contract, integration; mock model + fakes
 /specification  # MISSION/ARCHITECTURE/ROADMAP/EMOTION/WEB_SEARCH
 .github/workflows/ci.yml  # lint (ruff) + tests on every push/PR

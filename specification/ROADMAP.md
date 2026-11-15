@@ -1241,6 +1241,12 @@ and his state (`last_emotion`, totals, the idle clock, the outbox, the event str
 examples accepted and returned as written; the isolation test extended to the space; the owner path byte-identical
 (the existing suite). **No paid calls.**
 
+**As built (LUMI-278..282, 2026-11-15):** the settings are the `agora` group (`agora.*`, two-level like every
+schema group); the room's store is `<data root>/spaces.sqlite`, a line's session the one of her local day of its own
+`ts`; the room's calls are logged per call (`cache-log.jsonl`, `kind: "agora"`), with no row in his session ledger;
+the contract gained the speaker rule and the server's real `401` detail (still API v1). Dev deploy + the room's dev
+token: LUMI-283, after the release.
+
 ### v3.2 — Her memory of the room
 
 **Goal:** like Кіра and Устина in matrix-agora: she remembers everything said in Agora and can tell the owner about it —
