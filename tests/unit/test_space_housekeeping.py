@@ -241,3 +241,18 @@ def test_the_stop_waits_for_a_housekeeping_call_in_flight(tmp_path):
     closer.join(5)
     assert results == [["digest agora-2026-11-16"]]  # the digest landed before the store closed
     assert SqliteSpaceStore(tmp_path / "spaces.sqlite").get_digest("agora", "agora-2026-11-16") is not None
+
+
+def test_a_long_backlog_is_digested_in_bounded_batches(tmp_path):
+    # code review #4: 900 lines scrolled out in one session used to go in a single call
+    from core.space import DIGEST_MAX_LINES
+
+    hk = FakeHousekeeper()
+    space = _space(tmp_path, hk)
+    space.observe([ObservedLine(f"$b{i}", "Ада", f"рядок {i}", f"2026-11-16T{8 + i // 3600:02d}:{(i // 60) % 60:02d}:"
+                                f"{i % 60:02d}+02:00") for i in range(470)])  # 450 scrolled out of the last 20
+    for expected in (200, 400, 450):
+        assert space.housekeep(DAY) == ["digest agora-2026-11-16"]
+        assert space.store.get_digest("agora", "agora-2026-11-16").upto == expected
+    assert space.housekeep(DAY) == []  # caught up
+    assert all(call[1].count("\nАда: ") <= DIGEST_MAX_LINES for call in hk.calls)
