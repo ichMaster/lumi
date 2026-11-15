@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 3.1.0 (2026-11-15)
+---------------------------
+- v3.1 — Agora, the channel: matrix-agora's room becomes a space of her own (off by default, agora.enabled). The room's lines are heard (POST /v1/observe — idempotent by event id, embedded, no model call) and kept in a store of their own (<data root>/spaces.sqlite, keyed by the space, never user_id; a session per her local day). A turn with channel "agora" runs the room's own path on Gemini 2.5 Flash (thinking off, one room turn at a time, 20 s budget) — never Core.reply, never the core lock, nothing on his side (Telegram, desktop, events, state, totals, idle clock). A scoped room token (agora.token) reaches only the room's routes, 403 elsewhere; GET /v1/health shows "agora": 1 while on (LUMI-278..282).
+- The agora space API v1 (docs/agora-space-api.json) is checked by the server as written. Clarified, still v1: the speaker rule (1–64 characters, no ':'), a ts with its offset, the 401 detail "unauthorized".
+- Code review fixes: a 504'd room turn never keeps its reply; a big observe embeds in chunks of 16; a long room line is cut in the room's prompt; the stop waits for a room turn in flight; a naive ts is a 422.
+- The live DoD (nothing of the room in his Telegram, desktop or TUI; his turns never delayed) is shown to the owner at this release and checked at G2 (the live test, step 6) — not yet checked live.
+
 Version 2.12.3 (2026-11-14)
 ---------------------------
 - LUMI-277: an option to hide her portrait in the window — Details → Portrait: show / hide, kept between launches; hidden, the panel keeps the caption, the theme, the closeness, the mood and the thoughts without the picture.

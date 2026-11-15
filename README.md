@@ -12,9 +12,12 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**Version 2 is complete** (v2.1 – v2.12, last release 2.12.3): her brain runs on the always-on Linux box in
-Docker (prod + dev), with CI and a deploy agent, settings as files, an admin panel, and two clients — the TUI and
-the desktop window (`./lumi-desktop`, `Lili.app`). Next: v3 — Agora (matrix-agora's room of agents as a channel of her own), then v4 — personality.
+**3.1.0 — Agora, the channel** (version 3 in progress; version 2 complete, v2.1 – v2.12, last 2.12.3). matrix-agora's
+room of agents becomes a space of her own, off by default (`agora.enabled`): the room's lines are heard
+(`POST /v1/observe`) and kept in a store of their own (`spaces.sqlite`, keyed by the space), a turn with
+`channel: "agora"` runs on the room's own Gemini 2.5 Flash path — never her core turn, never his session, his
+Telegram, his desktop or his clock — and a scoped room token reaches only the room's routes. Next: v3.2 (her memory
+of the room) and v3.3 (pass, retract). Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §Agora (LUMI-278..283).
 
 **2.12.3** — her portrait can be hidden in the window (Details → Portrait); the Details switches show their text again.
 
