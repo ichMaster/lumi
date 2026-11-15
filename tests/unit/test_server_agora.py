@@ -232,3 +232,10 @@ def test_retract_is_the_rooms_own_route(tmp_path):
     assert client.post("/v1/turn/%24trig/retract").status_code == 401
     off = TestClient(create_app(make_core(tmp_path / "off"), token=OWNER, env="dev", version="3.3.0"))
     assert off.post("/v1/turn/%24trig/retract", headers=OWNER_AUTH).status_code == 404  # the space off
+
+
+def test_the_hourly_cap_is_a_429(tmp_path):
+    client = agora_client(tmp_path, space=make_space(tmp_path, max_turns_per_hour=1))
+    assert client.post("/v1/turn", json=TURN, headers=ROOM_AUTH).status_code == 200
+    capped = client.post("/v1/turn", json={**TURN, "turn_id": "$second"}, headers=ROOM_AUTH)
+    assert capped.status_code == 429 and capped.json()["detail"] == "the room's hourly cap is reached"

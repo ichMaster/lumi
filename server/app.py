@@ -478,7 +478,7 @@ def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
     never the service's lock, the outbox, the event bus, the idle clock or his state. It runs on its own thread; the
     request waits the room's budget plus a grace, then gives up (``504``) and the turn's reply is dropped."""
     from core.emotion import EmotionError
-    from core.space import SpaceBusy, SpaceTimeout, speaker_problem
+    from core.space import SpaceBusy, SpaceCapped, SpaceTimeout, speaker_problem
 
     if problem := speaker_problem(req.speaker):
         raise HTTPException(status_code=422, detail=problem)
@@ -511,6 +511,8 @@ def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
         return box["outcome"].as_dict()
     if isinstance(error, SpaceBusy):
         raise HTTPException(status_code=409, detail=ROOM_BUSY)
+    if isinstance(error, SpaceCapped):  # v3.3: the hourly cap — silence in the room
+        raise HTTPException(status_code=429, detail="the room's hourly cap is reached")
     if isinstance(error, SpaceTimeout):
         raise HTTPException(status_code=504, detail="the room's turn timed out")
     if isinstance(error, LLMError):

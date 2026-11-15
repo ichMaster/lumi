@@ -433,3 +433,30 @@ def _record(errors, fn, *args):
         fn(*args)
     except Exception as exc:  # noqa: BLE001
         errors.append(exc)
+
+
+# --- v3.3 LUMI-291: the hourly cap ---------------------------------------------------------------------------------
+
+
+def test_the_hourly_cap_counts_model_calls_over_a_rolling_hour(tmp_path):
+    from core.space import SpaceCapped
+
+    clock = [0.0]
+    llm = FakeRoomModel()
+    space = _space(tmp_path, llm, max_turns_per_hour=3, monotonic=lambda: clock[0])
+    for i in range(3):
+        space.turn("Ада", f"Лілі {i}?", f"$t{i}")
+        clock[0] += 10
+    space.turn("Ада", "Лілі 0?", "$t0")  # a retry answered from a kept outcome never counts
+    with pytest.raises(SpaceCapped):
+        space.turn("Ада", "Лілі 3?", "$t3")
+    assert space.store.get("agora", "$t3", "user") is not None  # the room's line is still heard
+    clock[0] = 3601.0  # the first call left the hour
+    assert space.turn("Ада", "Лілі 4?", "$t4").outcome == "reply"
+    assert len(llm.calls) == 4
+
+
+def test_a_zero_cap_is_no_cap(tmp_path):
+    space = _space(tmp_path, max_turns_per_hour=0)
+    for i in range(30):
+        space.turn("Ада", f"Лілі {i}?", f"$t{i}")

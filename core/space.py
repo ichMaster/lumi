@@ -231,6 +231,10 @@ class SpaceBusy(RuntimeError):
     """A room turn is already running — one at a time (→ ``409``, silence in the room)."""
 
 
+class SpaceCapped(RuntimeError):
+    """v3.3: the room's hourly cap of model calls is reached (→ ``429``, silence in the room)."""
+
+
 class SpaceTimeout(RuntimeError):
     """The room's turn ran past its budget (→ ``504``); its reply, if one comes later, is never stored."""
 
@@ -300,7 +304,7 @@ class AgoraSpace:
                  today_lines: int = 20, today_digest_words: int = 150, gist_words: int = 40,
                  mood: Callable[[], str | None] | None = None, private_names: object = (),
                  recall_k: int = 4, recall_floor: float = 0.3, recall_max_chars: int = 1200,
-                 room_rule: str | None = None) -> None:
+                 room_rule: str | None = None, max_turns_per_hour: int = 0) -> None:
         import threading
         import time
         from collections import OrderedDict
@@ -337,6 +341,9 @@ class AgoraSpace:
         self._recall_floor = float(recall_floor)
         self._recall_max_chars = max(0, int(recall_max_chars))
         self._hk_backoff: dict[str, tuple[int, float]] = {}  # job → (failures, monotonic time it may run again)
+        # v3.3: the hourly cap — the start times of the room's model calls in the last hour (0 → no cap)
+        self._cap = max(0, int(max_turns_per_hour))
+        self._calls: list[float] = []
 
     # --- hearing --------------------------------------------------------------------------------------------
     def _tz(self):
@@ -508,6 +515,7 @@ class AgoraSpace:
             now = self._clock().isoformat(timespec="seconds")
             [trigger] = self._new_lines([ObservedLine(turn_id, speaker, text, now)])
             self._embed(self.store.add_lines([trigger]))
+        self._take_a_call()  # v3.3: the hourly cap (a retry answered from a kept outcome never reaches here)
         system, messages = self.build_prompt(trigger)
         started = self._now_s()
         try:
@@ -543,6 +551,17 @@ class AgoraSpace:
             self._keep(outcome)
         self._log_usage(stats, reply.session_id if reply is not None else trigger.session_id)
         return outcome
+
+    def _take_a_call(self) -> None:
+        """Count this room turn's model call against ``max_turns_per_hour`` over a rolling hour — ``SpaceCapped``
+        past it (the room's line is already stored; only her answer is withheld)."""
+        if self._cap <= 0:
+            return
+        now = self._now_s()
+        self._calls = [t for t in self._calls if now - t < 3600.0]
+        if len(self._calls) >= self._cap:
+            raise SpaceCapped(f"the room's hourly cap ({self._cap}) is reached")
+        self._calls.append(now)
 
     def _pass_reason(self, state: object | None) -> str | None:
         """Why a room reply is a pass, or ``None``: an empty reply (v3.3), Gemini's blocked placeholder «…» (v3.3,
