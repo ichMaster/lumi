@@ -133,7 +133,7 @@
       }
     },
     "retract": {
-      "about": "The room's rules dropped her reply (for example one that would call a person in the room a bot): the reply leaves the room's session and its vectors, so she never remembers saying what the room never saw. The turn_id is URL-encoded in the path.",
+      "about": "The room's rules dropped her reply (for example one that would call a person in the room a bot), or the bridge timed out waiting: the reply leaves the room's session and its vectors, so she never remembers saying what the room never saw. Always a 200 and never an error worth a log (R8): {\"retracted\": true} when a stored reply was removed; {\"retracted\": false} when that turn stored nothing — it passed, it timed out, Lumi never received it, or it was already retracted. Idempotent: a second retract of the same id answers {\"retracted\": false}. A retract that arrives while that turn still runs marks it, and its reply is dropped when it ends ({\"retracted\": true}). The turn_id is URL-encoded in the path.",
       "request": {
         "method": "POST",
         "path": "/v1/turn/{turn_id}/retract",
@@ -143,6 +143,12 @@
         "status": 200,
         "body": {
           "retracted": true
+        }
+      },
+      "response_nothing_stored": {
+        "status": 200,
+        "body": {
+          "retracted": false
         }
       }
     }
@@ -164,7 +170,7 @@
     },
     {
       "status": 404,
-      "when": "the space is off (its routes are absent), or a retract of a turn_id the room never had",
+      "when": "the space is off (its routes are absent) — never a retract: retract always answers 200",
       "body": {
         "detail": "Not Found"
       }

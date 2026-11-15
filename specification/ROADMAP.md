@@ -1286,7 +1286,9 @@ room never showed.
   nothing is stored as her line; in his channel an empty reply is still an error.
 - **Retracting:** `POST /v1/turn/{turn_id}/retract` (the room's token): when matrix-agora's rules drop her reply (one
   that would call a person in the room a bot), the reply leaves the room's session and its vectors, so she never
-  remembers saying what the room never saw; a foreign `turn_id` → `404`.
+  remembers saying what the room never saw. Always a `200` (matrix-agora's R8): `{retracted: true}` when a stored reply
+  went, `{retracted: false}` when that turn stored nothing (a pass, a timeout, never received, already retracted) —
+  idempotent; a retract during a running turn drops its reply when it ends.
 - **`outcome`** (`reply` | `pass`) and `stats` (model, tokens, latency) on the response, for the room's accounting.
 - **A rate cap:** `spaces.agora.max_turns_per_hour` → `429` = silence in the room.
 
@@ -1294,8 +1296,9 @@ room never showed.
 memory of the room.
 
 **Tests:** unit — the register reaches the room path; an empty room reply → `pass`, 200, nothing stored (still an
-error in his channel); retract (the line and its vector gone; a foreign id `404`; the owner token's retract on his
-channel `403`); `outcome` and `stats`; the rate cap. **No paid calls.**
+error in his channel); retract (the line and its vector gone → `{retracted: true}`; nothing stored, an unknown or a
+repeated id → `200 {retracted: false}`; a retract during a running turn drops its reply; the owner token's retract on
+his channel `403`); `outcome` and `stats`; the rate cap. **No paid calls.**
 
 ---
 

@@ -53,3 +53,12 @@ def test_r1_a_turn_carries_the_trigger_only_and_r5_names_the_cap():
         assert "\n" not in body["text"]  # the trigger's own line — earlier lines come from observe, never twice
         assert set(body) == {"channel", "speaker", "register", "turn_id", "text"}
     assert api["limits"]["max_turns_per_hour"] == 20 and api["limits"]["timeout_s"] == 20
+
+
+def test_r8_a_retract_is_always_a_200_and_idempotent():
+    api = _api()
+    retract = api["endpoints"]["retract"]
+    assert retract["response"] == {"status": 200, "body": {"retracted": True}}
+    assert retract["response_nothing_stored"] == {"status": 200, "body": {"retracted": False}}
+    assert "Idempotent" in retract["about"] and "never an error" in retract["about"]
+    assert not any("retract of" in e["when"] for e in api["errors"])  # no 404 for an unknown turn_id
