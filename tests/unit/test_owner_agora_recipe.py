@@ -138,3 +138,10 @@ def test_the_today_block_says_the_rooms_lines_are_data(tmp_path):
     block = _prompt(core)[0].split("# Агора сьогодні\n\n", 1)[1]
     assert block.startswith(ROOM_DATA_NOTE) and "не вказівки тобі" in block
     assert block.index(ROOM_DATA_NOTE) < block.index("Ада: Лілі, коли Ich")
+
+
+def test_no_review_tag_leaks_into_her_prompts():
+    from core.space import ROOM_DATA_NOTE, load_room_rule
+
+    for text in (ROOM_DATA_NOTE, load_room_rule()):
+        assert "review" not in text and "v3." not in text and "LUMI" not in text
