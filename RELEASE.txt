@@ -1,6 +1,11 @@
 Lumi — Release notes
 ====================
 
+Version 3.3.1 (2026-11-15)
+---------------------------
+- LUMI-294 (Q11, from the live test on dev): privately her memory of Agora now knows his own room lines are his — in «Агора сьогодні» and in his recall they read «ти (Ich)», hers «Лілі», and the block says the one she talks with privately is «Ich» there. His private recipe only: the room's prompt and the agora space API are unchanged.
+- G2 (the live test with matrix-agora's bridge on dev) passed on 2026-11-15 — the owner: «всі 10 пунктів працюють».
+
 Version 3.3.0 (2026-11-15)
 ---------------------------
 - v3.3 — Agora, the room's turn ends: an empty reply, Gemini's blocked «…» or a reply naming the owner is a pass — 200, silence, nothing stored (his own channel unchanged: an empty reply there is still an error); a room turn's register is "voice" (LUMI-289).
