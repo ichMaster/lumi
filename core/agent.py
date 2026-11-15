@@ -538,6 +538,7 @@ class Core:
         self.last_speech: str | None = None  # the reply as written, tags and all — only when it had tags
         self._repo = repository
         self._canon = canon
+        self._space: object | None = None  # v3.2: the Agora space's memory (attach_space)
         # v0.38 Inner Voice: the think-phase instruction appended to the canon — the generic
         # REASONING_DIRECTIVE by default, or the authored core/inner_voice.md when LUMI_INNER_VOICE is on.
         self._reasoning_directive = reasoning_directive
@@ -944,6 +945,12 @@ class Core:
             return False
         self._write_face_signal(self._last_emotion, self._last_intensity)
         return True
+
+    def attach_space(self, memory: object | None) -> None:
+        """v3.2: the Agora space's memory for THIS user's private recipe — «Агора сьогодні» in the tail, the room's
+        lines in his recall (the same budget, labelled) and its day gists inside his digests. The server attaches it
+        to the owner's core only while the space is on; ``None`` (the default) → his prompt byte-identical."""
+        self._space = memory
 
     @property
     def closeness(self) -> Closeness | None:
@@ -1554,6 +1561,8 @@ class Core:
             week_since = _monday_of((today - timedelta(days=self._week_days)).isoformat())
             for ws in self._repo.week_summaries_since(self._user_id, week_since):
                 body = " ".join(ln.strip() for ln in ws.summary.splitlines() if ln.strip())
+                if body and self._space is not None and (note := self._space.week_note(ws.week_start)):
+                    body = f"{body}; {note}"  # v3.2: the room's week inside his week digest, labelled
                 if body:
                     week_summaries.append(f"[тиждень з {ws.week_start}] {body}")
         day_summaries = []
@@ -1561,6 +1570,8 @@ class Core:
             day_since = (today - timedelta(days=self._day_days)).isoformat()
             for ds in self._repo.day_summaries_since(self._user_id, day_since):
                 body = " ".join(ln.strip() for ln in ds.summary.splitlines() if ln.strip())
+                if body and self._space is not None and (note := self._space.day_note(ds.date)):
+                    body = f"{body}; {note}"  # v3.2: the room's day gist inside his day digest, labelled
                 if body:
                     day_summaries.append(f"[{ds.date}] {body}")
         # v0.35: two orthogonal knobs. `session_detail_n` caps HOW MANY of the most-recent sessions to add
@@ -1643,7 +1654,18 @@ class Core:
             thoughts=self._thoughts_block(),  # the last-24h dated diary (v0.12)
             recall=recall,  # v0.17: the per-turn "relevant past moments" RAG block (tail; never cached)
             fact_recall=fact_recall,  # v0.36: the per-turn fact-RAG push — top-K relevant non-core facts
+            space_today=self._space_today(),  # v3.2: «Агора сьогодні» (None when no space or a silent day)
         )
+
+    def _space_today(self) -> str | None:
+        """v3.2: «Агора сьогодні» from the attached space — best-effort, never breaks his turn."""
+        if self._space is None:
+            return None
+        try:
+            return self._space.today_block(self._clock())
+        except Exception:  # noqa: BLE001
+            _recall_log.warning("the Agora block failed", exc_info=True)
+            return None
 
     def _model_for(self, kind: str) -> str:
         """The model for one internal operation (v0.40 Layer 1 routing).
@@ -3135,24 +3157,36 @@ class Core:
         if not self._rag_enabled:
             return None
         hits = [(s, r) for s, r in self.recall(query, self._rag_k) if s >= self._rag_floor]
-        if not hits:
+        room = self._space_hits(query)  # v3.2: the room's lines compete for the same rag_k places — they add none
+        if room:
+            merged = sorted([(s, 0, r) for s, r in hits] + [(s, 1, m) for s, m in room],
+                            key=lambda x: x[0], reverse=True)[: self._rag_k]
+            hits = [(s, r) for s, kind, r in merged if kind == 0]
+            room = [(s, m) for s, kind, m in merged if kind == 1]
+        if not hits and not room:
             return None
         window_ids = {vector_msg_id(m.session_id, m.ts, m.role, m.text) for m in (live or [])}
         # anchor dedup (LUMI-071): a chunk's parent_msg_id is the message id, so this matches whether
         # the hit is a whole-message vector (v0.16) or a chunk (v0.30).
         hits = [(s, r) for s, r in hits if r.parent_msg_id not in window_ids]
-        if not hits:
+        if not hits and not room:
             return None
         self._turn_rag_anchor_ids = {r.parent_msg_id for _s, r in hits}  # v0.31: dedup the recall tool
         try:
-            snippets = self._expand_hits(hits, window_ids)
+            scored = self._expand_scored(hits, window_ids) if hits else []
         except Exception:  # noqa: BLE001 — expansion is best-effort; fall back to bare anchor lines
             _recall_log.warning("recall context expansion failed; using bare anchors")
-            snippets = [
-                f"— {r.ts[:10]} —\n  {r.ts[11:16]} {self._who(r.role)}: "
-                f"{_snippet(r.text, self._rag_snippet_chars)}  ← (matched)"
-                for _s, r in hits
+            scored = [
+                (s, f"— {r.ts[:10]} —\n  {r.ts[11:16]} {self._who(r.role)}: "
+                    f"{_snippet(r.text, self._rag_snippet_chars)}  ← (matched)")
+                for s, r in hits
             ]
+        # v3.2: each room line labelled with its place and speaker — never as his words
+        scored += [(s, f"— {m.ts[:10]} —\n  {m.ts[11:16]} в Агорі, {'я' if m.role == 'lili' else m.speaker}: "
+                       f"{_snippet(m.text, self._rag_snippet_chars)}  ← (matched)") for s, m in room]
+        if room:
+            scored.sort(key=lambda x: x[0], reverse=True)  # most relevant first, across his past and the room's
+        snippets = [text for _, text in scored]
         # Char budget across the whole block: keep whole snippets while they fit (most-relevant
         # first); if even the top snippet overflows (dense hits merged into one), truncate it.
         out, used = [], 0
@@ -3167,6 +3201,19 @@ class Core:
             out.append(snip)
             used += len(snip) + 2
         return "\n\n".join(out) if out else None
+
+    def _space_hits(self, query: str) -> list:
+        """v3.2: the attached room's lines nearest ``query`` above his floor (minus «Агора сьогодні»'s), or ``[]``.
+        Best-effort — a failure never breaks his turn."""
+        if self._space is None or self._embedder is None or not query.strip():
+            return []
+        try:
+            [vec] = self._embedder.embed([query[:self._embed_max_chars]], is_query=True)
+            found = self._space.search_for_owner(list(vec), self._rag_k, self._clock())
+        except Exception:  # noqa: BLE001
+            _recall_log.warning("the Agora recall failed", exc_info=True)
+            return []
+        return [(s, m) for s, m in found if s >= self._rag_floor]
 
     def _fact_recall_block(self, query: str) -> str | None:
         """The per-turn **fact-RAG** block (v0.36): the top-``LUMI_FACTS_RAG_K`` facts most relevant
@@ -3254,6 +3301,16 @@ class Core:
         *,
         show_score: bool = False,
     ) -> list[str]:
+        """The snippets of :meth:`_expand_scored`, most relevant first, without their scores."""
+        return [text for _, text in self._expand_scored(hits, window_ids, show_score=show_score)]
+
+    def _expand_scored(
+        self,
+        hits: list[tuple[float, VectorRecord]],
+        window_ids: set[str],
+        *,
+        show_score: bool = False,
+    ) -> list[tuple[float, str]]:
         """Widen each hit to a ±``rag_w`` session-neighbour snippet (anchor marked); merge
         overlapping windows within a session; drop neighbour lines already in the window. Returns
         dated snippet strings, most-relevant first. A hit that doesn't resolve → a bare anchor line.
@@ -3320,7 +3377,7 @@ class Core:
 
         snippets.extend(bare)
         snippets.sort(key=lambda x: x[0], reverse=True)  # most relevant first
-        return [text for _, text in snippets]
+        return snippets
 
     def _accumulate_facts(self, history: list) -> None:
         try:

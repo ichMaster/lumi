@@ -231,7 +231,7 @@ def agora_space_of(cfg, core):
     embedder = getattr(core, "_embedder", None)
     if embedder is not None and not isinstance(embedder, LockedEmbedder):
         embedder = core._embedder = LockedEmbedder(embedder)
-    return AgoraSpace(
+    space = AgoraSpace(
         SqliteSpaceStore(cfg.agora_store_path), build_space_llm(cfg), model=cfg.agora_model, canon=core._canon,
         clock=core.clock, embedder=embedder, window=cfg.agora_window, timeout_s=cfg.agora_timeout_s,
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
@@ -242,6 +242,8 @@ def agora_space_of(cfg, core):
         # his real names read «Ich» in the room's prompt
         mood=lambda: core.mood, private_names=cfg.agora_private_names,
         recall_k=cfg.rag_k, recall_floor=cfg.rag_floor, recall_max_chars=cfg.rag_max_chars)
+    core.attach_space(space)  # v3.2: with him she knows the room (the owner's core — the space's one member)
+    return space
 
 
 SPACE_HOUSEKEEPING_S = 60.0  # v3.2: how often the room's digest and day gists are brought up to date

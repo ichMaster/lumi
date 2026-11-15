@@ -629,6 +629,50 @@ class AgoraSpace:
         self._log_usage(stats, session_id, llm=self._hk_llm)
         return (text or "").strip()
 
+    # --- v3.2: the room in HIS private recipe (the SpaceMemory side — Core.attach_space) -------------------------
+    def _today_lines(self, now: object) -> tuple[str | None, list[SpaceMessage]]:
+        sid = self.today_session(now)
+        if sid is None:
+            return None, []
+        return sid, self.store.session_lines(self.channel, sid)[-self.today_lines:]
+
+    def today_block(self, now: object) -> str | None:
+        """«Агора сьогодні» for his prompt's tail: today's running digest + the room's last ``today_lines`` lines
+        with their speakers (hers as «я») — only on a day the room spoke. The lines are the room's, quoted."""
+        sid, lines = self._today_lines(now)
+        if sid is None or not lines:
+            return None
+        parts = []
+        digest = self.store.get_digest(self.channel, sid)
+        if digest is not None and digest.text.strip():
+            parts.append("Раніше сьогодні (конспект): " + digest.text.strip())
+        parts.append(render_transcript(lines, header="Останні репліки кімнати (від давніших до останньої):", her="я"))
+        return "\n\n".join(parts)
+
+    def search_for_owner(self, vector: list[float], k: int, now: object) -> list[tuple[float, SpaceMessage]]:
+        """The room's lines nearest ``vector`` for his recall — minus the lines «Агора сьогодні» already shows."""
+        _, shown = self._today_lines(now)
+        skip = {(m.role, m.source_id) for m in shown}
+        hits = self.store.search_vectors(self.channel, list(vector), k + len(skip))
+        return [(score, m) for score, m in hits if (m.role, m.source_id) not in skip][:k]
+
+    def day_note(self, day: str) -> str | None:
+        """The room's gist of ``day`` as a note inside his day digest («в Агорі: …»), or ``None``."""
+        text = next((g.text for g in self.store.gists(self.channel) if g.day == day), None)
+        return f"в Агорі: {text.strip()}" if text and text.strip() else None
+
+    def week_note(self, week_start: str) -> str | None:
+        """The room's gists of the week from ``week_start`` (a Monday), joined and cut to ``gist_words``."""
+        from datetime import date, timedelta
+
+        try:
+            start = date.fromisoformat(week_start)
+        except ValueError:
+            return None
+        end = (start + timedelta(days=7)).isoformat()
+        texts = [g.text.strip() for g in self.store.gists(self.channel) if week_start <= g.day < end and g.text.strip()]
+        return f"в Агорі: {cut_words(' '.join(texts), self.gist_words)}" if texts else None
+
     def close(self, wait_s: float | None = None) -> None:
         """Close the room's store at the stop — after a room turn still in flight ends (bounded by its budget plus
         a grace), so a redeploy never pulls the database out from under it (code review #4)."""

@@ -61,3 +61,33 @@ def test_a_space_lives_in_a_file_of_its_own_with_no_user_id(tmp_path):
     texts = [m.text for s in repo.list_sessions("owner") for m in repo.load_messages(s.id)]
     assert texts == ["his own line"]  # the room's line never in his
     assert (tmp_path / "store.json").read_text(encoding="utf-8").count("рядок кімнати") == 0
+
+
+def test_the_rooms_lines_reach_his_context_only_labelled(tmp_path):
+    """v3.2: a space's records are readable in its member's private context only as the space's — «Агора сьогодні»
+    (its own section) or a recall line «в Агорі, <speaker>: …» — never as his words."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from core.agent import Core
+    from core.clock import fixed_clock
+    from core.embedder import MockEmbedder
+    from core.llm import MockLLMClient
+    from core.space import AgoraSpace, ObservedLine
+    from state.space_store import SqliteSpaceStore
+
+    now = datetime(2026, 11, 16, 21, 0, tzinfo=ZoneInfo("Europe/Kyiv"))
+    emb = MockEmbedder()
+    core = Core(llm=MockLLMClient(), repository=JsonRepository(tmp_path / "store.json"), canon="C", model="m",
+                clock=fixed_clock(now), embedder=emb, recall_enabled=True, rag_enabled=True, rag_floor=0.1)
+    space = AgoraSpace(SqliteSpaceStore(tmp_path / "spaces.sqlite"), None, model="m", canon="C",
+                       clock=fixed_clock(now), embedder=emb, today_lines=5)
+    core.attach_space(space)
+    space.observe([ObservedLine("$old", "Ада", "кімнатний туман учора", "2026-11-14T08:00:00+02:00"),
+                   ObservedLine("$new", "Бруно", "кімнатний туман сьогодні", "2026-11-16T08:00:00+02:00")])
+    system, _ = core._system_prompt(core.start_session(), recall=core._recall_block("кімнатний туман"))
+    today = system.split("# Агора сьогодні\n\n", 1)[1]
+    assert "Бруно: кімнатний туман сьогодні" in today
+    assert "в Агорі, Ада: кімнатний туман учора" in system
+    outside = system.replace(today, "").replace("в Агорі, Ада: кімнатний туман учора", "")
+    assert "кімнатний туман" not in outside  # nowhere else — and never as «ти: …»

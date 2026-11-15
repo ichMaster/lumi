@@ -216,6 +216,7 @@ def build_system_prompt(
     thoughts: str | None = None,
     recall: str | None = None,
     fact_recall: str | None = None,
+    space_today: str | None = None,
 ) -> tuple[str, str]:
     """Assemble the system prompt, ordered for **prompt caching** (v0.15): a **stable prefix**
     then a **per-turn tail**. Returns ``(system, cache_prefix)`` where ``cache_prefix`` is the
@@ -275,6 +276,8 @@ def build_system_prompt(
         tail.append("# Релевантні моменти минулого\n\n" + recall)
     if fact_recall:  # v0.36: the per-turn fact-RAG push — top-K relevant non-core facts (never cached)
         tail.append("# Релевантні факти\n\n" + fact_recall)
+    if space_today:  # v3.2: «Агора сьогодні» — the room's day, in the tail so a new room line never moves the prefix
+        tail.append("# Агора сьогодні\n\n" + space_today)
     if ambient:
         tail.append("# Зараз\n\n" + ambient)
     if closeness:  # v0.10: the active relationship level's block — rebuilt every turn
