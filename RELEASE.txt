@@ -1,6 +1,14 @@
 Lumi — Release notes
 ====================
 
+Version 3.2.0 (2026-11-15)
+---------------------------
+- v3.2 — Agora, her memory of the room. In the room she now speaks from her canon, the room rule (core/agora_room.md: the owner is «Ich» there, nothing of their private talks), her mood of the day and the room's own past — its day gists, today's running digest and recall over the room alone; never anything of his (pinned by a sentinel test). His real names (agora.private_names) read «Ich» in everything the room's prompt holds, and a reply that still names him leaves as a silent pass (LUMI-285, LUMI-286).
+- With him she knows the room: «Агора сьогодні» (today's digest + the room's last 20 lines) in the tail of her prompt, the room's lines in her recall in the same budget, labelled «в Агорі, Ада: …», and each day's gist inside her day and week digests; unattached or a silent room → his prompt byte-identical (LUMI-287). A 140-line room day grows his prompt by ~2.2 K characters (LUMI-288).
+- The room's running digest and day gists are written by the room's own client every minute, never his housekeeping model (LUMI-284).
+- Code review fixes: the room's housekeeping backs off a failed or empty call (5/15/60 min); «Агора сьогодні» is framed as a record, not instructions; the stop waits for a housekeeping call in flight; a long backlog is digested in batches of 200 lines.
+- The live DoD (asked «що було в Агорі?», she tells who said what; in Agora she never says what she knows about him) is checked at G2 (the live test, step 6) — not yet checked live.
+
 Version 3.1.0 (2026-11-15)
 ---------------------------
 - v3.1 — Agora, the channel: matrix-agora's room becomes a space of her own (off by default, agora.enabled). The room's lines are heard (POST /v1/observe — idempotent by event id, embedded, no model call) and kept in a store of their own (<data root>/spaces.sqlite, keyed by the space, never user_id; a session per her local day). A turn with channel "agora" runs the room's own path on Gemini 2.5 Flash (thinking off, one room turn at a time, 20 s budget) — never Core.reply, never the core lock, nothing on his side (Telegram, desktop, events, state, totals, idle clock). A scoped room token (agora.token) reaches only the room's routes, 403 elsewhere; GET /v1/health shows "agora": 1 while on (LUMI-278..282).
