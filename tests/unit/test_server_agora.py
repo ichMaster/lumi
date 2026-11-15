@@ -127,9 +127,28 @@ def test_a_model_failure_is_502(tmp_path):
     assert res.status_code == 502 and res.json()["detail"] == "model unavailable"
 
 
-def test_an_empty_reply_is_a_500_in_v3_1(tmp_path):
+def test_an_empty_reply_is_a_pass(tmp_path):
+    # v3.3: silence, a 200 — was a 500 in v3.1
     client = agora_client(tmp_path, room_model=FakeRoomModel({"reply": ""}))
-    assert client.post("/v1/turn", json=TURN, headers=ROOM_AUTH).status_code == 500
+    res = client.post("/v1/turn", json=TURN, headers=ROOM_AUTH)
+    assert res.status_code == 200 and res.json()["outcome"] == "pass" and res.json()["reply"] == ""
+
+
+def test_the_register_is_voice_or_none(tmp_path):
+    client = agora_client(tmp_path)
+    assert client.post("/v1/turn", json={**TURN, "register": None}, headers=ROOM_AUTH).status_code == 200
+    assert client.post("/v1/turn", json={**TURN, "turn_id": "$v", "register": "voice"},
+                       headers=ROOM_AUTH).status_code == 200
+    assert client.post("/v1/turn", json={**TURN, "turn_id": "$t", "register": "thinking"},
+                       headers=ROOM_AUTH).status_code == 422
+
+
+def test_his_channel_still_errs_on_an_empty_reply(tmp_path):
+    from core.llm import MockLLMClient
+
+    core = make_core(tmp_path, llm=MockLLMClient(states={"reply": ""}))
+    client = agora_client(tmp_path, core=core)
+    assert client.post("/v1/turn", json={"text": "привіт"}, headers=OWNER_AUTH).status_code == 500
 
 
 @pytest.mark.parametrize("change", [

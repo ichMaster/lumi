@@ -13,7 +13,6 @@ import pytest
 from core.agent import Core
 from core.clock import fixed_clock
 from core.embedder import MockEmbedder
-from core.emotion import EmotionError
 from core.llm import LLMError, MockLLMClient, ResponseStats, TurnDeadlineExceeded
 from core.space import (
     AgoraSpace,
@@ -178,8 +177,7 @@ def test_model_and_gate_errors_pass_through_and_store_no_reply(tmp_path):
     with pytest.raises(LLMError):
         space.turn("Ада", "Лілі?", "$1")
     space = _space(tmp_path / "b", FakeRoomModel({"reply": "  "}))
-    with pytest.raises(EmotionError):  # an empty reply: v3.1 → 500 (silence); v3.3 makes it a pass
-        space.turn("Ада", "Лілі?", "$2")
+    assert space.turn("Ада", "Лілі?", "$2").outcome == "pass"  # v3.3: an empty reply is silence, not an error
     assert space.store.get("agora", "$2", "lili") is None
 
 
@@ -353,3 +351,34 @@ def test_a_reply_without_his_name_is_untouched_and_no_names_means_no_guard(tmp_p
     assert space.turn("Ада", "Хто тут?", "$1").outcome == "reply"
     space = _space(tmp_path / "b", FakeRoomModel({"reply": "Віталій тут.", "emotion": "calm", "intensity": 0.4}))
     assert space.turn("Ада", "Хто тут?", "$1").outcome == "reply"  # no private_names → the guard is off
+
+
+
+# --- v3.3 LUMI-289: passing ----------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("state", [{"reply": ""}, {"reply": "   "}, {}, {"reply": "…", "emotion": "calm"},
+                                   {"reply": "...", "emotion": "calm", "intensity": 0.3}, {"reply": " … "}])
+def test_an_empty_or_blocked_reply_is_a_pass(tmp_path, state, caplog):
+    llm = FakeRoomModel(state)
+    space = _space(tmp_path, llm)
+    with caplog.at_level("INFO", logger="lumi.space"):
+        out = space.turn("Ада", "Лілі?", "$1")
+    assert out.as_dict() == {"outcome": "pass", "reply": "", "turn_id": "$1", "stats": out.stats}
+    assert space.store.get("agora", "$1", "lili") is None
+    assert "room reply passed" in caplog.text
+    assert space.turn("Ада", "Лілі?", "$1").outcome == "pass" and len(llm.calls) == 1  # a retry: no second call
+
+
+def test_a_real_reply_with_an_ellipsis_inside_is_not_a_pass(tmp_path):
+    space = _space(tmp_path, FakeRoomModel({"reply": "Хм… туман.", "emotion": "thoughtful", "intensity": 0.4}))
+    assert space.turn("Ада", "Лілі?", "$1").outcome == "reply"
+
+
+def test_his_channel_still_errs_on_an_empty_reply(tmp_path):
+    import pytest as _pytest
+
+    from core.emotion import EmotionError, validate
+
+    with _pytest.raises(EmotionError):
+        validate({"reply": ""})  # the gate itself is unchanged — only the room maps it to a pass

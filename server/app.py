@@ -486,6 +486,10 @@ def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="a room turn needs its turn_id (the trigger's event id)")
     if req.images:
         raise HTTPException(status_code=422, detail="a room turn carries no images")
+    from core.space import REGISTERS
+
+    if req.register_ is not None and req.register_ not in REGISTERS:  # v3.3: missing → "voice", the room's default
+        raise HTTPException(status_code=422, detail=f"a room turn's register is one of {', '.join(REGISTERS)}")
     if not req.text.strip():
         raise HTTPException(status_code=422, detail="a room turn needs its line")
     box: dict[str, Any] = {}
