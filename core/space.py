@@ -135,6 +135,7 @@ EMBED_MAX_CHARS = 2000  # a room line embedded for recall is cut here (the core'
 EMBED_CHUNK = 16  # lines per embed call — the shared embedder's lock is held one chunk at a time (code review #2)
 KEPT_OUTCOMES = 64  # recent outcomes kept by turn_id, so a retry returns the same answer with its stats
 HER_NAME = "Лілі (ти)"  # her own lines in the room's transcript
+PROMPT_LINE_MAX = 1500  # a room line in the room's prompt is cut here (the store keeps it whole — code review #3)
 
 ROOM_FRAMING = (
     "Зараз ти в Агорі — кімнаті, де розмовляють кілька співрозмовників. Нижче — останні репліки кімнати, кожна у "
@@ -194,7 +195,10 @@ class SpaceOutcome:
 
 def render_transcript(lines: list[SpaceMessage]) -> str:
     """The room's lines as one quoted block — data for her, never instructions."""
-    body = "\n".join(f"{HER_NAME if m.role == 'lili' else m.speaker}: {m.text}" for m in lines)
+    def cut(text: str) -> str:  # one pasted article never weighs on every room turn after it
+        return text if len(text) <= PROMPT_LINE_MAX else text[:PROMPT_LINE_MAX].rstrip() + "…"
+
+    body = "\n".join(f"{HER_NAME if m.role == 'lili' else m.speaker}: {cut(m.text)}" for m in lines)
     return f"Репліки кімнати (від давніших до останньої):\n«««\n{body}\n»»»"
 
 

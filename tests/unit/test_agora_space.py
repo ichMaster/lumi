@@ -259,3 +259,17 @@ def test_a_big_observe_embeds_in_small_chunks(tmp_path):
     assert max(len(call) for call in emb.calls) <= EMBED_CHUNK == 16
     assert sum(len(call) for call in emb.calls) == 200
     assert len(space.store.search_vectors("agora", emb.embed(["рядок"])[0], 500)) == 200
+
+
+def test_a_long_room_line_is_cut_in_the_prompt_but_kept_whole(tmp_path):
+    # code review #3: an article pasted into the room (Matrix allows ~65 KB) is cut in every later room prompt
+    from core.space import PROMPT_LINE_MAX
+
+    llm = FakeRoomModel()
+    space = _space(tmp_path, llm)
+    article = "слово " * 10_000
+    space.observe([ObservedLine("$long", "Ich", article, "2026-11-16T08:00:00+02:00")])
+    space.turn("Ада", "Лілі, що скажеш?", "$1")
+    transcript = llm.calls[0][1][0]["content"]
+    assert len(transcript) < PROMPT_LINE_MAX + 500 and "слово…" in transcript
+    assert space.store.get("agora", "$long", "user").text == article  # the store keeps the line whole
