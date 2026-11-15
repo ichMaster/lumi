@@ -1193,6 +1193,8 @@ of the step it guards. **Every versioned step runs `/ship-phase`** (the owner, 2
 each built, reviewed and released (`v3.1.0`, `v3.2.0`, `v3.3.0`) before they reach dev; the live test's fixes ship as
 reviewed, released patches; the prod step deploys the last released `v3.3.*`.
 
+**Status (2026-11-15): live on prod.** All nine synchronization steps are done and the owner's gates G1–G5 passed. Lumi shipped `v3.1.0`, `v3.2.0`, `v3.3.0`, `v3.3.1` (Q11, his room lines are his) and `v3.3.2` (Q12, the rule for unnamed turns). Prod runs `v3.3.2` with the space on, and matrix-agora's `v8.2.0` bridge makes her a ranked member of Agora. One incident: Gemini's prepaid credits ran out (402) from about 15:01 to 16:17; the owner topped them up. The tracker with every step, question and change report is `~/development/matrix-agora/specification/features/lumi-agora-sync.md`.
+
 ### v3.1 — The channel: the room's store, `observe`, its token, its own turn path
 
 **Goal:** a client talks to her in the `agora` channel, and nothing of it lands in the owner's session, his Telegram,

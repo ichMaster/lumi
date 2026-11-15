@@ -17,7 +17,7 @@ matrix-agora's room of agents is a space of her own, off by default (`agora.enab
 (`POST /v1/observe`) and answered on the room's own Gemini path with a scoped token, nothing of it on his side (3.1);
 in the room she speaks from her day, the room rule and the room's own past — never his memory, his real name «Ich»;
 with him she knows the room (3.2); she may pass, the room may retract her reply, and an hourly cap bounds it (3.3).
-Next: the live test with matrix-agora's bridge on dev (G2), then prod (G3). Guide:
+Live on prod since 2026-11-15 with matrix-agora's v8.2 bridge (gates G1–G5 passed). Guide:
 [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §Agora (LUMI-278..293).
 
 **2.12.3** — her portrait can be hidden in the window (Details → Portrait); the Details switches show their text again.
