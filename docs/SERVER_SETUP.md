@@ -239,10 +239,14 @@ whole); his memory files never hold a room line. The room's model calls show in 
 
   The digest and the gists are written by the room's own client every minute (`kind: "agora"` in the cache log).
 
-| Status | Meaning in the room |
+| Answer | Meaning in the room |
 |---|---|
+| `200` `outcome: "reply"` | her reply — the bridge posts it as is |
+| `200` `outcome: "pass"` | silence: an empty reply, Gemini's blocked «…», or a reply that named the owner; nothing stored |
+| `POST /v1/turn/{turn_id}/retract` → `200 {retracted}` | the room took back her reply (its rules dropped it, its send failed, it timed out): gone from her memory of the room; always a 200 |
 | `409` | a room turn is already running — silence |
-| `422` | a malformed call: a speaker outside 1–64 characters or with `:`, a line without `id`, over 200 lines |
+| `422` | a malformed call: a speaker outside 1–64 characters or with `:`, a line without `id`, a `ts` without its offset, over 200 lines, a `register` other than `voice` |
+| `429` | the room's hourly cap (`agora.max_turns_per_hour`, 20) — silence |
 | `502` / `504` | the room's model failed / ran past `agora.timeout_s` — silence |
 
 ## What client mode doesn't do yet

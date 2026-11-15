@@ -123,3 +123,46 @@ def test_retract_as_written(tmp_path):
     again = client.request(ex["request"]["method"], path, headers=AUTH)
     nothing = ex["response_nothing_stored"]
     assert again.status_code == nothing["status"] and again.json() == nothing["body"]
+
+
+def test_every_error_lumi_returns_carries_the_contracts_detail(tmp_path):
+    # v3.3: 404 (the space off), 429 (the cap), 504 (the budget) join 401 / 403 / 409 / 502 above
+    import threading
+
+    from fastapi.testclient import TestClient
+
+    from server.app import create_app
+    from tests._agora_world import OWNER, make_core, make_space
+
+    errors = {e["status"]: e["body"]["detail"] for e in API["errors"]}
+    off = TestClient(create_app(make_core(tmp_path / "off"), token=OWNER))
+    res = off.post("/v1/observe", json=EP["observe"]["request"]["body"],
+                   headers={"Authorization": f"Bearer {OWNER}"})
+    assert res.status_code == 404 and res.json()["detail"] == errors[404]
+    capped = agora_client(tmp_path / "cap", space=make_space(tmp_path / "cap", max_turns_per_hour=1))
+    capped.post("/v1/turn", json=EP["turn"]["request"]["body"], headers=AUTH)
+    res = capped.post("/v1/turn", json=EP["turn_pass"]["request"]["body"], headers=AUTH)
+    assert res.status_code == 429 and res.json()["detail"] == errors[429]
+    hold = threading.Event()
+    slow = make_space(tmp_path / "slow", FakeRoomModel(hold=hold), timeout_s=0.05)
+    import server.app as app_mod
+
+    grace, app_mod.ROOM_GRACE_S = app_mod.ROOM_GRACE_S, 0.05
+    try:
+        res = agora_client(tmp_path / "slow", space=slow).post("/v1/turn", json=EP["turn"]["request"]["body"],
+                                                                 headers=AUTH)
+    finally:
+        app_mod.ROOM_GRACE_S = grace
+        hold.set()
+    assert res.status_code == 504 and res.json()["detail"] == errors[504]
+    bad = agora_client(tmp_path / "bad").post("/v1/observe", json={"channel": "agora", "lines": [{"speaker": "Ада"}]},
+                                              headers=AUTH)
+    assert bad.status_code == 422  # the contract's 422 detail is a placeholder («…»)
+
+
+def test_every_endpoint_of_the_contract_is_served(tmp_path):
+    client = agora_client(tmp_path)
+    served = {(m, r.path) for r in client.app.routes for m in getattr(r, "methods", ())}
+    for name, ep in EP.items():
+        path = ep["request"]["path"]
+        assert (ep["request"]["method"], path) in served, name

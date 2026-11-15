@@ -1321,6 +1321,13 @@ error in his channel); retract (the line and its vector gone → `{retracted: tr
 repeated id → `200 {retracted: false}`; a retract during a running turn drops its reply; the owner token's retract on
 his channel `403`); `outcome` and `stats`; the rate cap. **No paid calls.**
 
+**As built (LUMI-289..292, 2026-11-15):**
+- A pass covers an empty reply, Gemini's blocked «…» and v3.2's name guard on one path.
+- `retract` is the room's own route (the owner's token → 403 — the reading of "the owner token's retract … 403"),
+  builds on v3.1's abandon-removal, and a retracted id retried later is a pass.
+- The cap counts the room's model calls over a rolling hour (`0` = no cap).
+- Every example of `docs/agora-space-api.json` is served as written (`test_agora_server_contract.py`).
+
 ---
 
 ## v4 — Personality: topics, needs, inner life, inner monologue, emotional memory, thoughts, semantic recall, voice mode II

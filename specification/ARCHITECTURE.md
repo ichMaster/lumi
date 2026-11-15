@@ -190,6 +190,16 @@ phases: ROADMAP §v3.
     - Unattached, or a silent room → his prompt is byte-identical.
   - **Pins:** the sentinel test (`tests/contract/test_space_sentinel.py`); labelled-only in his context
     (`test_isolation.py`); the size bound (140 lines → ≈ 2.2 K characters, `tests/integration/test_agora_memory.py`).
+- **As built (v3.3) — the room's turn ends.**
+  - A room turn's reply is a `pass` (200, nothing stored, the outcome kept for a retry) when it is empty, when it is
+    Gemini's blocked placeholder «…», or when it names him. His channel is unchanged: an empty reply there is still an
+    error.
+  - `register` is `"voice"` or none (else 422).
+  - `retract` is the room's own route. It removes her stored reply (line + vector); a running turn's reply is dropped
+    when it ends; it always answers 200 and is idempotent; a retracted id retried later is a `pass`; the owner's
+    token gets 403.
+  - `agora.max_turns_per_hour` caps the room's model calls over a rolling hour → 429 (0 → no cap; a retry never
+    counts).
 - Off by default (`agora.enabled`). Multi-user later lets a space's member list hold real users.
 
 ## Voice
