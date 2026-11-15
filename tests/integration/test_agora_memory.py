@@ -63,9 +63,11 @@ def test_a_busy_room_day_grows_his_prompt_within_the_bound(tmp_path):
     with_room, prefix = core._system_prompt(core.start_session())
     growth = len(with_room) - len(without)
     lines = space.store.session_lines("agora", "agora-2026-11-16")[-20:]
-    bound = (sum(len(m.speaker) + 2 + len(m.text) + 1 for m in lines)  # the last today_lines lines
+    from core.space import OWNER_LABEL, ROOM_DATA_NOTE
+
+    bound = (sum(len(OWNER_LABEL if m.speaker == "Ich" else m.speaker) + 2 + len(m.text) + 1 for m in lines)  # 20 lines
              + len(digest) + len("в Агорі: ") + len(gists[-1].text) + 2  # the digest + the one day digest line's gist
-             + 300)  # the section headers and the quoted block's marks
+             + len(ROOM_DATA_NOTE) + 300)  # the note (v3.3.1), the section headers and the quoted block's marks
     assert 0 < growth <= bound
     assert growth < 8000  # ≈ 2 K tokens of Cyrillic, the owner's sizing (2026-11-15)
     assert prefix.find("# Агора сьогодні") == -1 and with_room.index("# Агора сьогодні") > len(prefix)

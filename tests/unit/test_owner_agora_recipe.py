@@ -54,7 +54,7 @@ def test_the_today_block_in_the_tail(tmp_path):
     assert "# Агора сьогодні" in tail and "# Агора сьогодні" not in prefix  # never in the cached prefix
     block = tail.split("# Агора сьогодні\n\n", 1)[1]
     assert "Раніше сьогодні (конспект): Зранку вітались" in block
-    assert "Ада: рядок 3" in block and "Бруно: рядок 4" in block and "я: я тут" in block  # the last 3 lines
+    assert "Ада: рядок 3" in block and "Бруно: рядок 4" in block and "Лілі: я тут" in block  # the last 3 lines
     assert "рядок 2" not in block
 
 
@@ -145,3 +145,48 @@ def test_no_review_tag_leaks_into_her_prompts():
 
     for text in (ROOM_DATA_NOTE, load_room_rule()):
         assert "review" not in text and "v3." not in text and "LUMI" not in text
+
+
+
+# --- v3.3.1 LUMI-294 (Q11): his own room lines are his ------------------------------------------------------------
+
+
+def test_his_room_lines_read_ti_ich_in_his_private_recipe(tmp_path):
+    from core.space import OWNER_LABEL, ROOM_DATA_NOTE
+
+    core, space, _, _ = _world(tmp_path)
+    space.observe([ObservedLine("$a", "Ich", "привіт Лілі", "2026-11-16T08:00:00+02:00"),
+                   ObservedLine("$b", "Ада", "привіт, Ich!", "2026-11-16T08:00:30+02:00")])
+    block = _prompt(core)[0].split("# Агора сьогодні\n\n", 1)[1]
+    assert OWNER_LABEL == "ти (Ich)" and "ти (Ich): привіт Лілі" in block and "Ада: привіт, Ich!" in block
+    assert "\nIch: " not in block  # never as someone else
+    assert block.startswith(ROOM_DATA_NOTE) and "той, з ким ти зараз говориш наодинці, — це «Ich»" in ROOM_DATA_NOTE
+
+
+def test_his_room_lines_in_recall_read_ti_ich(tmp_path):
+    core, space, _, _ = _world(tmp_path)
+    space.observe([ObservedLine("$a", "Ich", "туман над містом мій улюблений", "2026-11-14T08:00:00+02:00")])
+    space.store.add_lines([SpaceMessage(channel="agora", session_id="agora-2026-11-14", speaker="Лілі", role="lili",
+                                        text="туман над містом і мій теж", ts="2026-11-14T08:01:00+02:00",
+                                        source_id="$a")])
+    space.store.add_vectors("agora", [("$a", "lili", space._embedder.embed(["туман над містом і мій теж"])[0])])
+    block = core._recall_block("туман над містом мій")
+    assert "в Агорі, ти (Ich): туман над містом мій улюблений" in block
+    assert "в Агорі, Лілі: туман над містом і мій теж" in block
+
+
+def test_the_rooms_own_prompt_is_unchanged_by_the_label(tmp_path):
+    # the room's prompt still names him «Ich» — the label lives in his private recipe only
+    _, space, _, _ = _world(tmp_path)
+
+    class Room:
+        last_stats = None
+
+        def reply_structured(self, system, messages, model, cache_prefix=None, **_):
+            self.prompt = messages[0]["content"]
+            return {"reply": "Так.", "emotion": "calm", "intensity": 0.4}
+
+    space._llm = Room()
+    space.observe([ObservedLine("$a", "Ich", "привіт", "2026-11-16T08:00:00+02:00")])
+    space.turn("Ада", "Лілі?", "$t")
+    assert "Ich: привіт" in space._llm.prompt and "ти (Ich)" not in space._llm.prompt

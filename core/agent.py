@@ -3182,7 +3182,9 @@ class Core:
                 for s, r in hits
             ]
         # v3.2: each room line labelled with its place and speaker — never as his words
-        scored += [(s, f"— {m.ts[:10]} —\n  {m.ts[11:16]} в Агорі, {'я' if m.role == 'lili' else m.speaker}: "
+        label = getattr(self._space, "owner_label", None)  # v3.3.1: his own room lines «ти (Ich)», hers «Лілі»
+        scored += [(s, f"— {m.ts[:10]} —\n  {m.ts[11:16]} в Агорі, "
+                       f"{label(m) if label else ('Лілі' if m.role == 'lili' else m.speaker)}: "
                        f"{_snippet(m.text, self._rag_snippet_chars)}  ← (matched)") for s, m in room]
         if room:
             scored.sort(key=lambda x: x[0], reverse=True)  # most relevant first, across his past and the room's

@@ -182,9 +182,10 @@ phases: ROADMAP §v3.
     written by the room's **own** housekeeping client (`agora.model`) on a server thread every 60 s, never his
     housekeeping model (a departure from the first plan, so every room call stays off his core's client and lock).
   - **His private recipe.** `Core.attach_space(memory)` — the owner's core only, while the space is on.
-    - «Агора сьогодні» sits in the tail: the digest plus the last `today_lines` lines, hers as «я».
+    - «Агора сьогодні» sits in the tail: the digest plus the last `today_lines` lines. v3.3.1 (Q11): his own room
+      lines read «ти (Ich)», hers «Лілі», and the block's note says the one she talks with privately is «Ich» there.
     - The room's lines compete in his recall for the same `rag_k` places, floor and `rag_max_chars`, each labelled
-      «в Агорі, <speaker>: …».
+      «в Агорі, <speaker>: …» — his own «в Агорі, ти (Ich): …», hers «в Агорі, Лілі: …» (v3.3.1).
     - A day's gist rides inside his day digest line («; в Агорі: …»), and a week's joined gists inside his week line,
       rendered at prompt time, so his records are unchanged.
     - Unattached, or a silent room → his prompt is byte-identical.
