@@ -17,7 +17,7 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 
-from core.space import SpaceGist, SpaceMessage, ts_epoch
+from core.space import SpaceDigest, SpaceGist, SpaceMessage, ts_epoch
 
 log = logging.getLogger("lumi.space")
 
@@ -34,6 +34,10 @@ _SCHEMA = (
     " PRIMARY KEY (channel, role, source_id))",
     "CREATE TABLE IF NOT EXISTS space_gists ("
     " channel TEXT NOT NULL, day TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY (channel, day))",
+    # v3.2: a room session's running digest — overwritten as the session grows (`upto` = the lines it covers)
+    "CREATE TABLE IF NOT EXISTS space_digests ("
+    " channel TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL, upto INTEGER NOT NULL,"
+    " PRIMARY KEY (channel, session_id))",
 )
 
 
@@ -58,6 +62,25 @@ def _cosine(a: list[float], b: list[float]) -> float:
         return -1.0
     na, nb = math.sqrt(sum(x * x for x in a)), math.sqrt(sum(x * x for x in b))
     return sum(x * y for x, y in zip(a, b, strict=True)) / (na * nb) if na and nb else 0.0
+
+
+def _scores(query: list[float], vectors: list[list[float]]) -> list[float]:
+    """Cosine of ``query`` against each vector — numpy when installed (the ``embed`` extra), else pure Python
+    (v3.1 review #10: a year of the room is ~50 K vectors). A vector of another dimension scores -1."""
+    try:
+        import numpy as np
+    except ImportError:
+        return [_cosine(query, v) for v in vectors]
+    out = [-1.0] * len(vectors)
+    same = [i for i, v in enumerate(vectors) if len(v) == len(query)]
+    if same:
+        mat = np.array([vectors[i] for i in same], dtype=float)
+        q = np.array(query, dtype=float)
+        denom = np.linalg.norm(mat, axis=1) * np.linalg.norm(q)
+        sims = np.divide(mat.dot(q), denom, out=np.zeros(len(same)), where=denom > 0)
+        for i, score in zip(same, sims, strict=True):
+            out[i] = float(score)
+    return out
 
 
 class SqliteSpaceStore:
@@ -148,12 +171,9 @@ class SqliteSpaceStore:
             rows = self._db.execute(
                 "SELECT v.vector, m.data FROM space_vectors v JOIN space_messages m ON m.channel = v.channel AND"
                 " m.role = v.role AND m.source_id = v.source_id WHERE v.channel = ?", (channel,)).fetchall()
-        scored = []
-        for blob, data in rows:
-            record = _record(data)
-            if record is not None:
-                scored.append((_cosine(query, _unpack(blob)), record))
-        scored.sort(key=lambda pair: -pair[0])
+        pairs = [(record, _unpack(blob)) for blob, data in rows if (record := _record(data)) is not None]
+        scores = _scores(query, [v for _, v in pairs])
+        scored = sorted(zip(scores, (r for r, _ in pairs), strict=True), key=lambda pair: -pair[0])
         return scored[:k]
 
     # --- gists ----------------------------------------------------------------------------------------------
@@ -167,6 +187,33 @@ class SqliteSpaceStore:
             rows = self._db.execute("SELECT channel, day, text FROM space_gists WHERE channel = ? ORDER BY day",
                                     (channel,)).fetchall()
         return [SpaceGist(*row) for row in rows]
+
+    # --- v3.2: sessions and their running digests ---------------------------------------------------------
+    def session_lines(self, channel: str, session_id: str) -> list[SpaceMessage]:
+        """A room session's lines, oldest first by ``ts``."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT data FROM space_messages WHERE channel = ? AND session_id = ? ORDER BY ts_epoch, seq",
+                (channel, session_id)).fetchall()
+        return [r for r in (_record(row[0]) for row in rows) if r is not None]
+
+    def session_ids(self, channel: str) -> list[str]:
+        with self._lock:
+            rows = self._db.execute("SELECT DISTINCT session_id FROM space_messages WHERE channel = ?",
+                                    (channel,)).fetchall()
+        return sorted(row[0] for row in rows)
+
+    def set_digest(self, digest: SpaceDigest) -> None:
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT OR REPLACE INTO space_digests (channel, session_id, text, upto) VALUES (?, ?, ?, ?)",
+                (digest.channel, digest.session_id, digest.text, digest.upto))
+
+    def get_digest(self, channel: str, session_id: str) -> SpaceDigest | None:
+        with self._lock:
+            row = self._db.execute("SELECT channel, session_id, text, upto FROM space_digests"
+                                   " WHERE channel = ? AND session_id = ?", (channel, session_id)).fetchone()
+        return SpaceDigest(*row) if row else None
 
     def close(self) -> None:
         with self._lock:

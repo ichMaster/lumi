@@ -234,7 +234,40 @@ def agora_space_of(cfg, core):
     return AgoraSpace(
         SqliteSpaceStore(cfg.agora_store_path), build_space_llm(cfg), model=cfg.agora_model, canon=core._canon,
         clock=core.clock, embedder=embedder, window=cfg.agora_window, timeout_s=cfg.agora_timeout_s,
-        cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None)
+        cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
+        housekeeping_llm=build_space_llm(cfg),  # v3.2: the room's digest and gists on a client of their own
+        today_lines=cfg.agora_today_lines, today_digest_words=cfg.agora_today_digest_words,
+        gist_words=cfg.agora_gist_words)
+
+
+SPACE_HOUSEKEEPING_S = 60.0  # v3.2: how often the room's digest and day gists are brought up to date
+
+
+def start_space_housekeeping(space, clock, *, every_s: float = SPACE_HOUSEKEEPING_S):
+    """v3.2: the room's housekeeping on a daemon thread of its own — ``space.housekeep(now)`` every ``every_s``. It
+    never takes the service lock, the brain host or his core's client (the room's own housekeeping client does the
+    calls). Returns the stop function (it waits briefly for a call in flight). ``None`` space → nothing runs."""
+    if space is None:
+        return lambda: None
+    stop = threading.Event()
+
+    def run() -> None:
+        while not stop.wait(every_s):
+            try:
+                written = space.housekeep(clock())
+                if written:
+                    log.info("agora housekeeping: %s", ", ".join(written))
+            except Exception:  # noqa: BLE001 — a beat never kills the room's housekeeping
+                log.exception("agora housekeeping failed")
+
+    thread = threading.Thread(target=run, daemon=True, name="lumi-agora-housekeeping")
+    thread.start()
+
+    def stopper(wait_s: float = 5.0) -> None:
+        stop.set()
+        thread.join(wait_s)
+
+    return stopper
 
 
 def startup_mood(service) -> None:
@@ -335,10 +368,12 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     print(f"Lumi server on http://{cfg.server_host}:{cfg.server_port} "
           f"({cfg.env or 'no env'} v{cfg.app_version or '?'}) — Ctrl+C to stop", flush=True)
     brain.start()
+    stop_housekeeping = start_space_housekeeping(space, core.clock)  # v3.2: the room's digest and day gists
     try:
         serve(app, host=cfg.server_host, port=cfg.server_port)
     finally:
         brain.stop()
+        stop_housekeeping()
         close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
         close_space(space)  # v3.1: the room's store, beside his session
 

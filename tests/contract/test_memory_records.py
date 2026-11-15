@@ -137,3 +137,10 @@ def test_space_records_are_keyed_by_the_space_never_a_user():
     line = SpaceMessage(channel="agora", session_id="agora-2026-11-16", speaker="Ада", role="user", text="так",
                         ts="2026-11-16T08:01:12+02:00", source_id="$e")
     assert line.emotion is None and line.intensity is None  # only her replies carry the emotion field
+
+
+def test_space_digest_is_keyed_by_the_session_never_a_user():
+    # v3.2: a room session's running digest — overwritten as the session grows (`upto` lines covered)
+    from core.space import SpaceDigest
+
+    assert set(SpaceDigest.__dataclass_fields__) == {"channel", "session_id", "text", "upto"}
