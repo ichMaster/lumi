@@ -403,13 +403,14 @@ class AgoraSpace:
             self._retracted[turn_id] = None
             while len(self._retracted) > KEPT_OUTCOMES * 4:
                 self._retracted.popitem(last=False)
-            if self._running == turn_id:
+            running = self._running == turn_id
+            if running:
                 self._abandoned.add(turn_id)
-                return True
-            if self.store.remove(self.channel, turn_id, "lili"):
+            # also a reply the running turn already stored in the instant before its end (code review v3.3 #1)
+            removed = self.store.remove(self.channel, turn_id, "lili")
+            if removed:
                 self._outcomes.pop(turn_id, None)
-                return True
-            return False
+            return running or removed
 
     def known_outcome(self, turn_id: str) -> SpaceOutcome | None:
         """A turn already answered: its kept outcome, or — after a restart — its stored reply (R1: never twice)."""

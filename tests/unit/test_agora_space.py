@@ -460,3 +460,22 @@ def test_a_zero_cap_is_no_cap(tmp_path):
     space = _space(tmp_path, max_turns_per_hour=0)
     for i in range(30):
         space.turn("Ада", f"Лілі {i}?", f"$t{i}")
+
+
+def test_a_retract_right_after_the_store_still_removes_the_reply(tmp_path):
+    # code review v3.3 #1: the turn stored its reply but hadn't reached its `finally` (still "running") when the
+    # retract came — it said True and kept the reply. Drive that exact instant: retract from inside _log_usage,
+    # which runs after the store-or-drop step and before the turn's end.
+    space = _space(tmp_path)
+    answers: list[bool] = []
+    real = space._log_usage
+
+    def retract_now(stats, session_id, **kw):
+        answers.append(space.retract("$1"))
+        return real(stats, session_id, **kw)
+
+    space._log_usage = retract_now
+    space.turn("Ада", "Лілі?", "$1")
+    assert answers == [True]
+    assert space.store.get("agora", "$1", "lili") is None  # gone — the room never saw it
+    assert space.known_outcome("$1").outcome == "pass"  # a retry is silence, never the dropped reply
