@@ -74,6 +74,7 @@ class ObserveRequest(BaseModel):
     lines: list[ObservedLineIn]
 
 
+AGORA_API = 1  # the agora space API version this server serves (health's "agora"); the contract leads — v3.4 → 2
 OBSERVE_BATCH_MAX = 200  # the contract's limits.observe_batch_max
 ROOM_GRACE_S = 2.0  # the server's backstop waits this much past the room's own budget before a 504
 ROOM_ONLY = "the room's token reaches only the agora space"
@@ -573,7 +574,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
     def health() -> dict[str, Any]:
         body: dict[str, Any] = {"ok": True, "env": env, "version": version}
         if space is not None:
-            body["agora"] = 1  # v3.1: the agora space API version, only while the space is on
+            body["agora"] = AGORA_API  # v3.1: the agora space API version, only while the space is on
         return body
 
     @app.get("/v1/state", dependencies=guarded)

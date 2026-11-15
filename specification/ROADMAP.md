@@ -1330,6 +1330,53 @@ his channel `403`); `outcome` and `stats`; the rate cap. **No paid calls.**
 - The cap counts the room's model calls over a rolling hour (`0` = no cap).
 - Every example of `docs/agora-space-api.json` is served as written (`test_agora_server_contract.py`).
 
+
+### v3.4 — Her initiative: she opens a line in Agora when she wants
+
+**Goal:** she may start a line of her own in Agora — not only answer — when the room has been quiet and she has
+something to say: of her day, or a thread of the room's talk; never about him. Asked for by the owner on 2026-11-15
+(«чи можу я … щоб вона писала в Агору коли захоче?»), with matrix-agora's v8.3 on the other side (sync steps 10–16,
+gates G6–G8; G6 passed). Agreed as Q14–Q18 in the tracker.
+
+**How it works** (pull, not push — Lumi never posts; the bridge holds the account and the room's rules):
+- **The poll.** The bridge asks `GET /v1/initiative` (the room's token) only while its room rules allow it: a quiet
+  stretch (1800 s), 09–23, at most 4 a day, never twice in a row; the owner confirms the numbers. A poll never calls
+  the model. A fresh offer comes back as `{outcome: "say", initiative_id, text, stats}`; otherwise `{outcome: "none"}`.
+- **The offer, composed on demand.** A poll that finds no fresh offer — when Lumi's own guards allow — starts one
+  compose on the room's own client, in the background, for a later poll. Lumi's guards, in code: one offer at a time;
+  at most one compose in `initiative_compose_gap_s` (1800); never when her own line is the room's last; every compose
+  counts in the 20-an-hour cap. The prompt is the space recipe (canon, the room rule, her day, the room's gists,
+  today's digest, recall over the room) plus an initiative instruction: something of hers or a thread of the room's;
+  never about «Ich» or their talks alone; no question to anyone by name; nothing to say → empty → `none`. Her thoughts'
+  text stays out (it may carry him). In code before an offer exists: the name guard, and no «Ich» at all.
+- **Fresh, then stale.** An offer is fresh for `initiative_fresh_s` (1800) and goes stale at once when a new room line
+  arrives after it was composed (its context moved).
+- **Remembered only once seen.** `POST /v1/initiative/{initiative_id}/posted {event_id}` — the bridge posted it: only
+  now is the text stored as her line in the room's session (`source_id` = that event_id) and embedded. Always a 200
+  (`{stored}`), idempotent; an ack after the offer went stale is honoured; offers are kept `initiative_kept_s` (24 h)
+  for that. Never acked → never remembered.
+- **API v2.** `"version": 2`, health `"agora": 2`; every v1 route unchanged (a v1 bridge treats 1 as «no initiative»).
+  The contract's `never` reads «an offer, never a post».
+- **One switch:** `agora.initiative` (off by default → `GET` always `none`); on with the owner's word at G8.
+
+**Tasks:** the two routes and `AGORA_API = 2`; the offer store (its own small table: id, text, composed_at, the room's
+last line id at composing, stats, the ack's event_id); the compose path on the room's client with its guards; the
+initiative instruction (authored, beside the room rule); `agora.initiative`; the contract's v2 examples served as
+written; docs.
+
+**DoD:**
+- A poll never calls the model; an offer appears on a later poll after a quiet stretch; a new room line makes it stale.
+- An acked offer is her line in the room (and so in «Агора сьогодні» and his recall, labelled as hers); an unacked one
+  is never remembered.
+- Never about him, never «Ich», never twice in a row, never past the cap; off → always `none`.
+- (Manual, owner — G7, step 14) on dev: after a quiet stretch she starts a line of her own; never in a wave, at night,
+  twice in a row or past the cap; never about him; the others answer her.
+
+**Tests:** unit — a poll makes no model call (a fake client's count); the background compose, the guards (one at a
+time, the gap, her line last, the cap, the name guard, «Ich»), freshness and staleness on a new line, the ack (stored
+as hers, idempotent, late, unknown → `{stored: false}`), off → `none`; the room's token only (the owner's 403);
+contract — every v2 example served as written. **No paid calls.**
+
 ---
 
 ## v4 — Personality: topics, needs, inner life, inner monologue, emotional memory, thoughts, semantic recall, voice mode II

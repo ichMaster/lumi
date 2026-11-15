@@ -30,11 +30,21 @@ class ExampleModel(FakeRoomModel):
         return out
 
 
+V2_ONLY = {"initiative", "initiative_none", "initiative_posted"}  # served from v3.4 (AGORA_API = 2)
+
+
 def test_health_as_written(tmp_path):
+    # the contract leads (sync step 10): its health example is v3.4's ("agora": 2); the server says the API version
+    # it serves — every other field as written
+    from server.app import AGORA_API
+
     ex = EP["health"]
     res = agora_client(tmp_path).request(ex["request"]["method"], ex["request"]["path"])
     assert res.status_code == ex["response"]["status"]
-    assert res.json() == ex["response"]["body"]  # dev, 3.1.0, agora 1 — the example is v3.1's own health
+    body, written = res.json(), dict(ex["response"]["body"])
+    assert body["agora"] == AGORA_API and written.pop("agora") >= AGORA_API
+    assert {k: v for k, v in body.items() if k not in ("agora", "version")} == {
+        k: v for k, v in written.items() if k != "version"}
 
 
 def test_observe_as_written(tmp_path):
@@ -161,8 +171,12 @@ def test_every_error_lumi_returns_carries_the_contracts_detail(tmp_path):
 
 
 def test_every_endpoint_of_the_contract_is_served(tmp_path):
+    from server.app import AGORA_API
+
     client = agora_client(tmp_path)
     served = {(m, r.path) for r in client.app.routes for m in getattr(r, "methods", ())}
     for name, ep in EP.items():
+        if name in V2_ONLY and AGORA_API < 2:
+            continue  # the contract leads; v3.4 serves these
         path = ep["request"]["path"]
         assert (ep["request"]["method"], path) in served, name

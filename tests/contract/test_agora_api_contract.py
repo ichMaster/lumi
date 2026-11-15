@@ -14,18 +14,21 @@ def _api() -> dict:
     return json.loads(CONTRACT.read_text(encoding="utf-8"))
 
 
-def test_the_contract_is_version_1_and_names_its_endpoints():
+def test_the_contract_is_version_2_and_names_its_endpoints():
+    # v3.4 (sync step 10): version 2 adds her initiative; every v1 route is unchanged
     api = _api()
-    assert api["version"] == 1 and '"version": 1' in CONTRACT.read_text(encoding="utf-8")  # matrix-agora greps it
-    assert set(api["endpoints"]) == {"health", "observe", "turn", "turn_pass", "retract"}
+    assert api["version"] == 2 and '"version": 2' in CONTRACT.read_text(encoding="utf-8")  # matrix-agora greps it
+    assert set(api["endpoints"]) == {"health", "observe", "turn", "turn_pass", "retract",
+                                     "initiative", "initiative_none", "initiative_posted"}
     routes = {(e["request"]["method"], e["request"]["path"]) for e in api["endpoints"].values()}
     assert routes == {("GET", "/v1/health"), ("POST", "/v1/observe"), ("POST", "/v1/turn"),
-                      ("POST", "/v1/turn/{turn_id}/retract")}
+                      ("POST", "/v1/turn/{turn_id}/retract"), ("GET", "/v1/initiative"),
+                      ("POST", "/v1/initiative/{initiative_id}/posted")}
 
 
 def test_the_examples_carry_the_agreed_fields():
     ep = _api()["endpoints"]
-    assert ep["health"]["response"]["body"]["agora"] == 1
+    assert ep["health"]["response"]["body"]["agora"] == 2
     for line in ep["observe"]["request"]["body"]["lines"]:
         assert set(line) == {"id", "speaker", "text", "ts"}
     turn = ep["turn"]["request"]["body"]
@@ -44,6 +47,8 @@ def test_silence_and_errors_are_spelled_out():
     statuses = {e["status"] for e in api["errors"]}
     assert {401, 403, 404, 409, 422, 429, 502, 504} <= statuses
     assert any("owner" in rule for rule in api["never"])
+    assert not any("she only answers" in rule for rule in api["never"])  # v2: an offer, never a post
+    assert any("an offer, never a post" in rule for rule in api["never"])
 
 
 def test_r1_a_turn_carries_the_trigger_only_and_r5_names_the_cap():
@@ -80,3 +85,24 @@ def test_q9_a_ts_carries_its_offset():
     assert "with its offset" in api["endpoints"]["observe"]["about"]
     for line in api["endpoints"]["observe"]["request"]["body"]["lines"]:
         assert datetime.fromisoformat(line["ts"]).tzinfo is not None
+
+
+
+def test_v2_her_initiative_is_an_offer_acked_before_it_is_remembered():
+    api = _api()
+    ep = api["endpoints"]
+    say = ep["initiative"]["response"]["body"]
+    assert say["outcome"] == "say" and say["text"] and say["initiative_id"].startswith("ini-")
+    assert set(say) == {"outcome", "initiative_id", "text", "stats"}
+    assert "Ich" not in say["text"] and not {"thinking", "state", "mood"} & set(say)
+    assert ep["initiative_none"]["response"]["body"] == {"outcome": "none"}
+    posted = ep["initiative_posted"]
+    assert set(posted["request"]["body"]) == {"event_id"} and posted["request"]["body"]["event_id"].startswith("$")
+    assert posted["response"] == {"status": 200, "body": {"stored": True}}
+    assert posted["response_nothing_stored"] == {"status": 200, "body": {"stored": False}}
+    assert posted["request"]["example_path"] == "/v1/initiative/" + say["initiative_id"] + "/posted"
+    assert "never calls the model" in ep["initiative"]["about"]
+    limits = api["limits"]
+    assert (limits["initiative_fresh_s"], limits["initiative_compose_gap_s"], limits["initiative_kept_s"]) == (
+        1800, 1800, 86400)
+    assert any("«Ich»" in rule for rule in api["never"])

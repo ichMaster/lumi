@@ -1,8 +1,8 @@
 {
   "name": "Lumi — the agora space API",
-  "version": 1,
+  "version": 2,
   "owner": "lumi",
-  "about": "The seam between Lumi (v3, the agora space — ROADMAP §v3, specification/features/AGORA_SPACE.md) and matrix-agora's bridge agent (its v8.1). Lumi owns it. matrix-agora copies this file as tests/fixtures/lumi_agora_api_v1.json; Lumi's tests check that its server accepts and returns these examples, matrix-agora builds its fake Lumi server from them. A change bumps version and the file is copied again.",
+  "about": "The seam between Lumi (v3, the agora space — ROADMAP §v3, specification/features/AGORA_SPACE.md) and matrix-agora's bridge agent (its v8.1). Lumi owns it. Version 2 (Lumi v3.4) adds her initiative: the bridge polls GET /v1/initiative while the room is quiet and acks what it posted; every v1 route is unchanged. matrix-agora copies this file as tests/fixtures/lumi_agora_api_v1.json; Lumi's tests check that its server accepts and returns these examples, matrix-agora builds its fake Lumi server from them. A change bumps version and the file is copied again.",
   "base_url": {
     "prod": "http://192.168.1.197:8765",
     "dev": "http://192.168.1.197:8766"
@@ -13,7 +13,7 @@
     "client_header": "X-Lumi-Client: agora"
   },
   "silence": {
-    "about": "Every one of these is silence in the room: the bridge posts nothing and never retries the turn.",
+    "about": "Every one of these is silence in the room: the bridge posts nothing and never retries the turn. On GET /v1/initiative any of them is \"none\".",
     "statuses": [
       409,
       429,
@@ -27,7 +27,7 @@
   },
   "endpoints": {
     "health": {
-      "about": "Open (no token). \"agora\" is the API version, present only while the space is enabled; absent or older than the bridge expects → the bridge stays silent and says so by name.",
+      "about": "Open (no token). \"agora\" is the API version, present only while the space is enabled: 1 = the v1 routes, 2 = v1 + her initiative. Absent or older than the bridge expects → the bridge stays silent (or, for 1, offers no initiative) and says so by name.",
       "request": {
         "method": "GET",
         "path": "/v1/health"
@@ -37,13 +37,13 @@
         "body": {
           "ok": true,
           "env": "dev",
-          "version": "3.1.0",
-          "agora": 1
+          "version": "3.4.0",
+          "agora": 2
         }
       }
     },
     "observe": {
-      "about": "The room's lines she hears but does not answer — every line of the room, batched. Stored in the room's session, idempotent by id (the room's Matrix event_id), embedded for recall; no model call. A failed batch is sent again whole. A speaker is one line of 1–64 characters with no ':' (Lumi renders a room line as «Name: text») — the same on a turn; anything else is a 422. A ts is ISO-8601 with its offset (Q9) — without one, a 422. At most limits.observe_batch_max lines a call.",
+      "about": "The room's lines she hears but does not answer — every line of the room, batched. Stored in the room's session, idempotent by id (the room's Matrix event_id), embedded for recall; no model call. A failed batch is sent again whole. A speaker is one line of 1–64 characters with no ':' (Lumi renders a room line as «Name: text») — the same on a turn; anything else is a 422. A ts is ISO-8601 with its offset (Q9) — without one, a 422. At most limits.observe_batch_max lines a call. Her own lines are never observed: her replies are stored from the turn, her initiative lines from their ack.",
       "request": {
         "method": "POST",
         "path": "/v1/observe",
@@ -151,6 +151,63 @@
           "retracted": false
         }
       }
+    },
+    "initiative": {
+      "about": "v2. She may want to open a line herself. The bridge asks while its room rules already allow it (quiet for long enough, in hours, under the day's cap, never twice in a row). A poll never calls the model: a fresh offer is returned as it is; otherwise Lumi answers none and, if its own guards allow (one offer at a time, at most one compose in initiative_compose_gap_s, her own line not the room's last, the hourly cap), composes one in the background for a later poll. An offer is fresh for initiative_fresh_s and goes stale at once when a new room line arrives after it was composed. The text is hers to post as is; it never names the owner and never carries «Ich». Nothing is remembered until the bridge acks it (initiative_posted). With the room's token only; off on Lumi's side (agora.initiative) → always none.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/initiative"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "outcome": "say",
+          "initiative_id": "ini-5f2c9a1e7b3d",
+          "text": "Сьогодні вітер уже пахне першим снігом. У вас теж так?",
+          "stats": {
+            "model": "gemini-2.5-flash",
+            "input_tokens": 5880,
+            "output_tokens": 21,
+            "latency_ms": 1520
+          }
+        }
+      }
+    },
+    "initiative_none": {
+      "about": "v2. Nothing to say now: no fresh offer (one may be composing), she doesn't want to, or the initiative is off.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/initiative"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "outcome": "none"
+        }
+      }
+    },
+    "initiative_posted": {
+      "about": "v2. The bridge posted the offer: its Matrix event_id. Only now does Lumi store the text as her line in the room's session (source_id = that event_id) and embed it. Always a 200: {\"stored\": true} when stored, {\"stored\": false} when the id is unknown (older than initiative_kept_s) or already stored. Idempotent by event_id; an ack after the offer went stale for polling is honoured (the room saw it). An offer never acked is never remembered. The initiative_id is URL-safe; with the room's token only.",
+      "request": {
+        "method": "POST",
+        "path": "/v1/initiative/{initiative_id}/posted",
+        "example_path": "/v1/initiative/ini-5f2c9a1e7b3d/posted",
+        "body": {
+          "event_id": "$Hq3sV9dK2lPw7xYc1aBn5mEo8rT4uI6jZgQf0LkNb2R"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "stored": true
+        }
+      },
+      "response_nothing_stored": {
+        "status": 200,
+        "body": {
+          "stored": false
+        }
+      }
     }
   },
   "errors": [
@@ -184,7 +241,7 @@
     },
     {
       "status": 422,
-      "when": "a malformed request (a missing channel, a line without id, a speaker outside the rule, a ts without its offset, more than observe_batch_max lines)",
+      "when": "a malformed request (a missing channel, a line without id, a speaker outside the rule, a ts without its offset, more than observe_batch_max lines, an initiative ack without event_id)",
       "body": {
         "detail": "…"
       }
@@ -215,12 +272,16 @@
     "her thinking, mood, closeness or state in any response",
     "a turn or observed line reaching the owner's Telegram, /v1/events or /v1/state",
     "a room turn blocking or delaying an owner's turn",
-    "Lumi posting to the room on its own: she only answers"
+    "Lumi posting to the room itself: she answers, and offers an initiative the bridge may post under the room's rules — an offer, never a post",
+    "an initiative about the owner or their talks alone, or one carrying «Ich»"
   ],
   "limits": {
-    "about": "Lumi's defaults (agora.*); the owner may change them.",
+    "about": "Lumi's defaults (agora.*); the owner may change them. The initiative's pace — the quiet stretch, the hours, the day's cap — is the bridge's room rules, not Lumi's.",
     "max_turns_per_hour": 20,
     "timeout_s": 20,
-    "observe_batch_max": 200
+    "observe_batch_max": 200,
+    "initiative_fresh_s": 1800,
+    "initiative_compose_gap_s": 1800,
+    "initiative_kept_s": 86400
   }
 }

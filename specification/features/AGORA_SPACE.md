@@ -308,3 +308,34 @@ in the tags. A step guarded by a gate starts only once that gate is passed in th
   - call `/v1/session/new`, `/v1/events` or `/v1/command`;
   - post on its own: she only answers.
 - **Failures:** `409`, `5xx`, a timeout and `pass` are silence in the room.
+
+## Her initiative — v3.4 (steps 10–16)
+
+The owner asked on 2026-11-15 that she may write in Agora when she wants, not only when called on. It is planned as
+Lumi **v3.4** (ROADMAP §v3.4) and matrix-agora **v8.3**, with the agora space API **v2**. Agreed as Q14–Q18 in the tracker.
+- **Pull, not push** (Q14): the bridge polls `GET /v1/initiative` only while its room rules allow; a poll never calls
+  the model; Lumi composes on demand in the background, on the room's own client.
+- **Remembered only once seen** (Q15): `POST /v1/initiative/{id}/posted {event_id}` stores the text as her line; never
+  acked → never remembered; always a 200, idempotent.
+- **The pace is the room's** (Q16): the bridge's rules (1800 s quiet, 09–23, 4 a day, never twice in a row, 30 min
+  fresh); Lumi's own guards in code (one offer at a time, one compose a half-hour, never when her line is the room's
+  last, the 20-an-hour cap); one switch `agora.initiative`, on at G8.
+- **What she may open with** (Q17): something of hers or a thread of the room's — never about «Ich» or their talks
+  alone, no question to anyone by name; the name guard and «Ich» checked in code.
+- **API v2** (Q18): health `"agora": 2`; every v1 route unchanged; the `never` reads «an offer, never a post».
+
+| # | Session | Step | Gate | Hands over |
+|---|---|---|---|---|
+| 10 | Lumi | Plan v3.4: ROADMAP, this file, ARCHITECTURE; the contract `"version": 2` with `initiative` | G6 (passed) | The contract → matrix-agora |
+| 11 | matrix-agora | Copy the contract (`cmp`); bring v8.3 to it | — | — |
+| 12 | Lumi | v3.4 — `/ship-phase` (reviewed, released); deploy to dev | — | Dev with `"agora": 2` |
+| 13 | matrix-agora | v8.3 — `/ship-phase v8.3` (reviewed, released) | — | — |
+| 14 | both | The live test of her initiative on Lumi's dev | G7 | The results |
+| 15 | Lumi | Deploy v3.4 to prod; `agora.initiative` on | G8 | — |
+| 16 | matrix-agora | Deploy v8.3 | G8 | — |
+
+| Gate | Where | What the owner checks or decides |
+|---|---|---|
+| G6 | Before step 10 | The go to plan her initiative (passed: «так відкрий новий крок і постав задачу Лілі запланувати це…»). |
+| G7 | Step 14, on Lumi's dev | After a quiet stretch she starts a line of her own; never in a wave, at night, twice in a row or past the cap; never about him; the others answer her. |
+| G8 | Before steps 15–16 | The go to deploy both to prod. |
