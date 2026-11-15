@@ -176,6 +176,19 @@ and `pass` are silence in the room).
 6. **Bounded:** `spaces.agora.max_turns_per_hour` (`429`), the timeout, one room turn at a time; `observe` makes no
    model call (it embeds ~140 lines a day). Off by default (`spaces.agora.enabled`).
 
+7. **Her prompt stays small** (the owner, 2026-11-15). Her private prompt is ≈ 16–17 K tokens on prod (Gemini 3.1 Pro,
+   2026-11-15); the room adds ≈ 1–1.5 K (+6–9 %):
+   - «Агора сьогодні» — the last **20** lines of the day (`today_lines`), only on a day the room spoke, in the prompt's
+     **tail** so a new room line never breaks the cached start (≈ 800 tokens);
+   - recall shares today's per-turn budget (`rag_k` 4, `rag_max_chars` 1200): the room's lines compete for those
+     places and add none;
+   - the room's day gist is **one or two sentences** (`gist_words` 40) inside her day and week digests (≈ 400–500
+     tokens over a week).
+
+   A test pins the bound. The room's own prompt (the space turn, on Flash) is separate: canon (≈ 2.7 K tokens) + the
+   mood's resolution + the room's 40-line window + its gists and recall + the rule ≈ 6–7 K tokens a turn — a fraction
+   of a cent on 2.5 Flash, nothing on her private prompt.
+
 The phases with these answers built in: ROADMAP §v3 (v3.1 the channel and its own turn path, v3.2 her memory of the
 room, v3.3 fast, pass, retract).
 

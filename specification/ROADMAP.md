@@ -1214,8 +1214,9 @@ his desktop or his turns.
   full reach.
 - **No mirror, no trace on his side:** nothing of the room reaches his Telegram outbox, `/v1/events`, `/v1/state`, his
   totals or the idle clock; the room's usage lines carry `channel: "agora"`.
-- **Settings** (the v2.9 schema): `spaces.agora.enabled` (off → the room's routes are absent), `.token`, `.model`,
-  `.timeout_s`, `.window`, `.private_names`, `.max_turns_per_hour`, `.today_lines`, `.gist_words`.
+- **Settings** (the v2.9 schema): `spaces.agora.enabled` (off → the room's routes are absent), `.token`, `.model`
+  (`gemini-2.5-flash`), `.timeout_s` (20), `.window` (the room's live lines in its own prompt, 40), `.private_names`,
+  `.max_turns_per_hour`, `.today_lines` (20), `.gist_words` (40 — one or two sentences a day).
 
 **DoD:**
 - An agora turn and observed lines never appear in his Telegram, his desktop or his TUI, never close his session, and
@@ -1245,9 +1246,14 @@ and in Agora she says nothing about him.
   Lumi, and the log says why.
 - **The room's lines are the speakers' words:** no closeness nudge, no facts or impressions about him from the room;
   his own lines there (speaker «Ich») stay the room's, his public words.
-- **With him (his private recipe):** «Агора сьогодні» — the room's last lines of the day with their speakers
-  (`today_lines`); recall over his memory **and** his spaces, each room line labelled with its place and speaker («в
-  Агорі, Ада: …»), never as his words; the room's day gist in her day and week digests as «в Агорі …».
+- **With him (his private recipe), kept small** (≈ +1–1.5 K tokens on her ≈ 16–17 K, measured on prod 2026-11-15):
+  - «Агора сьогодні» — the room's last `today_lines` (20) lines of the day with their speakers, only on a day the room
+    spoke; placed in the prompt's **tail**, after the stable start, so a new room line never breaks the cached prefix;
+  - recall over his memory **and** his spaces in the **same** per-turn budget as today (`recall.rag_k` 4,
+    `recall.rag_max_chars` 1200) — the room's lines compete for those places, they add none; each room line labelled
+    with its place and speaker («в Агорі, Ада: …»), never as his words;
+  - the room's day gist (`gist_words`, one or two sentences) inside her day and week digests as «в Агорі …», not as
+    entries of its own.
 - **The room's day gist** written at the roll by the housekeeping model (`gist_words`).
 - Her own acts (the scheduler, thoughts, news) never post to the room; a thought may draw on it.
 
@@ -1259,7 +1265,9 @@ and in Agora she says nothing about him.
 **Tests:** unit — the sentinel: his facts, summaries, impressions, recall and her thoughts carry a sentinel string, and
 the room's prompt holds none of it but holds the room rule; the name guard (a reply naming him → `pass`); his prompt
 holds «Агора сьогодні» and labelled recall; closeness and facts unmoved by room lines; the gist in the digests,
-labelled. **No paid calls.**
+labelled; **the size bound** — on a fixture day of 140 room lines his prompt grows by at most `today_lines` lines + the
+gists (≈ 1.5 K tokens), the recall block stays within `rag_max_chars`, and «Агора сьогодні» sits after the stable
+start; no room → no block. **No paid calls.**
 
 ### v3.3 — The room's turn: fast, allowed to pass, retractable
 
