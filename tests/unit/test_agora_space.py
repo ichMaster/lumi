@@ -382,3 +382,54 @@ def test_his_channel_still_errs_on_an_empty_reply(tmp_path):
 
     with _pytest.raises(EmotionError):
         validate({"reply": ""})  # the gate itself is unchanged — only the room maps it to a pass
+
+
+# --- v3.3 LUMI-290: retracting -------------------------------------------------------------------------------------
+
+
+def test_a_retract_removes_the_reply_and_its_vector_but_keeps_the_trigger(tmp_path):
+    emb = MockEmbedder()
+    space = _space(tmp_path, embedder=emb)
+    space.turn("Ада", "Лілі, що скажеш про туман?", "$1")
+    assert space.retract("$1") is True
+    assert space.store.get("agora", "$1", "lili") is None
+    assert space.store.get("agora", "$1", "user") is not None  # the room said it
+    hits = space.store.search_vectors("agora", emb.embed(["Туман — м'якість міста."])[0], 10)
+    assert all(m.role != "lili" for _, m in hits)  # recall never finds the retracted reply
+    assert space.retract("$1") is False  # idempotent
+
+
+def test_a_retract_of_nothing_stored_is_false(tmp_path):
+    space = _space(tmp_path, FakeRoomModel({"reply": ""}))
+    space.turn("Ада", "Лілі?", "$pass")
+    assert space.retract("$pass") is False  # a pass stored nothing
+    assert space.retract("$never-received") is False
+
+
+def test_a_retract_during_a_running_turn_drops_its_reply_at_the_end(tmp_path):
+    hold = threading.Event()
+    space = _space(tmp_path, FakeRoomModel(hold=hold))
+    errors: list = []
+    runner = threading.Thread(target=lambda: _record(errors, space.turn, "Ада", "Лілі?", "$1"))
+    runner.start()
+    assert space._llm.entered.wait(5)
+    assert space.retract("$1") is True
+    hold.set()
+    runner.join(5)
+    assert errors and isinstance(errors[0], SpaceTimeout)  # its reply was dropped, nothing kept
+    assert space.store.get("agora", "$1", "lili") is None
+
+
+def test_a_retried_turn_after_a_retract_is_a_pass(tmp_path):
+    llm = FakeRoomModel()
+    space = _space(tmp_path, llm)
+    space.turn("Ада", "Лілі?", "$1")
+    space.retract("$1")
+    assert space.turn("Ада", "Лілі?", "$1").outcome == "pass" and len(llm.calls) == 1  # never a second answer
+
+
+def _record(errors, fn, *args):
+    try:
+        fn(*args)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(exc)

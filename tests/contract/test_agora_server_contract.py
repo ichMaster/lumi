@@ -108,3 +108,18 @@ def test_turn_pass_as_written(tmp_path):
     expected = ex["response"]["body"]
     assert set(body) == set(expected) and body["outcome"] == "pass" and body["reply"] == ""
     assert body["turn_id"] == expected["turn_id"] and set(body["stats"]) == set(expected["stats"])
+
+
+def test_retract_as_written(tmp_path):
+    # v3.3: a stored reply → the example's {retracted: true}; nothing stored → response_nothing_stored (R8)
+    ex = EP["retract"]
+    client = agora_client(tmp_path)
+    turn = {**EP["turn"]["request"]["body"]}
+    client.post(EP["turn"]["request"]["path"], json=turn, headers=AUTH)
+    path = ex["request"]["example_path"]
+    assert path == "/v1/turn/" + turn["turn_id"].replace("$", "%24") + "/retract"
+    res = client.request(ex["request"]["method"], path, headers=AUTH)
+    assert res.status_code == ex["response"]["status"] and res.json() == ex["response"]["body"]
+    again = client.request(ex["request"]["method"], path, headers=AUTH)
+    nothing = ex["response_nothing_stored"]
+    assert again.status_code == nothing["status"] and again.json() == nothing["body"]

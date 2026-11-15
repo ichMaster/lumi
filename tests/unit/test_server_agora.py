@@ -212,3 +212,23 @@ def test_the_server_refuses_a_space_without_its_token_or_model():
     assert "agora.token" in agora_problem(_Cfg(agora=True))
     assert "client token" in agora_problem(_Cfg(agora=True, agora_token="owner"))
     assert "GEMINI_API_KEY" in agora_problem(_Cfg(agora=True, agora_token="room", gemini_api_key=""))
+
+
+# --- v3.3 LUMI-290: retract over the API ---------------------------------------------------------------------------
+
+
+def test_retract_is_always_a_200_and_idempotent(tmp_path):
+    client = agora_client(tmp_path)
+    client.post("/v1/turn", json=TURN, headers=ROOM_AUTH)
+    assert client.post("/v1/turn/%24trig/retract", headers=ROOM_AUTH).json() == {"retracted": True}
+    assert client.post("/v1/turn/%24trig/retract", headers=ROOM_AUTH).json() == {"retracted": False}
+    assert client.post("/v1/turn/%24nobody/retract", headers=ROOM_AUTH).json() == {"retracted": False}
+
+
+def test_retract_is_the_rooms_own_route(tmp_path):
+    client = agora_client(tmp_path)
+    res = client.post("/v1/turn/%24trig/retract", headers=OWNER_AUTH)
+    assert res.status_code == 403 and res.json()["detail"] == "retract is the room's own route"
+    assert client.post("/v1/turn/%24trig/retract").status_code == 401
+    off = TestClient(create_app(make_core(tmp_path / "off"), token=OWNER, env="dev", version="3.3.0"))
+    assert off.post("/v1/turn/%24trig/retract", headers=OWNER_AUTH).status_code == 404  # the space off

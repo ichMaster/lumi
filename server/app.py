@@ -649,6 +649,16 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             stored, known = space.observe([ObservedLine(ln.id, ln.speaker, ln.text, ln.ts) for ln in req.lines])
             return {"stored": stored, "known": known}
 
+    if space is not None:
+        @app.post("/v1/turn/{turn_id}/retract")
+        def retract(turn_id: str, who: str = Depends(caller)) -> dict[str, bool]:
+            """v3.3: the room takes back her reply to ``turn_id`` — always a 200 (R8): ``{retracted: true}`` when a
+            stored reply was removed (or a running one will be), ``{retracted: false}`` when nothing was stored.
+            The room's own route: the owner's token gets 403 — his turns are never retractable."""
+            if who != "room":
+                raise HTTPException(status_code=403, detail="retract is the room's own route")
+            return {"retracted": space.retract(turn_id)}
+
     @app.post("/v1/turn/stream", dependencies=guarded)
     def turn_stream(req: TurnRequest, x_lumi_client: str | None = Header(default=None)) -> StreamingResponse:
         """A streamed turn as Server-Sent Events: ``delta``/``think`` while she answers, then exactly one

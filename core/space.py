@@ -321,6 +321,7 @@ class AgoraSpace:
         self._state_lock = threading.Lock()  # the store-or-drop decision vs abandon (code review #1)
         self._running: str | None = None
         self._abandoned: set[str] = set()
+        self._retracted: OrderedDict[str, None] = OrderedDict()  # v3.3: turn ids the room took back (bounded)
         self._outcomes: OrderedDict[str, SpaceOutcome] = OrderedDict()
         # v3.2: the room's own housekeeping (its digest and day gists) on a client of its own — never his core's, and
         # never the turn's (a housekeeping call must not overwrite a room turn's stats mid-turn)
@@ -385,6 +386,24 @@ class AgoraSpace:
             if self.store.remove(self.channel, turn_id, "lili"):
                 self._outcomes.pop(turn_id, None)
 
+    def retract(self, turn_id: str) -> bool:
+        """v3.3: the room took back her reply to ``turn_id`` (its rules dropped it, its send failed, it timed out) —
+        she never remembers saying what the room never saw. A running turn is marked and its reply dropped when it
+        ends; a stored reply leaves the room's session and its vectors; the trigger line stays (the room said it).
+        Whether a reply was (or will be) removed — never an error, idempotent (R8). Atomic with the turn's
+        store-or-drop step. A retracted id is remembered, so a later retry answers a pass, never a second reply."""
+        with self._state_lock:
+            self._retracted[turn_id] = None
+            while len(self._retracted) > KEPT_OUTCOMES * 4:
+                self._retracted.popitem(last=False)
+            if self._running == turn_id:
+                self._abandoned.add(turn_id)
+                return True
+            if self.store.remove(self.channel, turn_id, "lili"):
+                self._outcomes.pop(turn_id, None)
+                return True
+            return False
+
     def known_outcome(self, turn_id: str) -> SpaceOutcome | None:
         """A turn already answered: its kept outcome, or — after a restart — its stored reply (R1: never twice)."""
         kept = self._outcomes.get(turn_id)  # one read: the turn thread may evict between a check and a get (#6)
@@ -392,6 +411,9 @@ class AgoraSpace:
             return kept
         reply = self.store.get(self.channel, turn_id, "lili")
         if reply is None:
+            if turn_id in self._retracted:  # v3.3: taken back — a retry is silence, never a second answer
+                return SpaceOutcome("pass", "", None, None, turn_id,
+                                    {"model": self.model, "input_tokens": 0, "output_tokens": 0, "latency_ms": 0})
             return None
         return SpaceOutcome("reply", reply.text, reply.emotion, reply.intensity, turn_id,
                             {"model": self.model, "input_tokens": 0, "output_tokens": 0, "latency_ms": 0})
