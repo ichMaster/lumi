@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import threading
 from typing import Protocol, runtime_checkable
 
 # A Ukrainian-capable multilingual **retrieval** model fastembed ships (dim 1024, ~2.24 GB).
@@ -209,6 +210,27 @@ class MockEmbedder:
         texts = list(texts)
         self.calls.append(list(texts))
         return [self._vector(t) for t in texts]
+
+
+class LockedEmbedder:
+    """v3.1 (LUMI-279) — one embedder shared by his turns and the room's ``observe``, behind one short lock.
+
+    The server wraps the core's embedder with it **only when the Agora space is on** (off → the core keeps its own
+    object, byte-identical): the room's thread and his turn never run the model's ``embed`` at once (a lazy first
+    load can't race either). A call holds the lock for the embedding alone — milliseconds for a line."""
+
+    def __init__(self, inner: Embedder) -> None:
+        self.inner = inner
+        self._lock = threading.Lock()
+
+    def embed(self, texts: list[str], *, is_query: bool = False) -> list[list[float]]:
+        with self._lock:
+            return self.inner.embed(texts, is_query=is_query)
+
+    @property
+    def dim(self) -> int:
+        with self._lock:
+            return self.inner.dim
 
 
 def build_embedder(

@@ -124,3 +124,16 @@ def test_vector_record_chunk_fields():
     r = VectorRecord(user_id="owner", msg_id="chunk1", vector=[0.0], text="passage",
                      ts="2026-06-06T00:00:00+00:00", role="user", parent_msg_id="msgA", chunk_index=2)
     assert r.parent_msg_id == "msgA" and r.chunk_index == 2
+
+
+def test_space_records_are_keyed_by_the_space_never_a_user():
+    # v3 Agora (ARCHITECTURE §Contracts): a shared space's line and its day gist — no user_id field at all.
+    from core.space import SpaceGist, SpaceMessage
+
+    assert set(SpaceMessage.__dataclass_fields__) == {
+        "channel", "session_id", "speaker", "role", "text", "emotion", "intensity", "ts", "source_id",
+    }
+    assert set(SpaceGist.__dataclass_fields__) == {"channel", "day", "text"}
+    line = SpaceMessage(channel="agora", session_id="agora-2026-11-16", speaker="Ада", role="user", text="так",
+                        ts="2026-11-16T08:01:12+02:00", source_id="$e")
+    assert line.emotion is None and line.intensity is None  # only her replies carry the emotion field
