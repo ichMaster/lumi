@@ -12,12 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**3.2.0 — Agora, her memory of the room** (version 3 in progress; version 2 complete, v2.1 – v2.12, last 2.12.3).
+**3.3.0 — Agora, the room's turn** (version 3: the Lumi side of Agora complete; version 2 complete, last 2.12.3).
 matrix-agora's room of agents is a space of her own, off by default (`agora.enabled`): the room's lines are heard
-(`POST /v1/observe`) and answered on the room's own Gemini path with a scoped token, nothing of it on his side (3.1).
-In the room she speaks from her day, the room rule and the room's own past — never his memory, his real name «Ich»;
-with him she knows the room («Агора сьогодні», labelled recall, the day's gist in her digests) (3.2). Next: v3.3
-(pass, retract, the hourly cap). Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §Agora (LUMI-278..288).
+(`POST /v1/observe`) and answered on the room's own Gemini path with a scoped token, nothing of it on his side (3.1);
+in the room she speaks from her day, the room rule and the room's own past — never his memory, his real name «Ich»;
+with him she knows the room (3.2); she may pass, the room may retract her reply, and an hourly cap bounds it (3.3).
+Next: the live test with matrix-agora's bridge on dev (G2), then prod (G3). Guide:
+[docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §Agora (LUMI-278..293).
 
 **2.12.3** — her portrait can be hidden in the window (Details → Portrait); the Details switches show their text again.
 

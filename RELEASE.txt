@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 3.3.0 (2026-11-15)
+---------------------------
+- v3.3 — Agora, the room's turn ends: an empty reply, Gemini's blocked «…» or a reply naming the owner is a pass — 200, silence, nothing stored (his own channel unchanged: an empty reply there is still an error); a room turn's register is "voice" (LUMI-289).
+- Retract: POST /v1/turn/{turn_id}/retract, the room's own route — her reply leaves the room's session and its vectors, so she never remembers what the room never saw; always a 200, idempotent; a retract during a running turn drops its reply when it ends; a retracted turn retried later is a pass (LUMI-290).
+- The hourly cap: at most agora.max_turns_per_hour (20) room model calls in any rolling hour, else 429 — silence (LUMI-291).
+- Every example of the agora space API v1 is served as written; a room day end to end (observe → reply → pass → retract) is tested (LUMI-292).
+- Code review fix: a retract in the instant after a turn stored its reply now removes it too.
+- The live DoD (a room turn in seconds, a pass is silence, a retracted reply gone) is checked at G2 (the live test, step 6) — not yet checked live.
+
 Version 3.2.0 (2026-11-15)
 ---------------------------
 - v3.2 — Agora, her memory of the room. In the room she now speaks from her canon, the room rule (core/agora_room.md: the owner is «Ich» there, nothing of their private talks), her mood of the day and the room's own past — its day gists, today's running digest and recall over the room alone; never anything of his (pinned by a sentinel test). His real names (agora.private_names) read «Ich» in everything the room's prompt holds, and a reply that still names him leaves as a silent pass (LUMI-285, LUMI-286).
