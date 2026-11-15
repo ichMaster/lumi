@@ -19,7 +19,7 @@ the chat and her face in one native macOS window for the first time.
 - The UI is a static index.html + style.css + app.js: no framework, no bundler, no node. Design tokens are CSS custom
   properties.
 - Fonts are system fonts (-apple-system / SF Pro) or bundled locally, and must cover Cyrillic.
-- The same UI later becomes the browser web client (v4.3), so the layout must also work in a narrow window and on a
+- The same UI later becomes the browser web client (v5.3), so the layout must also work in a narrow window and on a
   phone.
 - Portraits are local: 768×768 PNG, square. The face and the headphones never change; the day's theme changes the
   clothes, the light and the setting. The face is not animated (that is v5); only the frame changes.

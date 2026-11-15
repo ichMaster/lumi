@@ -180,7 +180,7 @@ by intensity from **this client's own face pack** (`viewer.faces_dir`, default `
 serves it on `127.0.0.1`, no face crosses the network) — with the caption, the theme of the day, the closeness meter
 and the mood of the day. While she thinks, her inner voice streams into a block above her reply (Details → Inner
 voice: show / collapse / hide). Her quiet thoughts gather in a strip under the mood, never in the chat. Below 760 px
-the panel becomes a strip at the top. Not yet: pictures she sends still arrive only in Telegram (v4.3); voice,
+the panel becomes a strip at the top. Not yet: pictures she sends still arrive only in Telegram (v5.3); voice,
 dictation and `/image` from a file stay in the TUI.
 
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
