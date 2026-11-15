@@ -1189,7 +1189,9 @@ dev before prod, each side checks the other is ready before its step (AGORA_SPAC
 bridge); G2 the live test's checklist on Lumi's dev; G3 the go before v3's prod deploy and the room's prod token (his
 real Лілі); G4 the go before matrix-agora's prod and `@lili`; G5 his verdict before v8.2. A session reaching a gate
 stops and waits; only the owner's word passes it, recorded in the tracker; a waived gate goes into the release notes
-of the step it guards.
+of the step it guards. **Every versioned step runs `/ship-phase`** (the owner, 2026-11-15): v3.1, v3.2 and v3.3 are
+each built, reviewed and released (`v3.1.0`, `v3.2.0`, `v3.3.0`) before they reach dev; the live test's fixes ship as
+reviewed, released patches; the prod step deploys the last released `v3.3.*`.
 
 ### v3.1 — The channel: the room's store, `observe`, its token, its own turn path
 
