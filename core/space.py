@@ -132,6 +132,7 @@ class SpaceStore(Protocol):
 
 SPEAKER_MAX = 64  # Q3: a room speaker is one line, 1–64 characters, no ":" (a line renders «Name: text»)
 EMBED_MAX_CHARS = 2000  # a room line embedded for recall is cut here (the core's cap is of the same order)
+EMBED_CHUNK = 16  # lines per embed call — the shared embedder's lock is held one chunk at a time (code review #2)
 KEPT_OUTCOMES = 64  # recent outcomes kept by turn_id, so a retry returns the same answer with its stats
 HER_NAME = "Лілі (ти)"  # her own lines in the room's transcript
 
@@ -255,9 +256,12 @@ class AgoraSpace:
         if self._embedder is None or not lines:
             return
         try:
-            vectors = self._embedder.embed([m.text[:EMBED_MAX_CHARS] for m in lines])
-            self.store.add_vectors(self.channel, [(m.source_id, m.role, list(v))
-                                                  for m, v in zip(lines, vectors, strict=True)])
+            # chunked: a 200-line backlog never holds the shared embedder long enough to delay his turn's recall
+            for at in range(0, len(lines), EMBED_CHUNK):
+                part = lines[at:at + EMBED_CHUNK]
+                vectors = self._embedder.embed([m.text[:EMBED_MAX_CHARS] for m in part])
+                self.store.add_vectors(self.channel, [(m.source_id, m.role, list(v))
+                                                      for m, v in zip(part, vectors, strict=True)])
         except Exception:  # noqa: BLE001 — recall is best-effort; the lines stay stored
             import logging
 

@@ -244,3 +244,18 @@ def test_abandon_between_the_model_and_the_store_drops_the_reply(tmp_path):
     with pytest.raises(SpaceTimeout):
         space.turn("Ада", "Лілі?", "$1")
     assert space.store.get("agora", "$1", "lili") is None and space._abandoned == set()
+
+
+def test_a_big_observe_embeds_in_small_chunks(tmp_path):
+    # code review #2: a 200-line backlog never holds the shared embedder for the whole batch — his turn's recall
+    # waits at most one chunk
+    from core.space import EMBED_CHUNK
+
+    emb = MockEmbedder()
+    space = _space(tmp_path, embedder=emb)
+    lines = [ObservedLine(f"${i}", "Ада", f"рядок {i}", f"2026-11-16T08:{i // 60:02d}:{i % 60:02d}+02:00")
+             for i in range(200)]
+    assert space.observe(lines) == (200, 0)
+    assert max(len(call) for call in emb.calls) <= EMBED_CHUNK == 16
+    assert sum(len(call) for call in emb.calls) == 200
+    assert len(space.store.search_vectors("agora", emb.embed(["рядок"])[0], 500)) == 200
