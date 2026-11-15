@@ -12,7 +12,7 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**3.3.1 — Agora, the room's turn** (version 3: the Lumi side of Agora complete, live-tested at G2; version 2 complete, last 2.12.3).
+**3.3.2 — Agora, the room's turn** (version 3: the Lumi side of Agora complete, live-tested at G2; version 2 complete, last 2.12.3).
 matrix-agora's room of agents is a space of her own, off by default (`agora.enabled`): the room's lines are heard
 (`POST /v1/observe`) and answered on the room's own Gemini path with a scoped token, nothing of it on his side (3.1);
 in the room she speaks from her day, the room rule and the room's own past — never his memory, his real name «Ich»;

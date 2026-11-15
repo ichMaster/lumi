@@ -1,6 +1,10 @@
 Lumi — Release notes
 ====================
 
+Version 3.3.2 (2026-11-15)
+---------------------------
+- LUMI-295 (Q12, for matrix-agora's v8.2, where she becomes a ranked member of Agora): the room rule now says the last line may be addressed to someone else — she answers only if she truly has something to add — and how to stay silent (an empty reply, which Lumi turns into a pass). Rule text only; the agora space API is unchanged.
+
 Version 3.3.1 (2026-11-15)
 ---------------------------
 - LUMI-294 (Q11, from the live test on dev): privately her memory of Agora now knows his own room lines are his — in «Агора сьогодні» and in his recall they read «ти (Ich)», hers «Лілі», and the block says the one she talks with privately is «Ich» there. His private recipe only: the room's prompt and the agora space API are unchanged.
