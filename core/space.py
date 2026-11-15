@@ -224,6 +224,8 @@ class AgoraSpace:
         self._cache_log_path = cache_log_path
         self._now_s = monotonic or time.monotonic
         self._turn_lock = threading.Lock()
+        self._state_lock = threading.Lock()  # the store-or-drop decision vs abandon (code review #1)
+        self._running: str | None = None
         self._abandoned: set[str] = set()
         self._outcomes: OrderedDict[str, SpaceOutcome] = OrderedDict()
 
@@ -263,8 +265,14 @@ class AgoraSpace:
 
     # --- answering ------------------------------------------------------------------------------------------
     def abandon(self, turn_id: str) -> None:
-        """The caller stopped waiting (its backstop timed out): the turn's reply is dropped when it ends."""
-        self._abandoned.add(turn_id)
+        """The caller stopped waiting (its backstop timed out, so the room saw nothing): a running turn's reply is
+        dropped when it ends, and a reply it already stored is removed — she never remembers saying what the room
+        never saw (Q2). Atomic with the turn's store-or-drop step, so no interleaving keeps the reply."""
+        with self._state_lock:
+            if self._running == turn_id:
+                self._abandoned.add(turn_id)
+            if self.store.remove(self.channel, turn_id, "lili"):
+                self._outcomes.pop(turn_id, None)
 
     def known_outcome(self, turn_id: str) -> SpaceOutcome | None:
         """A turn already answered: its kept outcome, or — after a restart — its stored reply (R1: never twice)."""
@@ -297,9 +305,13 @@ class AgoraSpace:
             known = self.known_outcome(turn_id)  # answered while we waited for nothing — never twice
             if known is not None:
                 return known
+            with self._state_lock:
+                self._running = turn_id
             return self._answer(speaker, text, turn_id)
         finally:
-            self._abandoned.discard(turn_id)
+            with self._state_lock:
+                self._running = None
+                self._abandoned.discard(turn_id)
             self._turn_lock.release()
 
     def _answer(self, speaker: str, text: str, turn_id: str) -> SpaceOutcome:
@@ -319,16 +331,17 @@ class AgoraSpace:
             raise SpaceTimeout(str(exc)) from exc
         elapsed_ms = int((self._now_s() - started) * 1000)
         state = validate(raw, session_id=trigger.session_id)
-        if turn_id in self._abandoned or elapsed_ms > self.timeout_s * 1000:
-            raise SpaceTimeout("the room's turn ran past its timeout — its reply is dropped")
         stats = self._stats(elapsed_ms)
         ts = self._clock().isoformat(timespec="seconds")
         reply = SpaceMessage(channel=self.channel, session_id=assign_session(self.store, self.channel, ts, self._tz()),
                              speaker="Лілі", role="lili", text=state.reply, ts=ts, source_id=turn_id,
                              emotion=state.emotion.value, intensity=state.intensity)
-        self._embed(self.store.add_lines([reply]))
         outcome = SpaceOutcome("reply", state.reply, state.emotion.value, state.intensity, turn_id, stats)
-        self._keep(outcome)
+        with self._state_lock:  # store-or-drop, atomic with abandon (code review #1)
+            if turn_id in self._abandoned or elapsed_ms > self.timeout_s * 1000:
+                raise SpaceTimeout("the room's turn ran past its timeout — its reply is dropped")
+            self._embed(self.store.add_lines([reply]))
+            self._keep(outcome)
         self._log_usage(stats, reply.session_id)
         return outcome
 

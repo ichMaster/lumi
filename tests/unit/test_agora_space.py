@@ -217,3 +217,30 @@ def test_a_core_beside_the_room_keeps_its_state(tmp_path):
 ])
 def test_the_speaker_rule(speaker, ok):
     assert (speaker_problem(speaker) is None) is ok
+
+
+def test_abandon_after_the_reply_was_stored_removes_it(tmp_path):
+    # code review #1: the server's backstop fired (504), but the turn stored its reply in the instant before
+    # abandon ran — the room saw nothing, so she must not remember saying it
+    space = _space(tmp_path)
+    space.turn("Ада", "Лілі?", "$1")
+    assert space.store.get("agora", "$1", "lili") is not None
+    space.abandon("$1")
+    assert space.store.get("agora", "$1", "lili") is None and space.known_outcome("$1") is None
+    assert space.store.get("agora", "$1", "user") is not None  # the room's own line stays — it was said
+    assert space._abandoned == set()  # nothing kept for a turn that isn't running
+
+
+def test_abandon_between_the_model_and_the_store_drops_the_reply(tmp_path):
+    # the other interleaving, driven exactly: abandon lands while the turn is past the model, before its store step
+    space = _space(tmp_path)
+    real_validate_point = space._stats
+
+    def abandon_then_stats(elapsed_ms):
+        space.abandon("$1")
+        return real_validate_point(elapsed_ms)
+
+    space._stats = abandon_then_stats  # runs after the model, before the store-or-drop step
+    with pytest.raises(SpaceTimeout):
+        space.turn("Ада", "Лілі?", "$1")
+    assert space.store.get("agora", "$1", "lili") is None and space._abandoned == set()
