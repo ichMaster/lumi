@@ -33,11 +33,11 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from core.commands import run_command
 from core.llm import LLMError
@@ -50,6 +50,34 @@ class TurnRequest(BaseModel):
     text: str
     images: list[dict[str, Any]] | None = None  # v0.22 image blocks (base64) — /image over the API
     turn_id: str | None = None  # v2.3: idempotency key — a known id returns the stored result, never reruns
+    # v3.1: whose conversation — "owner" (default: today's path, byte for byte) or "agora" (the room's own path)
+    channel: Literal["owner", "agora"] = "owner"
+    speaker: str | None = None  # v3.1: who said the room line she answers (the agora channel only)
+    # v3.1: the room's register ("voice"); ignored on his channel. Named register_ in Python (pydantic's BaseModel
+    # has a ``register``), "register" on the wire.
+    register_: str | None = Field(default=None, alias="register")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ObservedLineIn(BaseModel):
+    """v3.1: one room line the bridge forwards (agora space API v1)."""
+
+    id: str
+    speaker: str
+    text: str
+    ts: str
+
+
+class ObserveRequest(BaseModel):
+    channel: Literal["agora"]
+    lines: list[ObservedLineIn]
+
+
+OBSERVE_BATCH_MAX = 200  # the contract's limits.observe_batch_max
+ROOM_GRACE_S = 2.0  # the server's backstop waits this much past the room's own budget before a 504
+ROOM_ONLY = "the room's token reaches only the agora space"
+ROOM_BUSY = "Лілі is answering the room — try again"
 
 
 MAX_KEPT_TURNS = 32  # finished turns remembered by id (for retries after a dropped stream)
@@ -445,31 +473,102 @@ class _Service:
         }
 
 
+def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
+    """v3.1: a turn in the agora channel — the room's own path (``core.space.AgoraSpace``), never ``Core.reply``,
+    never the service's lock, the outbox, the event bus, the idle clock or his state. It runs on its own thread; the
+    request waits the room's budget plus a grace, then gives up (``504``) and the turn's reply is dropped."""
+    from core.emotion import EmotionError
+    from core.space import SpaceBusy, SpaceTimeout, speaker_problem
+
+    if problem := speaker_problem(req.speaker):
+        raise HTTPException(status_code=422, detail=problem)
+    if not req.turn_id or not req.turn_id.strip():
+        raise HTTPException(status_code=422, detail="a room turn needs its turn_id (the trigger's event id)")
+    if req.images:
+        raise HTTPException(status_code=422, detail="a room turn carries no images")
+    if not req.text.strip():
+        raise HTTPException(status_code=422, detail="a room turn needs its line")
+    box: dict[str, Any] = {}
+
+    def run() -> None:
+        try:
+            box["outcome"] = space.turn(req.speaker, req.text, req.turn_id)
+        except BaseException as exc:  # noqa: BLE001 — handed to the request thread, mapped below
+            box["error"] = exc
+
+    runner = threading.Thread(target=run, daemon=True, name="lumi-agora-turn")
+    runner.start()
+    runner.join(space.timeout_s + ROOM_GRACE_S)
+    if runner.is_alive():
+        space.abandon(req.turn_id)
+        raise HTTPException(status_code=504, detail="the room's turn timed out")
+    error = box.get("error")
+    if error is None:
+        return box["outcome"].as_dict()
+    if isinstance(error, SpaceBusy):
+        raise HTTPException(status_code=409, detail=ROOM_BUSY)
+    if isinstance(error, SpaceTimeout):
+        raise HTTPException(status_code=504, detail="the room's turn timed out")
+    if isinstance(error, LLMError):
+        log.warning("room turn: the model failed: %s", error)
+        raise HTTPException(status_code=502, detail="model unavailable")
+    if isinstance(error, EmotionError):
+        log.warning("room turn: no usable reply (%s)", error)
+    else:
+        log.error("room turn failed", exc_info=error)
+    raise HTTPException(status_code=500, detail="the room's turn failed — see the server log")
+
+
 def create_app(core: Any, *, token: str, session: Any = None, env: str | None = None,
                version: str | None = None, on_new_session: Callable[[], None] | None = None,
-               outbox: Outbox | None = None) -> FastAPI:
+               outbox: Outbox | None = None, space: Any = None, room_token: str | None = None) -> FastAPI:
     """The v1 app around an injected core (a mock model in tests). ``token`` is required.
 
     ``on_new_session`` runs in the background after ``/v1/session/new`` (the ambient re-snapshot, as the
-    TUI's ``/new`` always did) — best-effort, never delaying the response."""
+    TUI's ``/new`` always did) — best-effort, never delaying the response.
+
+    v3.1: ``space`` (an ``AgoraSpace``) turns the Agora space on — ``POST /v1/observe``, a turn with ``channel:
+    "agora"`` and ``"agora": 1`` on health; ``room_token`` is the room's scoped token (its routes only, ``403``
+    elsewhere). Without ``space`` the app is today's, route for route."""
     if not token:
         raise ValueError("LUMI_SERVER_TOKEN is required to serve")
+    if space is not None and (not room_token or room_token == token):
+        raise ValueError("the Agora space needs its own room token (agora.token), never the client token")
     service = _Service(core, session if session is not None else core.start_session(), env=env, version=version,
                        outbox=outbox)
     expected = f"Bearer {token}".encode()
+    room_expected = f"Bearer {room_token}".encode() if space is not None else None
     # No interactive docs / schema endpoints: the API is private to its own clients.
     app = FastAPI(title="Lumi", version=version or "dev", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.service = service
+    app.state.space = space
+
+    def _is(authorization: str | None, wanted: bytes | None) -> bool:
+        return bool(authorization and wanted and secrets.compare_digest(authorization.encode(), wanted))
 
     def require_token(authorization: str | None = Header(default=None)) -> None:
-        if not authorization or not secrets.compare_digest(authorization.encode(), expected):
-            raise HTTPException(status_code=401, detail="unauthorized")
+        if _is(authorization, expected):
+            return
+        if _is(authorization, room_expected):  # v3.1: the room's token never reaches his routes
+            raise HTTPException(status_code=403, detail=ROOM_ONLY)
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    def caller(authorization: str | None = Header(default=None)) -> str:
+        """v3.1: who calls a route both may reach (a turn, observe) — ``"owner"`` or ``"room"``."""
+        if _is(authorization, expected):
+            return "owner"
+        if _is(authorization, room_expected):
+            return "room"
+        raise HTTPException(status_code=401, detail="unauthorized")
 
     guarded = [Depends(require_token)]
 
     @app.get("/v1/health")
     def health() -> dict[str, Any]:
-        return {"ok": True, "env": env, "version": version}
+        body: dict[str, Any] = {"ok": True, "env": env, "version": version}
+        if space is not None:
+            body["agora"] = 1  # v3.1: the agora space API version, only while the space is on
+        return body
 
     @app.get("/v1/state", dependencies=guarded)
     def state() -> dict[str, Any]:
@@ -504,19 +603,52 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             raise HTTPException(status_code=503, detail="the server is stopping")
         return StreamingResponse(body(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
-    @app.post("/v1/turn", dependencies=guarded)
-    def turn(req: TurnRequest, x_lumi_client: str | None = Header(default=None)) -> dict[str, Any]:
-        """A blocking turn — or, for a known ``turn_id``, the stored result of that turn (never a rerun)."""
+    @app.post("/v1/turn")
+    def turn(req: TurnRequest, x_lumi_client: str | None = Header(default=None),
+             who: str = Depends(caller)) -> dict[str, Any]:
+        """A blocking turn — or, for a known ``turn_id``, the stored result of that turn (never a rerun).
+        v3.1: ``channel: "agora"`` runs the room's own path; the room's token reaches only that channel."""
+        if req.channel == "agora":
+            if space is None:
+                raise HTTPException(status_code=404, detail="Not Found")  # the space is off: its route is absent
+            return _room_turn(space, req)
+        if who == "room":
+            raise HTTPException(status_code=403, detail=ROOM_ONLY)
         record, _ = service.begin_turn(req, stream=False, origin=origin_of(x_lumi_client))
         record.done.wait()
         if record.error is not None:
             raise HTTPException(status_code=record.error[0], detail=record.error[1])
         return record.result
 
+    if space is not None:
+        @app.post("/v1/observe")
+        def observe(req: ObserveRequest, who: str = Depends(caller)) -> dict[str, int]:
+            """v3.1: the room's lines she hears but does not answer — stored, idempotent by ``id``, embedded;
+            no model call, nothing on his side."""
+            from datetime import datetime
+
+            from core.space import ObservedLine, speaker_problem
+
+            if len(req.lines) > OBSERVE_BATCH_MAX:
+                raise HTTPException(status_code=422, detail=f"at most {OBSERVE_BATCH_MAX} lines a call")
+            for line in req.lines:
+                if not line.id.strip():
+                    raise HTTPException(status_code=422, detail="a line needs its id")
+                if problem := speaker_problem(line.speaker):
+                    raise HTTPException(status_code=422, detail=problem)
+                try:
+                    datetime.fromisoformat(line.ts)
+                except ValueError:
+                    raise HTTPException(status_code=422, detail="a line's ts is ISO-8601") from None
+            stored, known = space.observe([ObservedLine(ln.id, ln.speaker, ln.text, ln.ts) for ln in req.lines])
+            return {"stored": stored, "known": known}
+
     @app.post("/v1/turn/stream", dependencies=guarded)
     def turn_stream(req: TurnRequest, x_lumi_client: str | None = Header(default=None)) -> StreamingResponse:
         """A streamed turn as Server-Sent Events: ``delta``/``think`` while she answers, then exactly one
         ``done`` (the blocking payload) or ``error``. A known ``turn_id`` skips straight to its outcome."""
+        if req.channel != "owner":
+            raise HTTPException(status_code=422, detail="the room's turns are blocking (POST /v1/turn)")
         record, fresh = service.begin_turn(req, stream=True, origin=origin_of(x_lumi_client))
 
         def events() -> Iterator[str]:

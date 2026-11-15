@@ -237,3 +237,18 @@ def test_conversation_events_carry_ids_and_replay_to_a_fresh_listener(tmp_path):
         assert fields["id"].startswith(f"{bus.boot}-")  # SSE ids: <boot>-<seq>
         data = json.loads(fields["data"])
         assert data["replay"] is True and data["source"] == "client" and data["origin"] == "c-1"
+
+
+def test_the_agora_space_adds_observe_only(tmp_path):
+    # v3.1: with the space on, the route set gains POST /v1/observe and nothing else; off, it is the set above.
+    from tests._agora_world import agora_client
+
+    on = {(m, r.path) for r in agora_client(tmp_path).app.routes if r.path.startswith("/v1/") for m in r.methods}
+    off = {(m, r.path) for r in _client(tmp_path / "off").app.routes if r.path.startswith("/v1/") for m in r.methods}
+    assert on - off == {("POST", "/v1/observe")} and off <= on
+
+
+def test_a_turn_without_a_channel_is_todays(tmp_path):
+    # v3.1: the new fields default to his channel — the payload is the same set as before, nothing added.
+    res = _client(tmp_path).post("/v1/turn", json={"text": "?", "channel": "owner"}, headers=AUTH).json()
+    assert set(res) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "timing", "state"}

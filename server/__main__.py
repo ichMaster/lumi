@@ -204,6 +204,39 @@ def telegram_sink_of(cfg):
     return make_photo_sink(cfg.outbox_path) if (cfg.bridge and cfg.image) else None
 
 
+def agora_problem(cfg) -> str | None:
+    """v3.1: why the Agora space can't serve as configured (a refusal, exit 78) — or ``None`` (off, or ready)."""
+    if not getattr(cfg, "agora", False):
+        return None
+    if not cfg.agora_token:
+        return ("agora.enabled is on but agora.token is not set — the room needs its own token "
+                "(agora.token in secrets.yaml).")
+    if cfg.agora_token == cfg.server_token:
+        return "agora.token equals the client token — the room's token must be its own, never the owner's."
+    if not cfg.gemini_api_key:
+        return ("agora.enabled is on but GEMINI_API_KEY is not set — the room's model is Gemini "
+                "(providers.gemini_api_key in secrets.yaml).")
+    return None
+
+
+def agora_space_of(cfg, core):
+    """v3.1: the Agora space over the core's canon and clock — its own store, its own Gemini client, the core's
+    embedder shared behind one lock (wrapped only when the space is on). ``None`` when off."""
+    if not getattr(cfg, "agora", False):
+        return None
+    from core.embedder import LockedEmbedder
+    from core.space import AgoraSpace, build_space_llm
+    from state.space_store import SqliteSpaceStore
+
+    embedder = getattr(core, "_embedder", None)
+    if embedder is not None and not isinstance(embedder, LockedEmbedder):
+        embedder = core._embedder = LockedEmbedder(embedder)
+    return AgoraSpace(
+        SqliteSpaceStore(cfg.agora_store_path), build_space_llm(cfg), model=cfg.agora_model, canon=core._canon,
+        clock=core.clock, embedder=embedder, window=cfg.agora_window, timeout_s=cfg.agora_timeout_s,
+        cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None)
+
+
 def startup_mood(service) -> None:
     """Today's mood at start, as the server's own act (review v2.5 #2): it never runs beside a turn or one of
     her acts (the shared model client's thinking flag can't flip under one), and listeners hear the result."""
@@ -239,6 +272,17 @@ def close_session(service, *, wait_s: float = SHUTDOWN_WAIT_S) -> bool:
         service.lock.release()
 
 
+def close_space(space) -> None:
+    """v3.1: close the room's store at the stop (its lines are already committed — nothing is summarized in v3.1).
+    Best-effort, like the session close."""
+    if space is None:
+        return
+    try:
+        space.close()
+    except Exception:  # noqa: BLE001
+        log.warning("closing the Agora space failed", exc_info=True)
+
+
 def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model); the app is tested directly
     from core.config import load_config
     from core.envguard import guard_entry, in_container
@@ -253,6 +297,8 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
                             "(server.token in secrets.yaml — see secrets.example.yaml).")
     # v2.6: LAN/Tailscale only — refused before anything runs; v2.8: the image may bind every interface
     if problem := bind_problem(cfg.server_host, container=in_container()):
+        raise ConfigRefusal(problem)
+    if problem := agora_problem(cfg):  # v3.1: the room's own token and model, or no start
         raise ConfigRefusal(problem)
     guard_entry(cfg)  # v2.1: refuse before touching the data root
     from core.brainlock import guard_single_brain
@@ -274,8 +320,10 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     except LLMError as exc:
         raise SystemExit(f"{exc}\nSet the model key in secrets.yaml (see secrets.example.yaml).") from exc
     session = core.start_session()
+    space = agora_space_of(cfg, core)  # v3.1: the room's own path (None when agora.enabled is off)
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
-                     on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg))
+                     on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg),
+                     space=space, room_token=cfg.agora_token if space is not None else None)
     service = app.state.service
     from server.brain import BrainHost
 
@@ -292,6 +340,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     finally:
         brain.stop()
         close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
+        close_space(space)  # v3.1: the room's store, beside his session
 
 
 def run() -> None:

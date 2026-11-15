@@ -43,7 +43,7 @@
       }
     },
     "observe": {
-      "about": "The room's lines she hears but does not answer — every line of the room, batched. Stored in the room's session, idempotent by id (the room's Matrix event_id), embedded for recall; no model call. A failed batch is sent again whole.",
+      "about": "The room's lines she hears but does not answer — every line of the room, batched. Stored in the room's session, idempotent by id (the room's Matrix event_id), embedded for recall; no model call. A failed batch is sent again whole. A speaker is one line of 1–64 characters with no ':' (Lumi renders a room line as «Name: text») — the same on a turn; anything else is a 422. At most limits.observe_batch_max lines a call.",
       "request": {
         "method": "POST",
         "path": "/v1/observe",
@@ -158,7 +158,7 @@
       "status": 401,
       "when": "no token or a wrong one",
       "body": {
-        "detail": "the client token is missing or wrong"
+        "detail": "unauthorized"
       }
     },
     {
@@ -184,7 +184,7 @@
     },
     {
       "status": 422,
-      "when": "a malformed request (a missing channel, a line without id)",
+      "when": "a malformed request (a missing channel, a line without id, a speaker outside the rule, more than observe_batch_max lines)",
       "body": {
         "detail": "…"
       }

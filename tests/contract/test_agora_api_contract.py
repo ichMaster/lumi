@@ -62,3 +62,12 @@ def test_r8_a_retract_is_always_a_200_and_idempotent():
     assert retract["response_nothing_stored"] == {"status": 200, "body": {"retracted": False}}
     assert "Idempotent" in retract["about"] and "never an error" in retract["about"]
     assert not any("retract of" in e["when"] for e in api["errors"])  # no 404 for an unknown turn_id
+
+
+def test_q3_the_speaker_rule_is_spelled_out():
+    api = _api()
+    about = api["endpoints"]["observe"]["about"]
+    assert "1–64 characters" in about and "no ':'" in about and "422" in about
+    for line in api["endpoints"]["observe"]["request"]["body"]["lines"]:
+        assert 1 <= len(line["speaker"]) <= 64 and ":" not in line["speaker"]
+    assert any("speaker" in e["when"] for e in api["errors"] if e["status"] == 422)
