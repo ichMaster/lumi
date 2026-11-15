@@ -71,3 +71,12 @@ def test_q3_the_speaker_rule_is_spelled_out():
     for line in api["endpoints"]["observe"]["request"]["body"]["lines"]:
         assert 1 <= len(line["speaker"]) <= 64 and ":" not in line["speaker"]
     assert any("speaker" in e["when"] for e in api["errors"] if e["status"] == 422)
+
+
+def test_q9_a_ts_carries_its_offset():
+    from datetime import datetime
+
+    api = _api()
+    assert "with its offset" in api["endpoints"]["observe"]["about"]
+    for line in api["endpoints"]["observe"]["request"]["body"]["lines"]:
+        assert datetime.fromisoformat(line["ts"]).tzinfo is not None

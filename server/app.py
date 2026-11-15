@@ -637,9 +637,11 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
                 if problem := speaker_problem(line.speaker):
                     raise HTTPException(status_code=422, detail=problem)
                 try:
-                    datetime.fromisoformat(line.ts)
+                    when = datetime.fromisoformat(line.ts)
                 except ValueError:
                     raise HTTPException(status_code=422, detail="a line's ts is ISO-8601") from None
+                if when.tzinfo is None:  # Q9: with its offset — a naive ts would sort as UTC (code review #5)
+                    raise HTTPException(status_code=422, detail="a line's ts carries its offset (Q9)")
             stored, known = space.observe([ObservedLine(ln.id, ln.speaker, ln.text, ln.ts) for ln in req.lines])
             return {"stored": stored, "known": known}
 

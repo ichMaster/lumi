@@ -147,6 +147,7 @@ def test_a_malformed_room_turn_is_422(tmp_path, change):
     [{"id": "", "speaker": "Ада", "text": "x", "ts": "2026-11-16T08:01:12+02:00"}],
     [{"id": "$a", "speaker": "Ада:", "text": "x", "ts": "2026-11-16T08:01:12+02:00"}],
     [{"id": "$a", "speaker": "Ада", "text": "x", "ts": "вчора"}],
+    [{"id": "$a", "speaker": "Ада", "text": "x", "ts": "2026-11-16T08:01:12"}],  # no offset (code review #5)
     [{"id": f"${i}", "speaker": "Ада", "text": "x", "ts": "2026-11-16T08:01:12+02:00"} for i in range(201)],
 ])
 def test_a_malformed_observe_is_422(tmp_path, lines):
