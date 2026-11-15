@@ -122,3 +122,25 @@ def test_the_name_pattern():
 def test_the_room_rule_file_has_no_comments_and_no_real_name():
     rule = load_room_rule()
     assert "#" not in rule and "Ich" in rule and "Вітал" not in rule and "Агорі" in rule
+
+
+
+# --- v3.3.2 LUMI-295 (Q12): unnamed turns ------------------------------------------------------------------------
+
+
+def test_the_rule_says_the_last_line_may_not_be_hers_and_how_to_stay_silent():
+    rule = load_room_rule()
+    assert "може бути звернена не до тебе" in rule and "залиш поле reply порожнім" in rule
+    assert "«Ich» — це той, з ким ти говориш і наодинці" in rule  # the rest of the rule unchanged
+
+
+def test_an_unnamed_trigger_left_empty_is_a_pass(tmp_path):
+    class Silent(RoomModel):
+        def reply_structured(self, system, messages, model, cache_prefix=None, **_):
+            super().reply_structured(system, messages, model)
+            return {"reply": "", "emotion": "calm", "intensity": 0.2}
+
+    space, _ = _space(tmp_path)
+    space._llm = Silent()
+    out = space.turn("Ада", "Бруно, а ти бачив туман?", "$unnamed")  # R2: an agent's line, not to her
+    assert out.outcome == "pass" and space.store.get("agora", "$unnamed", "lili") is None
