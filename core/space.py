@@ -830,7 +830,23 @@ class AgoraSpace:
                                 lambda: self._recall(query, seen))
         system = "\n\n".join(s for s in [*sections, self._ini_rule] if s)
         transcript = render_transcript(lines, clean=self.redact) if lines else QUIET_ROOM
-        return system, [{"role": "user", "content": transcript}]
+        return system, [{"role": "user", "content": transcript + "\n\n" + self._time_note(now, lines)}]
+
+    def _time_note(self, now: object, lines: list[SpaceMessage]) -> str:
+        """v3.4 review #1: her local time now and the room's last line's — an initiative opens after a silence of
+        unknown length, so she knows the time of day and how long the room has been quiet («Зараз 21:40, 16.11.
+        Остання репліка в кімнаті — 16.11 о 09:12.»)."""
+        tz = self._tz()
+        here = now.astimezone(tz) if getattr(now, "tzinfo", None) else now
+        note = f"Зараз {here:%H:%M}, {here:%d.%m}."
+        if lines:
+            try:
+                last = datetime.fromisoformat(lines[-1].ts)
+                last = last.astimezone(tz) if last.tzinfo is not None and tz is not None else last
+                note += f" Остання репліка в кімнаті — {last:%d.%m} о {last:%H:%M}."
+            except (TypeError, ValueError):
+                pass
+        return note
 
     # --- v3.2: the room's housekeeping — its running digest and its day gists ------------------------------------
     def today_session(self, now: object) -> str | None:

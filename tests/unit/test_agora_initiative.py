@@ -261,7 +261,7 @@ def test_an_empty_room_still_has_a_transcript_line(tmp_path):
     space.poll_initiative()
     _settle(space)
     [(_, messages)] = model.prompts
-    assert messages == [{"role": "user", "content": QUIET_ROOM}]
+    assert messages == [{"role": "user", "content": QUIET_ROOM + "\n\nЗараз 12:00, 16.11."}]
 
 
 def test_a_compose_runs_on_its_own_client_never_the_turns(tmp_path):
@@ -402,3 +402,27 @@ def test_an_ack_with_the_switch_off_is_still_honoured(tmp_path):
     space, ini = _offered(tmp_path)
     space._initiative = False  # the owner turned it off after the offer went out
     assert space.initiative_posted(ini, "$posted") is True
+
+
+
+# --- v3.4 code review #1: the initiative knows the time ------------------------------------------------------------
+
+def test_the_compose_knows_the_time_and_how_long_the_room_was_quiet(tmp_path):
+    model = RecordingModel(dict(OFFER))
+    clock = Clock(datetime(2026, 11, 16, 21, 40, tzinfo=KYIV))
+    space = _space(tmp_path, model, clock=clock)
+    space.observe([ObservedLine("$a", "Ада", "Який туман зранку!", "2026-11-16T07:12:00+00:00")])  # 09:12 in Kyiv
+    space.poll_initiative()
+    _settle(space)
+    [(system, messages)] = model.prompts
+    content = messages[0]["content"]
+    assert content.endswith("Зараз 21:40, 16.11. Остання репліка в кімнаті — 16.11 о 09:12.")
+    assert content.index("»»»") < content.index("Зараз 21:40")  # outside the quoted transcript
+    assert "Зараз 21:40" not in system  # the time rides in the user turn, the system sections unchanged
+
+
+def test_a_turns_prompt_carries_no_time_note(tmp_path):
+    space = _space(tmp_path)
+    _room(space, ("$a", "Ада", "Лілі, привіт!"))
+    _, messages = space.build_prompt(space.store.get("agora", "$a", "user"))
+    assert "Остання репліка в кімнаті" not in messages[0]["content"]  # the turn's prompt as before
