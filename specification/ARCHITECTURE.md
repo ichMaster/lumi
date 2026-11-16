@@ -212,7 +212,8 @@ phases: ROADMAP §v3.
     - It runs on a client of its own (`initiative_llm`), never the turn's, so a named turn is never refused while
       she composes.
     - Its prompt is the space recipe (shared with the turn, whose prompt is unchanged) plus the authored
-      `core/agora_initiative.md`; her thoughts' text stays out.
+      `core/agora_initiative.md`. After the room's transcript, one line gives her local time and the room's last
+      line's (review #1). Her thoughts' text stays out.
     - An empty, blocked, owner-naming or «Ich»-carrying answer is no offer («initiative held: <reason>»).
   - **The offer.** A `SpaceOffer` in the room's store (`space_offers`). It is fresh for `INITIATIVE_FRESH_S` (1800)
     and stale at once when a newer room line exists (`last_seq`, the room's monotonic newest line; a retract never
