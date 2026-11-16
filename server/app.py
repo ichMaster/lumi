@@ -694,7 +694,11 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
                 raise HTTPException(status_code=403, detail="the initiative is the room's own route")
             if not req.event_id.strip():
                 raise HTTPException(status_code=422, detail="an initiative ack needs its event_id")
-            return {"stored": space.initiative_posted(initiative_id, req.event_id)}
+            try:
+                return {"stored": space.initiative_posted(initiative_id, req.event_id)}
+            except Exception:  # noqa: BLE001 — review #2/#3: nothing stored, the ack stays possible; always a 200
+                log.warning("the initiative ack failed", exc_info=True)
+                return {"stored": False}
 
     @app.post("/v1/turn/stream", dependencies=guarded)
     def turn_stream(req: TurnRequest, x_lumi_client: str | None = Header(default=None)) -> StreamingResponse:

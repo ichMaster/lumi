@@ -337,3 +337,18 @@ def test_the_server_wires_the_initiative_from_settings(tmp_path):
         assert off._initiative is False
     finally:
         off.close(wait_s=0.1)
+
+
+def test_a_failing_ack_is_a_200_nothing_stored(tmp_path, caplog):
+    # v3.4 code review #3: the contract's ack is always a 200 — a store error is {stored: false}, logged
+    import logging
+
+    client, space, _ = _ini_client(tmp_path)
+
+    def boom(initiative_id, event_id):
+        raise OSError("disk full")
+
+    space.initiative_posted = boom  # type: ignore[method-assign]
+    with caplog.at_level(logging.WARNING, logger="lumi.server"):
+        res = client.post("/v1/initiative/ini-1/posted", json={"event_id": "$p"}, headers=ROOM_AUTH)
+    assert res.status_code == 200 and res.json() == {"stored": False} and "initiative ack failed" in caplog.text
