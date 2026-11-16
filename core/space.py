@@ -706,6 +706,29 @@ class AgoraSpace:
         self._maybe_compose()
         return None
 
+    def initiative_posted(self, initiative_id: str, event_id: str) -> bool:
+        """The bridge posted the offer as the room's line ``event_id`` (``POST /v1/initiative/{id}/posted``): only now
+        is its text her line — in the room's session of now, embedded for recall, so it reads as hers in the room's
+        window, in «Агора сьогодні» and in his recall. ``True`` when stored; ``False`` for an unknown (or pruned) id,
+        an offer already acked, or a line already stored under ``event_id`` — idempotent, never an error. A late ack
+        (the offer stale for polling) is honoured: the room saw it. Honoured with the switch off too."""
+        with self._state_lock:
+            offer = self.store.get_offer(self.channel, initiative_id)
+            if offer is None or offer.event_id is not None:
+                return False
+            if self.store.get(self.channel, event_id, "lili") is not None:
+                return False
+            ts = self._clock().isoformat(timespec="seconds")
+            line = SpaceMessage(channel=self.channel, session_id=assign_session(self.store, self.channel, ts,
+                                                                                self._tz()),
+                                speaker="Лілі", role="lili", text=offer.text, ts=ts, source_id=event_id,
+                                emotion=offer.emotion, intensity=offer.intensity)
+            if not self.store.ack_offer(self.channel, initiative_id, event_id):
+                return False
+            stored = self.store.add_lines([line])
+        self._embed(stored)
+        return bool(stored)
+
     def _fresh(self, offer: SpaceOffer, now: object) -> bool:
         """Not acked, younger than ``INITIATIVE_FRESH_S``, and no room line since it was composed (its context moved
         — a new line, hers included, makes it stale at once; a retract never does)."""

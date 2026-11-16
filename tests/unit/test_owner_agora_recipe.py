@@ -141,9 +141,9 @@ def test_the_today_block_says_the_rooms_lines_are_data(tmp_path):
 
 
 def test_no_review_tag_leaks_into_her_prompts():
-    from core.space import ROOM_DATA_NOTE, load_room_rule
+    from core.space import INITIATIVE_RULE_PATH, ROOM_DATA_NOTE, load_room_rule
 
-    for text in (ROOM_DATA_NOTE, load_room_rule()):
+    for text in (ROOM_DATA_NOTE, load_room_rule(), load_room_rule(INITIATIVE_RULE_PATH)):  # v3.4: + the initiative
         assert "review" not in text and "v3." not in text and "LUMI" not in text
 
 
@@ -190,3 +190,30 @@ def test_the_rooms_own_prompt_is_unchanged_by_the_label(tmp_path):
     space.observe([ObservedLine("$a", "Ich", "привіт", "2026-11-16T08:00:00+02:00")])
     space.turn("Ада", "Лілі?", "$t")
     assert "Ich: привіт" in space._llm.prompt and "ти (Ich)" not in space._llm.prompt
+
+
+# --- v3.4 LUMI-298: her posted initiative reads as hers in his private recipe ---------------------------------------
+
+
+def test_her_posted_initiative_reads_as_hers_in_his_recipe(tmp_path):
+    from core.space import SpaceOffer
+
+    core, space, _, _ = _world(tmp_path)
+    space.observe([ObservedLine("$a", "Ада", "доброго вечора", "2026-11-16T20:00:00+02:00")])
+    space.store.add_offer(SpaceOffer("agora", "ini-1", "сьогодні вітер пахне снігом", "2026-11-16T20:30:00+02:00",
+                                     space.store.last_seq("agora"), {}, "calm", 0.4))
+    assert space.initiative_posted("ini-1", "$posted") is True
+    block = _prompt(core)[0].split("# Агора сьогодні\n\n", 1)[1]
+    assert "Лілі: сьогодні вітер пахне снігом" in block  # today's block; recall skips what it shows (v3.2)
+
+
+def test_her_posted_initiative_in_his_recall_on_a_later_day(tmp_path):
+    from core.space import SpaceOffer
+
+    core, space, _, _ = _world(tmp_path)
+    space._clock = fixed_clock(datetime(2026, 11, 14, 20, 0, tzinfo=KYIV))  # posted two days ago
+    space.store.add_offer(SpaceOffer("agora", "ini-1", "вітер пахне першим снігом", "2026-11-14T19:30:00+02:00",
+                                     0, {}, "calm", 0.4))
+    assert space.initiative_posted("ini-1", "$posted") is True
+    space._clock = fixed_clock(NOW)
+    assert "в Агорі, Лілі: вітер пахне першим снігом" in core._recall_block("вітер пахне першим снігом")

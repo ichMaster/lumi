@@ -326,3 +326,79 @@ def test_close_waits_for_a_compose_in_flight_and_then_no_compose_starts(tmp_path
     closer.join(5)
     assert not closer.is_alive()
     assert space.poll_initiative() is None and model.calls == 1
+
+
+# --- v3.4 LUMI-298: the ack — an offer the room saw becomes her line --------------------------------------------------
+
+def _offered(tmp_path, **kw) -> tuple[AgoraSpace, str]:
+    space = _space(tmp_path, FakeRoomModel(dict(OFFER)), **kw)
+    _room(space, ("$a", "Ада", "Хто бачив туман?"))
+    space.poll_initiative()
+    _settle(space)
+    return space, space.poll_initiative().initiative_id
+
+
+def test_the_ack_stores_her_line_once(tmp_path):
+    space, ini = _offered(tmp_path)
+    assert space.initiative_posted(ini, "$posted") is True
+    line = space.store.get("agora", "$posted", "lili")
+    assert line.text == OFFER["reply"] and line.speaker == "Лілі" and line.session_id == "agora-2026-11-16"
+    assert (line.emotion, line.intensity) == ("calm", 0.4)
+    hits = space.store.search_vectors("agora", space._embedder.embed([OFFER["reply"]])[0], 5)
+    assert ("lili", "$posted") in {(m.role, m.source_id) for _, m in hits}  # embedded for recall
+    assert space.initiative_posted(ini, "$posted") is False  # idempotent
+    assert space.initiative_posted(ini, "$another") is False  # one offer, one line
+    assert [m.source_id for m in space.store.window("agora", 10) if m.role == "lili"] == ["$posted"]
+
+
+def test_an_unknown_id_is_nothing_stored(tmp_path):
+    space, _ = _offered(tmp_path)
+    assert space.initiative_posted("ini-000000000000", "$posted") is False
+    assert space.store.get("agora", "$posted", "lili") is None
+
+
+def test_an_offer_never_acked_is_never_remembered(tmp_path):
+    space, _ = _offered(tmp_path)
+    assert [m for m in space.store.window("agora", 10) if m.role == "lili"] == []
+    hits = space.store.search_vectors("agora", space._embedder.embed([OFFER["reply"]])[0], 10)
+    assert all(m.role != "lili" for _, m in hits)
+
+
+def test_a_late_ack_is_honoured(tmp_path):
+    clock = Clock(datetime(2026, 11, 16, 12, 0, tzinfo=KYIV))
+    space, ini = _offered(tmp_path, clock=clock)
+    space.observe([ObservedLine("$b", "Бруно", "Я бачив!", "2026-11-16T12:01:00+02:00")])  # stale for polling
+    clock.advance(INITIATIVE_FRESH_S + 60)  # and past its half-hour
+    assert space.poll_initiative() is None
+    assert space.initiative_posted(ini, "$posted") is True  # the room saw it
+
+
+def test_a_pruned_offer_is_nothing_stored(tmp_path):
+    clock = Clock(datetime(2026, 11, 16, 12, 0, tzinfo=KYIV))
+    space, ini = _offered(tmp_path, clock=clock)
+    clock.advance(INITIATIVE_KEPT_S + 1)
+    space.poll_initiative()  # prunes
+    assert space.initiative_posted(ini, "$posted") is False
+
+
+def test_after_the_ack_she_never_speaks_twice_in_a_row(tmp_path):
+    mono = Mono()
+    space, ini = _offered(tmp_path, mono=mono)
+    model = space._ini_llm
+    space.initiative_posted(ini, "$posted")
+    mono.t += INITIATIVE_COMPOSE_GAP_S + 1  # the gap passed — still nothing: her line is the room's last
+    assert space.poll_initiative() is None and model.calls == 1
+
+
+def test_her_posted_line_is_in_the_next_room_turns_window(tmp_path):
+    space, ini = _offered(tmp_path)
+    space.initiative_posted(ini, "$posted")
+    space.observe([ObservedLine("$t", "Бруно", "Лілі, і в мене так!", "2026-11-16T12:05:00+02:00")])
+    _, messages = space.build_prompt(space.store.get("agora", "$t", "user"))
+    assert f"Лілі (ти): {OFFER['reply']}" in messages[0]["content"]
+
+
+def test_an_ack_with_the_switch_off_is_still_honoured(tmp_path):
+    space, ini = _offered(tmp_path)
+    space._initiative = False  # the owner turned it off after the offer went out
+    assert space.initiative_posted(ini, "$posted") is True
