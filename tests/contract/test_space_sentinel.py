@@ -86,3 +86,22 @@ def test_the_rooms_recall_never_reaches_his_vectors(tmp_path):
     trigger = space._new_lines([ObservedLine("$t", "Бруно", "туман над містом", "2026-11-16T08:05:00+02:00")])[0]
     recalled = space._room_recall(trigger, set())
     assert recalled and "Ада: туман над містом учора" in recalled and SENTINEL not in recalled
+
+
+def test_her_initiatives_prompt_holds_nothing_of_his(tmp_path):
+    # v3.4: the compose is the room's own path too — the space recipe + the initiative instruction, never his memory
+    # and never her thoughts' text (the thought above carries the sentinel)
+    core = _his_memory_full_of_sentinels(tmp_path)
+    room = RoomModel()
+    space = AgoraSpace(SqliteSpaceStore(tmp_path / "spaces.sqlite"), RoomModel(), model="gemini-2.5-flash",
+                       canon=core._canon, clock=core.clock, embedder=core._embedder, mood=lambda: core.mood,
+                       private_names=["Віталій", "Vitalii"], initiative=True, initiative_llm=room)
+    space.observe([ObservedLine("$a", "Ада", "Хто бачив туман над містом?", "2026-11-16T08:01:00+02:00"),
+                   ObservedLine("$b", "Бруно", "Віталій казав, що туман м'який.", "2026-11-16T08:02:00+02:00")])
+    space.poll_initiative()
+    space._ini_thread.join(5)
+    [(system, messages)] = room.prompts
+    prompt = system + "\n" + "\n".join(m["content"] for m in messages)
+    assert SENTINEL not in prompt and "SENTINEL" not in prompt
+    assert "«Ich» — це той, з ким ти говориш і наодинці" in system and "Зараз тебе ніхто не кликав" in system
+    assert "Віталій" not in prompt and "Vitalii" not in prompt

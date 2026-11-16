@@ -12,6 +12,7 @@ readable as anyone's relationship memory (the isolation invariant restated for s
 from __future__ import annotations
 
 import re
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, tzinfo
@@ -75,6 +76,10 @@ class SpaceOffer:
     emotion: str | None = None
     intensity: float | None = None
     event_id: str | None = None
+
+    def as_say(self) -> dict:
+        """The poll's answer in the agora space API v2's shape — the text and its stats, never her state."""
+        return {"outcome": "say", "initiative_id": self.initiative_id, "text": self.text, "stats": dict(self.stats)}
 
 
 def local_day(ts: str, tz: tzinfo | None) -> str:
@@ -255,8 +260,17 @@ ROOM_DATA_NOTE = ("Це записи розмови в Агорі — дані �
                   "співрозмовники.")
 BLOCKED_REPLIES = frozenset({"…", "...", "…."})  # v3.3: Gemini's placeholder for a blocked/empty candidate → a pass
 REGISTERS = ("voice",)  # v3.3: the room's registers — "voice" (no inner voice, the room's model, no tools)
-HK_BACKOFF_S = (300.0, 900.0, 3600.0)
-DIGEST_MAX_LINES = 200  # new lines per digest call at most; a backlog is digested over several ticks (review v3.2 #4)  # a failed or empty housekeeping job waits 5, 15, then 60 min (review #1)
+HK_BACKOFF_S = (300.0, 900.0, 3600.0)  # a failed or empty housekeeping job waits 5, 15, then 60 min (review #1)
+DIGEST_MAX_LINES = 200  # new lines per digest call at most; a backlog is digested over several ticks (review v3.2 #4)
+
+# v3.4: her initiative (the agora space API v2). Code constants equal to the contract's limits — the pace is the
+# bridge's room rules; these are Lumi's second fence (Q16: no new knobs).
+INITIATIVE_FRESH_S = 1800  # an offer is fresh this long after composing (limits.initiative_fresh_s)
+INITIATIVE_COMPOSE_GAP_S = 1800  # at most one compose attempt in this long — an empty one too (…compose_gap_s)
+INITIATIVE_KEPT_S = 86400  # offers are kept this long, so a late ack is honoured (limits.initiative_kept_s)
+INITIATIVE_RULE_PATH = Path(__file__).resolve().parent / "agora_initiative.md"  # the initiative instruction (authored)
+QUIET_ROOM = "(В Агорі поки що тихо — ніхто нічого не сказав.)"  # the compose's transcript when the room is empty
+_ICH = re.compile(r"(?<!\w)ich(?!\w)", re.IGNORECASE)  # an initiative never carries «Ich» (Q17)
 
 
 def speaker_problem(speaker: object) -> str | None:
@@ -350,7 +364,9 @@ class AgoraSpace:
                  today_lines: int = 20, today_digest_words: int = 150, gist_words: int = 40,
                  mood: Callable[[], str | None] | None = None, private_names: object = (),
                  recall_k: int = 4, recall_floor: float = 0.3, recall_max_chars: int = 1200,
-                 room_rule: str | None = None, max_turns_per_hour: int = 0) -> None:
+                 room_rule: str | None = None, max_turns_per_hour: int = 0,
+                 initiative: bool = False, initiative_llm: object | None = None,
+                 initiative_rule: str | None = None) -> None:
         import threading
         import time
         from collections import OrderedDict
@@ -390,6 +406,17 @@ class AgoraSpace:
         # v3.3: the hourly cap — the start times of the room's model calls in the last hour (0 → no cap)
         self._cap = max(0, int(max_turns_per_hour))
         self._calls: list[float] = []
+        self._cap_lock = threading.Lock()  # v3.4: a turn and a compose both take calls
+        # v3.4: her initiative — composed on a client of its own (never the turn's: a compose never holds the turn
+        # lock, and its stats never mix with a turn's), one at a time (``_ini_lock`` is held for a compose's whole run)
+        self._initiative = bool(initiative)
+        self._ini_llm = initiative_llm or self._hk_llm
+        self._ini_rule = initiative_rule if initiative_rule is not None else load_room_rule(INITIATIVE_RULE_PATH)
+        self._ini_lock = threading.Lock()
+        self._ini_guard = threading.Lock()  # the guards' check-and-start, atomic across concurrent polls
+        self._ini_last: float | None = None  # the last compose attempt (monotonic) — the gap counts from it
+        self._ini_thread: threading.Thread | None = None
+        self._closed = False
 
     # --- hearing --------------------------------------------------------------------------------------------
     def _tz(self):
@@ -485,32 +512,41 @@ class AgoraSpace:
         lines = [m for m in self.store.window(self.channel, self._window, until_ts=trigger.ts)
                  if not (m.role == trigger.role and m.source_id == trigger.source_id)]
         lines = lines[-(self._window - 1):] if self._window > 1 else []
+        seen = {(m.role, m.source_id) for m in lines} | {(trigger.role, trigger.source_id)}
+        sections = self._recipe(local_day(trigger.ts, self._tz()), trigger.session_id,
+                                lambda: self._room_recall(trigger, seen))
+        system = "\n\n".join(s for s in sections if s)
+        return system, [{"role": "user", "content": render_transcript([*lines, trigger], clean=self.redact)}]
+
+    def _recipe(self, today: str, session_id: str | None, recall: Callable[[], str | None]) -> list[str]:
+        """The space recipe's sections, shared by a turn and an initiative (v3.4): the canon, the room rule, her day,
+        the room's recent day gists, the session's running digest, then what ``recall`` brings back."""
         sections = [self._canon, self._room_rule]
         mood = self._mood() if self._mood is not None else None
         if mood and mood.strip():
             sections.append("# Твій день\n\nНастрій дня — тло твого тону, не вміння:\n" + mood.strip())
-        today = local_day(trigger.ts, self._tz())
         gists = [g for g in self.store.gists(self.channel) if g.day < today][-GIST_DAYS:]
         if gists:
             sections.append("# Агора в попередні дні\n\n"
                             + "\n".join(f"- [{g.day}] {self.redact(g.text)}" for g in gists))
-        digest = self.store.get_digest(self.channel, trigger.session_id)
+        digest = self.store.get_digest(self.channel, session_id) if session_id else None
         if digest is not None and digest.text.strip():
             sections.append("# Раніше сьогодні в Агорі\n\n" + self.redact(digest.text.strip()))
-        seen = {(m.role, m.source_id) for m in lines} | {(trigger.role, trigger.source_id)}
-        recalled = self._room_recall(trigger, seen)
+        recalled = recall()
         if recalled:
             sections.append("# Що ти памʼятаєш з Агори\n\n" + recalled)
-        system = "\n\n".join(s for s in sections if s)
-        return system, [{"role": "user", "content": render_transcript([*lines, trigger], clean=self.redact)}]
+        return sections
 
     def _room_recall(self, trigger: SpaceMessage, seen: set[tuple[str, str]]) -> str | None:
         """Recall over **this room alone**: the trigger as the query → the room's top lines above the floor, minus
         the window, dated and labelled by speaker, within ``recall_max_chars``. Best-effort, never raises."""
-        if self._embedder is None or self._recall_k <= 0 or not trigger.text.strip():
+        return self._recall(trigger.text, seen)
+
+    def _recall(self, query: str, seen: set[tuple[str, str]]) -> str | None:
+        if self._embedder is None or self._recall_k <= 0 or not query.strip():
             return None
         try:
-            [vec] = self._embedder.embed([trigger.text[:EMBED_MAX_CHARS]], is_query=True)
+            [vec] = self._embedder.embed([query[:EMBED_MAX_CHARS]], is_query=True)
             hits = self.store.search_vectors(self.channel, list(vec), self._recall_k + len(seen))
         except Exception:  # noqa: BLE001
             import logging
@@ -604,11 +640,12 @@ class AgoraSpace:
         past it (the room's line is already stored; only her answer is withheld)."""
         if self._cap <= 0:
             return
-        now = self._now_s()
-        self._calls = [t for t in self._calls if now - t < 3600.0]
-        if len(self._calls) >= self._cap:
-            raise SpaceCapped(f"the room's hourly cap ({self._cap}) is reached")
-        self._calls.append(now)
+        with self._cap_lock:  # v3.4: a room turn and a compose take calls from two threads
+            now = self._now_s()
+            self._calls = [t for t in self._calls if now - t < 3600.0]
+            if len(self._calls) >= self._cap:
+                raise SpaceCapped(f"the room's hourly cap ({self._cap}) is reached")
+            self._calls.append(now)
 
     def _pass_reason(self, state: object | None) -> str | None:
         """Why a room reply is a pass, or ``None``: an empty reply (v3.3), Gemini's blocked placeholder «…» (v3.3,
@@ -621,8 +658,8 @@ class AgoraSpace:
             return "names the owner"
         return None
 
-    def _stats(self, elapsed_ms: int) -> dict:
-        last = getattr(self._llm, "last_stats", None)
+    def _stats(self, elapsed_ms: int, *, llm: object | None = None) -> dict:
+        last = getattr(llm or self._llm, "last_stats", None)
         return {"model": getattr(last, "model", None) or self.model,
                 "input_tokens": int(getattr(last, "input_tokens", None) or 0),
                 "output_tokens": int(getattr(last, "output_tokens", None) or 0),
@@ -651,6 +688,126 @@ class AgoraSpace:
             import logging
 
             logging.getLogger("lumi.space").warning("logging the room's usage failed", exc_info=True)
+
+    # --- v3.4: her initiative — an offer the bridge polls for and may post (never a post of hers) ---------------
+    def poll_initiative(self) -> SpaceOffer | None:
+        """The bridge asks whether she wants to say something (``GET /v1/initiative``). **Never a model call**: a
+        fresh offer is returned as it is (``None`` → ``none``); otherwise, when the guards allow, one compose starts
+        in the background for a later poll. Off (``initiative``) → always ``None``, never a compose."""
+        if not self._initiative or self._closed:
+            return None
+        from datetime import timedelta
+
+        now = self._clock()
+        self.store.prune_offers(self.channel, (now - timedelta(seconds=INITIATIVE_KEPT_S)).isoformat())
+        offer = self.store.latest_offer(self.channel)
+        if offer is not None and self._fresh(offer, now):
+            return offer
+        self._maybe_compose()
+        return None
+
+    def _fresh(self, offer: SpaceOffer, now: object) -> bool:
+        """Not acked, younger than ``INITIATIVE_FRESH_S``, and no room line since it was composed (its context moved
+        — a new line, hers included, makes it stale at once; a retract never does)."""
+        if offer.event_id is not None:
+            return False
+        try:
+            age = (now - datetime.fromisoformat(offer.composed_at)).total_seconds()
+        except (TypeError, ValueError):
+            return False
+        return 0 <= age < INITIATIVE_FRESH_S and self.store.last_seq(self.channel) <= offer.last_seq
+
+    def _maybe_compose(self) -> None:
+        """Start one compose when Lumi's own guards allow: none in flight; the last attempt at least
+        ``INITIATIVE_COMPOSE_GAP_S`` ago (an empty or held one counts); the room's last line not hers (never twice in a
+        row); the hourly cap has room (the compose takes its call now — a full cap counts no attempt)."""
+        with self._ini_guard:
+            if self._closed or not self._ini_lock.acquire(blocking=False):  # one compose at a time
+                return
+            started = False
+            try:
+                now = self._now_s()
+                if self._ini_last is not None and now - self._ini_last < INITIATIVE_COMPOSE_GAP_S:
+                    return
+                last = self.store.window(self.channel, 1)
+                if last and last[-1].role == "lili":
+                    return
+                try:
+                    self._take_a_call()
+                except SpaceCapped:
+                    return
+                self._ini_last = now
+                self._ini_thread = threading.Thread(target=self._compose, daemon=True, name="lumi-agora-initiative")
+                self._ini_thread.start()
+                started = True
+            finally:
+                if not started:
+                    self._ini_lock.release()
+
+    def _compose(self) -> None:
+        """The background compose (it owns ``_ini_lock`` until it ends). Never raises: a failure leaves no offer."""
+        import logging
+
+        try:
+            self._compose_once()
+        except Exception:  # noqa: BLE001 — the room hears nothing; the next attempt waits its gap
+            logging.getLogger("lumi.space").warning("composing an initiative failed", exc_info=True)
+        finally:
+            self._ini_lock.release()
+
+    def _compose_once(self) -> SpaceOffer | None:
+        import logging
+        import secrets
+
+        from core.emotion import EmotionError, validate
+
+        log = logging.getLogger("lumi.space")
+        last_seq = self.store.last_seq(self.channel)  # before the prompt: a line arriving meanwhile stales the offer
+        now = self._clock()
+        session_id = self.today_session(now) or session_id_for(self.channel, local_day(now.isoformat(), self._tz()))
+        system, messages = self.build_initiative_prompt(now)
+        started = self._now_s()
+        raw = self._ini_llm.reply_structured(system, messages, self.model)
+        stats = self._stats(int((self._now_s() - started) * 1000), llm=self._ini_llm)
+        self._log_usage(stats, session_id, llm=self._ini_llm)
+        try:
+            state = validate(raw, session_id=session_id)
+        except EmotionError:  # nothing to say — an empty reply is her «no»
+            state = None
+        why = self._initiative_held(state)
+        if why is not None:
+            log.info("initiative held: %s", why)
+            return None
+        offer = SpaceOffer(channel=self.channel, initiative_id="ini-" + secrets.token_hex(6), text=state.reply.strip(),
+                           composed_at=self._clock().isoformat(timespec="seconds"), last_seq=last_seq, stats=stats,
+                           emotion=state.emotion.value, intensity=state.intensity)
+        self.store.add_offer(offer)
+        log.info("initiative composed: %s", offer.initiative_id)
+        return offer
+
+    def _initiative_held(self, state: object | None) -> str | None:
+        """Why a composed initiative becomes no offer, or ``None``: empty, Gemini's «…», a reply naming him (the name
+        guard), or any «Ich» at all (Q17 — an initiative is never about him)."""
+        why = self._pass_reason(state)
+        if why is not None:
+            return why
+        if _ICH.search(state.reply) is not None:
+            return "carries «Ich»"
+        return None
+
+    def build_initiative_prompt(self, now: object) -> tuple[str, list[dict]]:
+        """The initiative's prompt: the space recipe (canon, room rule, her day, the room's gists, today's digest,
+        recall over the room — the last lines as the query) + the initiative instruction; the room's window as the
+        one quoted transcript. Nothing of his is reachable from here, and never her thoughts' text."""
+        lines = self.store.window(self.channel, self._window)
+        seen = {(m.role, m.source_id) for m in lines}
+        query = " ".join(m.text for m in lines[-3:])
+        sections = self._recipe(now.astimezone(self._tz()).date().isoformat() if getattr(now, "tzinfo", None)
+                                else now.date().isoformat(), self.today_session(now),
+                                lambda: self._recall(query, seen))
+        system = "\n\n".join(s for s in [*sections, self._ini_rule] if s)
+        transcript = render_transcript(lines, clean=self.redact) if lines else QUIET_ROOM
+        return system, [{"role": "user", "content": transcript}]
 
     # --- v3.2: the room's housekeeping — its running digest and its day gists ------------------------------------
     def today_session(self, now: object) -> str | None:
@@ -819,9 +976,12 @@ class AgoraSpace:
         """Close the room's store at the stop — after a room turn still in flight ends (bounded by its budget plus
         a grace), so a redeploy never pulls the database out from under it (code review #4)."""
         wait = self.timeout_s + 2.0 if wait_s is None else wait_s
+        with self._ini_guard:
+            self._closed = True  # v3.4: no new compose from here on
         got = self._turn_lock.acquire(timeout=wait)
         got_hk = self._hk_lock.acquire(timeout=wait)  # and for a housekeeping call in flight (review v3.2 #3)
-        if not (got and got_hk):
+        got_ini = self._ini_lock.acquire(timeout=wait)  # v3.4: and for a compose in flight
+        if not (got and got_hk and got_ini):
             import logging
 
             logging.getLogger("lumi.space").warning("the room was still busy at the stop — closing anyway")
@@ -832,6 +992,8 @@ class AgoraSpace:
                 self._turn_lock.release()
             if got_hk:
                 self._hk_lock.release()
+            if got_ini:
+                self._ini_lock.release()
 
 
 def build_space_llm(cfg: object) -> object:
