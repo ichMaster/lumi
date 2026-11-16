@@ -723,11 +723,20 @@ class AgoraSpace:
                                                                                 self._tz()),
                                 speaker="Лілі", role="lili", text=offer.text, ts=ts, source_id=event_id,
                                 emotion=offer.emotion, intensity=offer.intensity)
-            if not self.store.ack_offer(self.channel, initiative_id, event_id):
-                return False
+            # review #2: the line first, then the ack — both land or neither, so a failed write can be acked again
             stored = self.store.add_lines([line])
+            if not stored:
+                return False
+            try:
+                acked = self.store.ack_offer(self.channel, initiative_id, event_id)
+            except Exception:
+                self.store.remove(self.channel, event_id, "lili")
+                raise
+            if not acked:  # pruned in the meantime: never remembered
+                self.store.remove(self.channel, event_id, "lili")
+                return False
         self._embed(stored)
-        return bool(stored)
+        return True
 
     def _fresh(self, offer: SpaceOffer, now: object) -> bool:
         """Not acked, younger than ``INITIATIVE_FRESH_S``, and no room line since it was composed (its context moved

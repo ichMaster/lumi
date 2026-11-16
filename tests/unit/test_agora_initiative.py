@@ -426,3 +426,41 @@ def test_a_turns_prompt_carries_no_time_note(tmp_path):
     _room(space, ("$a", "Ада", "Лілі, привіт!"))
     _, messages = space.build_prompt(space.store.get("agora", "$a", "user"))
     assert "Остання репліка в кімнаті" not in messages[0]["content"]  # the turn's prompt as before
+
+
+# --- v3.4 code review #2: the ack's line and its mark land together --------------------------------------------------
+
+class FlakyStore(SqliteSpaceStore):
+    """Fails the next ``add_lines`` or ``ack_offer`` once, as a locked or full disk would."""
+
+    fail: str | None = None
+
+    def add_lines(self, lines):
+        if self.fail == "add_lines" and lines and lines[0].role == "lili":
+            self.fail = None
+            raise OSError("disk full")
+        return super().add_lines(lines)
+
+    def ack_offer(self, channel, initiative_id, event_id):
+        if self.fail == "ack_offer":
+            self.fail = None
+            raise OSError("disk full")
+        return super().ack_offer(channel, initiative_id, event_id)
+
+
+@pytest.mark.parametrize("step", ["add_lines", "ack_offer"])
+def test_a_failed_ack_write_leaves_the_offer_ackable(tmp_path, step):
+    space = AgoraSpace(FlakyStore(tmp_path / "spaces.sqlite"), FakeRoomModel(), model="gemini-2.5-flash", canon="C",
+                       clock=Clock(datetime(2026, 11, 16, 12, 0, tzinfo=KYIV)), embedder=MockEmbedder(),
+                       monotonic=Mono(), initiative=True, initiative_llm=FakeRoomModel(dict(OFFER)))
+    _room(space, ("$a", "Ада", "Хто бачив туман?"))
+    space.poll_initiative()
+    _settle(space)
+    ini = space.poll_initiative().initiative_id
+    space.store.fail = step
+    with pytest.raises(OSError):
+        space.initiative_posted(ini, "$posted")
+    assert space.store.get("agora", "$posted", "lili") is None  # neither the line…
+    assert space.store.get_offer("agora", ini).event_id is None  # …nor the mark
+    assert space.initiative_posted(ini, "$posted") is True  # the bridge's next ack stores it
+    assert space.store.get("agora", "$posted", "lili") is not None
