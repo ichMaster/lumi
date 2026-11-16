@@ -1,6 +1,11 @@
 Lumi — Release notes
 ====================
 
+Version 3.4.1 (2026-11-17)
+---------------------------
+- v3.4.1 — Her initiative's compose gap is 10 minutes: INITIATIVE_COMPOSE_GAP_S 1800 → 600, with the agora space API's limits.initiative_compose_gap_s (the contract stays version 2, health "agora": 2). On the owner's word (2026-11-17), after the bridge's quiet stretch went to 600 s and Lumi's half-hour gap had become the binding limit.
+- initiative_fresh_s stays 1800 (agreed with matrix-agora, rule 1). The code review found no defect (specification/roadmap/implementation/v3.4.1-code-review.md).
+
 Version 3.4.0 (2026-11-16)
 ---------------------------
 - v3.4 — Her initiative in Agora: she may open a line of her own when the room has been quiet. The agora space API v2 (health "agora": 2; every v1 route unchanged).

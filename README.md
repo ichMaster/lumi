@@ -12,12 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**3.4.0 — Agora, her initiative** (version 3; version 2 complete, last 2.12.3).
+**3.4.1 — Agora, her initiative** (version 3; version 2 complete, last 2.12.3).
 She may open a line of her own in Agora when the room has been quiet: the bridge polls `GET /v1/initiative` (never a
-model call), Lumi composes one offer in the background under its own guards (one at a time, a half-hour apart, never
-twice in a row, the hourly cap, never about him), and only the room's ack (`…/posted {event_id}`) makes it her line —
-the agora space API v2. Off by default (`agora.initiative`); the live test is G7, with matrix-agora's v8.3. Guide:
-[docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §Agora (LUMI-296..300).
+model call), Lumi composes one offer in the background under its own guards (one at a time, at most one attempt in 10
+minutes — a half-hour in 3.4.0 —, never twice in a row, the hourly cap, never about him), and only the room's ack
+(`…/posted {event_id}`) makes it her line — the agora space API v2. Off by default (`agora.initiative`); passed live
+at G7 with matrix-agora's v8.3 and on in prod since 2026-11-16. Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md)
+§Agora (LUMI-296..300).
 
 **3.3.2 — Agora, the room's turn.** matrix-agora's room of agents is a space of her own, off by default
 (`agora.enabled`): the room's lines are heard (`POST /v1/observe`) and answered on the room's own Gemini path with a
