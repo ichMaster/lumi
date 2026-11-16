@@ -413,6 +413,7 @@ class Config:
     agora_today_lines: int = 20          # LUMI_AGORA_TODAY_LINES — v3.2's «Агора сьогодні»
     agora_today_digest_words: int = 150  # LUMI_AGORA_TODAY_DIGEST_WORDS — v3.2's running digest
     agora_gist_words: int = 40           # LUMI_AGORA_GIST_WORDS — v3.2's day gist
+    agora_initiative: bool = False       # LUMI_AGORA_INITIATIVE — v3.4: her initiative (off → every poll is none)
     agora_store_path: Path = DEFAULT_DATA_ROOT / "spaces.sqlite"  # the room's own store (follows the data root)
     store_path: Path = DEFAULT_STORE_PATH
     memory_window: int = DEFAULT_MEMORY_WINDOW
@@ -853,6 +854,7 @@ def load_config(*, load_env: bool = True, settings_dir: Path | None = None) -> C
         agora_today_lines=max(0, int(_get("LUMI_AGORA_TODAY_LINES") or 20)),
         agora_today_digest_words=max(0, int(_get("LUMI_AGORA_TODAY_DIGEST_WORDS") or 150)),
         agora_gist_words=max(0, int(_get("LUMI_AGORA_GIST_WORDS") or 40)),
+        agora_initiative=_parse_bool(_get("LUMI_AGORA_INITIATIVE")),  # v3.4: off by default
         agora_store_path=data_root / "spaces.sqlite",
         store_path=store_path,
         memory_window=memory_window,

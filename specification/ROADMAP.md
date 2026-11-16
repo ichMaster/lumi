@@ -1377,6 +1377,18 @@ time, the gap, her line last, the cap, the name guard, «Ich»), freshness and s
 as hers, idempotent, late, unknown → `{stored: false}`), off → `none`; the room's token only (the owner's 403);
 contract — every v2 example served as written. **No paid calls.**
 
+**As built (LUMI-296..299, 2026-11-16):**
+- The offer lives in the room's store (`space_offers`). "The room's last line id at composing" is kept as `last_seq`,
+  the room's monotonic newest line: a new line, even one with an older `ts`, makes an offer stale, and a retract
+  never does.
+- The compose runs on a client of its own (`initiative_llm`), never the turn's. A compose never holds the turn lock,
+  so a named turn to her is never refused while she composes.
+- The space recipe is shared by the turn and the compose; the turn's prompt is byte for byte as before.
+- `core/agora_initiative.md` is the authored instruction.
+- The guards' numbers are code constants equal to the contract's `limits`.
+- The ack is honoured late and with the switch turned off since (the room saw it).
+- Every example of the API v2 is served as written (`AGORA_API = 2`).
+
 ---
 
 ## v4 — Personality: topics, needs, inner life, inner monologue, emotional memory, thoughts, semantic recall, voice mode II

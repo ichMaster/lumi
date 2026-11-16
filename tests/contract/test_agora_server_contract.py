@@ -3,7 +3,8 @@
 ``docs/agora-space-api.json`` is the seam with matrix-agora (copied there as ``tests/fixtures/lumi_agora_api_v1.json``,
 its fake Lumi server built from the same examples). This drives each example request through the real app — a fake
 room model that returns the example's reply — and checks the response against the example: its status, its fields
-and, where Lumi decides them, its values. v3.3 adds ``turn_pass`` and ``retract``.
+and, where Lumi decides them, its values. v3.3 adds ``turn_pass`` and ``retract``; v3.4 serves the API v2 whole —
+``initiative``, ``initiative_none`` and ``initiative_posted``.
 """
 
 from __future__ import annotations
@@ -30,21 +31,16 @@ class ExampleModel(FakeRoomModel):
         return out
 
 
-V2_ONLY = {"initiative", "initiative_none", "initiative_posted"}  # served from v3.4 (AGORA_API = 2)
-
-
 def test_health_as_written(tmp_path):
-    # the contract leads (sync step 10): its health example is v3.4's ("agora": 2); the server says the API version
-    # it serves — every other field as written
+    # v3.4: the server serves the version the contract names ("agora": 2) — every field as written but the release
     from server.app import AGORA_API
 
     ex = EP["health"]
     res = agora_client(tmp_path).request(ex["request"]["method"], ex["request"]["path"])
     assert res.status_code == ex["response"]["status"]
     body, written = res.json(), dict(ex["response"]["body"])
-    assert body["agora"] == AGORA_API and written.pop("agora") >= AGORA_API
-    assert {k: v for k, v in body.items() if k not in ("agora", "version")} == {
-        k: v for k, v in written.items() if k != "version"}
+    assert body["agora"] == AGORA_API == written["agora"] == API["version"]
+    assert {k: v for k, v in body.items() if k != "version"} == {k: v for k, v in written.items() if k != "version"}
 
 
 def test_observe_as_written(tmp_path):
@@ -175,8 +171,86 @@ def test_every_endpoint_of_the_contract_is_served(tmp_path):
 
     client = agora_client(tmp_path)
     served = {(m, r.path) for r in client.app.routes for m in getattr(r, "methods", ())}
+    assert AGORA_API == API["version"]  # v3.4: the whole of v2
     for name, ep in EP.items():
-        if name in V2_ONLY and AGORA_API < 2:
-            continue  # the contract leads; v3.4 serves these
         path = ep["request"]["path"]
         assert (ep["request"]["method"], path) in served, name
+
+
+# --- v3.4 LUMI-299: her initiative, as written ----------------------------------------------------------------------
+
+class InitiativeModel(FakeRoomModel):
+    """Composes the initiative example's text and reports its token counts."""
+
+    def reply_structured(self, system, messages, model, cache_prefix=None, **_):
+        self.calls += 1
+        stats = EP["initiative"]["response"]["body"]["stats"]
+        self.last_stats = ResponseStats(model=model, latency_ms=stats["latency_ms"],
+                                        input_tokens=stats["input_tokens"], output_tokens=stats["output_tokens"])
+        return {"reply": EP["initiative"]["response"]["body"]["text"], "emotion": "calm", "intensity": 0.4}
+
+
+def _initiative_client(tmp_path, model=None):
+    from tests._agora_world import make_space
+
+    space = make_space(tmp_path, initiative=True, initiative_llm=model or InitiativeModel())
+    return agora_client(tmp_path, space=space), space
+
+
+def test_initiative_none_as_written(tmp_path):
+    ex = EP["initiative_none"]
+    client, space = _initiative_client(tmp_path)
+    res = client.request(ex["request"]["method"], ex["request"]["path"], headers=AUTH)
+    assert res.status_code == ex["response"]["status"] and res.json() == ex["response"]["body"]
+    space._ini_thread.join(5)  # the first poll started a compose in the background
+
+
+def test_initiative_as_written(tmp_path):
+    import re
+
+    ex = EP["initiative"]
+    client, space = _initiative_client(tmp_path)
+    client.request(ex["request"]["method"], ex["request"]["path"], headers=AUTH)
+    space._ini_thread.join(5)
+    res = client.request(ex["request"]["method"], ex["request"]["path"], headers=AUTH)
+    assert res.status_code == ex["response"]["status"]
+    body, written = res.json(), ex["response"]["body"]
+    assert set(body) == set(written)
+    assert {k: body[k] for k in ("outcome", "text", "stats")} == {k: written[k] for k in ("outcome", "text", "stats")}
+    shape = re.compile(r"^ini-[0-9a-f]{12}$")  # the id is Lumi's own; the example's has the same shape
+    assert shape.match(body["initiative_id"]) and shape.match(written["initiative_id"])
+
+
+def test_initiative_posted_as_written(tmp_path):
+    from core.space import SpaceOffer
+
+    ex = EP["initiative_posted"]
+    client, space = _initiative_client(tmp_path)
+    space.store.add_offer(SpaceOffer("agora", "ini-5f2c9a1e7b3d", EP["initiative"]["response"]["body"]["text"],
+                                     "2026-11-16T08:10:00+02:00", 0, {}, "calm", 0.4))
+    path = ex["request"]["example_path"]
+    assert path == ex["request"]["path"].replace("{initiative_id}", "ini-5f2c9a1e7b3d")
+    res = client.request(ex["request"]["method"], path, json=ex["request"]["body"], headers=AUTH)
+    assert res.status_code == ex["response"]["status"] and res.json() == ex["response"]["body"]
+    stored = space.store.get("agora", ex["request"]["body"]["event_id"], "lili")
+    assert stored is not None and stored.text == EP["initiative"]["response"]["body"]["text"]
+    again = client.request(ex["request"]["method"], path, json=ex["request"]["body"], headers=AUTH)
+    nothing = ex["response_nothing_stored"]
+    assert again.status_code == nothing["status"] and again.json() == nothing["body"]
+
+
+def test_an_ack_without_its_event_id_is_a_422(tmp_path):
+    client, _ = _initiative_client(tmp_path)
+    path = EP["initiative_posted"]["request"]["example_path"]
+    assert client.post(path, json={}, headers=AUTH).status_code == 422
+    assert client.post(path, json={"event_id": " "}, headers=AUTH).status_code == 422
+
+
+def test_the_contracts_limits_are_lumis_constants():
+    from core.space import INITIATIVE_COMPOSE_GAP_S, INITIATIVE_FRESH_S, INITIATIVE_KEPT_S
+    from server.app import OBSERVE_BATCH_MAX
+
+    limits = API["limits"]
+    assert (limits["initiative_fresh_s"], limits["initiative_compose_gap_s"], limits["initiative_kept_s"]) == (
+        INITIATIVE_FRESH_S, INITIATIVE_COMPOSE_GAP_S, INITIATIVE_KEPT_S)
+    assert limits["observe_batch_max"] == OBSERVE_BATCH_MAX

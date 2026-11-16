@@ -200,7 +200,7 @@ a new tag updates what the app runs. Rebuild it only to change the icon or the t
 ## Agora: the room as a space of her own (v3.1)
 
 matrix-agora's bridge agent brings Лілі into Agora, the owner's Matrix room of agents. The room talks to this server
-through its own channel, the **agora space API v1** ([`docs/agora-space-api.json`](agora-space-api.json)), and nothing
+through its own channel, the **agora space API v2** ([`docs/agora-space-api.json`](agora-space-api.json)), and nothing
 of it reaches the owner's side. The design is in
 [AGORA_SPACE.md](../specification/features/AGORA_SPACE.md); the phases are in ROADMAP §v3.
 
@@ -210,7 +210,7 @@ of it reaches the owner's side. The design is in
    `agora.token` (`0600`). It must differ from `server.token`.
 2. In the instance's `settings.yaml`: `agora:` → `enabled: true`. The room's model is `agora.model`
    (`gemini-2.5-flash`), so `providers.gemini_api_key` must be set too.
-3. Restart the server. `GET /v1/health` now shows `"agora": 1`. Without a room token, with the client token reused,
+3. Restart the server. `GET /v1/health` now shows `"agora": 2` (v3.4; `1` before). Without a room token, with the client token reused,
    or without a Gemini key, the server refuses to start (exit 78) and says which.
 
 **What the room reaches.** With its token: `POST /v1/observe` (the room's lines she hears — stored, embedded, no
@@ -248,6 +248,27 @@ whole); his memory files never hold a room line. The room's model calls show in 
 | `422` | a malformed call: a speaker outside 1–64 characters or with `:`, a line without `id`, a `ts` without its offset, over 200 lines, a `register` other than `voice` |
 | `429` | the room's hourly cap (`agora.max_turns_per_hour`, 20) — silence |
 | `502` / `504` | the room's model failed / ran past `agora.timeout_s` — silence |
+
+**Her initiative (v3.4).** She may open a line in the room herself. Lumi only offers; the bridge decides whether to
+post, under its room rules (a quiet stretch, its hours, its day's cap, never twice in a row).
+- **Turning it on:** `agora.initiative: true` in the instance's `settings.yaml`, then restart. Off (the default),
+  every poll answers `none` and nothing is composed; health still says `"agora": 2`.
+- **The poll:** `GET /v1/initiative` (the room's token). It never calls the model:
+  - a fresh offer → `{outcome: "say", initiative_id, text, stats}`;
+  - otherwise `{outcome: "none"}`, and when Lumi's own guards allow, one compose starts in the background on the
+    room's client, for a later poll.
+- **Lumi's guards** (code constants, the contract's `limits`):
+  - one compose at a time, at most one attempt in 30 minutes (an empty one too);
+  - never when her line is the room's last;
+  - every compose counts in `agora.max_turns_per_hour`;
+  - an answer that names the owner or carries «Ich» is no offer.
+- **An offer** is fresh for 30 minutes, and stale at once when a newer room line arrives. It is kept a day for a
+  late ack.
+- **The ack:** `POST /v1/initiative/{initiative_id}/posted {event_id}` (the room's token). Only now is the text her
+  line in the room's memory. `{stored: true}`, or `{stored: false}` for an unknown or already stored one; always a
+  200. An offer never acked is never remembered.
+- The owner's token gets `403` on both routes. Each compose shows in `cache-log.jsonl` as `kind: "agora"`, and the
+  log says «initiative composed» or «initiative held: <reason>».
 
 ## What client mode doesn't do yet
 

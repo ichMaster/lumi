@@ -140,6 +140,9 @@ SETTINGS: tuple[Setting, ...] = (
     _s("LUMI_AGORA_TODAY_DIGEST_WORDS", "agora.today_digest_words", "int", 150,
        "The room session's running digest in her private prompt, in words (v3.2).", min=0),
     _s("LUMI_AGORA_GIST_WORDS", "agora.gist_words", "int", 40, "The room's day gist, in words (v3.2).", min=0),
+    _s("LUMI_AGORA_INITIATIVE", "agora.initiative", "bool", False,
+       "Her initiative (v3.4): she may offer the room a line of her own when the bridge asks (GET /v1/initiative). "
+       "Off → every poll answers none and nothing is composed."),
     # --- model ----------------------------------------------------------------------------------------------
     _s("LUMI_PROVIDER", "model.provider", "enum", "anthropic", "The model provider behind the LLMClient seam.",
        choices=_PROVIDERS),

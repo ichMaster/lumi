@@ -323,12 +323,19 @@ Lumi **v3.4** (ROADMAP §v3.4) and matrix-agora **v8.3**, with the agora space A
 - **What she may open with** (Q17): something of hers or a thread of the room's — never about «Ich» or their talks
   alone, no question to anyone by name; the name guard and «Ich» checked in code.
 - **API v2** (Q18): health `"agora": 2`; every v1 route unchanged; the `never` reads «an offer, never a post».
+- **As built (v3.4, LUMI-296..299).**
+  - `AgoraSpace.poll_initiative` (never a model call) and `initiative_posted`.
+  - The offers live in the room's own store (`space_offers`).
+  - Freshness is checked against the room's monotonic newest line (`last_seq`), so a retract never stales an offer.
+  - The compose runs on a client of its own, so a turn is never refused while she composes.
+  - Its prompt is the space recipe plus `core/agora_initiative.md`.
+  - An empty, blocked, owner-naming or «Ich» answer is no offer.
 
 | # | Session | Step | Gate | Hands over |
 |---|---|---|---|---|
 | 10 | Lumi | Plan v3.4: ROADMAP, this file, ARCHITECTURE; the contract `"version": 2` with `initiative` | G6 (passed) | The contract → matrix-agora |
 | 11 | matrix-agora | Copy the contract (`cmp`); bring v8.3 to it | — | — |
-| 12 | Lumi | v3.4 — `/ship-phase` (reviewed, released); deploy to dev | — | Dev with `"agora": 2` |
+| 12 | Lumi | v3.4 — `/ship-phase` (reviewed, released); deploy to dev — built 2026-11-16 (LUMI-296..299) | — | Dev with `"agora": 2` |
 | 13 | matrix-agora | v8.3 — `/ship-phase v8.3` (reviewed, released) | — | — |
 | 14 | both | The live test of her initiative on Lumi's dev | G7 | The results |
 | 15 | Lumi | Deploy v3.4 to prod; `agora.initiative` on | G8 | — |

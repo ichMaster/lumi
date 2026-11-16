@@ -242,7 +242,9 @@ def agora_space_of(cfg, core):
         # his real names read «Ich» in the room's prompt
         mood=lambda: core.mood, private_names=cfg.agora_private_names,
         recall_k=cfg.rag_k, recall_floor=cfg.rag_floor, recall_max_chars=cfg.rag_max_chars,
-        max_turns_per_hour=cfg.agora_max_turns_per_hour)  # v3.3: the hourly cap → 429 (0 → no cap)
+        max_turns_per_hour=cfg.agora_max_turns_per_hour,  # v3.3: the hourly cap → 429 (0 → no cap)
+        # v3.4: her initiative — composed on a client of its own (never the turn's, never housekeeping's)
+        initiative=cfg.agora_initiative, initiative_llm=build_space_llm(cfg))
     core.attach_space(space)  # v3.2: with him she knows the room (the owner's core — the space's one member)
     return space
 

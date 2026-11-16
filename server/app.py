@@ -74,11 +74,18 @@ class ObserveRequest(BaseModel):
     lines: list[ObservedLineIn]
 
 
-AGORA_API = 1  # the agora space API version this server serves (health's "agora"); the contract leads — v3.4 → 2
+class InitiativePostedRequest(BaseModel):
+    """v3.4: the bridge posted her offer — the posted line's Matrix ``event_id`` (agora space API v2)."""
+
+    event_id: str
+
+
+AGORA_API = 2  # the agora space API version this server serves (health's "agora"): v3.4 — v1 + her initiative
 OBSERVE_BATCH_MAX = 200  # the contract's limits.observe_batch_max
 ROOM_GRACE_S = 2.0  # the server's backstop waits this much past the room's own budget before a 504
 ROOM_ONLY = "the room's token reaches only the agora space"
 ROOM_BUSY = "Лілі is answering the room — try again"
+INITIATIVE_NONE = {"outcome": "none"}  # v3.4: nothing to say now (no fresh offer, off, or a compose under way)
 
 
 MAX_KEPT_TURNS = 32  # finished turns remembered by id (for retries after a dropped stream)
@@ -535,8 +542,9 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
     TUI's ``/new`` always did) — best-effort, never delaying the response.
 
     v3.1: ``space`` (an ``AgoraSpace``) turns the Agora space on — ``POST /v1/observe``, a turn with ``channel:
-    "agora"`` and ``"agora": 1`` on health; ``room_token`` is the room's scoped token (its routes only, ``403``
-    elsewhere). Without ``space`` the app is today's, route for route."""
+    "agora"`` and ``"agora": AGORA_API`` on health (v3.3: + retract; v3.4: + her initiative — ``GET /v1/initiative``
+    and ``POST /v1/initiative/{initiative_id}/posted``); ``room_token`` is the room's scoped token (its routes only,
+    ``403`` elsewhere). Without ``space`` the app is today's, route for route."""
     if not token:
         raise ValueError("LUMI_SERVER_TOKEN is required to serve")
     if space is not None and (not room_token or room_token == token):
@@ -661,6 +669,32 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             if who != "room":
                 raise HTTPException(status_code=403, detail="retract is the room's own route")
             return {"retracted": space.retract(turn_id)}
+
+    if space is not None:
+        @app.get("/v1/initiative")
+        def initiative(who: str = Depends(caller)) -> dict[str, Any]:
+            """v3.4: does she want to open a line? A fresh offer (``say``) or ``none`` — never a model call (a compose,
+            when Lumi's guards allow, runs in the background for a later poll). The room's own route."""
+            if who != "room":
+                raise HTTPException(status_code=403, detail="the initiative is the room's own route")
+            try:
+                offer = space.poll_initiative()
+            except Exception:  # noqa: BLE001 — a poll is always answerable: nothing to say
+                log.warning("the initiative poll failed", exc_info=True)
+                return dict(INITIATIVE_NONE)
+            return offer.as_say() if offer is not None else dict(INITIATIVE_NONE)
+
+        @app.post("/v1/initiative/{initiative_id}/posted")
+        def initiative_posted(initiative_id: str, req: InitiativePostedRequest,
+                              who: str = Depends(caller)) -> dict[str, bool]:
+            """v3.4: the bridge posted her offer as ``event_id`` — only now is it her line. Always a 200: ``{stored:
+            true}`` when stored, ``{stored: false}`` for an unknown or already stored one (idempotent). The room's own
+            route."""
+            if who != "room":
+                raise HTTPException(status_code=403, detail="the initiative is the room's own route")
+            if not req.event_id.strip():
+                raise HTTPException(status_code=422, detail="an initiative ack needs its event_id")
+            return {"stored": space.initiative_posted(initiative_id, req.event_id)}
 
     @app.post("/v1/turn/stream", dependencies=guarded)
     def turn_stream(req: TurnRequest, x_lumi_client: str | None = Header(default=None)) -> StreamingResponse:

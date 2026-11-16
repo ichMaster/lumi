@@ -31,7 +31,7 @@ LINES = {"channel": "agora", "lines": [
 
 def test_health_names_the_api_only_while_the_space_is_on(tmp_path):
     on = agora_client(tmp_path).get("/v1/health").json()
-    assert on == {"ok": True, "env": "dev", "version": "3.1.0", "agora": 1}
+    assert on == {"ok": True, "env": "dev", "version": "3.1.0", "agora": 2}  # v3.4: the API v2 (her initiative)
     off = TestClient(create_app(make_core(tmp_path / "off"), token=OWNER, env="dev", version="3.1.0"))
     assert "agora" not in off.get("/v1/health").json()
 
@@ -239,3 +239,101 @@ def test_the_hourly_cap_is_a_429(tmp_path):
     assert client.post("/v1/turn", json=TURN, headers=ROOM_AUTH).status_code == 200
     capped = client.post("/v1/turn", json={**TURN, "turn_id": "$second"}, headers=ROOM_AUTH)
     assert capped.status_code == 429 and capped.json()["detail"] == "the room's hourly cap is reached"
+
+
+# --- v3.4 LUMI-299: her initiative's routes -------------------------------------------------------------------------
+
+INI_TEXT = "Сьогодні вітер уже пахне першим снігом. У вас теж так?"
+
+
+def _ini_client(tmp_path, *, initiative=True, model=None):
+    model = model or FakeRoomModel({"reply": INI_TEXT, "emotion": "calm", "intensity": 0.4})
+    space = make_space(tmp_path, initiative=initiative, initiative_llm=model)
+    return agora_client(tmp_path, space=space), space, model
+
+
+def test_the_initiative_routes_are_the_rooms_own(tmp_path):
+    client, space, model = _ini_client(tmp_path)
+    assert client.get("/v1/initiative", headers=OWNER_AUTH).status_code == 403
+    assert client.post("/v1/initiative/ini-1/posted", json={"event_id": "$p"}, headers=OWNER_AUTH).status_code == 403
+    assert client.get("/v1/initiative").status_code == 401
+    assert client.post("/v1/initiative/ini-1/posted", json={"event_id": "$p"}).status_code == 401
+    assert model.calls == 0 and space._ini_thread is None  # nothing composed for a refused caller
+
+
+def test_the_space_off_has_no_initiative_routes(tmp_path):
+    off = TestClient(create_app(make_core(tmp_path), token=OWNER, env="dev", version="3.4.0"))
+    assert off.get("/v1/initiative", headers=OWNER_AUTH).status_code == 404
+    assert off.post("/v1/initiative/ini-1/posted", json={"event_id": "$p"}, headers=OWNER_AUTH).status_code == 404
+
+
+def test_the_initiative_off_is_always_none(tmp_path):
+    client, space, model = _ini_client(tmp_path, initiative=False)
+    client.post("/v1/observe", json=LINES, headers=ROOM_AUTH)
+    assert [client.get("/v1/initiative", headers=ROOM_AUTH).json() for _ in range(3)] == [{"outcome": "none"}] * 3
+    assert model.calls == 0 and space._ini_thread is None
+    assert client.get("/v1/health").json()["agora"] == 2  # still the v2 API
+
+
+def test_a_poll_then_an_ack_through_the_server(tmp_path):
+    client, space, model = _ini_client(tmp_path)
+    client.post("/v1/observe", json=LINES, headers=ROOM_AUTH)
+    assert client.get("/v1/initiative", headers=ROOM_AUTH).json() == {"outcome": "none"}
+    space._ini_thread.join(5)
+    say = client.get("/v1/initiative", headers=ROOM_AUTH).json()
+    assert say["outcome"] == "say" and say["text"] == INI_TEXT and model.calls == 1
+    path = f"/v1/initiative/{say['initiative_id']}/posted"
+    assert client.post(path, json={"event_id": "$posted"}, headers=ROOM_AUTH).json() == {"stored": True}
+    assert client.post(path, json={"event_id": "$posted"}, headers=ROOM_AUTH).json() == {"stored": False}
+    assert client.post("/v1/initiative/ini-000000000000/posted", json={"event_id": "$x"},
+                       headers=ROOM_AUTH).json() == {"stored": False}
+    assert client.get("/v1/initiative", headers=ROOM_AUTH).json() == {"outcome": "none"}  # acked → never again
+
+
+def test_a_failing_poll_is_none(tmp_path, caplog):
+    import logging
+
+    client, space, _ = _ini_client(tmp_path)
+
+    def boom():
+        raise RuntimeError("the store is gone")
+
+    space.poll_initiative = boom  # type: ignore[method-assign]
+    with caplog.at_level(logging.WARNING, logger="lumi.server"):
+        res = client.get("/v1/initiative", headers=ROOM_AUTH)
+    assert res.status_code == 200 and res.json() == {"outcome": "none"} and "initiative poll failed" in caplog.text
+
+
+def test_his_turns_and_state_never_see_her_initiative(tmp_path):
+    client, space, _ = _ini_client(tmp_path)
+    client.post("/v1/observe", json=LINES, headers=ROOM_AUTH)
+    before = client.get("/v1/state", headers=OWNER_AUTH).json()
+    client.get("/v1/initiative", headers=ROOM_AUTH)
+    space._ini_thread.join(5)
+    say = client.get("/v1/initiative", headers=ROOM_AUTH).json()
+    client.post(f"/v1/initiative/{say['initiative_id']}/posted", json={"event_id": "$posted"}, headers=ROOM_AUTH)
+    after = client.get("/v1/state", headers=OWNER_AUTH).json()
+    assert INI_TEXT not in str(after) and before.keys() == after.keys()
+    his = (tmp_path / "store.json").read_text(encoding="utf-8") if (tmp_path / "store.json").exists() else ""
+    assert INI_TEXT not in his  # his store never holds her room line
+
+
+def test_the_server_wires_the_initiative_from_settings(tmp_path):
+    from core.config import Config
+    from server.__main__ import agora_space_of
+
+    core = make_core(tmp_path)
+    cfg = Config(agora=True, agora_token="room", gemini_api_key="k", agora_initiative=True,
+                 agora_store_path=tmp_path / "spaces.sqlite", store_path=tmp_path / "store.json")
+    space = agora_space_of(cfg, core)
+    try:
+        assert space._initiative is True
+        assert space._ini_llm is not space._llm and space._ini_llm is not space._hk_llm  # a client of its own
+    finally:
+        space.close(wait_s=0.1)
+    off = agora_space_of(Config(agora=True, agora_token="room", gemini_api_key="k",
+                                agora_store_path=tmp_path / "b.sqlite", store_path=tmp_path / "store.json"), core)
+    try:
+        assert off._initiative is False
+    finally:
+        off.close(wait_s=0.1)

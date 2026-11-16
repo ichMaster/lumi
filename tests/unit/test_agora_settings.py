@@ -9,7 +9,7 @@ from core.config import Config, load_config
 
 _AGORA = ("LUMI_AGORA", "LUMI_AGORA_TOKEN", "LUMI_AGORA_MODEL", "LUMI_AGORA_TIMEOUT_S", "LUMI_AGORA_WINDOW",
           "LUMI_AGORA_PRIVATE_NAMES", "LUMI_AGORA_MAX_TURNS_PER_HOUR", "LUMI_AGORA_TODAY_LINES",
-          "LUMI_AGORA_TODAY_DIGEST_WORDS", "LUMI_AGORA_GIST_WORDS")
+          "LUMI_AGORA_TODAY_DIGEST_WORDS", "LUMI_AGORA_GIST_WORDS", "LUMI_AGORA_INITIATIVE")
 
 
 def _clean(monkeypatch) -> None:
@@ -17,11 +17,11 @@ def _clean(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
-def test_the_ten_settings_are_in_the_schema():
+def test_the_eleven_settings_are_in_the_schema():
     group = {s.key: s for s in st.SETTINGS if s.group == "agora"}
     assert set(group) == {"agora.enabled", "agora.token", "agora.model", "agora.timeout_s", "agora.window",
                           "agora.private_names", "agora.max_turns_per_hour", "agora.today_lines",
-                          "agora.today_digest_words", "agora.gist_words"}
+                          "agora.today_digest_words", "agora.gist_words", "agora.initiative"}  # v3.4: + initiative
     assert {s.alias for s in group.values()} == set(_AGORA)
     assert group["agora.token"].secret and not any(s.secret for k, s in group.items() if k != "agora.token")
 
@@ -34,6 +34,7 @@ def test_off_by_default_with_the_agreed_limits(monkeypatch, tmp_path):
     assert (cfg.agora_timeout_s, cfg.agora_window, cfg.agora_max_turns_per_hour) == (20, 40, 20)
     assert (cfg.agora_today_lines, cfg.agora_today_digest_words, cfg.agora_gist_words) == (20, 150, 40)
     assert cfg.agora_private_names == ()
+    assert cfg.agora_initiative is False  # v3.4: her initiative is off until the owner's word (G8 on prod)
     assert cfg.agora_store_path == cfg.data_root / "spaces.sqlite"  # the room's own file, beside his store
 
 
