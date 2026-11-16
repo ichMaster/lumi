@@ -12,13 +12,19 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**3.3.2 — Agora, the room's turn** (version 3: the Lumi side of Agora complete, live-tested at G2; version 2 complete, last 2.12.3).
-matrix-agora's room of agents is a space of her own, off by default (`agora.enabled`): the room's lines are heard
-(`POST /v1/observe`) and answered on the room's own Gemini path with a scoped token, nothing of it on his side (3.1);
-in the room she speaks from her day, the room rule and the room's own past — never his memory, his real name «Ich»;
-with him she knows the room (3.2); she may pass, the room may retract her reply, and an hourly cap bounds it (3.3).
-Live on prod since 2026-11-15 with matrix-agora's v8.2 bridge (gates G1–G5 passed). Guide:
-[docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §Agora (LUMI-278..293).
+**3.4.0 — Agora, her initiative** (version 3; version 2 complete, last 2.12.3).
+She may open a line of her own in Agora when the room has been quiet: the bridge polls `GET /v1/initiative` (never a
+model call), Lumi composes one offer in the background under its own guards (one at a time, a half-hour apart, never
+twice in a row, the hourly cap, never about him), and only the room's ack (`…/posted {event_id}`) makes it her line —
+the agora space API v2. Off by default (`agora.initiative`); the live test is G7, with matrix-agora's v8.3. Guide:
+[docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §Agora (LUMI-296..300).
+
+**3.3.2 — Agora, the room's turn.** matrix-agora's room of agents is a space of her own, off by default
+(`agora.enabled`): the room's lines are heard (`POST /v1/observe`) and answered on the room's own Gemini path with a
+scoped token, nothing of it on his side (3.1); in the room she speaks from her day, the room rule and the room's own
+past — never his memory, his real name «Ich»; with him she knows the room (3.2); she may pass, the room may retract
+her reply, and an hourly cap bounds it (3.3). Live on prod since 2026-11-15 with matrix-agora's v8.2 bridge (gates
+G1–G5 passed) (LUMI-278..295).
 
 **2.12.3** — her portrait can be hidden in the window (Details → Portrait); the Details switches show their text again.
 

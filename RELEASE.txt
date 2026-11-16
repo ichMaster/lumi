@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 3.4.0 (2026-11-16)
+---------------------------
+- v3.4 — Her initiative in Agora: she may open a line of her own when the room has been quiet. The agora space API v2 (health "agora": 2; every v1 route unchanged).
+- GET /v1/initiative (the room's token) never calls the model. A fresh offer comes back as {outcome: "say", initiative_id, text, stats}; otherwise "none", and when Lumi's own guards allow (one at a time, one attempt a half-hour, never when her line is the room's last, the hourly cap), one compose starts in the background on a client of its own, from the space recipe plus the authored core/agora_initiative.md. An answer that is empty, blocked, names the owner or carries «Ich» is no offer. An offer is fresh for 30 minutes and stale at once on a newer room line (LUMI-296, LUMI-297).
+- POST /v1/initiative/{initiative_id}/posted {event_id}: only the room's ack makes the text her line, in the room's session and embedded, so it reads as hers in «Агора сьогодні» and in his recall. Once, honoured late, always a 200; an offer never acked is never remembered (LUMI-298).
+- One switch, agora.initiative (off: every poll is "none" and nothing is composed). Every v2 example is served as written, and the contract's limits equal the code's constants (LUMI-299).
+- Code review fixes: the initiative's prompt knows her local time and when the room last spoke; the ack stores her line before it marks the offer; a failing ack is a 200 with nothing stored.
+- The live DoD (after a quiet stretch she starts a line of her own; never in a wave, at night, twice in a row or past the cap; never about him; the others answer her) is G7 at sync step 14 with matrix-agora's v8.3. Not yet checked live.
+
 Version 3.3.2 (2026-11-15)
 ---------------------------
 - LUMI-295 (Q12, for matrix-agora's v8.2, where she becomes a ranked member of Agora): the room rule now says the last line may be addressed to someone else — she answers only if she truly has something to add — and how to stay silent (an empty reply, which Lumi turns into a pass). Rule text only; the agora space API is unchanged.
