@@ -164,3 +164,101 @@ def test_the_locked_embedder_serializes_embed():
     for t in threads:
         t.join()
     assert not overlap[0] and len(inner.calls) == 800 and locked.dim == inner.dim
+
+
+# --- v3.4 LUMI-296: her initiative's offers -------------------------------------------------------------------------
+
+def _offer(initiative_id: str, composed_at: str, *, text: str = "Сьогодні вітер пахне снігом.", last_seq: int = 3):
+    from core.space import SpaceOffer
+
+    return SpaceOffer(channel="agora", initiative_id=initiative_id, text=text, composed_at=composed_at,
+                      last_seq=last_seq, stats={"model": "gemini-2.5-flash", "input_tokens": 5880,
+                                                "output_tokens": 21, "latency_ms": 1520},
+                      emotion="calm", intensity=0.4)
+
+
+def test_an_offer_round_trips_and_the_latest_is_the_newest(tmp_path):
+    store = SqliteSpaceStore(tmp_path / "spaces.sqlite")
+    assert store.latest_offer("agora") is None
+    first = _offer("ini-1", "2026-11-16T10:00:00+02:00")
+    second = _offer("ini-2", "2026-11-16T10:40:00+02:00", text="Інша думка.")
+    store.add_offer(first)
+    store.add_offer(second)
+    assert store.get_offer("agora", "ini-1") == first
+    assert store.latest_offer("agora") == second
+    assert store.get_offer("agora", "ini-x") is None and store.latest_offer("elsewhere") is None
+
+
+def test_an_offer_is_acked_once(tmp_path):
+    store = SqliteSpaceStore(tmp_path / "spaces.sqlite")
+    store.add_offer(_offer("ini-1", "2026-11-16T10:00:00+02:00"))
+    assert store.ack_offer("agora", "ini-1", "$posted") is True
+    assert store.get_offer("agora", "ini-1").event_id == "$posted"
+    assert store.ack_offer("agora", "ini-1", "$posted") is False  # idempotent
+    assert store.ack_offer("agora", "ini-1", "$other") is False  # never a second line for one offer
+    assert store.get_offer("agora", "ini-1").event_id == "$posted"
+    assert store.ack_offer("agora", "ini-unknown", "$posted") is False
+
+
+def test_old_offers_are_pruned_and_new_ones_kept(tmp_path):
+    store = SqliteSpaceStore(tmp_path / "spaces.sqlite")
+    store.add_offer(_offer("ini-old", "2026-11-15T09:00:00+02:00"))
+    store.add_offer(_offer("ini-new", "2026-11-16T09:30:00+02:00"))
+    assert store.prune_offers("agora", "2026-11-15T10:00:00+02:00") == 1
+    assert store.get_offer("agora", "ini-old") is None and store.get_offer("agora", "ini-new") is not None
+
+
+def test_last_seq_grows_with_every_new_line_and_never_reuses_one(tmp_path):
+    store = SqliteSpaceStore(tmp_path / "spaces.sqlite")
+    assert store.last_seq("agora") == 0
+    store.add_lines([_line("$a", "2026-11-16T08:01:00+02:00")])
+    one = store.last_seq("agora")
+    reply = SpaceMessage(channel="agora", session_id="agora-2026-11-16", speaker="Лілі", role="lili", text="так",
+                         ts="2026-11-16T08:02:00+02:00", source_id="$a")
+    store.add_lines([reply])
+    two = store.last_seq("agora")
+    assert two > one
+    store.remove("agora", "$a", "lili")
+    assert store.last_seq("agora") <= two  # a removal never raises it
+    store.add_lines([_line("$late", "2026-11-16T07:00:00+02:00")])  # an older ts, arriving late
+    assert store.last_seq("agora") > two  # still newer than anything before — a fresh number, never a reused one
+    store.add_lines([_line("$a", "2026-11-16T08:01:00+02:00")])  # a known line adds nothing
+    assert store.last_seq("agora") > two
+
+
+def test_an_offer_row_that_no_longer_reads_is_skipped(tmp_path):
+    path = tmp_path / "spaces.sqlite"
+    store = SqliteSpaceStore(path)
+    store.add_offer(_offer("ini-1", "2026-11-16T10:00:00+02:00"))
+    store.add_offer(_offer("ini-2", "2026-11-16T10:40:00+02:00"))
+    raw = sqlite3.connect(path)
+    with raw:
+        raw.execute("UPDATE space_offers SET data = '{\"broken\": 1}' WHERE initiative_id = 'ini-2'")
+    raw.close()
+    assert store.get_offer("agora", "ini-2") is None
+    assert store.latest_offer("agora").initiative_id == "ini-1"
+    assert store.ack_offer("agora", "ini-2", "$p") is False
+
+
+def test_a_v3_3_store_opens_and_gains_the_offers_table(tmp_path):
+    from state import space_store
+
+    path = tmp_path / "spaces.sqlite"
+    old = sqlite3.connect(path)
+    with old:
+        for statement in space_store._SCHEMA:
+            if "space_offers" not in statement:  # v3.3's schema: no offers table yet
+                old.execute(statement)
+    old.close()
+    before = SqliteSpaceStore(tmp_path / "seed.sqlite")  # a line written the v3.3 way, copied in by its row
+    before.add_lines([_line("$a", "2026-11-16T08:01:00+02:00")])
+    before.close()
+    raw = sqlite3.connect(path)
+    with raw:
+        raw.execute("ATTACH DATABASE ? AS seed", (str(tmp_path / "seed.sqlite"),))
+        raw.execute("INSERT INTO space_messages SELECT * FROM seed.space_messages")
+    raw.close()
+    store = SqliteSpaceStore(path)
+    assert store.get("agora", "$a", "user").text == "так"
+    store.add_offer(_offer("ini-1", "2026-11-16T10:00:00+02:00"))
+    assert store.latest_offer("agora").initiative_id == "ini-1"

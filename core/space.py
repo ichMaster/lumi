@@ -60,6 +60,23 @@ class SpaceDigest:
     upto: int
 
 
+@dataclass(frozen=True)
+class SpaceOffer:
+    """v3.4: her initiative — a line she offers the room, composed in the background, kept until the bridge acks it
+    (``event_id`` = the posted line's Matrix id) or for ``INITIATIVE_KEPT_S``. Never her line until acked.
+    ``last_seq`` is the room's newest line (``SpaceStore.last_seq``) when it was composed: a newer line makes it stale."""
+
+    channel: str
+    initiative_id: str
+    text: str
+    composed_at: str  # ISO-8601 with its offset
+    last_seq: int
+    stats: dict
+    emotion: str | None = None
+    intensity: float | None = None
+    event_id: str | None = None
+
+
 def local_day(ts: str, tz: tzinfo | None) -> str:
     """Her local day (``YYYY-MM-DD``) of an ISO timestamp — a line's session follows its own ``ts``, not its
     arrival, so a late line lands in its own day. A naive or unparsable ``ts`` keeps its own date / ``""``."""
@@ -146,6 +163,28 @@ class SpaceStore(Protocol):
     def set_digest(self, digest: SpaceDigest) -> None: ...
 
     def get_digest(self, channel: str, session_id: str) -> SpaceDigest | None: ...
+
+    # --- v3.4: her initiative's offers ---------------------------------------------------------------------------
+    def last_seq(self, channel: str) -> int:
+        """The space's newest line as a monotonic number (0 when empty): any new line raises it, a removal never
+        brings back a number already used."""
+        ...
+
+    def add_offer(self, offer: SpaceOffer) -> None: ...
+
+    def get_offer(self, channel: str, initiative_id: str) -> SpaceOffer | None: ...
+
+    def latest_offer(self, channel: str) -> SpaceOffer | None:
+        """The newest offer by ``composed_at``, or ``None``."""
+        ...
+
+    def ack_offer(self, channel: str, initiative_id: str, event_id: str) -> bool:
+        """Mark an offer posted — ``True`` only the first time (an unknown or already acked id → ``False``)."""
+        ...
+
+    def prune_offers(self, channel: str, before_ts: str) -> int:
+        """Drop the offers composed before ``before_ts``; how many went."""
+        ...
 
     def close(self) -> None: ...
 

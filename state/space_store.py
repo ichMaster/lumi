@@ -1,4 +1,5 @@
-"""v3.1 LUMI-279 — the space store: a shared space's lines, day gists and vectors in a SQLite file of their own.
+"""v3.1 LUMI-279 — the space store: a shared space's lines, day gists and vectors in a SQLite file of their own
+(v3.2: + its running digests; v3.4: + her initiative's offers).
 
 ``<data root>/spaces.sqlite`` — beside his relationship store (``store.json`` / ``store.db``), never inside it: no
 ``user_id`` anywhere, every row keyed by the space (``channel``), so a rollback deletes one file and nothing of his
@@ -17,7 +18,7 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 
-from core.space import SpaceDigest, SpaceGist, SpaceMessage, ts_epoch
+from core.space import SpaceDigest, SpaceGist, SpaceMessage, SpaceOffer, ts_epoch
 
 log = logging.getLogger("lumi.space")
 
@@ -38,6 +39,10 @@ _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS space_digests ("
     " channel TEXT NOT NULL, session_id TEXT NOT NULL, text TEXT NOT NULL, upto INTEGER NOT NULL,"
     " PRIMARY KEY (channel, session_id))",
+    # v3.4: her initiative's offers — kept until acked or a day old; an existing store gains the table on start
+    "CREATE TABLE IF NOT EXISTS space_offers ("
+    " channel TEXT NOT NULL, initiative_id TEXT NOT NULL, composed_epoch REAL NOT NULL, data TEXT NOT NULL,"
+    " PRIMARY KEY (channel, initiative_id))",
 )
 
 
@@ -54,6 +59,14 @@ def _record(data: str) -> SpaceMessage | None:
         return SpaceMessage(**json.loads(data))
     except (TypeError, ValueError):
         log.warning("a space row no longer reads — skipped")
+        return None
+
+
+def _offer(data: str) -> SpaceOffer | None:
+    try:
+        return SpaceOffer(**json.loads(data))
+    except (TypeError, ValueError):
+        log.warning("an offer row no longer reads — skipped")
         return None
 
 
@@ -214,6 +227,50 @@ class SqliteSpaceStore:
             row = self._db.execute("SELECT channel, session_id, text, upto FROM space_digests"
                                    " WHERE channel = ? AND session_id = ?", (channel, session_id)).fetchone()
         return SpaceDigest(*row) if row else None
+
+    # --- v3.4: her initiative's offers -------------------------------------------------------------------------
+    def last_seq(self, channel: str) -> int:
+        """The newest line's ``seq`` (``AUTOINCREMENT``: a new line always gets a higher one, never a reused one)."""
+        with self._lock:
+            row = self._db.execute("SELECT MAX(seq) FROM space_messages WHERE channel = ?", (channel,)).fetchone()
+        return int(row[0] or 0)
+
+    def add_offer(self, offer: SpaceOffer) -> None:
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT OR REPLACE INTO space_offers (channel, initiative_id, composed_epoch, data) VALUES (?, ?, ?, ?)",
+                (offer.channel, offer.initiative_id, ts_epoch(offer.composed_at),
+                 json.dumps(asdict(offer), ensure_ascii=False)))
+
+    def get_offer(self, channel: str, initiative_id: str) -> SpaceOffer | None:
+        with self._lock:
+            row = self._db.execute("SELECT data FROM space_offers WHERE channel = ? AND initiative_id = ?",
+                                   (channel, initiative_id)).fetchone()
+        return _offer(row[0]) if row else None
+
+    def latest_offer(self, channel: str) -> SpaceOffer | None:
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM space_offers WHERE channel = ?"
+                                    " ORDER BY composed_epoch DESC, rowid DESC", (channel,)).fetchall()
+        return next((o for o in (_offer(row[0]) for row in rows) if o is not None), None)
+
+    def ack_offer(self, channel: str, initiative_id: str, event_id: str) -> bool:
+        with self._lock, self._db:
+            row = self._db.execute("SELECT data FROM space_offers WHERE channel = ? AND initiative_id = ?",
+                                   (channel, initiative_id)).fetchone()
+            offer = _offer(row[0]) if row else None
+            if offer is None or offer.event_id is not None:
+                return False
+            data = {**asdict(offer), "event_id": event_id}
+            self._db.execute("UPDATE space_offers SET data = ? WHERE channel = ? AND initiative_id = ?",
+                             (json.dumps(data, ensure_ascii=False), channel, initiative_id))
+        return True
+
+    def prune_offers(self, channel: str, before_ts: str) -> int:
+        with self._lock, self._db:
+            cur = self._db.execute("DELETE FROM space_offers WHERE channel = ? AND composed_epoch < ?",
+                                   (channel, ts_epoch(before_ts)))
+        return int(cur.rowcount or 0)
 
     def close(self) -> None:
         with self._lock:
