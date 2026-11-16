@@ -104,5 +104,5 @@ def test_v2_her_initiative_is_an_offer_acked_before_it_is_remembered():
     assert "never calls the model" in ep["initiative"]["about"]
     limits = api["limits"]
     assert (limits["initiative_fresh_s"], limits["initiative_compose_gap_s"], limits["initiative_kept_s"]) == (
-        1800, 1800, 86400)
+        1800, 600, 86400)  # v3.4.1: the compose gap 600 s (the owner, 2026-11-17)
     assert any("«Ich»" in rule for rule in api["never"])

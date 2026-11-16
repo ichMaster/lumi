@@ -266,7 +266,8 @@ DIGEST_MAX_LINES = 200  # new lines per digest call at most; a backlog is digest
 # v3.4: her initiative (the agora space API v2). Code constants equal to the contract's limits — the pace is the
 # bridge's room rules; these are Lumi's second fence (Q16: no new knobs).
 INITIATIVE_FRESH_S = 1800  # an offer is fresh this long after composing (limits.initiative_fresh_s)
-INITIATIVE_COMPOSE_GAP_S = 1800  # at most one compose attempt in this long — an empty one too (…compose_gap_s)
+INITIATIVE_COMPOSE_GAP_S = 600  # at most one compose attempt in this long — an empty one too (…compose_gap_s);
+# v3.4.1: 10 minutes, the owner's word (2026-11-17), was 1800 — the bridge's quiet stretch went to 600 s
 INITIATIVE_KEPT_S = 86400  # offers are kept this long, so a late ack is honoured (limits.initiative_kept_s)
 INITIATIVE_RULE_PATH = Path(__file__).resolve().parent / "agora_initiative.md"  # the initiative instruction (authored)
 QUIET_ROOM = "(В Агорі поки що тихо — ніхто нічого не сказав.)"  # the compose's transcript when the room is empty

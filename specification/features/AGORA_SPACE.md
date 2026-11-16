@@ -318,7 +318,7 @@ Lumi **v3.4** (ROADMAP §v3.4) and matrix-agora **v8.3**, with the agora space A
 - **Remembered only once seen** (Q15): `POST /v1/initiative/{id}/posted {event_id}` stores the text as her line; never
   acked → never remembered; always a 200, idempotent.
 - **The pace is the room's** (Q16): the bridge's rules (1800 s quiet, 09–23, 4 a day, never twice in a row, 30 min
-  fresh); Lumi's own guards in code (one offer at a time, one compose a half-hour, never when her line is the room's
+  fresh); Lumi's own guards in code (one offer at a time, one compose in 10 minutes since v3.4.1 (a half-hour in v3.4.0), never when her line is the room's
   last, the 20-an-hour cap); one switch `agora.initiative`, on at G8.
 - **What she may open with** (Q17): something of hers or a thread of the room's — never about «Ich» or their talks
   alone, no question to anyone by name; the name guard and «Ich» checked in code.

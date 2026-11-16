@@ -281,7 +281,7 @@
     "timeout_s": 20,
     "observe_batch_max": 200,
     "initiative_fresh_s": 1800,
-    "initiative_compose_gap_s": 1800,
+    "initiative_compose_gap_s": 600,
     "initiative_kept_s": 86400
   }
 }

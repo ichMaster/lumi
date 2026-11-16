@@ -258,7 +258,7 @@ post, under its room rules (a quiet stretch, its hours, its day's cap, never twi
   - otherwise `{outcome: "none"}`, and when Lumi's own guards allow, one compose starts in the background on the
     room's client, for a later poll.
 - **Lumi's guards** (code constants, the contract's `limits`):
-  - one compose at a time, at most one attempt in 30 minutes (an empty one too);
+  - one compose at a time, at most one attempt in 10 minutes (an empty one too; 30 minutes before v3.4.1);
   - never when her line is the room's last;
   - every compose counts in `agora.max_turns_per_hour`;
   - an answer that names the owner or carries «Ich» is no offer.

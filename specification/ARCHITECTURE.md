@@ -207,7 +207,7 @@ phases: ROADMAP §v3.
     never twice in a row). `AgoraSpace.poll_initiative` never calls the model: a fresh offer is returned as it is,
     otherwise `none`.
   - **The compose.** When the space's own guards allow, a poll starts one compose in the background, for a later poll.
-    The guards: one at a time; at most one attempt in `INITIATIVE_COMPOSE_GAP_S` (1800), an empty one included; never
+    The guards: one at a time; at most one attempt in `INITIATIVE_COMPOSE_GAP_S` (600 since v3.4.1; 1800 in v3.4.0), an empty one included; never
     when her line is the room's last; the hourly cap (a compose takes a call).
     - It runs on a client of its own (`initiative_llm`), never the turn's, so a named turn is never refused while
       she composes.

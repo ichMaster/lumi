@@ -1344,7 +1344,7 @@ gates G6–G8; G6 passed). Agreed as Q14–Q18 in the tracker.
   the model. A fresh offer comes back as `{outcome: "say", initiative_id, text, stats}`; otherwise `{outcome: "none"}`.
 - **The offer, composed on demand.** A poll that finds no fresh offer — when Lumi's own guards allow — starts one
   compose on the room's own client, in the background, for a later poll. Lumi's guards, in code: one offer at a time;
-  at most one compose in `initiative_compose_gap_s` (1800); never when her own line is the room's last; every compose
+  at most one compose in `initiative_compose_gap_s` (1800; 600 since v3.4.1, the owner's word 2026-11-17); never when her own line is the room's last; every compose
   counts in the 20-an-hour cap. The prompt is the space recipe (canon, the room rule, her day, the room's gists,
   today's digest, recall over the room) plus an initiative instruction: something of hers or a thread of the room's;
   never about «Ich» or their talks alone; no question to anyone by name; nothing to say → empty → `none`. Her thoughts'

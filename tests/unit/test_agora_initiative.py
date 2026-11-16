@@ -187,7 +187,7 @@ def test_an_offer_goes_stale_after_its_half_hour(tmp_path):
     assert space.poll_initiative() is not None
     clock.advance(120)
     mono.t += INITIATIVE_COMPOSE_GAP_S + 1
-    assert space.poll_initiative() is None  # past its half-hour: none, and a new compose starts
+    assert space.poll_initiative() is None  # past the gap: none, and a new compose starts
     _settle(space)
     assert model.calls == 2
 
