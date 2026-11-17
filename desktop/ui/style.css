@@ -12,7 +12,7 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 
 .root { display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--color-bg); color: var(--color-text); }
 .body { flex: 1; min-height: 0; display: flex; }
-.chat { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.chat { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }  /* v4.2: the picture view covers it */
 
 /* — the portrait panel (v2.12.2) — */
 .panel { flex: none; width: var(--l-panel); border-right: var(--rule) solid var(--color-divider); overflow-y: auto;
@@ -136,6 +136,18 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .text pre { margin: 0; padding: 10px 12px; white-space: pre-wrap; }
 .text code { padding: 1px 4px; }
 .text pre code { padding: 0; }
+
+/* — her pictures in the chat (v4.2; the v2.12 figure): a square that opens the full picture view — */
+.mfig { margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; width: min(100%, 320px); }
+.mthumb { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: var(--color-surface); cursor: zoom-in; }
+.mthumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.mthumb img:not([src]) { visibility: hidden; }
+.mthumb:hover:not(:disabled), .mthumb:focus-visible { box-shadow: 0 0 0 2px var(--color-accent); outline: none; }
+.mfig.broken .mthumb { cursor: default; display: grid; place-items: center; color: var(--l-faint); }
+.mbroken svg.icon { width: 24px; height: 24px; }
+.mcap { font-size: 11px; color: var(--l-faint); overflow-wrap: anywhere; }
+.mcap .mono { font-family: var(--font-mono); }
+.mcap .num { font-variant-numeric: tabular-nums; }
 
 /* — the command block, notes, dividers — */
 .cmdblock { border: 1px solid var(--l-hair); border-top: 2px solid var(--color-divider); background: var(--color-surface); }

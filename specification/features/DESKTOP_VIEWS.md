@@ -1,6 +1,7 @@
 # The window's views — files, gallery, journal, thoughts (v4)
 
-**Status:** concept, 2026-11-17, at the owner's request. Placed by the owner as **v4** in the
+**Status:** concept, 2026-11-17, at the owner's request. **v4.1 shipped (4.1.0); v4.2 built** (Gallery, the full
+picture view, her pictures in the chat). Placed by the owner as **v4** in the
 [ROADMAP](../ROADMAP.md) (§v4.1–v4.5); the later versions moved up by one. The owner's decisions are in
 [§Decisions](#decisions-the-owner-2026-11-17). The design brief for Claude Design is
 [design/v4/BRIEF.md](../../design/v4/BRIEF.md). The design itself (2026-11-17) is the handoff in

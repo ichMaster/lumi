@@ -316,7 +316,62 @@ function addHers(text, opts = {}) {
   r.content.append(body);
   append(r.node);
   if (opts.emotion) setEmotion(r.node, opts.emotion, opts.intensity);
+  if (opts.pictures) chatPictures(r, opts.pictures);  // v4.2: what she made or sent in that turn
   return { ...r, body };
+}
+
+/* her pictures in the chat (v4.2 LUMI-308; the v2.12 figure, design/v4/handoff §6): the sandbox paths a turn carries
+   (`pictures` on the outcome and on her message), each a square that opens the full picture view over the chat column.
+   Fetched once per window with the key into a blob: URL (/v1/files/raw) — the conversation keeps its lines, so its
+   pictures stay with them. */
+const chatPlace = { state: {} };
+
+function chatCtx() {
+  const host = $("chat");
+  return { host, state: chatPlace.state, narrow: () => NARROW.matches || host.clientWidth < VIEW_NARROW_PX };
+}
+
+function chatPictures(r, pictures) {
+  const paths = (Array.isArray(pictures) ? pictures : []).filter((p) => typeof p === "string" && p);
+  if (!paths.length) return;
+  const follow = nearBottom();
+  paths.forEach((_, i) => r.content.append(chatPicture(paths, i)));
+  stick(follow);
+}
+
+function chatPicture(paths, index) {
+  const path = paths[index];
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  const img = el("img", { alt: name });
+  const dims = el("span", { class: "num" });
+  const hint = el("span", { text: ` · ${t("picture.open_hint")}` });
+  const cap = el("figcaption", { class: "mcap" }, el("span", { class: "mono", text: path }), dims, hint);
+  const box = el("button", { type: "button", class: "mthumb", "aria-label": t("reader.open_file", { path }),
+    onclick: () => openChatPicture(paths, index) }, img);
+  const fig = el("figure", { class: "mfig" }, box, cap);
+  img.addEventListener("load", () => {
+    dims.textContent = ` · ${img.naturalWidth} × ${img.naturalHeight}`;  // the dimensions of the picture itself
+    stick();  // a line that grew below the reader's eye keeps the newest line in view
+  }, { once: true });
+  pictureURL($("col"), path).then((url) => { img.src = url; }).catch(() => {
+    fig.classList.add("broken");  // its path stays; never a broken <img>
+    box.disabled = true;
+    box.replaceChildren(el("span", { class: "mbroken" }, icon("image")));
+    hint.remove();  // nothing to open
+  });
+  return fig;
+}
+
+function openChatPicture(paths, index) {
+  const ctx = chatCtx();
+  openPicture(ctx, { items: paths.map((path) => ({ path })), index, kicker: `${folderOf(paths[index]) || t("nav.root")}/`,
+    toFiles: served("files") ? (item) => {
+      closePicture(ctx, false);
+      places.main.states.files = Object.assign(places.main.states.files || {}, { goto: { kind: "dir", path: folderOf(item.path) } });
+      setView("files");
+    } : null });
+  const view = ctx.state.picture;
+  if (view && ctx.narrow()) view.node.classList.add("vnarrow");  // the chat column has no view host to say so
 }
 
 function addCommand(line, result) {
@@ -833,7 +888,7 @@ function onPush(event, data) {
   const time = data.replay ? undefined : clock();  // a replayed line's moment isn't known
   if (data.role === "user") addMine(String(data.text || ""), { time, source: data.source, origin: data.origin });
   else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge",
-    emotion: data.emotion, intensity: data.intensity });
+    emotion: data.emotion, intensity: data.intensity, pictures: data.pictures });
 }
 
 /* ---------- turns, commands, directives ---------- */
@@ -903,6 +958,7 @@ async function turn(text, queuedRow, waited = false) {
   if (result.state) absorb(result.state);
   showFace((result.state && result.state.theme) ?? st.server.theme, result.emotion, result.intensity);
   setEmotion(her.node, result.emotion, result.intensity);
+  chatPictures(her, result.pictures);  // v4.2: what she made or sent in this turn
   stick();
 }
 

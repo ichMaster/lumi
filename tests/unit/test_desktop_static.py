@@ -418,3 +418,28 @@ def test_v42_the_gallery_helpers():
 console.log(JSON.stringify([galleryMonth("2026-11-09 21:40"), galleryMonth("2026-01-31 00:00"), galleryMonth(""),
   num(1234), num(undefined), fmtStamp("2026-11-09 21:40"), fmtStamp("2026-11-09")]));""")
     assert got == ["November 2026", "January 2026", "", "1,234", "0", "9 Nov 2026, 21:40", "9 Nov 2026"]
+
+
+# --- v4.2 LUMI-308: her pictures in the chat -------------------------------------------------------------------------
+
+def test_v42_the_outcome_and_the_push_both_put_her_pictures_under_her_line():
+    js = _js()
+    turn = js[js.index("async function turn("):js.index("async function streamTurn(")]
+    assert "chatPictures(her, result.pictures);" in turn  # this window's own turn, once the reply is complete
+    push = js[js.index("function onPush("):js.index("/* ---------- turns, commands, directives")]
+    assert "pictures: data.pictures" in push  # another client's turn, Telegram, a spoken thought, the replay
+    hers = js[js.index("function addHers("):js.index("function chatCtx(")]
+    assert "if (opts.pictures) chatPictures(r, opts.pictures);" in hers  # no pictures → the line as before
+
+
+def test_v42_a_chat_picture_is_a_button_loaded_by_blob_and_opens_over_the_chat():
+    js, css = _js(), (UI / "style.css").read_text(encoding="utf-8")
+    pic = js[js.index("function chatPicture("):js.index("function openChatPicture(")]
+    assert 'el("button", { type: "button", class: "mthumb"' in pic  # click and Space open it
+    assert 'pictureURL($("col"), path)' in pic  # fetched with the key into a blob: URL, once per window
+    assert "dims.textContent = ` · ${img.naturalWidth} × ${img.naturalHeight}`" in pic  # the picture's own size
+    assert 'fig.classList.add("broken")' in pic and "box.replaceChildren(" in pic  # never a broken <img>
+    assert 'text: path' in pic and "innerHTML" not in pic
+    opener = js[js.index("function openChatPicture("):js.index("function addCommand(")]
+    assert "openPicture(ctx, {" in opener and "const host = $(\"chat\");" in js
+    assert '.chat { position: relative;' in css and ".mfig { margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; width: min(100%, 320px); }" in css

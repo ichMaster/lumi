@@ -166,7 +166,7 @@ at once and show the same conversation (a line typed in one appears in the other
 
 **Why a local proxy.** The page in the window can't call the server directly: the server sends no CORS headers. So
 the window's Python shell starts a small server on `127.0.0.1` (a free port, `desktop/proxy.py`) that serves the page
-(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1), adding the token itself — the token never enters the
+(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1, thirteen since v4.2), adding the token itself — the token never enters the
 page. Every `/v1` request must carry this launch's random key (templated into the page), and the `Host` must be the
 proxy's own, so another app or a web page on the Mac can't borrow the token. No server change.
 
@@ -180,8 +180,8 @@ by intensity from **this client's own face pack** (`viewer.faces_dir`, default `
 serves it on `127.0.0.1`, no face crosses the network) — with the caption, the theme of the day, the closeness meter
 and the mood of the day. While she thinks, her inner voice streams into a block above her reply (Details → Inner
 voice: show / collapse / hide). Her quiet thoughts gather in a strip under the mood, never in the chat. Below 760 px
-the panel becomes a strip at the top. Not yet: pictures she sends still arrive only in Telegram (v4.2); voice,
-dictation and `/image` from a file stay in the TUI.
+the panel becomes a strip at the top. Voice, dictation and `/image` from a file stay in the TUI (her pictures reach
+the window since v4.2).
 
 **v4.1 (the window's views: Files and the reader).** A row of views sits over the chat: **Chat · Files** (⌘1 / ⌘2;
 later versions add Gallery, Journal, Thoughts, State and Schedule). A view replaces the chat column, and the chat keeps
@@ -201,6 +201,24 @@ root) to the owner's token, never the room's:
 - `GET /v1/files/raw?path=` returns a picture (png/jpg/gif/webp, at most 10 MB; never SVG or HTML).
 
 Nothing in the sandbox changes, no model is called, and a read never waits for her turn.
+
+**v4.2 (the window: Gallery and her pictures in the chat).** **Gallery** (⌘3) shows every picture of her sandbox as
+thumbnails, newest first, by month, with a folder filter; it loads more as you scroll. A click opens the **full picture
+view**: the picture as large as fits, its path, date, size and dimensions, "Open in Files", ← → for the next and
+previous, Esc to close. A picture in Files or in the reader opens the same view. When she makes a picture
+(`generate_image`) or sends one (`send_image`) in a turn, it shows **under her line in the chat**, whichever client or
+Telegram started the turn; a click opens it full size. A picture she sends still reaches Telegram as before.
+
+**v4.2 (her pictures — the server's side).** Two more read-only routes, the owner's token only:
+- `GET /v1/images?before=&limit=&folder=` pages through every picture of the sandbox, newest first (100 a page), with
+  the total and the count per folder;
+- `GET /v1/images/thumb?path=` returns a 320 px JPEG thumbnail.
+
+The thumbnails are made on the first request and kept in `cache/thumbs/<user_id>/` in the data root — outside her
+sandbox, so her file tools never see them. The cache is small (about 20 KB a picture), is rebuilt on its own when a
+picture changes, and may be deleted at any time; it is inside the data archive the deploy agent takes before a prod
+deploy. A turn's outcome and her `message` push carry `pictures` (the sandbox paths) when she made or sent one in that
+turn; `GET /v1/state.features.gallery` says the Gallery is served.
 
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another
