@@ -136,9 +136,9 @@ a:hover { color: var(--color-text); }
   --l-view-narrow: 640px;
 
   /* right panels (pinned views) */
-  --l-side: 340px;             /* default width; drag 280–520 */
+  --l-side: 340px;             /* default width; drag from 280 up to the window less a 360 px chat (the owner) */
   --l-side-min: 280px;
-  --l-side-max: 520px;
+  --l-side-max: 520px;         /* the design's cap — lifted by the owner on 2026-11-17 (app.js sideMax) */
   --l-side-split: 0.55;        /* top share when both panels are open; drag 0.2–0.8 */
   --l-side-panel-min: 140px;      /* below this a view switches to its narrow layout */
 }

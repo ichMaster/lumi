@@ -133,7 +133,8 @@ appears as its phase lands. A view replaces the chat column, and the portrait pa
 
 **Right panels** (from the design; v4.1).
 - Any view but Chat can be pinned to a right panel and/or a bottom-right panel, so it stays beside the chat.
-- The panel column is resizable (280–520 px) and can be split between the two panels. It folds to a 46 px rail
+- The panel column is resizable — from 280 px up to the window's width less the portrait panel and a 360 px chat (the
+  owner, 2026-11-17: wider than the design's 520 px cap) — and can be split between the two panels. It folds to a 46 px rail
   (⌘\).
 - A pinned view always uses its narrow layout. Navigation inside a panel stays in that panel.
 - The pins, width, split and folded state are kept per client in `localStorage`, as the window's other preferences

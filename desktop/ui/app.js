@@ -1114,7 +1114,8 @@ const VIEWS = ["chat", "files"];  // v4.1 — later phases add gallery, journal,
 const VIEW_LABEL = { chat: "views.chat", files: "views.files" };
 const VIEW_KINDS = {};  // kind → render(ctx): each view registers itself below
 const PANELS_STORE = "lumi.desktop.panels";
-const SIDE = { min: 280, max: 520, default: 340, step: 20 };
+// the owner (2026-11-17): the panel widens as far as the window allows — the chat keeps at least chatMin
+const SIDE = { min: 280, default: 340, step: 20, chatMin: 360 };
 const SPLIT = { min: 0.2, max: 0.8, default: 0.55, step: 0.05 };
 const VIEW_NARROW_PX = 640;
 const vw = { view: "chat", chatUnread: false, r: [], b: [], rActive: null, bActive: null, open: true,
@@ -1132,7 +1133,7 @@ function loadPanels() {
     vw.rActive = vw.r.includes(kept.rActive) ? kept.rActive : vw.r[0] || null;
     vw.bActive = vw.b.includes(kept.bActive) ? kept.bActive : vw.b[0] || null;
     vw.open = kept.open !== false;
-    if (Number.isFinite(kept.w)) vw.w = clamp(kept.w, SIDE.min, SIDE.max);
+    if (Number.isFinite(kept.w)) vw.w = Math.max(SIDE.min, Math.round(kept.w));  // the window caps it when drawn
     if (Number.isFinite(kept.split)) vw.split = clamp(kept.split, SPLIT.min, SPLIT.max);
   } catch (e) { /* none kept — no pins, the defaults */ }
 }
@@ -1231,7 +1232,16 @@ function dragOn(handle, onMove, onEnd) {  // a pointer drag on a handle (mouse o
   });
 }
 
-function setSideWidth(w) { vw.w = clamp(Math.round(w), SIDE.min, SIDE.max); $("side").style.width = `${vw.w}px`; }
+function sideMax() {  // the window's width less the portrait panel and the chat's minimum
+  const body = document.querySelector(".body");
+  const portrait = $("panel");
+  const total = body ? body.clientWidth : window.innerWidth;
+  return Math.max(SIDE.min, total - (portrait ? portrait.offsetWidth : 0) - SIDE.chatMin);
+}
+
+function applySideWidth() { $("side").style.width = `${clamp(vw.w, SIDE.min, sideMax())}px`; }
+
+function setSideWidth(w) { vw.w = clamp(Math.round(w), SIDE.min, sideMax()); applySideWidth(); }
 
 function sidePanel(slot, both) {
   const list = slot === "r" ? vw.r : vw.b;
@@ -1293,7 +1303,7 @@ function renderSide() {
   side.hidden = false;
   side.querySelectorAll(".sbody").forEach(releaseBlobs);  // the old panel bodies' pictures go with them
   side.setAttribute("aria-label", t("panels.label"));
-  side.style.width = `${vw.w}px`;
+  applySideWidth();
   const grip = el("button", { type: "button", class: "grip", "aria-label": t("panels.resize_width") });
   let x0 = 0, w0 = 0;
   grip.addEventListener("pointerdown", (ev) => { x0 = ev.clientX; w0 = vw.w; });
@@ -1852,6 +1862,7 @@ async function start() {
     else if (ev.key === "=" || ev.key === "+") { ev.preventDefault(); setChatSize(st.chatSize + 1); }
   });
   NARROW.addEventListener("change", () => { renderPanel(); renderViews(); renderSide(); stick(true); });  // a new width
+  window.addEventListener("resize", () => { if (!$("side").hidden) applySideWidth(); });  // a narrower window caps it
   loadPanels();
   renderViews();
   renderSide();

@@ -215,7 +215,11 @@ def test_v41_the_views_and_panels_keep_their_layout_guarded():
         assert "try {" in body and "catch (e)" in body  # every localStorage access is guarded
     assert "localStorage" not in js[js.index("function setView("):js.index("function viewFrame(")].replace(
         "localStorage.setItem(PANELS_STORE", "")  # the views touch storage only through the two helpers
-    assert "SIDE = { min: 280, max: 520, default: 340, step: 20 }" in js
+    # the owner (2026-11-17): no fixed 520 px cap — the window's width less the portrait and a 360 px chat
+    assert "SIDE = { min: 280, default: 340, step: 20, chatMin: 360 }" in js and "max: 520" not in js
+    width = js[js.index("function sideMax("):js.index("function setSideWidth(")]
+    assert "total - (portrait ? portrait.offsetWidth : 0) - SIDE.chatMin" in width
+    assert 'window.addEventListener("resize"' in js
     assert "SPLIT = { min: 0.2, max: 0.8, default: 0.55, step: 0.05 }" in js
     assert "VIEW_NARROW_PX = 640" in js and "ResizeObserver" in js
 

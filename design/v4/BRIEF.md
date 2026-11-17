@@ -279,7 +279,8 @@ The owner made it in Claude Design, in the v2.12 project. Its handoff bundle is 
 
 **Added by the design beyond the brief** (kept; placed in the ROADMAP):
 - **Right panels.** Any view but Chat can be pinned to a right panel and/or a bottom-right panel beside the chat.
-  - The panel column is resizable (280–520 px) and can be split between the two panels.
+  - The panel column is resizable and can be split between the two panels. The design capped it at 520 px; at the
+    owner's check on dev (2026-11-17) it widens up to the window's width less the portrait panel and a 360 px chat.
   - It folds to a 46 px rail (⌘\).
   - A pinned view always uses its narrow layout.
   - The pins, the width, the split and the folded state are kept per client in `localStorage`, as the window's other
