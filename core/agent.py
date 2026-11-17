@@ -905,6 +905,14 @@ class Core:
         return self._user_id
 
     @property
+    def files_root(self) -> Path | None:
+        """v4.1 LUMI-301: this user's sandbox (``files_dir/<user_id>``) for the window's read-only views, or ``None``
+        when no sandbox is configured. Never created here — unlike the turn's file tools, a read creates nothing."""
+        if self._files_dir is None:
+            return None
+        return Path(self._files_dir) / self._user_id
+
+    @property
     def clock(self) -> Clock:
         """The injected clock (so a client fetches ambient context with the same time)."""
         return self._clock
