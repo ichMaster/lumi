@@ -245,3 +245,74 @@ def test_v41_the_tokens_only_add_to_v212():
     for k, v in decl.findall(add):
         assert page.count(f"{k}:") == 1, k
         assert (k, " ".join(v.split())) in have, k
+
+
+# --- v4.1 LUMI-304: Files and the markdown reader -----------------------------------------------------------------
+
+def _files_section() -> str:
+    js = _js()
+    return js[js.index("/* ---------- Files and the reader"):js.index("/* ---------- start ---------- */")]
+
+
+def test_v41_the_reader_never_builds_a_link_out_of_the_window():
+    files = _files_section()
+    # no <a href> anywhere in Files: no anchor element, no href attribute, nothing navigates the window
+    assert 'el("a"' not in files and "href:" not in files and 'setAttribute("href"' not in files
+    assert "location" not in files and "window.open" not in files
+    link = files[files.index("function readerLink("):files.index("function readerInline(")]
+    assert "/^https?:\\/\\//i.test(href)" in link and 'class: "xlink"' in link  # external: shown as text + address
+    assert "resolveIn(base, pathPart)" in link and "document.createTextNode(label)" in link  # out of the sandbox: text
+
+
+def test_v41_pictures_reach_the_page_only_by_fetch_into_blob_urls():
+    js, files = _js(), _files_section()
+    getter = files[files.index("async function pictureURL("):files.index("function resolveIn(")]
+    assert 'fetch("/v1/files/raw" + qpath(path), { headers: headers() })' in getter  # with the window's key
+    assert "URL.createObjectURL" in getter
+    assert files.count('"/v1/files/raw"') == 1  # nowhere else
+    assert 'src: "/v1' not in js and '.src = "/v1' not in js and "src=\"/v1" not in js
+    assert "URL.revokeObjectURL" in files and "releaseBlobs(host)" in js  # released when the place changes
+
+
+def test_v41_back_and_forward_keys_drive_the_files_history():
+    js = _js()
+    assert '(ev.key === "[" || ev.key === "]") && vw.view === "files"' in js
+    assert 'filesStep(places.main.ctx, ev.key === "[" ? -1 : 1)' in js
+
+
+def _node_eval(script: str):
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed — the page's pure helpers are checked where it is")
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def _fn(name: str) -> str:
+    js = _js()
+    start = js.index(f"function {name}(")
+    return js[start:js.index("\n}\n", start) + 2]
+
+
+def test_v41_relative_links_resolve_inside_her_sandbox_or_not_at_all():
+    got = _node_eval(_fn("resolveIn") + """
+const cases = [["notes", "rain.md"], ["notes", "./rain.md"], ["notes", "../art/p.png"], ["", "notes/a%20b.md"],
+  ["notes", "../../secret.txt"], ["notes", "/etc/passwd"], ["notes", "https://x.org/a"], ["notes", "javascript:alert(1)"],
+  ["notes", "file:///etc/passwd"], ["a/b", "../../c.md"], ["notes", ""]];
+console.log(JSON.stringify(cases.map(([b, h]) => resolveIn(b, h))));""")
+    assert got == ["notes/rain.md", "notes/rain.md", "art/p.png", "notes/a b.md", None, None, None, None, None, "c.md",
+                   None]
+
+
+def test_v41_sizes_and_heading_slugs():
+    got = _node_eval(_fn("fmtSize") + _fn("slugOf") + """
+console.log(JSON.stringify([fmtSize(820), fmtSize(18 * 1024), fmtSize(412 * 1024), fmtSize(3 * 1024 * 1024),
+  slugOf("Ідеї на **зиму**"), slugOf("Code: `x` & y")]));""")
+    assert got == ["820 B", "18 KB", "412 KB", "3.0 MB", "ідеї-на-зиму", "code-x-y"]

@@ -183,6 +183,17 @@ voice: show / collapse / hide). Her quiet thoughts gather in a strip under the m
 the panel becomes a strip at the top. Not yet: pictures she sends still arrive only in Telegram (v4.2); voice,
 dictation and `/image` from a file stay in the TUI.
 
+**v4.1 (the window's views: Files and the reader).** A row of views sits over the chat: **Chat · Files** (⌘1 / ⌘2;
+later versions add Gallery, Journal, Thoughts, State and Schedule). A view replaces the chat column, and the chat keeps
+receiving underneath: a reply that arrives meanwhile marks the Chat tab.
+- **Files** browses her sandbox read-only: folders first, sizes, dates, back / forward (⌘[ ⌘]). A file of a kind the
+  window doesn't show is listed but can't be opened.
+- **The reader** shows a markdown file as a formatted page, with an outline for long pages and a Formatted / Raw switch.
+  Her relative links open her other files in the reader, and her relative pictures show in the text. An external link
+  is shown with its address and never opened in the window.
+- **Any view but Chat can be pinned** to a right panel or a bottom-right panel beside the chat. The column is
+  resizable and splits between two panels; ⌘\ folds it to a rail. The layout is kept per window, in its own storage.
+
 **v4.1 (her files — the server's side).** Three read-only routes serve her sandbox (`files/<user_id>/` in the data
 root) to the owner's token, never the room's:
 - `GET /v1/files?path=` lists a folder;

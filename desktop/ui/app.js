@@ -1162,6 +1162,8 @@ function applyView() {  // which of the chat or the open view fills the content 
   if (chat) {
     const watch = widthWatch.get(host);
     if (watch) { watch.disconnect(); widthWatch.delete(host); }
+    releaseBlobs(host);
+    places.main.ctx = null;
     host.replaceChildren();
     stick(true);
     $("input").focus();
@@ -1289,6 +1291,7 @@ function renderSide() {
   }
   rail.hidden = true;
   side.hidden = false;
+  side.querySelectorAll(".sbody").forEach(releaseBlobs);  // the old panel bodies' pictures go with them
   side.setAttribute("aria-label", t("panels.label"));
   side.style.width = `${vw.w}px`;
   const grip = el("button", { type: "button", class: "grip", "aria-label": t("panels.resize_width") });
@@ -1326,6 +1329,7 @@ function mountView(place, host, kind, forceNarrow) {
       renderSide();
     },
   };
+  places[place].ctx = ctx;
   host.classList.toggle("vnarrow", ctx.narrow());
   if (!forceNarrow) watchWidth(host, ctx);
   render(ctx);
@@ -1376,11 +1380,432 @@ function viewError(title, err, retry) {
     retry ? el("button", { type: "button", class: "btn btn-secondary", onclick: retry }, icon("refresh-cw"), t("state.try_again")) : null);
 }
 
-/* Files (v4.1) — LUMI-304 fills it: the folder table and the reader. */
+/* ---------- Files and the reader (v4.1 LUMI-304, design/v4/handoff §4–§5) ----------
+   Her sandbox, read-only: /v1/files (a folder), /v1/files/text (a text file), /v1/files/raw (a picture). One history per
+   place covers folders, files and pictures (back / forward, ⌘[ ⌘]). Her markdown becomes built DOM nodes, never HTML:
+   a relative link opens her other file here, an external link is shown and never followed, a link out of her sandbox
+   stays text. A picture is fetched with the window's key into a blob: URL (an <img> can't send the key), released when
+   the place shows something else. */
+const PICTURE_EXT = /\.(png|jpe?g|gif|webp)$/i;
+const MONTHS3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const READER_MODE = { plain: "reader.plain", code: "reader.code", data: "reader.data" };
+const READER_INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[([^\]\n]+)\]\(([^)\s]+)\))/;
+const blobsByHost = new WeakMap();
+
+function qpath(path) { return "?path=" + encodeURIComponent(path || ""); }
+
+function fmtSize(n) {
+  if (n === null || n === undefined) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function ymdOf(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+
+function fmtDate(stamp) {  // "YYYY-MM-DD HH:MM" (the server's local time) → "16 Nov 2026"
+  const [y, m, d] = String(stamp || "").slice(0, 10).split("-").map(Number);
+  return y && m && d ? `${d} ${MONTHS3[m - 1]} ${y}` : "";
+}
+
+function fmtWhen(stamp) {  // → "Today 14:10" / "Yesterday 09:02" / "16 Nov 2026"
+  if (!stamp) return "";
+  const [day, time] = String(stamp).split(" ");
+  const now = new Date();
+  const before = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (day === ymdOf(now)) return `${t("date.today")} ${time || ""}`.trim();
+  if (day === ymdOf(before)) return `${t("date.yesterday")} ${time || ""}`.trim();
+  return fmtDate(stamp);
+}
+
+function releaseBlobs(host) {
+  for (const url of blobsByHost.get(host) || []) URL.revokeObjectURL(url);
+  blobsByHost.set(host, []);
+}
+
+async function pictureURL(host, path) {  // the only way a picture reaches the page: fetch with the key → a blob: URL
+  const res = await fetch("/v1/files/raw" + qpath(path), { headers: headers() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, data.kind, typeof data.detail === "string" ? data.detail : "");
+  }
+  const url = URL.createObjectURL(await res.blob());
+  if (!blobsByHost.has(host)) blobsByHost.set(host, []);
+  blobsByHost.get(host).push(url);
+  return url;
+}
+
+function resolveIn(base, href) {  // a relative href against her file's folder → a sandbox path, or null if it leaves it
+  if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("/")) return null;
+  let rel = href;
+  try { rel = decodeURIComponent(href); } catch (e) { /* keep it as written */ }
+  const parts = base ? base.split("/") : [];
+  for (const seg of rel.split("/")) {
+    if (seg === "..") { if (!parts.length) return null; parts.pop(); }
+    else if (seg && seg !== ".") parts.push(seg);
+  }
+  return parts.join("/");
+}
+
+function slugOf(text) {
+  return String(text).toLowerCase().replace(/[`*_[\]()]/g, "").trim().replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s+/g, "-");
+}
+
+function filesGo(ctx, entry) {
+  const s = ctx.state;
+  s.hist = s.hist.slice(0, s.idx + 1);
+  s.hist.push(entry);
+  s.idx = s.hist.length - 1;
+  s.raw = false;
+  s.outlineOpen = false;
+  s.cache.clear();
+  renderFilesPlace(ctx);
+}
+
+function filesStep(ctx, delta) {
+  const s = ctx.state;
+  const i = s.idx + delta;
+  if (!s.hist || i < 0 || i >= s.hist.length) return;
+  s.idx = i;
+  s.outlineOpen = false;
+  s.cache.clear();
+  renderFilesPlace(ctx);
+}
+
+async function filesFetch(ctx, key, load) {  // a re-render (a new width, Raw ↔ Formatted) reads from here
+  const cache = ctx.state.cache;
+  if (cache.has(key)) return cache.get(key);
+  const value = await load();
+  cache.set(key, value);
+  return value;
+}
+
+function openTarget(ctx, path, isDir, anchor) {
+  if (isDir) filesGo(ctx, { kind: "dir", path });
+  else if (PICTURE_EXT.test(path)) filesGo(ctx, { kind: "picture", path });
+  else filesGo(ctx, { kind: "file", path, anchor: anchor || null });
+}
+
+function renderFilesPlace(ctx) {
+  releaseBlobs(ctx.host);
+  const cur = ctx.state.hist[ctx.state.idx];
+  if (cur.kind === "dir") renderFolder(ctx, cur);
+  else if (cur.kind === "picture") renderPicturePage(ctx, cur);
+  else renderReader(ctx, cur);
+}
+
 VIEW_KINDS.files = (ctx) => {
-  ctx.host.replaceChildren(viewFrame([el("h2", { class: "vtitle", text: viewName("files") })],
-    viewEmpty(null, t("state.nothing"))));
+  const s = ctx.state;
+  if (!s.hist) Object.assign(s, { hist: [{ kind: "dir", path: "" }], idx: 0, raw: false, outlineOpen: false, ticket: 0,
+    cache: new Map() });
+  if (s.goto) { const to = s.goto; s.goto = null; filesGo(ctx, to); return; }  // opened from another view
+  renderFilesPlace(ctx);
 };
+
+function navButtons(ctx) {
+  const s = ctx.state;
+  return [
+    el("button", { type: "button", class: "ib", "aria-label": t("nav.back"), title: `${t("nav.back")}  ⌘[`,
+      disabled: s.idx <= 0, onclick: () => filesStep(ctx, -1) }, icon("arrow-left")),
+    el("button", { type: "button", class: "ib", "aria-label": t("nav.forward"), title: `${t("nav.forward")}  ⌘]`,
+      disabled: s.idx >= s.hist.length - 1, onclick: () => filesStep(ctx, 1) }, icon("arrow-right")),
+  ];
+}
+
+function crumbs(ctx, dir, fileName) {
+  const parts = dir ? dir.split("/") : [];
+  const nav = el("nav", { class: "crumbs", "aria-label": t("nav.path") });
+  const atRoot = !fileName && !parts.length;
+  nav.append(el("button", { type: "button", class: "crumb", "aria-current": atRoot ? "page" : null,
+    onclick: atRoot ? null : () => filesGo(ctx, { kind: "dir", path: "" }) }, t("nav.root")));
+  parts.forEach((part, i) => {
+    const path = parts.slice(0, i + 1).join("/");
+    const last = !fileName && i === parts.length - 1;
+    nav.append(el("span", { class: "sep", text: "/" }), el("button", { type: "button", class: "crumb",
+      "aria-current": last ? "page" : null, onclick: last ? null : () => filesGo(ctx, { kind: "dir", path }) }, part));
+  });
+  if (fileName) nav.append(el("span", { class: "sep", text: "/" }), el("span", { class: "crumb current", text: fileName }));
+  return nav;
+}
+
+function itemsLabel(n) {
+  return n === 1 ? t("files.item") : t("files.items", { n: Number(n || 0).toLocaleString("en-US") });
+}
+
+function fileRow(ctx, dir, e, narrow) {
+  const full = dir ? `${dir}/${e.name}` : e.name;
+  const isDir = e.kind === "dir";
+  const shown = isDir || e.type === "text" || e.type === "image";
+  const glyph = isDir ? "folder" : e.type === "image" ? "image" : e.type === "text" ? "file-text" : "file";
+  const size = isDir ? itemsLabel(e.count) : fmtSize(e.size);
+  const open = !shown ? null : isDir ? () => filesGo(ctx, { kind: "dir", path: full })
+    : e.type === "image" ? () => filesGo(ctx, { kind: "picture", path: full, meta: e })
+      : () => filesGo(ctx, { kind: "file", path: full, meta: e });
+  const name = el("span", { class: "fname" + (isDir ? " dir" : "") + (shown ? "" : " muted") },
+    el("span", { class: "fnm", text: isDir ? `${e.name}/` : e.name }),
+    shown ? null : el("span", { class: "tag", text: t("files.not_shown") }));
+  const attrs = { type: "button", class: "frow", onclick: open, "aria-disabled": shown ? null : "true",
+    title: shown ? null : t("files.not_shown_hint") };
+  const glyphEl = el("span", { class: "ficon" + (isDir ? " dir" : "") }, icon(glyph));
+  if (narrow) {
+    return el("button", attrs, glyphEl, el("span", { class: "fstack" }, name,
+      el("span", { class: "fcell", text: [size, fmtWhen(e.modified)].filter(Boolean).join(" · ") })));
+  }
+  return el("button", attrs, el("span", { class: "fnamecell" }, glyphEl, name), el("span", { class: "fcell", text: size }),
+    el("span", { class: "fcell", text: fmtDate(e.created) }), el("span", { class: "fcell", text: fmtWhen(e.modified) }));
+}
+
+async function renderFolder(ctx, cur) {
+  const s = ctx.state;
+  const ticket = ++s.ticket;
+  const label = cur.path || t("nav.root");
+  const bar = (count) => [...navButtons(ctx), crumbs(ctx, cur.path), count ? el("span", { class: "vmeta", text: count }) : null,
+    el("span", { class: "vactions", "aria-hidden": "true" })];  // the right end stays free for v4.5's actions
+  ctx.host.replaceChildren(viewFrame(bar(), viewLoading(t("files.loading", { path: label }))));
+  let data;
+  try {
+    data = await filesFetch(ctx, "dir:" + cur.path, () => api("/v1/files" + qpath(cur.path)));
+  } catch (err) {
+    if (ticket === s.ticket) ctx.host.replaceChildren(viewFrame(bar(), viewError(t("files.error_title", { path: label }), err,
+      () => renderFilesPlace(ctx))));
+    return;
+  }
+  if (ticket !== s.ticket) return;
+  const entries = data.entries || [];
+  const count = data.truncated ? t("files.items_cut") : itemsLabel(entries.length);
+  if (!entries.length) {
+    ctx.host.replaceChildren(viewFrame(bar(count), viewEmpty(`${label}/`, t("files.empty"), t("files.empty_note"))));
+    return;
+  }
+  const narrow = ctx.narrow();
+  const table = el("div", { class: "ftable" + (narrow ? " narrow" : "") },
+    narrow ? null : el("div", { class: "fhead" },
+      ["files.col_name", "files.col_size", "files.col_created", "files.col_modified"].map((k) => el("span", { class: "kicker", text: t(k) }))),
+    entries.map((e) => fileRow(ctx, cur.path, e, narrow)),
+    data.truncated ? el("div", { class: "fcut" }, el("span", { class: "title", text: t("files.cut_title") }),
+      el("span", { class: "cut-note", text: t("files.cut_note") })) : null);
+  ctx.host.replaceChildren(viewFrame(bar(count), table));
+}
+
+/* her markdown for the reader: headings h1–h4, fences, rules, a picture on its own line, quotes, pipe tables, lists,
+   paragraphs; inline code, bold, italic and links — everything else is literal text */
+function readerLink(ctx, label, href, base) {
+  if (/^https?:\/\//i.test(href)) {  // external: shown with its address, never followed in this window
+    const addr = href.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+    return el("span", { class: "xlink", title: t("reader.external") }, el("span", { class: "xtext", text: label }), " ",
+      el("span", { class: "xaddr", text: `↗ ${addr}` }));
+  }
+  if (href.startsWith("#")) {
+    return el("button", { type: "button", class: "ilink", onclick: () => scrollToSlug(ctx, href.slice(1)) }, label);
+  }
+  const hash = href.indexOf("#");
+  const pathPart = hash < 0 ? href : href.slice(0, hash);
+  const anchor = hash < 0 ? null : href.slice(hash + 1);
+  const target = resolveIn(base, pathPart);
+  if (target === null || (!target && !pathPart.endsWith("/"))) return document.createTextNode(label);  // out of her sandbox
+  return el("button", { type: "button", class: "ilink", title: t("reader.open_file", { path: target }),
+    onclick: () => openTarget(ctx, target, pathPart.endsWith("/"), anchor) }, label);
+}
+
+function readerInline(ctx, text, base) {
+  const out = [];
+  let rest = text;
+  while (rest) {
+    const m = READER_INLINE.exec(rest);
+    if (!m) { out.push(rest); break; }
+    if (m.index) out.push(rest.slice(0, m.index));
+    const tok = m[0];
+    if (m[1]) out.push(el("code", { class: "icode", text: tok.slice(1, -1) }));
+    else if (m[2]) out.push(el("strong", {}, readerInline(ctx, tok.slice(2, -2), base)));
+    else if (m[3]) out.push(el("em", {}, readerInline(ctx, tok.slice(1, -1), base)));
+    else out.push(readerLink(ctx, m[5], m[6], base));
+    rest = rest.slice(m.index + tok.length);
+  }
+  return out;
+}
+
+function readerPicture(ctx, alt, src, base) {
+  if (/^https?:\/\//i.test(src)) return el("p", {}, readerLink(ctx, alt || src, src, base));
+  const path = resolveIn(base, src);
+  if (!path || !PICTURE_EXT.test(path)) return el("p", { text: alt || src });
+  const img = el("img", { class: "rimg", alt: alt || path });
+  const cap = el("figcaption", { class: "rcap", text: [alt, path].filter(Boolean).join(" · ") });
+  const fig = el("figure", { class: "rfig" }, el("button", { type: "button", class: "rthumb",
+    "aria-label": t("reader.open_file", { path }), onclick: () => openTarget(ctx, path, false) }, img), cap);
+  img.addEventListener("load", () => {
+    cap.textContent = [alt, path, `${img.naturalWidth} × ${img.naturalHeight}`].filter(Boolean).join(" · ");
+  }, { once: true });
+  pictureURL(ctx.host, path).then((url) => { img.src = url; }).catch(() => fig.classList.add("broken"));
+  return fig;
+}
+
+const MD_STARTS = /^(#{1,4}\s|```|>|\||!\[|\s*[-*]\s|\s*\d+\.\s|---\s*$)/;
+
+function readerBlocks(ctx, src, base) {
+  const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  const heads = [];
+  const cells = (row) => row.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+  let i = 0;
+  let m;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if ((m = /^(#{1,4})\s+(.*)$/.exec(line))) {
+      const node = el(`h${m[1].length}`, { class: "rh" }, readerInline(ctx, m[2], base));
+      heads.push({ n: m[1].length, text: m[2].replace(/[`*]/g, ""), slug: slugOf(m[2]), node });
+      blocks.push(node);
+      i++;
+      continue;
+    }
+    if (/^```/.test(line)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      blocks.push(el("pre", { class: "rcode", text: buf.join("\n") }));
+      continue;
+    }
+    if (/^---\s*$/.test(line)) { blocks.push(el("hr", { class: "rrule" })); i++; continue; }
+    if ((m = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(line))) { blocks.push(readerPicture(ctx, m[1], m[2], base)); i++; continue; }
+    if (/^>/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^>/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
+      blocks.push(el("blockquote", { class: "rquote" }, readerInline(ctx, buf.join(" "), base)));
+      continue;
+    }
+    if (/^\|/.test(line)) {
+      const rows = [];
+      while (i < lines.length && /^\|/.test(lines[i])) rows.push(lines[i++]);
+      const sep = rows.length > 1 && /^\|?\s*:?-{2,}/.test(rows[1].trim());
+      const head = sep ? cells(rows[0]) : null;
+      const body = (sep ? rows.slice(2) : rows).map(cells);
+      blocks.push(el("div", { class: "rtable" }, el("table", {},
+        head ? el("thead", {}, el("tr", {}, head.map((c) => el("th", { class: "kicker" }, readerInline(ctx, c, base))))) : null,
+        el("tbody", {}, body.map((r) => el("tr", {}, r.map((c) => el("td", {}, readerInline(ctx, c, base)))))))));
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
+      const ordered = /^\s*\d+\./.test(line);
+      const items = [];
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ""));
+      blocks.push(el(ordered ? "ol" : "ul", { class: "rlist" }, items.map((it) => el("li", {}, readerInline(ctx, it, base)))));
+      continue;
+    }
+    const buf = [];
+    do { buf.push(lines[i++]); } while (i < lines.length && lines[i].trim() && !MD_STARTS.test(lines[i]));
+    blocks.push(el("p", { class: "rp" }, readerInline(ctx, buf.join(" "), base)));
+  }
+  return { blocks, heads };
+}
+
+function scrollToSlug(ctx, slug) {
+  const hit = (ctx.state.heads || []).find((h) => h.slug === slugOf(slug) || h.slug === slug);
+  if (hit) hit.node.scrollIntoView({ block: "start" });
+}
+
+function rawLines(text) {
+  const box = el("div", { class: "rlines" });
+  String(text).split("\n").forEach((line, i) => box.append(el("span", { class: "ln", "aria-hidden": "true", text: String(i + 1) }),
+    el("span", { class: "lt", text: line })));
+  return box;
+}
+
+async function renderReader(ctx, cur) {
+  const s = ctx.state;
+  const ticket = ++s.ticket;
+  const cut = cur.path.lastIndexOf("/");
+  const dir = cut < 0 ? "" : cur.path.slice(0, cut);
+  const name = cur.path.slice(cut + 1);
+  const head = [...navButtons(ctx), crumbs(ctx, dir, name)];
+  ctx.host.replaceChildren(viewFrame(head, viewLoading(t("reader.loading", { path: cur.path }))));
+  let doc;
+  try {
+    doc = await filesFetch(ctx, "file:" + cur.path, () => api("/v1/files/text" + qpath(cur.path)));
+  } catch (err) {
+    if (ticket === s.ticket) ctx.host.replaceChildren(viewFrame(head, viewError(t("reader.error_title", { name }), err,
+      () => renderFilesPlace(ctx))));
+    return;
+  }
+  if (ticket !== s.ticket) return;
+  const narrow = ctx.narrow();
+  const md = doc.type === "markdown";
+  const raw = !md || s.raw;
+  const meta = [fmtSize(doc.size), cur.meta && cur.meta.modified ? fmtWhen(cur.meta.modified) : null].filter(Boolean).join(" · ");
+  const mode = md
+    ? el("div", { class: "seg rseg", role: "group", "aria-label": t("reader.mode") },
+      el("button", { type: "button", class: raw ? "" : "on", "aria-pressed": String(!raw),
+        onclick: () => { s.raw = false; renderFilesPlace(ctx); } }, t("reader.formatted")),
+      el("button", { type: "button", class: raw ? "on" : "", "aria-pressed": String(raw),
+        onclick: () => { s.raw = true; renderFilesPlace(ctx); } }, t("reader.raw")))
+    : el("span", { class: "kicker", text: t(READER_MODE[doc.type] || "reader.plain") });
+  const cutNote = doc.cut ? el("div", { class: "rcut" }, el("span", { class: "title", text: t("reader.cut_title") }),
+    el("span", { class: "cut-note", text: t("reader.cut_note", { size: fmtSize(doc.size) }) })) : null;
+  const scroller = el("div", { class: "vscroll rscroll" });
+  let heads = [];
+  if (raw) {
+    scroller.append(el("div", { class: "rraw" }, rawLines(doc.text), cutNote));
+  } else {
+    const built = readerBlocks(ctx, doc.text, dir);
+    heads = built.heads;
+    scroller.append(el("article", { class: "rpage", lang: "uk" }, built.blocks, cutNote));
+  }
+  s.heads = heads;
+  const long = heads.length >= 4;
+  const outline = long && !raw ? el("nav", { class: "routline-list", "aria-label": t("reader.outline") },
+    heads.filter((h) => h.n > 1).map((h) => {
+      const btn = el("button", { type: "button", class: `lvl${h.n}`, onclick: () => {
+        h.node.scrollIntoView({ block: "start" });
+        if (narrow) { s.outlineOpen = false; renderFilesPlace(ctx); }
+      } }, h.text);
+      h.button = btn;
+      return btn;
+    })) : null;
+  if (outline) {
+    const follow = () => {  // the current heading follows the scroll
+      let at = heads.find((h) => h.button) || null;
+      for (const h of heads) if (h.button && h.node.offsetTop <= scroller.scrollTop + 40) at = h;
+      for (const h of heads) if (h.button) h.button.setAttribute("aria-current", String(h === at));
+    };
+    scroller.addEventListener("scroll", follow, { passive: true });
+    requestAnimationFrame(follow);
+  }
+  const contents = narrow && outline ? el("button", { type: "button", class: "contents", "aria-expanded": String(!!s.outlineOpen),
+    onclick: () => { s.outlineOpen = !s.outlineOpen; renderFilesPlace(ctx); } }, t("reader.contents"), icon(s.outlineOpen ? "chevron-up" : "chevron-down")) : null;
+  if (narrow && outline && s.outlineOpen) scroller.prepend(el("div", { class: "routline-band" },
+    el("span", { class: "kicker", text: t("reader.outline") }), outline));
+  const bar = [...head, mode, el("span", { class: "vmeta", text: meta }), contents];
+  const body = !narrow && outline
+    ? el("div", { class: "rwrap" }, scroller, el("aside", { class: "routline" }, el("span", { class: "kicker", text: t("reader.outline") }), outline))
+    : scroller;
+  ctx.host.replaceChildren(el("div", { class: "view" }, el("div", { class: "vbar" }, ...bar), body));
+  if (cur.anchor) requestAnimationFrame(() => scrollToSlug(ctx, cur.anchor));
+}
+
+async function renderPicturePage(ctx, cur) {  // v4.1: a picture at full size (v4.2's full picture view replaces it)
+  const s = ctx.state;
+  const ticket = ++s.ticket;
+  const cut = cur.path.lastIndexOf("/");
+  const dir = cut < 0 ? "" : cur.path.slice(0, cut);
+  const name = cur.path.slice(cut + 1);
+  const meta = cur.meta ? [fmtSize(cur.meta.size), fmtWhen(cur.meta.modified)].filter(Boolean).join(" · ") : "";
+  const bar = [...navButtons(ctx), crumbs(ctx, dir, name), meta ? el("span", { class: "vmeta", text: meta }) : null];
+  ctx.host.replaceChildren(viewFrame(bar, viewLoading(t("reader.loading", { path: cur.path }))));
+  let url;
+  try {
+    url = await pictureURL(ctx.host, cur.path);
+  } catch (err) {
+    if (ticket === s.ticket) ctx.host.replaceChildren(viewFrame(bar, viewError(t("reader.error_title", { name }), err,
+      () => renderFilesPlace(ctx))));
+    return;
+  }
+  if (ticket !== s.ticket) return;
+  const img = el("img", { class: "pfull", alt: name });
+  const cap = el("div", { class: "pcap" }, el("span", { class: "mono", text: cur.path }));
+  img.addEventListener("load", () => cap.append(` · ${img.naturalWidth} × ${img.naturalHeight}`), { once: true });
+  img.src = url;
+  ctx.host.replaceChildren(el("div", { class: "view" }, el("div", { class: "vbar" }, ...bar), el("div", { class: "pstage" }, img, cap)));
+}
 
 /* ---------- start ---------- */
 async function start() {
@@ -1411,6 +1836,11 @@ async function start() {
     if ((ev.metaKey || ev.ctrlKey) && /^[1-9]$/.test(ev.key)) {  // v4.1: ⌘1…⌘n (Ctrl elsewhere) switch views
       const kind = VIEWS[Number(ev.key) - 1];
       if (kind) { ev.preventDefault(); setView(kind); }
+      return;
+    }
+    if ((ev.metaKey || ev.ctrlKey) && (ev.key === "[" || ev.key === "]") && vw.view === "files" && places.main.ctx) {
+      ev.preventDefault();  // ⌘[ ⌘] back / forward in Files and the reader
+      filesStep(places.main.ctx, ev.key === "[" ? -1 : 1);
       return;
     }
     if ((ev.metaKey || ev.ctrlKey) && ev.key === "\\") {  // ⌘\ folds or unfolds the right panels
