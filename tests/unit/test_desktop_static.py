@@ -269,11 +269,13 @@ def test_v41_the_reader_never_builds_a_link_out_of_the_window():
 
 
 def test_v41_pictures_reach_the_page_only_by_fetch_into_blob_urls():
+    """v4.2: one fetcher (``blobURL``) serves the full picture and the thumbnail, each kept once per place."""
     js, files = _js(), _files_section()
-    getter = files[files.index("async function pictureURL("):files.index("function resolveIn(")]
-    assert 'fetch("/v1/files/raw" + qpath(path), { headers: headers() })' in getter  # with the window's key
+    getter = files[files.index("function blobURL("):files.index("function resolveIn(")]
+    assert "fetch(route, { headers: headers() })" in getter  # with the window's key
     assert "URL.createObjectURL" in getter
-    assert files.count('"/v1/files/raw"') == 1  # nowhere else
+    assert files.count("fetch(") == 1  # the only fetch in Files, the reader, the picture view and the Gallery
+    assert files.count('"/v1/files/raw"') == 1 and files.count('"/v1/images/thumb"') == 1  # nowhere else
     assert 'src: "/v1' not in js and '.src = "/v1' not in js and "src=\"/v1" not in js
     assert "URL.revokeObjectURL" in files and "releaseBlobs(host)" in js  # released when the place changes
 
@@ -346,3 +348,73 @@ def test_review_v41_3_the_page_shows_only_the_views_the_server_serves():
     assert "if (!VIEWS.includes(kind) || !served(kind)) return;" in js
     side = js[js.index("function renderSide("):js.index("/* A view mounts into a host")]
     assert "vw.r.filter(served)" in side and "vw.b.filter(served)" in side
+
+
+# --- v4.2 LUMI-307: the Gallery and the full picture view ---------------------------------------------------------
+
+def test_v42_the_gallery_and_picture_strings_resolve_and_are_english():
+    js, strings = _js(), _strings()
+    used = set(re.findall(r'"((?:gallery|picture)\.[A-Za-z_]+)"', js))
+    assert {"gallery.title", "gallery.count", "gallery.more", "gallery.end", "gallery.empty_note", "picture.close",
+            "picture.open_in_files", "picture.actions_later", "picture.keys"} <= used
+    assert sorted(k for k in used if k not in strings) == []
+    add = json.loads((UI.parents[1] / "design" / "v4" / "handoff" / "strings.en.add.json").read_text(encoding="utf-8"))
+    for key, value in add.items():
+        if key.startswith(("gallery.", "picture.")):
+            assert strings[key] == value, key  # the design's words, as handed off
+    assert not CYRILLIC.search(json.dumps({k: v for k, v in strings.items() if k.startswith(("gallery.", "picture."))},
+                                          ensure_ascii=False))
+
+
+def test_v42_the_gallery_is_a_view_gated_on_features_gallery():
+    js = _js()
+    assert 'const VIEWS = ["chat", "files", "gallery"]' in js and 'gallery: "views.gallery"' in js
+    served = js[js.index("function served("):js.index("function shownViews(")]
+    assert 'if (kind === "gallery") return features.gallery === true;' in served
+    assert "VIEW_KINDS.gallery = (ctx) =>" in js
+
+
+def test_v42_the_gallery_pages_by_its_cursor_and_fetches_thumbnails_near_the_screen():
+    js = _js()
+    load = js[js.index("async function galleryLoad("):js.index("function galleryFilter(")]
+    assert 'api("/v1/images" + galleryQuery(s, more ? s.next : null))' in load
+    assert "if (s.busy || (more && !s.next)) return false;" in load  # one page at a time, none past the end
+    assert "if (ticket !== s.ticket) return false;" in load  # a late answer for an old folder is dropped
+    near = js[js.index("function galleryNearEnd("):js.index("function galleryTiles(")]
+    assert "< GALLERY_NEAR_END_PX" in near and "GALLERY_NEAR_END_PX = 160" in js and "GALLERY_PAGE = 100" in js
+    tile = js[js.index("function galleryTile("):js.index("function galleryMore(")]
+    assert "thumbURL(ctx.host, item.path)" in tile and "s.watch.observe(ph)" in tile
+    assert "new IntersectionObserver(" in js
+
+
+def test_v42_the_picture_view_is_a_dialog_with_its_keys_and_focus():
+    js = _js()
+    opener = js[js.index("function openPicture("):js.index("function closePicture(")]
+    assert 'role: "dialog", "aria-modal": "true"' in opener and "node.focus()" in opener
+    assert 'ev.key === "Escape"' in opener and "closePicture(ctx, true)" in opener
+    assert 'ev.key === "ArrowLeft" || ev.key === "ArrowRight"' in opener
+    close = js[js.index("function closePicture("):js.index("async function stepPicture(")]
+    assert "view.opener.focus()" in close  # Esc gives the focus back to what opened it
+    drop = js[js.index("function dropPicture("):js.index("async function stepPicture(")]
+    assert "releaseBlobs(view.node)" in drop  # its picture goes with it
+    render = js[js.index("function renderPictureView("):js.index("/* ---------- Gallery")]
+    assert "releaseBlobs(view.node);" in render and "pictureURL(view.node, item.path)" in render  # one picture held
+    assert "(again || view.node).focus()" in render  # a step keeps the focus inside the dialog
+
+
+def test_v42_files_opens_pictures_in_the_full_view_and_the_v41_page_is_gone():
+    js = _js()
+    assert "renderPicturePage" not in js and 'kind: "picture"' not in js
+    assert "filesPictures(ctx, pics, pics.findIndex((p) => p.path === full))" in js  # ← → through the folder
+    assert "else if (PICTURE_EXT.test(path)) filesPictures(ctx, [{ path }], 0);" in js  # the reader's pictures
+    assert "dropPicture(states[kind]);" in js[js.index("function mountView("):js.index("const widthWatch")]
+    assert "ctx.host.replaceChildren(" not in _files_section().replace("ctx.host.replaceChildren(...nodes)", "")
+
+
+def test_v42_the_gallery_helpers():
+    got = _node_eval("const MONTHS = " + _js().split("const MONTHS = ", 1)[1].split(";", 1)[0] + ";" + _fn("galleryMonth")
+                     + _fn("num") + _fn("fmtDate").replace("MONTHS3[", "['Jan','Feb','Mar','Apr','May','Jun','Jul',"
+                                                          "'Aug','Sep','Oct','Nov','Dec'][") + _fn("fmtStamp") + """
+console.log(JSON.stringify([galleryMonth("2026-11-09 21:40"), galleryMonth("2026-01-31 00:00"), galleryMonth(""),
+  num(1234), num(undefined), fmtStamp("2026-11-09 21:40"), fmtStamp("2026-11-09")]));""")
+    assert got == ["November 2026", "January 2026", "", "1,234", "0", "9 Nov 2026, 21:40", "9 Nov 2026"]

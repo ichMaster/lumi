@@ -89,6 +89,7 @@ const ICONS = {
   image: [["rect", { x: "3", y: "3", width: "18", height: "18" }], ["circle", { cx: "9", cy: "9", r: "2" }], ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" }]],
   "arrow-left": [["path", { d: "m12 19-7-7 7-7" }], ["path", { d: "M19 12H5" }]],
   "arrow-right": [["path", { d: "M5 12h14" }], ["path", { d: "m12 5 7 7-7 7" }]],
+  "chevron-left": [["path", { d: "m15 18-6-6 6-6" }]],  // v4.2: the picture view's previous
 };
 
 function icon(name, size) {
@@ -1111,8 +1112,8 @@ function onKey(ev) {
    line that arrives meanwhile marks Chat. Any view but Chat can be pinned to a right panel and/or a bottom-right one
    beside the chat (wide layout only); a pinned view always takes its narrow layout. The pins, the active tabs, the
    width, the split and the folded state are kept per client in localStorage. Each place keeps its own view state. */
-const VIEWS = ["chat", "files"];  // v4.1 — later phases add gallery, journal, thoughts, state, schedule
-const VIEW_LABEL = { chat: "views.chat", files: "views.files" };
+const VIEWS = ["chat", "files", "gallery"];  // v4.1 Files, v4.2 Gallery — later phases add journal, thoughts, state, schedule
+const VIEW_LABEL = { chat: "views.chat", files: "views.files", gallery: "views.gallery" };
 const VIEW_KINDS = {};  // kind → render(ctx): each view registers itself below
 const PANELS_STORE = "lumi.desktop.panels";
 // the owner (2026-11-17): the panel widens as far as the window allows — the chat keeps at least chatMin
@@ -1147,7 +1148,9 @@ function savePanels() {
 function served(kind) {  // code review #3: a view shows only when the server says it serves it (state.features)
   if (kind === "chat") return true;
   const features = (st.server && st.server.features) || {};
-  return kind === "files" ? features.files === true : false;
+  if (kind === "files") return features.files === true;
+  if (kind === "gallery") return features.gallery === true;  // v4.2: her pictures and the thumbnail cache
+  return false;
 }
 
 function shownViews() { return VIEWS.filter(served); }
@@ -1351,6 +1354,7 @@ function mountView(place, host, kind, forceNarrow) {
   if (!render) { host.replaceChildren(); return; }
   const states = places[place].states;
   if (!states[kind]) states[kind] = {};
+  dropPicture(states[kind]);  // v4.2: a picture view open over the old host goes with it
   const ctx = {
     place, host, kind, state: states[kind],
     narrow: () => forceNarrow || host.clientWidth < VIEW_NARROW_PX,
@@ -1454,22 +1458,31 @@ function fmtWhen(stamp) {  // → "Today 14:10" / "Yesterday 09:02" / "16 Nov 20
   return fmtDate(stamp);
 }
 
-function releaseBlobs(host) {
-  for (const url of blobsByHost.get(host) || []) URL.revokeObjectURL(url);
-  blobsByHost.set(host, []);
+function releaseBlobs(host) {  // every picture a place (or a picture view) holds goes with it
+  for (const kept of (blobsByHost.get(host) || new Map()).values()) kept.then((url) => URL.revokeObjectURL(url), () => {});
+  blobsByHost.set(host, new Map());
 }
 
-async function pictureURL(host, path) {  // the only way a picture reaches the page: fetch with the key → a blob: URL
-  const res = await fetch("/v1/files/raw" + qpath(path), { headers: headers() });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, data.kind, typeof data.detail === "string" ? data.detail : "");
-  }
-  const url = URL.createObjectURL(await res.blob());
-  if (!blobsByHost.has(host)) blobsByHost.set(host, []);
-  blobsByHost.get(host).push(url);
-  return url;
+function blobURL(host, key, route) {  // the only way a picture reaches the page: fetch with the key → a blob: URL
+  if (!blobsByHost.has(host)) blobsByHost.set(host, new Map());
+  const kept = blobsByHost.get(host);
+  if (kept.has(key)) return kept.get(key);  // v4.2: one fetch per picture per place, however often it is drawn
+  const got = (async () => {
+    const res = await fetch(route, { headers: headers() });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, data.kind, typeof data.detail === "string" ? data.detail : "");
+    }
+    return URL.createObjectURL(await res.blob());
+  })();
+  kept.set(key, got);
+  got.catch(() => { if (kept.get(key) === got) kept.delete(key); });  // a failed one is fetched again next time
+  return got;
 }
+
+function pictureURL(host, path) { return blobURL(host, "raw:" + path, "/v1/files/raw" + qpath(path)); }
+
+function thumbURL(host, path) { return blobURL(host, "thumb:" + path, "/v1/images/thumb" + qpath(path)); }  // v4.2
 
 function resolveIn(base, href) {  // a relative href against her file's folder → a sandbox path, or null if it leaves it
   if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("/")) return null;
@@ -1489,6 +1502,7 @@ function slugOf(text) {
 
 function filesGo(ctx, entry) {
   const s = ctx.state;
+  closePicture(ctx, false);
   s.hist = s.hist.slice(0, s.idx + 1);
   s.hist.push(entry);
   s.idx = s.hist.length - 1;
@@ -1502,6 +1516,7 @@ function filesStep(ctx, delta) {
   const s = ctx.state;
   const i = s.idx + delta;
   if (!s.hist || i < 0 || i >= s.hist.length) return;
+  closePicture(ctx, false);
   s.idx = i;
   s.outlineOpen = false;
   s.cache.clear();
@@ -1518,15 +1533,31 @@ async function filesFetch(ctx, key, load) {  // a re-render (a new width, Raw �
 
 function openTarget(ctx, path, isDir, anchor) {
   if (isDir) filesGo(ctx, { kind: "dir", path });
-  else if (PICTURE_EXT.test(path)) filesGo(ctx, { kind: "picture", path });
+  else if (PICTURE_EXT.test(path)) filesPictures(ctx, [{ path }], 0);  // v4.2: the full picture view
   else filesGo(ctx, { kind: "file", path, anchor: anchor || null });
+}
+
+function folderOf(path) { return path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""; }
+
+function filesPictures(ctx, items, index) {  // v4.2: a picture in Files opens the full view over this place
+  const cur = ctx.state.hist[ctx.state.idx];
+  openPicture(ctx, { items, index, kicker: `${folderOf(items[index].path) || t("nav.root")}/`,
+    toFiles: (item) => {
+      closePicture(ctx, false);
+      const folder = folderOf(item.path);
+      if (!(cur.kind === "dir" && cur.path === folder)) filesGo(ctx, { kind: "dir", path: folder });
+    } });
+}
+
+function paint(ctx, ...nodes) {  // a view's content; an open picture view stays over it (a new width re-renders)
+  ctx.host.replaceChildren(...nodes);
+  if (ctx.state.picture) ctx.host.append(ctx.state.picture.node);
 }
 
 function renderFilesPlace(ctx) {
   releaseBlobs(ctx.host);
   const cur = ctx.state.hist[ctx.state.idx];
   if (cur.kind === "dir") renderFolder(ctx, cur);
-  else if (cur.kind === "picture") renderPicturePage(ctx, cur);
   else renderReader(ctx, cur);
 }
 
@@ -1568,14 +1599,14 @@ function itemsLabel(n) {
   return n === 1 ? t("files.item") : t("files.items", { n: Number(n || 0).toLocaleString("en-US") });
 }
 
-function fileRow(ctx, dir, e, narrow) {
+function fileRow(ctx, dir, e, narrow, pics) {
   const full = dir ? `${dir}/${e.name}` : e.name;
   const isDir = e.kind === "dir";
   const shown = isDir || e.type === "text" || e.type === "image";
   const glyph = isDir ? "folder" : e.type === "image" ? "image" : e.type === "text" ? "file-text" : "file";
   const size = isDir ? itemsLabel(e.count) : fmtSize(e.size);
   const open = !shown ? null : isDir ? () => filesGo(ctx, { kind: "dir", path: full })
-    : e.type === "image" ? () => filesGo(ctx, { kind: "picture", path: full, meta: e })
+    : e.type === "image" ? () => filesPictures(ctx, pics, pics.findIndex((p) => p.path === full))
       : () => filesGo(ctx, { kind: "file", path: full, meta: e });
   const name = el("span", { class: "fname" + (isDir ? " dir" : "") + (shown ? "" : " muted") },
     el("span", { class: "fnm", text: isDir ? `${e.name}/` : e.name }),
@@ -1597,12 +1628,12 @@ async function renderFolder(ctx, cur) {
   const label = cur.path || t("nav.root");
   const bar = (count) => [...navButtons(ctx), crumbs(ctx, cur.path), count ? el("span", { class: "vmeta", text: count }) : null,
     el("span", { class: "vactions", "aria-hidden": "true" })];  // the right end stays free for v4.5's actions
-  ctx.host.replaceChildren(viewFrame(bar(), viewLoading(t("files.loading", { path: label }))));
+  paint(ctx, viewFrame(bar(), viewLoading(t("files.loading", { path: label }))));
   let data;
   try {
     data = await filesFetch(ctx, "dir:" + cur.path, () => api("/v1/files" + qpath(cur.path)));
   } catch (err) {
-    if (ticket === s.ticket) ctx.host.replaceChildren(viewFrame(bar(), viewError(t("files.error_title", { path: label }), err,
+    if (ticket === s.ticket) paint(ctx, viewFrame(bar(), viewError(t("files.error_title", { path: label }), err,
       () => renderFilesPlace(ctx))));
     return;
   }
@@ -1610,17 +1641,19 @@ async function renderFolder(ctx, cur) {
   const entries = data.entries || [];
   const count = data.truncated ? t("files.items_cut") : itemsLabel(entries.length);
   if (!entries.length) {
-    ctx.host.replaceChildren(viewFrame(bar(count), viewEmpty(`${label}/`, t("files.empty"), t("files.empty_note"))));
+    paint(ctx, viewFrame(bar(count), viewEmpty(`${label}/`, t("files.empty"), t("files.empty_note"))));
     return;
   }
   const narrow = ctx.narrow();
+  const pics = entries.filter((e) => e.kind === "file" && e.type === "image")  // v4.2: ← → step through them
+    .map((e) => ({ path: cur.path ? `${cur.path}/${e.name}` : e.name, size: e.size, modified: e.modified }));
   const table = el("div", { class: "ftable" + (narrow ? " narrow" : "") },
     narrow ? null : el("div", { class: "fhead" },
       ["files.col_name", "files.col_size", "files.col_created", "files.col_modified"].map((k) => el("span", { class: "kicker", text: t(k) }))),
-    entries.map((e) => fileRow(ctx, cur.path, e, narrow)),
+    entries.map((e) => fileRow(ctx, cur.path, e, narrow, pics)),
     data.truncated ? el("div", { class: "fcut" }, el("span", { class: "title", text: t("files.cut_title") }),
       el("span", { class: "cut-note", text: t("files.cut_note") })) : null);
-  ctx.host.replaceChildren(viewFrame(bar(count), table));
+  paint(ctx, viewFrame(bar(count), table));
 }
 
 /* her markdown for the reader: headings h1–h4, fences, rules, a picture on its own line, quotes, pipe tables, lists,
@@ -1754,12 +1787,12 @@ async function renderReader(ctx, cur) {
   const dir = cut < 0 ? "" : cur.path.slice(0, cut);
   const name = cur.path.slice(cut + 1);
   const head = [...navButtons(ctx), crumbs(ctx, dir, name)];
-  ctx.host.replaceChildren(viewFrame(head, viewLoading(t("reader.loading", { path: cur.path }))));
+  paint(ctx, viewFrame(head, viewLoading(t("reader.loading", { path: cur.path }))));
   let doc;
   try {
     doc = await filesFetch(ctx, "file:" + cur.path, () => api("/v1/files/text" + qpath(cur.path)));
   } catch (err) {
-    if (ticket === s.ticket) ctx.host.replaceChildren(viewFrame(head, viewError(t("reader.error_title", { name }), err,
+    if (ticket === s.ticket) paint(ctx, viewFrame(head, viewError(t("reader.error_title", { name }), err,
       () => renderFilesPlace(ctx))));
     return;
   }
@@ -1814,33 +1847,290 @@ async function renderReader(ctx, cur) {
   const body = !narrow && outline
     ? el("div", { class: "rwrap" }, scroller, el("aside", { class: "routline" }, el("span", { class: "kicker", text: t("reader.outline") }), outline))
     : scroller;
-  ctx.host.replaceChildren(el("div", { class: "view" }, el("div", { class: "vbar" }, ...bar), body));
+  paint(ctx, el("div", { class: "view" }, el("div", { class: "vbar" }, ...bar), body));
   if (cur.anchor) requestAnimationFrame(() => scrollToSlug(ctx, cur.anchor));
 }
 
-async function renderPicturePage(ctx, cur) {  // v4.1: a picture at full size (v4.2's full picture view replaces it)
+/* ---------- the full picture view (v4.2 LUMI-307, design/v4/handoff §6) ----------
+   One picture as large as fits, over the place it was opened from (the Gallery, a folder in Files, the reader; the chat
+   in LUMI-308): its path, date, size and dimensions, "Open in Files", ← → through its list, Esc to close. The picture is
+   fetched into a blob: URL of the view's own, released on every step and on close, so a long walk holds one picture. */
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+  "November", "December"];
+
+function num(n) { return Number(n || 0).toLocaleString("en-US"); }
+
+function fmtStamp(stamp) {  // "YYYY-MM-DD HH:MM" → "9 Nov 2026, 21:40"
+  const time = String(stamp || "").split(" ")[1];
+  const day = fmtDate(stamp);
+  return day && time ? `${day}, ${time}` : day;
+}
+
+function sizeFrame(frame, w, h) {  // the picture's box: as large as fits, in its own proportions (a size container)
+  if (!(w > 0 && h > 0)) return false;
+  frame.style.width = `min(100cqw, calc(100cqh * ${(w / h).toFixed(4)}))`;
+  frame.style.height = "auto";
+  frame.style.aspectRatio = `${w} / ${h}`;
+  return true;
+}
+
+function openPicture(ctx, opts) {  // opts: {items:[{path, size?, modified?, width?, height?}], index, total?, kicker, more?, toFiles?}
+  if (!opts.items[opts.index]) return;
+  closePicture(ctx, false);
+  const node = el("div", { class: "pview", role: "dialog", "aria-modal": "true", tabindex: "-1" });
+  const view = { node, opts, index: opts.index, opener: document.activeElement, ticket: 0, busy: false };
+  ctx.state.picture = view;
+  node.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closePicture(ctx, true); }
+    else if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") { ev.preventDefault(); stepPicture(ctx, ev.key === "ArrowLeft" ? -1 : 1); }
+  });
+  ctx.host.append(node);
+  renderPictureView(ctx);
+  node.focus();  // the focus moves into the dialog; Esc gives it back to what opened it
+}
+
+function closePicture(ctx, refocus) {
+  const view = ctx.state.picture;
+  if (!view) return;
+  dropPicture(ctx.state);
+  if (refocus && view.opener && view.opener.isConnected) view.opener.focus();
+}
+
+function dropPicture(state) {  // the picture view goes, and its picture with it (no focus moves)
+  const view = state.picture;
+  if (!view) return;
+  state.picture = null;
+  releaseBlobs(view.node);
+  view.node.remove();
+}
+
+async function stepPicture(ctx, delta) {
+  const view = ctx.state.picture;
+  if (!view || view.busy) return;
+  const i = view.index + delta;
+  if (i < 0) return;
+  if (i >= view.opts.items.length) {  // past the pictures loaded so far: the next page first (the Gallery)
+    if (!view.opts.more) return;
+    view.busy = true;
+    await view.opts.more().catch(() => false);
+    view.busy = false;
+    if (ctx.state.picture !== view || i >= view.opts.items.length) return;
+  }
+  view.index = i;
+  renderPictureView(ctx);
+}
+
+function renderPictureView(ctx) {
+  const view = ctx.state.picture;
+  if (!view) return;
+  const { items, kicker } = view.opts;
+  const item = items[view.index];
+  const total = Math.max(view.opts.total || 0, items.length);
+  const name = item.path.slice(item.path.lastIndexOf("/") + 1);
+  const focused = view.node.contains(document.activeElement) ? document.activeElement.getAttribute("aria-label") : null;
+  const ticket = ++view.ticket;
+  releaseBlobs(view.node);  // the previous picture goes before the next one comes
+  const bar = el("div", { class: "pvbar" },
+    el("button", { type: "button", class: "ib", "aria-label": t("picture.close"), title: `${t("picture.close")}  Esc`,
+      onclick: () => closePicture(ctx, true) }, icon("x")),
+    el("span", { class: "kicker", text: kicker }),
+    el("span", { class: "vmeta", text: `${num(view.index + 1)} / ${num(total)}` }),
+    el("span", { class: "pvgap" }),
+    el("button", { type: "button", class: "ib", "aria-label": t("picture.prev"), title: `${t("picture.prev")}  ←`,
+      disabled: view.index <= 0, onclick: () => stepPicture(ctx, -1) }, icon("chevron-left")),
+    el("button", { type: "button", class: "ib", "aria-label": t("picture.next"), title: `${t("picture.next")}  →`,
+      disabled: view.index >= total - 1, onclick: () => stepPicture(ctx, 1) }, icon("chevron-right")));
+  const img = el("img", { class: "pvimg", alt: name });
+  const frame = el("div", { class: "pvframe" }, img);
+  const known = sizeFrame(frame, item.width, item.height);
+  const dims = el("dd", { class: "num", text: known ? `${item.width} × ${item.height}` : "" });
+  img.addEventListener("load", () => {  // no dimensions from a listing: the loaded picture's own
+    if (!known && sizeFrame(frame, img.naturalWidth, img.naturalHeight)) dims.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+  }, { once: true });
+  const row = (key, value) => [el("dt", { class: "kicker", text: t(key) }), value];
+  const meta = el("aside", { class: "pvmeta", "aria-label": t("picture.about") },
+    el("div", { class: "pvname", text: name }),
+    el("dl", { class: "pvkv" },
+      row("picture.path", el("dd", { class: "mono", text: item.path })),
+      item.modified ? row("picture.date", el("dd", { class: "num", text: fmtStamp(item.modified) })) : null,
+      Number.isFinite(item.size) ? row("picture.size", el("dd", { class: "num", text: fmtSize(item.size) })) : null,
+      row("picture.dimensions", dims)),
+    view.opts.toFiles ? el("button", { type: "button", class: "btn btn-secondary", onclick: () => view.opts.toFiles(item) },
+      icon("folder"), t("picture.open_in_files")) : null,
+    el("div", { class: "pvlater" }, el("span", { class: "kicker", text: t("picture.actions_later") })),
+    el("span", { class: "pvkeys", text: t("picture.keys") }));
+  view.node.setAttribute("aria-label", name);
+  view.node.replaceChildren(bar, el("div", { class: "pvbody" }, el("div", { class: "pvarea" }, el("div", { class: "pvcq" }, frame)), meta));
+  const again = focused && [...bar.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === focused && !b.disabled);
+  (again || view.node).focus();  // a step rebuilt the buttons: the focus stays in the dialog, its keys keep working
+  pictureURL(view.node, item.path).then((url) => { if (ticket === view.ticket) img.src = url; })
+    .catch(() => { if (ticket === view.ticket) frame.classList.add("broken"); });
+}
+
+/* ---------- Gallery (v4.2 LUMI-307, design/v4/handoff §6) ----------
+   Every picture of her sandbox, newest first (/v1/images), a page of 100 at a time as the list nears its end, with a
+   folder filter and month dividers. Thumbnails (/v1/images/thumb, 320 px) are fetched with the window's key into blob:
+   URLs as their tiles come near the screen, kept per place. A fresh mount asks for the newest pictures again; a new
+   width only redraws what is loaded. */
+const GALLERY_PAGE = 100;
+const GALLERY_NEAR_END_PX = 160;
+
+function galleryMonth(stamp) {  // "YYYY-MM-DD HH:MM" → "November 2026"
+  const [y, m] = String(stamp || "").slice(0, 7).split("-").map(Number);
+  return y && m ? `${MONTHS[m - 1]} ${y}` : "";
+}
+
+function galleryQuery(s, before) {
+  const q = new URLSearchParams({ limit: String(GALLERY_PAGE) });
+  if (s.folder !== null) q.set("folder", s.folder);
+  if (before) q.set("before", before);
+  return "?" + q.toString();
+}
+
+VIEW_KINDS.gallery = (ctx) => {
   const s = ctx.state;
-  const ticket = ++s.ticket;
-  const cut = cur.path.lastIndexOf("/");
-  const dir = cut < 0 ? "" : cur.path.slice(0, cut);
-  const name = cur.path.slice(cut + 1);
-  const meta = cur.meta ? [fmtSize(cur.meta.size), fmtWhen(cur.meta.modified)].filter(Boolean).join(" · ") : "";
-  const bar = [...navButtons(ctx), crumbs(ctx, dir, name), meta ? el("span", { class: "vmeta", text: meta }) : null];
-  ctx.host.replaceChildren(viewFrame(bar, viewLoading(t("reader.loading", { path: cur.path }))));
-  let url;
-  try {
-    url = await pictureURL(ctx.host, cur.path);
-  } catch (err) {
-    if (ticket === s.ticket) ctx.host.replaceChildren(viewFrame(bar, viewError(t("reader.error_title", { name }), err,
-      () => renderFilesPlace(ctx))));
+  if (s.ctx !== ctx) {  // a fresh mount (or a new folder): the newest pictures again
+    Object.assign(s, { ctx, folder: s.folder === undefined ? null : s.folder, items: [], next: null, total: 0, filtered: 0,
+      folders: [], phase: "loading", error: null, busy: false, ticket: (s.ticket || 0) + 1, moreFailed: false });
+    renderGallery(ctx);
+    galleryLoad(ctx, false);
     return;
   }
-  if (ticket !== s.ticket) return;
-  const img = el("img", { class: "pfull", alt: name });
-  const cap = el("div", { class: "pcap" }, el("span", { class: "mono", text: cur.path }));
-  img.addEventListener("load", () => cap.append(` · ${img.naturalWidth} × ${img.naturalHeight}`), { once: true });
-  img.src = url;
-  ctx.host.replaceChildren(el("div", { class: "view" }, el("div", { class: "vbar" }, ...bar), el("div", { class: "pstage" }, img, cap)));
+  renderGallery(ctx);
+};
+
+function galleryReload(ctx) { ctx.state.ctx = null; VIEW_KINDS.gallery(ctx); }
+
+async function galleryLoad(ctx, more) {
+  const s = ctx.state;
+  if (s.busy || (more && !s.next)) return false;
+  const ticket = s.ticket;
+  s.busy = true;
+  s.moreFailed = false;
+  let data;
+  try {
+    data = await api("/v1/images" + galleryQuery(s, more ? s.next : null));
+  } catch (err) {
+    s.busy = false;
+    if (ticket !== s.ticket) return false;
+    if (more) { s.moreFailed = true; galleryMore(ctx); } else { s.phase = "error"; s.error = err; renderGallery(ctx); }
+    return false;
+  }
+  s.busy = false;
+  if (ticket !== s.ticket) return false;
+  const fresh = Array.isArray(data.items) ? data.items : [];
+  s.items.push(...fresh);
+  s.next = data.next || null;
+  s.total = data.total || 0;
+  s.folders = Array.isArray(data.folders) ? data.folders : [];
+  const mine = s.folders.find((f) => f.folder === s.folder);
+  s.filtered = s.folder === null ? s.total : mine ? mine.count : 0;
+  if (!more) { s.phase = "ok"; renderGallery(ctx); return true; }
+  galleryTiles(ctx, fresh);
+  galleryMore(ctx);
+  return true;
+}
+
+function galleryFilter(ctx) {
+  const s = ctx.state;
+  const opts = [{ folder: null, label: t("gallery.all"), count: s.total },
+    ...s.folders.map((f) => ({ folder: f.folder, label: f.folder || t("nav.root"), count: f.count }))];
+  return el("div", { class: "seg gseg", role: "radiogroup", "aria-label": t("gallery.folder") },
+    opts.map((o) => el("button", { type: "button", role: "radio", "aria-checked": String(o.folder === s.folder),
+      class: o.folder === s.folder ? "on" : null,
+      onclick: () => { if (o.folder !== s.folder) { s.folder = o.folder; galleryReload(ctx); } } },
+    o.label, el("span", { class: "gcount", text: num(o.count) }))));
+}
+
+function renderGallery(ctx) {
+  const s = ctx.state;
+  if (s.watch) { s.watch.disconnect(); s.watch = null; }
+  const bar = [el("h2", { class: "vtitle", text: t("gallery.title") })];
+  if (s.phase === "ok") bar.push(el("span", { class: "vmeta", text: t("gallery.count", { n: num(s.filtered) }) }));
+  bar.push(el("span", { class: "vactions", "aria-hidden": "true" }));
+  if (s.phase === "ok" && s.total > 0) bar.push(galleryFilter(ctx));
+  if (s.phase === "loading") { paint(ctx, viewFrame(bar, viewLoading(t("gallery.loading")))); return; }
+  if (s.phase === "error") {
+    paint(ctx, viewFrame(bar, viewError(t("gallery.error_title"), s.error, () => galleryReload(ctx))));
+    return;
+  }
+  if (!s.items.length) {
+    paint(ctx, viewFrame(bar, viewEmpty(t("gallery.title"), t("gallery.empty"), t("gallery.empty_note"))));
+    return;
+  }
+  const narrow = ctx.narrow();
+  const grid = el("div", { class: "ggrid" + (narrow ? " narrow" : "") });
+  const frame = viewFrame(bar, grid);
+  const scroller = frame.querySelector(".vscroll");
+  s.grid = { node: grid, month: "", narrow, more: null, scroller };
+  if (typeof IntersectionObserver !== "undefined") {  // a thumbnail is fetched as its tile nears the screen
+    s.watch = new IntersectionObserver((seen) => {
+      for (const e of seen) if (e.isIntersecting) { s.watch.unobserve(e.target); e.target.loadThumb(); }
+    }, { root: scroller, rootMargin: "300px 0px" });
+  }
+  scroller.addEventListener("scroll", () => galleryNearEnd(ctx));
+  galleryTiles(ctx, s.items);
+  galleryMore(ctx);
+  paint(ctx, frame);
+  requestAnimationFrame(() => galleryNearEnd(ctx));  // a first page that doesn't fill the screen asks for the next
+}
+
+function galleryNearEnd(ctx) {
+  const g = ctx.state.grid;
+  if (!g || ctx.state.moreFailed) return;
+  const sc = g.scroller;
+  if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < GALLERY_NEAR_END_PX) {
+    galleryLoad(ctx, true).then((got) => { if (got) requestAnimationFrame(() => galleryNearEnd(ctx)); });
+  }
+}
+
+function galleryTiles(ctx, items) {
+  const s = ctx.state;
+  const g = s.grid;
+  if (!g) return;
+  for (const item of items) {
+    const month = galleryMonth(item.modified);
+    if (month && month !== g.month) {
+      g.month = month;
+      g.node.append(el("div", { class: "divider gmonth" }, el("span", { class: "kicker", text: month }), el("span", { class: "line" })));
+    }
+    g.node.append(galleryTile(ctx, item, g.narrow));
+  }
+  if (g.more) g.node.append(g.more);  // the end row stays last
+}
+
+function galleryTile(ctx, item, narrow) {
+  const s = ctx.state;
+  const name = item.path.slice(item.path.lastIndexOf("/") + 1);
+  const img = el("img", { alt: "" });
+  const ph = el("span", { class: "gph" }, img);
+  ph.loadThumb = () => thumbURL(ctx.host, item.path).then((url) => { img.src = url; }).catch(() => ph.classList.add("broken"));
+  if (s.watch) s.watch.observe(ph); else ph.loadThumb();
+  return el("button", { type: "button", class: "gtile", "aria-label": `${name}, ${fmtWhen(item.modified)}`,
+    onclick: () => openPicture(ctx, { items: s.items, index: s.items.indexOf(item), total: s.filtered,
+      kicker: t("gallery.title"), more: () => galleryLoad(ctx, true),
+      toFiles: (it) => { closePicture(ctx, false); ctx.open("files", { goto: { kind: "dir", path: folderOf(it.path) } }); } }) },
+  ph, narrow ? null : el("span", { class: "gname", text: name }),
+  narrow ? null : el("span", { class: "gwhen", text: fmtWhen(item.modified) }));
+}
+
+function galleryMore(ctx) {  // the end row: loading more · that's all · a retry when a page failed
+  const s = ctx.state;
+  const g = s.grid;
+  if (!g) return;
+  let row;
+  if (s.moreFailed) {
+    row = el("div", { class: "gmore" }, el("span", { text: t("gallery.error_title") }),
+      el("button", { type: "button", class: "btn btn-secondary", onclick: () => { s.moreFailed = false; galleryNearEnd(ctx); galleryMore(ctx); } },
+        icon("refresh-cw"), t("state.try_again")));
+  } else if (s.next) {
+    row = el("div", { class: "gmore", role: "status" }, el("div", { class: "pulse" }, el("i"), el("i"), el("i"),
+      el("span", { text: t("gallery.more", { shown: num(s.items.length), total: num(s.filtered) }) })));
+  } else {
+    row = el("div", { class: "gmore", text: t("gallery.end", { n: num(s.filtered) }) });
+  }
+  if (g.more) g.more.replaceWith(row); else g.node.append(row);
+  g.more = row;
 }
 
 /* ---------- start ---------- */

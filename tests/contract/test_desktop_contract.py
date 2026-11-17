@@ -16,6 +16,7 @@ PAGE_ROUTES = {
     ("POST", "/v1/turn"), ("POST", "/v1/turn/stream"), ("POST", "/v1/command"), ("POST", "/v1/directive"),
     ("POST", "/v1/session/new"),
     ("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),  # v4.1: her sandbox, read-only
+    ("GET", "/v1/images"), ("GET", "/v1/images/thumb"),  # v4.2: her pictures and their thumbnails
 }
 
 
@@ -54,3 +55,9 @@ def test_v41_the_window_reads_her_files_through_get_routes_only():
     """v4.1 LUMI-303: the three read routes are forwarded as GET only — the page has no way to write her sandbox."""
     files = {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/files")}
     assert files == {("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw")}
+
+
+def test_v42_the_window_reads_her_pictures_through_get_routes_only():
+    """v4.2 LUMI-307: the gallery's two routes are forwarded as GET only, beside the v4.1 three."""
+    images = {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/images")}
+    assert images == {("GET", "/v1/images"), ("GET", "/v1/images/thumb")}

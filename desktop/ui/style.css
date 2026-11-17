@@ -409,13 +409,63 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
   -webkit-user-select: none; user-select: none; font-variant-numeric: tabular-nums; }
 .rlines .lt { padding-left: 14px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.65em; }
 
-/* — a picture at full size (v4.1; v4.2's full picture view replaces it) — */
-.pstage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  padding: 24px; }
-.vnarrow .pstage { padding: 12px; }
-.pfull { max-width: 100%; max-height: calc(100% - 28px); object-fit: contain; background: var(--color-surface); }
-.pcap { font-size: 12px; color: var(--l-faint); }
-.pcap .mono { font-family: var(--font-mono); }
+/* — Gallery (v4.2, §6): the folder filter, a grid of square crops by month, the end row — */
+.gseg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.gseg::-webkit-scrollbar { display: none; }
+.gseg > * { padding: 5px 10px; font-size: 12px; white-space: nowrap; display: inline-flex; gap: 6px; align-items: baseline; }
+.gseg .gcount { opacity: .7; font-variant-numeric: tabular-nums; }
+.ggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--l-thumb-min), 1fr)); gap: 18px 14px;
+  padding: 20px 24px 32px; align-content: start; }
+.ggrid.narrow { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 12px 12px 24px; }
+.ggrid .gmonth { grid-column: 1 / -1; padding-top: 14px; }
+.ggrid .gmonth:first-child { padding-top: 0; }
+.gtile { display: flex; flex-direction: column; gap: 6px; min-width: 0; text-align: left; color: var(--color-text); }
+.gph { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: var(--color-surface); overflow: hidden; }
+.gph img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gph img:not([src]) { visibility: hidden; }
+.gph::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border: 2px solid transparent; }
+.gtile:hover .gph::after, .gtile:focus-visible .gph::after { border-color: var(--color-accent); }
+.gtile:focus-visible { outline: none; }
+.gname { min-width: 0; font-size: 12px; color: var(--l-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gwhen { font-size: 11px; color: var(--l-faint); font-variant-numeric: tabular-nums; }
+.gmore { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 18px 0 8px;
+  font-size: 12px; color: var(--l-faint); }
+.gmore .pulse { display: flex; align-items: center; gap: 10px; }
+.gmore .pulse i { width: 6px; height: 6px; background: var(--color-accent); animation: liliPulse 1.2s ease-in-out infinite; }
+.gmore .pulse i:nth-child(2) { animation-delay: .18s; }
+.gmore .pulse i:nth-child(3) { animation-delay: .36s; }
+.gmore .btn-secondary { height: 32px; font-weight: 600; font-size: 13px; }
+
+/* — the full picture view (v4.2, §6): over the place it was opened from; as large as fits; its meta beside it — */
+.pview { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; background: var(--color-bg); }
+.pview:focus { outline: none; }
+.pvbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--l-hair); }
+.vnarrow .pvbar { padding: 6px 8px; }
+.pvbar .kicker { white-space: nowrap; }
+.pvbar .vmeta { white-space: nowrap; }
+.pvgap { flex: 1; }
+.pvbody { flex: 1; min-height: 0; display: flex; }
+.vnarrow .pvbody { flex-direction: column; }
+.pvarea { flex: 1; min-width: 0; min-height: 0; display: flex; padding: 24px; }
+.vnarrow .pvarea { padding: 12px; }
+.pvcq { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; container-type: size; }
+.pvframe { position: relative; width: 100%; height: 100%; background: var(--color-surface); }
+.pvimg { display: block; width: 100%; height: 100%; object-fit: contain; }
+.pvimg:not([src]), .pvframe.broken .pvimg { visibility: hidden; }
+.pvmeta { flex: none; width: var(--l-picmeta); border-left: 1px solid var(--l-hair); padding: 20px 24px; display: flex;
+  flex-direction: column; gap: 14px; overflow-y: auto; }
+.vnarrow .pvmeta { width: auto; max-height: 45%; border-left: 0; border-top: 1px solid var(--l-hair); padding: 12px 16px 16px; gap: 10px; }
+.pvname { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.pvkv { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; align-items: baseline; font-size: 13px; }
+.pvkv dt { font-size: 10px; }
+.pvkv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pvkv .mono { font: 12px var(--font-mono); }
+.pvkv .num { font-variant-numeric: tabular-nums; }
+.pvmeta .btn-secondary { align-self: flex-start; height: 36px; font-weight: 600; font-size: 13px; }
+.pvmeta .btn-secondary svg.icon { width: 15px; height: 15px; }
+.pvlater { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--l-hair); }
+.vnarrow .pvlater { display: none; }
+.pvkeys { font-size: 11.5px; color: var(--l-faint); }
 
 /* — every interactive element: the accent focus ring, never the browser's — */
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }

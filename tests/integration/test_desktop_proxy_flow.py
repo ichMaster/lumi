@@ -241,3 +241,18 @@ def test_v41_a_picture_is_relayed_byte_for_byte_with_its_headers(world):
     assert seen["path"] == "/v1/files/raw?path=art%2Fp%20q.png"  # the query reaches the server as the page wrote it
     assert seen["headers"]["Authorization"] == f"Bearer {TOKEN}"
     assert request(proxy, "POST", "/v1/files/raw", body={})[0] == 404  # GET only
+
+
+def test_v42_a_thumbnail_and_a_page_of_pictures_are_relayed(world):
+    """v4.2 LUMI-307: the thumbnail byte for byte as image/jpeg with its headers; the listing's query as written."""
+    from tests._desktop_world import JPEG
+
+    server, proxy = world
+    status, headers, body = request(proxy, "GET", "/v1/images/thumb?path=art%2Fp.png")
+    assert status == 200 and body == JPEG and headers["content-type"] == "image/jpeg"
+    assert headers["x-content-type-options"] == "nosniff" and headers["content-disposition"] == "inline"
+    status, _, body = request(proxy, "GET", "/v1/images?limit=100&folder=art&before=MTph")
+    assert status == 200 and json.loads(body)["total"] == 1
+    assert server.requests[-1]["path"] == "/v1/images?limit=100&folder=art&before=MTph"
+    assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    assert request(proxy, "POST", "/v1/images/thumb", body={})[0] == 404  # GET only

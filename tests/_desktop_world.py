@@ -18,6 +18,7 @@ KEY = "launch-key-for-the-tests"
 
 
 PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256))  # every byte value: a relay must not touch one
+JPEG = b"\xff\xd8\xff\xe0" + bytes(range(255, -1, -1))  # v4.2: a thumbnail's bytes, every value again
 
 
 class FakeServer:
@@ -77,6 +78,20 @@ class FakeServer:
                     self.send_header("Set-Cookie", "never=1")  # a header the proxy must not pass
                     self.end_headers()
                     self.wfile.write(PNG)
+                elif method == "GET" and path == "/v1/images":  # v4.2: a page of her pictures
+                    self._send(200, {"items": [{"path": "art/p.png", "folder": "art", "size": len(PNG),
+                                                "modified": "2026-11-17 09:00", "width": 768, "height": 768}],
+                                     "next": None, "total": 1, "folders": [{"folder": "art", "count": 1}],
+                                     "truncated": False})
+                elif method == "GET" and path == "/v1/images/thumb":  # v4.2: a thumbnail's bytes and their headers
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Content-Length", str(len(JPEG)))
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.send_header("Content-Disposition", "inline")
+                    self.send_header("Cache-Control", "private, max-age=300")
+                    self.end_headers()
+                    self.wfile.write(JPEG)
                 elif method == "POST" and path == "/v1/command":
                     self._send(200, {"handled": True, "echo": json.loads(body or "{}")})
                 else:
