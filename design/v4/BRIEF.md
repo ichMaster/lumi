@@ -5,15 +5,15 @@
 > original the owner pastes there: [BRIEF.uk.md](BRIEF.uk.md). The design's exports go into this folder, then into
 > `desktop/ui/`.
 >
-> **This continues the v2.12 design**, not a new one: <https://claude.ai/artifact/BgY2hbwQ8XdHbvcg8hUMwL>.
+> **This extends the v2.12 design; it does not redo it.** Open it in the same Claude Design project
+> (<https://claude.ai/artifact/BgY2hbwQ8XdHbvcg8hUMwL>) and add the new views to the window that is already there.
 >
 > **Attach to the brief:**
-> - the v2.12 handoff: [README.md](../v2.12/handoff/README.md) (the anatomy and measurements),
->   [tokens.css](../v2.12/handoff/tokens.css), [strings.en.json](../v2.12/handoff/strings.en.json);
-> - a screenshot of today's window (only the Lili window);
-> - two or three portraits (`viewer/faces/<theme>/<emotion>/01.png`);
-> - six to eight of her real pictures from `art/` for the gallery, or the portraits as stand-ins if the owner prefers
->   not to share them.
+> - six to eight of her real pictures from `art/` for the gallery, or portraits as stand-ins if the owner prefers not
+>   to share them;
+> - if the brief is opened outside the v2.12 project, the v2.12 handoff too:
+>   [README.md](../v2.12/handoff/README.md), [tokens.css](../v2.12/handoff/tokens.css),
+>   [strings.en.json](../v2.12/handoff/strings.en.json).
 
 ## What it is
 Лілі is a private text companion with a stable character, memory and emotions. She speaks Ukrainian. There is one
@@ -27,6 +27,25 @@ keeps on the server**: her files with a markdown reader, a gallery of pictures, 
 state and her timetable. **They only read**; actions (upload, "show this to her", download) come in a later version,
 so the layout should leave room for them without a redesign.
 
+## Extend, don't redo
+- **Everything that exists stays as it is:**
+  - the portrait panel: the portrait, the caption, the theme and closeness, the mood of the day, the quiet-thoughts
+    strip;
+  - the chat: the messages, the think block, the command block, the picture, the new-session divider;
+  - the input, the status line and its details;
+  - the connection banner and screens;
+  - the narrow layout;
+  - the tokens, the accent table, the type and the visual language.
+- **The new views are built from what exists:** the kicker, the meta grid, the closeness meter, the thought item, the
+  command block, the picture, the buttons, the hairlines and the 2px rules. A new component only where nothing
+  existing fits.
+- **New tokens and strings are additions only;** no existing value changes.
+- **The changes to the existing window:**
+  - the view row is added to the content column and takes its space from it; the portrait panel and the status line
+    do not move;
+  - the details panel gains the tool list;
+  - the picture component gets real pictures.
+
 ## Technical frame (as in v2.12)
 - **The window.** pywebview on macOS, WebKit. Resizable: ~1200×800 by default, ~720×520 minimum.
 - **The code.** A static index.html + style.css + app.js: no framework, no bundler, no node. Tokens are CSS
@@ -39,7 +58,7 @@ so the layout should leave room for them without a redesign.
 - **Language.** The interface is English. Her content (file texts, journal, thoughts, mood) is Ukrainian, and
   Ukrainian words are long.
 
-## What changes in the window
+## What is added to the window
 - **A row of views:** **Chat · Files · Gallery · Journal · Thoughts · State · Schedule**.
   - A view replaces the chat column; the portrait panel stays on the left.
   - The chat keeps receiving while another view is open, and the Chat tab shows an unread mark.
@@ -139,7 +158,7 @@ so the layout should leave room for them without a redesign.
 12. **The narrow layout of every view.**
 
 ## Tone and principles
-- **The same visual system as v2.12.**
+- **The v2.12 visual system, with nothing new in the visual language.**
   - "Modernist", inverted for dark: flat, zero radius, 2px rules between regions, 1px hairlines inside, no bubbles,
     no gradients.
   - The accent comes from the day's theme.
@@ -159,9 +178,9 @@ so the layout should leave room for them without a redesign.
 - Face animation.
 
 ## The deliverables
-- Every view in the dark theme with realistic content and every state from "What to design"; the light theme for the
-  reader and the journal at least.
-- **The components:**
+- Added to the existing board: every new view in the dark theme with realistic content and every state from "What to
+  design"; the light theme for the reader and the journal at least.
+- **The new components**, added to the existing components sheet:
   - the view row with its unread mark;
   - a file row and the path bar;
   - the reader's elements (headings, list, table, quote, code, internal/external link, inline picture, outline,
