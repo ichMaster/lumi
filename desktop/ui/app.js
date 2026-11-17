@@ -1259,29 +1259,35 @@ function sidePanel(slot, both) {
     slot === "r" ? el("button", { type: "button", class: "ib", "aria-label": t("panels.collapse"), title: t("panels.collapse"),
       onclick: () => { vw.open = false; savePanels(); renderSide(); } }, icon("chevrons-right")) : null);
   const body = el("div", { class: "sbody" });
-  const section = el("section", { class: "spanel", "aria-label": label }, head, body);
-  if (both) section.style.flex = `${slot === "r" ? vw.split : 1 - vw.split} 1 0`;
-  else section.style.flex = "1 1 0";
+  const section = el("section", { class: "spanel", "aria-label": label, "data-slot": slot }, head, body);
+  section.style.flex = both ? `${slot === "r" ? vw.split : 1 - vw.split} 1 0` : "1 1 0";
   if (both && slot === "b") {
+    // code review #1: the split moves in place — rebuilding the column would re-mount (and refetch) both views on
+    // every move and drop the handle that holds the pointer capture
     const split = el("button", { type: "button", class: "split", "aria-label": t("panels.resize_split") });
     const side = $("side");
     dragOn(split, (e) => {
       const box = side.getBoundingClientRect();
       vw.split = clamp((e.clientY - box.top) / box.height, SPLIT.min, SPLIT.max);
-      renderSide();
+      applySplit();
     }, savePanels);
     split.addEventListener("keydown", (ev) => {
       if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
       ev.preventDefault();
       vw.split = clamp(vw.split + (ev.key === "ArrowUp" ? -SPLIT.step : SPLIT.step), SPLIT.min, SPLIT.max);
+      applySplit();
       savePanels();
-      renderSide();
-      $("side").querySelector(".split")?.focus();
     });
     section.prepend(split);
   }
   mountView(slot, body, active, true);
   return section;
+}
+
+function applySplit() {  // the two panels' shares from vw.split, on the sections already there
+  const top = $("side").querySelector('.spanel[data-slot="r"]');
+  const bottom = $("side").querySelector('.spanel[data-slot="b"]');
+  if (top && bottom) { top.style.flex = `${vw.split} 1 0`; bottom.style.flex = `${1 - vw.split} 1 0`; }
 }
 
 function renderSide() {

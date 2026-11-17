@@ -320,3 +320,14 @@ def test_v41_sizes_and_heading_slugs():
 console.log(JSON.stringify([fmtSize(820), fmtSize(18 * 1024), fmtSize(412 * 1024), fmtSize(3 * 1024 * 1024),
   slugOf("Ідеї на **зиму**"), slugOf("Code: `x` & y")]));""")
     assert got == ["820 B", "18 KB", "412 KB", "3.0 MB", "ідеї-на-зиму", "code-x-y"]
+
+
+
+def test_review_v41_1_the_split_moves_in_place_never_rebuilding_the_panels():
+    """v4.1 code review #1: a split drag that rebuilt the column re-mounted (and refetched) both views on every move
+    and dropped the handle holding the pointer capture."""
+    js = _js()
+    split = js[js.index('if (both && slot === "b") {'):js.index("mountView(slot, body, active, true);")]
+    assert split.count("applySplit()") == 2 and "renderSide()" not in split
+    apply = js[js.index("function applySplit("):js.index("function renderSide(")]
+    assert '.spanel[data-slot="r"]' in apply and '.spanel[data-slot="b"]' in apply and "replaceChildren" not in apply
