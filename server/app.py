@@ -36,9 +36,19 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.browse import (
+    BadPath,
+    BrowseError,
+    NotFound,
+    NotServed,
+    TooLarge,
+    list_folder,
+    read_picture,
+    read_text,
+)
 from core.commands import run_command
 from core.llm import LLMError
 from state.bus import mirror_reply, mirror_user
@@ -84,6 +94,12 @@ AGORA_API = 2  # the agora space API version this server serves (health's "agora
 OBSERVE_BATCH_MAX = 200  # the contract's limits.observe_batch_max
 ROOM_GRACE_S = 2.0  # the server's backstop waits this much past the room's own budget before a 504
 ROOM_ONLY = "the room's token reaches only the agora space"
+# v4.1 LUMI-302: the window's read routes over her sandbox — a refusal's status, and the headers each answer carries
+BROWSE_STATUS: tuple[tuple[type[BrowseError], int], ...] = ((BadPath, 400), (NotFound, 404), (TooLarge, 413),
+                                                           (NotServed, 415))
+FILES_JSON_HEADERS = {"Cache-Control": "no-store"}
+FILES_RAW_HEADERS = {"X-Content-Type-Options": "nosniff", "Content-Disposition": "inline",
+                     "Cache-Control": "private, max-age=300"}
 ROOM_BUSY = "Лілі is answering the room — try again"
 INITIATIVE_NONE = {"outcome": "none"}  # v3.4: nothing to say now (no fresh offer, off, or a compose under way)
 
@@ -302,7 +318,9 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
         "closeness": {"level": level, "name": name},  # v2.4
         # v2.6: what the SERVER can do — a client on another machine gates /image and /web on these, not its .env
         "features": {"image": bool(getattr(core, "image_enabled", False)),
-                     "web_lookup": bool(getattr(core, "web_lookup_enabled", False))},
+                     "web_lookup": bool(getattr(core, "web_lookup_enabled", False)),
+                     # v4.1: her sandbox is served to the window's views (read-only) — whatever her file tools may do
+                     "files": isinstance(getattr(core, "files_root", None), Path)},
     }
 
 
@@ -594,6 +612,38 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             return service.publish_state()
         finally:
             service.lock.release()
+
+    # --- v4.1 LUMI-302: her sandbox for the window's views — read-only, never the turn lock, never a model call ---
+    def _files_root() -> Path:
+        root = getattr(core, "files_root", None)
+        if not isinstance(root, Path):
+            raise HTTPException(status_code=404, detail="files are not served")
+        return root
+
+    def _browse(read: Callable[..., Any], path: str) -> Any:
+        try:
+            return read(_files_root(), path)
+        except BrowseError as exc:  # a readable line naming the sandbox path only — never an absolute one
+            status = next((code for kind, code in BROWSE_STATUS if isinstance(exc, kind)), 400)
+            raise HTTPException(status_code=status, detail=str(exc)) from None
+        except OSError:
+            raise HTTPException(status_code=404, detail="the file can't be read") from None
+
+    @app.get("/v1/files", dependencies=guarded)
+    def files(path: str = "") -> JSONResponse:
+        """A folder of her sandbox: ``{path, entries, truncated}`` (``core.browse.list_folder``)."""
+        return JSONResponse(_browse(list_folder, path), headers=FILES_JSON_HEADERS)
+
+    @app.get("/v1/files/text", dependencies=guarded)
+    def files_text(path: str = "") -> JSONResponse:
+        """A text file for the reader: ``{path, text, size, cut, type}`` (``core.browse.read_text``)."""
+        return JSONResponse(_browse(read_text, path), headers=FILES_JSON_HEADERS)
+
+    @app.get("/v1/files/raw", dependencies=guarded)
+    def files_raw(path: str = "") -> Response:
+        """A picture's bytes (png/jpeg/gif/webp by magic bytes; ``core.browse.read_picture``) — never SVG or HTML."""
+        data, media_type = _browse(read_picture, path)
+        return Response(content=data, media_type=media_type, headers=FILES_RAW_HEADERS)
 
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:

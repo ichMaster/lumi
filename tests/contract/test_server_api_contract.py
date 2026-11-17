@@ -32,6 +32,7 @@ def test_the_route_set_is_pinned(tmp_path):
         ("POST", "/v1/turn/stream"),  # v2.3: the streamed turn (SSE)
         ("GET", "/v1/events"),  # v2.4: the push channel (SSE)
         ("POST", "/v1/directive"),  # v2.4: a typed %directive runs on the server
+        ("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),  # v4.1: her sandbox, read-only
     }
 
 
@@ -69,7 +70,7 @@ def test_state_shape_is_pinned(tmp_path):
         "features",  # v2.6: what the server can do — a remote client gates /image and /web on it
     }
     assert set(state["closeness"]) == {"level", "name"}  # the level by name — never the raw value
-    assert state["features"] == {"image": False, "web_lookup": False}  # a bare core: both off
+    assert state["features"] == {"image": False, "web_lookup": False, "files": False}  # a bare core: all off
     assert set(state["totals"]) == {
         "turns", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "latency_ms",
     }
@@ -254,3 +255,129 @@ def test_a_turn_without_a_channel_is_todays(tmp_path):
     # v3.1: the new fields default to his channel — the payload is the same set as before, nothing added.
     res = _client(tmp_path).post("/v1/turn", json={"text": "?", "channel": "owner"}, headers=AUTH).json()
     assert set(res) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "timing", "state"}
+
+
+# --- v4.1 LUMI-302: her sandbox for the window's views — read-only, owner-only, never the lock --------------------
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
+
+
+def _sandbox(files_dir, user_id="owner"):
+    root = files_dir / user_id
+    (root / "notes").mkdir(parents=True)
+    (root / "notes" / "ideas.md").write_text("# Ідеї\n\n- дощ\n", encoding="utf-8")
+    (root / "art").mkdir()
+    (root / "art" / "p.png").write_bytes(PNG)
+    (root / "art" / "x.svg").write_text("<svg><script>x</script></svg>", encoding="utf-8")
+    return root
+
+
+def _files_core(tmp_path, user_id="owner"):
+    return Core(llm=MockLLMClient(states={"reply": "так", "emotion": "calm", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / f"s-{user_id}.json"), canon="C", model="m",
+                files_dir=tmp_path / "files", user_id=user_id)
+
+
+def _files_client(tmp_path, user_id="owner"):
+    return TestClient(create_app(_files_core(tmp_path, user_id), token=TOKEN, env="dev", version="4.1.0"))
+
+
+def _fingerprint(root):
+    import hashlib
+    import os
+    rows = []
+    for dirpath, _dirs, names in os.walk(root):
+        for name in names:
+            p = os.path.join(dirpath, name)
+            st = os.stat(p)
+            rows.append((p, st.st_size, st.st_mtime_ns, hashlib.sha256(open(p, "rb").read()).hexdigest()))
+    return sorted(rows)
+
+
+def test_v41_the_three_reads_answer_with_their_shapes(tmp_path):
+    _sandbox(tmp_path / "files")
+    client = _files_client(tmp_path)
+    folder = client.get("/v1/files", headers=AUTH)
+    assert folder.status_code == 200 and folder.headers["cache-control"] == "no-store"
+    body = folder.json()
+    assert set(body) == {"path", "entries", "truncated"} and body["path"] == ""
+    assert [e["name"] for e in body["entries"]] == ["art", "notes"]
+    assert set(body["entries"][0]) == {"name", "kind", "type", "size", "count", "created", "modified"}
+    text = client.get("/v1/files/text", params={"path": "notes/ideas.md"}, headers=AUTH).json()
+    assert text == {"path": "notes/ideas.md", "text": "# Ідеї\n\n- дощ\n", "size": len("# Ідеї\n\n- дощ\n".encode()),
+                    "cut": False, "type": "markdown"}
+    raw = client.get("/v1/files/raw", params={"path": "art/p.png"}, headers=AUTH)
+    assert raw.status_code == 200 and raw.content == PNG and raw.headers["content-type"] == "image/png"
+    assert raw.headers["x-content-type-options"] == "nosniff"
+    assert raw.headers["content-disposition"] == "inline"
+    assert raw.headers["cache-control"] == "private, max-age=300"
+
+
+def test_v41_features_say_whether_files_are_served(tmp_path):
+    assert _files_client(tmp_path).get("/v1/state", headers=AUTH).json()["features"]["files"] is True
+    assert _client(tmp_path).get("/v1/state", headers=AUTH).json()["features"]["files"] is False
+    assert _client(tmp_path).get("/v1/files", headers=AUTH).status_code == 404  # no sandbox: not served
+
+
+def test_v41_the_reads_are_the_owners_only(tmp_path):
+    from tests._agora_world import OWNER_AUTH, ROOM_AUTH, agora_client
+    _sandbox(tmp_path / "files")
+    client = agora_client(tmp_path, core=_files_core(tmp_path))
+    for path, params in (("/v1/files", {}), ("/v1/files/text", {"path": "notes/ideas.md"}),
+                         ("/v1/files/raw", {"path": "art/p.png"})):
+        assert client.get(path, params=params).status_code == 401
+        assert client.get(path, params=params, headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert client.get(path, params=params, headers=ROOM_AUTH).status_code == 403  # the room never reads her files
+        assert client.get(path, params=params, headers=OWNER_AUTH).status_code == 200
+
+
+def test_v41_refusals_are_mapped_and_name_no_absolute_path(tmp_path):
+    _sandbox(tmp_path / "files")
+    client = _files_client(tmp_path)
+    cases = [("/v1/files", "../elsewhere", 400), ("/v1/files", "nope", 404), ("/v1/files/text", "art/p.png", 415),
+             ("/v1/files/raw", "art/x.svg", 415), ("/v1/files/raw", "notes/ideas.md", 415),
+             ("/v1/files/raw", "/etc/hosts", 400), ("/v1/files/text", "nope.md", 404)]
+    for path, rel, status in cases:
+        res = client.get(path, params={"path": rel}, headers=AUTH)
+        assert res.status_code == status, (path, rel, res.status_code)
+        assert str(tmp_path) not in res.text
+
+
+def test_v41_a_picture_over_the_cap_is_413(tmp_path, monkeypatch):
+    from core import browse
+    _sandbox(tmp_path / "files")
+    monkeypatch.setattr(browse, "BROWSE_MAX_PICTURE", 8)
+    assert _files_client(tmp_path).get("/v1/files/raw", params={"path": "art/p.png"}, headers=AUTH).status_code == 413
+
+
+def test_v41_a_read_never_waits_for_the_turn_lock(tmp_path):
+    _sandbox(tmp_path / "files")
+    client = _files_client(tmp_path)
+    service = client.app.state.service
+    assert service.lock.acquire(timeout=1)  # a turn that runs for minutes holds it
+    try:
+        assert client.get("/v1/files", headers=AUTH).status_code == 200
+        assert client.get("/v1/files/text", params={"path": "notes/ideas.md"}, headers=AUTH).status_code == 200
+    finally:
+        service.lock.release()
+
+
+def test_v41_each_user_reads_only_their_own_sandbox(tmp_path):
+    _sandbox(tmp_path / "files", "owner")
+    bob = _sandbox(tmp_path / "files", "bob")
+    (bob / "notes" / "bob-only.md").write_text("bob", encoding="utf-8")
+    owner = _files_client(tmp_path, "owner")
+    names = [e["name"] for e in owner.get("/v1/files", params={"path": "notes"}, headers=AUTH).json()["entries"]]
+    assert "bob-only.md" not in names
+    assert owner.get("/v1/files/text", params={"path": "../bob/notes/bob-only.md"}, headers=AUTH).status_code == 400
+    assert owner.get("/v1/files", params={"path": "../bob"}, headers=AUTH).status_code == 400
+
+
+def test_v41_the_reads_leave_the_sandbox_byte_identical(tmp_path):
+    root = _sandbox(tmp_path / "files")
+    before = _fingerprint(root)
+    client = _files_client(tmp_path)
+    for path, rel in (("/v1/files", ""), ("/v1/files", "notes"), ("/v1/files/text", "notes/ideas.md"),
+                      ("/v1/files/raw", "art/p.png"), ("/v1/files/raw", "art/x.svg"), ("/v1/files", "../x")):
+        client.get(path, params={"path": rel}, headers=AUTH)
+    assert _fingerprint(root) == before

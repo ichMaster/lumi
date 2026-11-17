@@ -183,6 +183,14 @@ voice: show / collapse / hide). Her quiet thoughts gather in a strip under the m
 the panel becomes a strip at the top. Not yet: pictures she sends still arrive only in Telegram (v4.2); voice,
 dictation and `/image` from a file stay in the TUI.
 
+**v4.1 (her files — the server's side).** Three read-only routes serve her sandbox (`files/<user_id>/` in the data
+root) to the owner's token, never the room's:
+- `GET /v1/files?path=` lists a folder;
+- `GET /v1/files/text?path=` returns a text file (at most 256 KB);
+- `GET /v1/files/raw?path=` returns a picture (png/jpg/gif/webp, at most 10 MB; never SVG or HTML).
+
+Nothing in the sandbox changes, no model is called, and a read never waits for her turn.
+
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another
 checkout, `--portrait` for another picture). It opens from Launchpad, Spotlight or the Dock, as one "Lili" tile. The
