@@ -197,6 +197,12 @@ def outbox_of(cfg):
     return Outbox(cfg.outbox_path, mirror_user=cfg.bridge) if (cfg.bridge or cfg.voice) else None
 
 
+def thumbs_dir_of(cfg):
+    """v4.2: the Gallery's thumbnail cache — ``<data root>/cache/thumbs`` (a folder per user below it), outside her
+    sandbox so her file tools never see it. Made on the first thumbnail, never at start."""
+    return cfg.data_root / "cache" / "thumbs"
+
+
 def telegram_sink_of(cfg):
     """The v0.24 ``send_image`` sink — a photo record in the server's outbox (bridge + image on), else None."""
     from state.bus import make_photo_sink
@@ -365,7 +371,8 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     space = agora_space_of(cfg, core)  # v3.1: the room's own path (None when agora.enabled is off)
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
                      on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg),
-                     space=space, room_token=cfg.agora_token if space is not None else None)
+                     space=space, room_token=cfg.agora_token if space is not None else None,
+                     thumbs_dir=thumbs_dir_of(cfg))
     service = app.state.service
     from server.brain import BrainHost
 

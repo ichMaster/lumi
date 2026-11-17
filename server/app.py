@@ -50,6 +50,7 @@ from core.browse import (
     read_text,
 )
 from core.commands import run_command
+from core.gallery import GALLERY_MAX_LIMIT, list_pictures, thumbnail
 from core.llm import LLMError
 from state.bus import mirror_reply, mirror_user
 
@@ -298,8 +299,10 @@ def totals_dict(totals: Any) -> dict[str, int]:
     }
 
 
-def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | None) -> dict[str, Any]:
+def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | None,
+                   thumbs_dir: Path | None = None) -> dict[str, Any]:
     """Everything a client's status/stats lines read — one fetch per turn/command, not one per render."""
+    files_served = isinstance(getattr(core, "files_root", None), Path)
     emo = getattr(core, "last_emotion", None)
     level, name = core.closeness_status()  # v2.4: the level by name only — the raw value stays internal
     return {
@@ -320,8 +323,16 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
         "features": {"image": bool(getattr(core, "image_enabled", False)),
                      "web_lookup": bool(getattr(core, "web_lookup_enabled", False)),
                      # v4.1: her sandbox is served to the window's views (read-only) — whatever her file tools may do
-                     "files": isinstance(getattr(core, "files_root", None), Path)},
+                     "files": files_served,
+                     # v4.2: her pictures and their thumbnails (the sandbox and the cache outside it are both served)
+                     "gallery": files_served and thumbs_dir is not None},
     }
+
+
+def turn_pictures(core: Any) -> list[str]:
+    """v4.2: the sandbox paths of the pictures she made or sent in the turn just run (``[]`` when none)."""
+    pictures = getattr(core, "last_pictures", None)
+    return [p for p in pictures if isinstance(p, str)] if isinstance(pictures, list) else []
 
 
 def turn_timing(core: Any, received: float | None) -> dict[str, Any] | None:
@@ -341,9 +352,10 @@ class _Service:
     """The one core + its current session, behind one lock."""
 
     def __init__(self, core: Any, session: Any, *, env: str | None, version: str | None,
-                 outbox: Outbox | None = None) -> None:
+                 outbox: Outbox | None = None, thumbs_dir: Path | None = None) -> None:
         self.core = core
         self.outbox = outbox  # v2.5: the file bus the server writes (Telegram / the voicer), or None
+        self.thumbs_dir = thumbs_dir  # v4.2: the thumbnail cache (per user below it), outside her sandbox; or None
         self.session = session
         self.env = env
         self.version = version
@@ -356,7 +368,7 @@ class _Service:
         self.last_state = self.state()  # the last consistent snapshot — what a new listener starts from
 
     def state(self) -> dict[str, Any]:
-        return state_snapshot(self.core, self.session, env=self.env, version=self.version)
+        return state_snapshot(self.core, self.session, env=self.env, version=self.version, thumbs_dir=self.thumbs_dir)
 
     def acquire(self) -> None:
         """A client request's turn at the lock: at once; or — while the server's own act holds it (v2.5) —
@@ -405,11 +417,14 @@ class _Service:
             log.warning("outbox write failed", exc_info=True)
 
     def publish_message(self, role: str, text: str, source: str, *, state: Any = None,
-                        origin: str | None = None) -> None:
-        """v2.5: one conversation line as a ``message`` event (a hidden seed is never one)."""
+                        origin: str | None = None, pictures: list[str] | None = None) -> None:
+        """v2.5: one conversation line as a ``message`` event (a hidden seed is never one). v4.2: her line carries
+        ``pictures`` — the sandbox paths of what she made or sent in that turn — only when there are any."""
         data: dict[str, Any] = {"role": role, "text": text, "source": source}
         if state is not None:
             data.update(emotion=state.emotion.value, intensity=state.intensity)
+        if pictures:
+            data["pictures"] = list(pictures)
         data["origin"] = origin
         self.bus.publish("message", data)
 
@@ -472,7 +487,8 @@ class _Service:
             self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
                                       "theme": self.core.theme, "origin": origin})
             self.publish_message("user", req.text, "client", origin=origin)
-            self.publish_message("lili", result.reply, "client", state=result, origin=origin)
+            self.publish_message("lili", result.reply, "client", state=result, origin=origin,
+                                 pictures=turn_pictures(self.core))
             record.result = self.turn_payload(result, origin, received=record.received)
         except LLMError as exc:  # the model failed — a readable error, the session stays usable
             log.warning("turn failed: %s", exc)
@@ -490,13 +506,16 @@ class _Service:
     def turn_payload(self, result: Any, origin: str | None = None, *, received: float | None = None) -> dict[str, Any]:
         """The turn's outcome; its ``state`` is the snapshot just pushed (taken under the runner's lock)."""
         core = self.core
-        return {
+        payload = {
             "reply": result.reply, "emotion": result.emotion.value, "intensity": result.intensity,
             "thinking": getattr(core, "last_thinking", None), "intent": getattr(core, "last_intent", None),
             "style": core.style, "stats": stats_dict(core.last_stats),
             "timing": turn_timing(core, received),  # v2.6: the client's /latency sees the network hop
             "state": self.publish_state(origin),
         }
+        if pictures := turn_pictures(core):  # v4.2: only when she made or sent a picture this turn
+            payload["pictures"] = pictures
+        return payload
 
 
 def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
@@ -553,7 +572,8 @@ def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
 
 def create_app(core: Any, *, token: str, session: Any = None, env: str | None = None,
                version: str | None = None, on_new_session: Callable[[], None] | None = None,
-               outbox: Outbox | None = None, space: Any = None, room_token: str | None = None) -> FastAPI:
+               outbox: Outbox | None = None, space: Any = None, room_token: str | None = None,
+               thumbs_dir: Path | None = None) -> FastAPI:
     """The v1 app around an injected core (a mock model in tests). ``token`` is required.
 
     ``on_new_session`` runs in the background after ``/v1/session/new`` (the ambient re-snapshot, as the
@@ -562,13 +582,16 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
     v3.1: ``space`` (an ``AgoraSpace``) turns the Agora space on — ``POST /v1/observe``, a turn with ``channel:
     "agora"`` and ``"agora": AGORA_API`` on health (v3.3: + retract; v3.4: + her initiative — ``GET /v1/initiative``
     and ``POST /v1/initiative/{initiative_id}/posted``); ``room_token`` is the room's scoped token (its routes only,
-    ``403`` elsewhere). Without ``space`` the app is today's, route for route."""
+    ``403`` elsewhere). Without ``space`` the app is today's, route for route.
+
+    v4.2: ``thumbs_dir`` is the thumbnail cache (``<data root>/cache/thumbs``; the user's folder below it), outside her
+    sandbox. ``None`` → the thumbnail route answers 404 and ``features.gallery`` is false."""
     if not token:
         raise ValueError("LUMI_SERVER_TOKEN is required to serve")
     if space is not None and (not room_token or room_token == token):
         raise ValueError("the Agora space needs its own room token (agora.token), never the client token")
     service = _Service(core, session if session is not None else core.start_session(), env=env, version=version,
-                       outbox=outbox)
+                       outbox=outbox, thumbs_dir=Path(thumbs_dir) if thumbs_dir is not None else None)
     expected = f"Bearer {token}".encode()
     room_expected = f"Bearer {room_token}".encode() if space is not None else None
     # No interactive docs / schema endpoints: the API is private to its own clients.
@@ -620,14 +643,17 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             raise HTTPException(status_code=404, detail="files are not served")
         return root
 
-    def _browse(read: Callable[..., Any], path: str) -> Any:
+    def _mapped(read: Callable[[], Any]) -> Any:
         try:
-            return read(_files_root(), path)
+            return read()
         except BrowseError as exc:  # a readable line naming the sandbox path only — never an absolute one
             status = next((code for kind, code in BROWSE_STATUS if isinstance(exc, kind)), 400)
             raise HTTPException(status_code=status, detail=str(exc)) from None
         except OSError:
             raise HTTPException(status_code=404, detail="the file can't be read") from None
+
+    def _browse(read: Callable[..., Any], path: str) -> Any:
+        return _mapped(lambda: read(_files_root(), path))
 
     @app.get("/v1/files", dependencies=guarded)
     def files(path: str = "") -> JSONResponse:
@@ -644,6 +670,28 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         """A picture's bytes (png/jpeg/gif/webp by magic bytes; ``core.browse.read_picture``) — never SVG or HTML."""
         data, media_type = _browse(read_picture, path)
         return Response(content=data, media_type=media_type, headers=FILES_RAW_HEADERS)
+
+    # --- v4.2 LUMI-306: her pictures for the Gallery — the same rules: read-only over the sandbox, never the lock ---
+    @app.get("/v1/images", dependencies=guarded)
+    def images(before: str | None = None, limit: int = GALLERY_MAX_LIMIT, folder: str | None = None) -> JSONResponse:
+        """Her pictures, newest first: ``{items, next, total, folders, truncated}`` (``core.gallery.list_pictures``)."""
+        root = _files_root()
+        return JSONResponse(_mapped(lambda: list_pictures(root, before=before, limit=limit, folder=folder)),
+                            headers=FILES_JSON_HEADERS)
+
+    @app.get("/v1/images/thumb", dependencies=guarded)
+    def images_thumb(path: str = "") -> Response:
+        """A picture's 320 px JPEG thumbnail, cached in ``thumbs_dir/<user_id>`` (``core.gallery.thumbnail``)."""
+        root = _files_root()
+        if service.thumbs_dir is None:
+            raise HTTPException(status_code=404, detail="thumbnails are not served")
+        cache = service.thumbs_dir / str(core.user_id)
+        try:
+            data = _mapped(lambda: thumbnail(root, path, cache))
+        except ValueError:  # a cache configured inside her sandbox: refused, never written there
+            log.warning("the thumbnail cache %s is inside the sandbox — not served", cache)
+            raise HTTPException(status_code=404, detail="thumbnails are not served") from None
+        return Response(content=data, media_type="image/jpeg", headers=FILES_RAW_HEADERS)
 
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:

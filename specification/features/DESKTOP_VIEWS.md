@@ -113,8 +113,8 @@ Nothing new runs on the Mac. The window reads only through the API, the existing
 | v4.4 | `GET /v1/schedule` | `{entries:[{name, directive, trigger:{kind: at\|every\|idle\|between\|cron, …}, enabled, last_fired, next_due}], quiet_hours, day_cap, fired_today}` | From `schedule.yaml` with the settings' overrides and `schedule.state`; `next_due` computed by the scheduler's own pure `due` (for `idle`, from the last input: "if silent"). The trigger is structured; the window words it in English ("every day at 08:00"). |
 
 **Additions to existing routes:**
-- `GET /v1/state.features` gains `files`, `journal`, `thoughts` (and `today`, `schedule`), so a client shows only the
-  views the server serves.
+- `GET /v1/state.features` gains `files`, `gallery` (v4.2: the sandbox and the thumbnail cache both served),
+  `journal`, `thoughts` (and `today`, `schedule`), so a client shows only the views the server serves.
 - **v4.2:** the `message` push and the turn outcome carry `pictures: [path]`. These are the sandbox paths of the
   pictures she sent (`send_image`) or made (`generate_image`) in that turn; the field is absent when there are none.
 - **v4.4:** the turn outcome carries `tool_calls: [{name, input, result}]`. Each is short and bounded, and an image

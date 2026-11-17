@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from core.agent import Core
 from core.config import load_config
 from core.llm import MockLLMClient
-from server.__main__ import outbox_of, telegram_sink_of
+from server.__main__ import outbox_of, telegram_sink_of, thumbs_dir_of
 from server.app import EventBus, Outbox, create_app
 from server.brain import BrainHost
 from state import fifo
@@ -212,3 +212,12 @@ def test_last_event_id_resumes_without_repeats(tmp_path):
     last = f"{bus.boot}-{bus._seq}"
     raw = _listen(client, {**AUTH, "Last-Event-ID": last})
     assert "event: message" not in raw  # nothing missed — nothing replayed
+
+
+def test_v42_the_thumbnail_cache_lives_under_the_data_root_outside_the_sandbox(tmp_path):
+    """v4.2 LUMI-306: ``<data root>/cache/thumbs`` — never inside ``files_dir``, so her file tools never see it."""
+    cfg = dataclasses.replace(load_config(load_env=False), data_root=tmp_path, files_dir=tmp_path / "files")
+    thumbs = thumbs_dir_of(cfg)
+    assert thumbs == tmp_path / "cache" / "thumbs"
+    assert cfg.files_dir not in thumbs.parents and thumbs != cfg.files_dir
+    assert not thumbs.exists()  # made on the first thumbnail, never at start

@@ -26,6 +26,7 @@ from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.schedule import load_schedule
 from core.scheduler import Scheduler, TickService, graduates, is_loud, scheduled_text, spoken_seed
 from core.thoughts import parse_directive
+from server.app import turn_pictures
 from state import fifo
 from state.bus import mirror_reply, mirror_thought
 
@@ -144,7 +145,8 @@ class BrainHost:
                 service.mirror(mirror_reply, state, getattr(self._core, "last_speech", None))
                 service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
                                              "theme": self._core.theme, "origin": None})
-                service.publish_message("lili", state.reply, source, state=state)
+                service.publish_message("lili", state.reply, source, state=state,
+                                        pictures=turn_pictures(self._core))  # v4.2
             except Exception:  # noqa: BLE001 — one bad line never stops the bus
                 log.exception("inbox turn failed")
             finally:
@@ -225,7 +227,8 @@ class BrainHost:
         self._service.mirror(mirror_reply, state, getattr(self._core, "last_speech", None))  # Telegram too
         self._service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
                                            "theme": self._core.theme, "origin": None})
-        self._service.publish_message("lili", state.reply, source, state=state)
+        self._service.publish_message("lili", state.reply, source, state=state,
+                                      pictures=turn_pictures(self._core))  # v4.2: what she made or sent
 
     def _push_thought(self, thought: Any) -> None:
         self._service.bus.publish("thought", {"kind": thought.kind, "text": thought.text,

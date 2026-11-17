@@ -685,6 +685,9 @@ class Core:
         self._telegram_sink = telegram_sink
         self._tool_log_path = tool_log_path
         self.last_tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — reset each turn
+        # v4.2: the sandbox paths of the pictures she made (generate_image) or sent (send_image) this turn — reset at
+        # the start of every reply, kept whatever files.trace says; the server puts them on the outcome and her message
+        self.last_pictures: list[str] = []
         # Per-call prompt-cache monitor (off by default): log each model call's cache behaviour by
         # channel + attribute the writes (first/expired/changed); render the report at session close.
         self._cache_log_path = cache_log_path
@@ -2074,6 +2077,7 @@ class Core:
             if result.startswith("created "):  # a new PNG landed → count it + show it
                 made["n"] += 1
                 self._emit_image_display(result, root)
+                self._note_picture(root, result.split(" ", 2)[1])  # "created art/cat.png (123 bytes)"
             return result
 
         return GENERATE_TOOLS, capped
@@ -2093,7 +2097,24 @@ class Core:
         root = self._files_dir / self._user_id
         root.mkdir(parents=True, exist_ok=True)
         sender = SendImageTools(root, telegram_sink=self._telegram_sink)
-        return SEND_TOOLS, sender.execute
+
+        def send(name: str, tool_input: dict) -> str:
+            result = sender.execute(name, tool_input)
+            rel = (tool_input or {}).get("path")
+            if result.startswith("sent ") and isinstance(rel, str):  # only a picture the sink really took
+                self._note_picture(root, rel)
+            return result
+
+        return SEND_TOOLS, send
+
+    def _note_picture(self, root: Path, rel: str) -> None:
+        """v4.2: remember a picture of this turn by its normalised sandbox path, once. Best-effort, never raises."""
+        try:
+            path = (root / rel).resolve().relative_to(root.resolve()).as_posix()
+        except (OSError, ValueError):
+            return
+        if path not in self.last_pictures:
+            self.last_pictures.append(path)
 
     def _emit_image_display(self, result: str, root: Path) -> None:
         """Show a freshly-generated PNG per ``LUMI_IMAGE_SHOW`` — write its path to the display signal the
@@ -2543,6 +2564,7 @@ class Core:
         byte-identical to before.
         """
         self._active_session_id = session.id  # stamp this turn's cache events with the session
+        self.last_pictures = []  # v4.2: this turn's pictures only
         _t0 = time.monotonic()  # S0 (LATENCY): per-stage turn timing — PRE → MODEL CALL → POST
         self.last_ttft_ms = None  # v1.4: measured in _reply_streamed; stays None on a blocking turn
         self.drain_post()  # v1.5: the next prompt needs the prior turn persisted (cost lands in pre_ms)
