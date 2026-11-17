@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 4.2.0 (2026-11-17)
+---------------------------
+- v4.2 — the Gallery and her pictures in the chat, the second phase of v4 (the window's views of what her server-side tools leave on the box).
+- Two read-only owner routes over her sandbox, on core/gallery.py: GET /v1/images (her pictures newest first, typed by magic bytes, paged by an opaque cursor, 100 a page, with the total and the per-folder counts and an exact-folder filter; at most 10,000 files scanned) and GET /v1/images/thumb (a 320 px JPEG, made by Pillow on the first request and cached in <data root>/cache/thumbs/<user_id>, outside the sandbox; a source over 10 MB or 50 megapixels is refused before any decode). The owner's token only (the room's 403); never the turn lock; no model call. GET /v1/state.features adds gallery (LUMI-305, LUMI-306).
+- pictures on the turn's outcome and on her message push: the sandbox paths of the pictures she made with generate_image or sent with send_image in that turn, on client, inbox and spoken turns; absent when there are none, so every other outcome is byte-identical. The v2.4 rule "no image crosses the API" is narrowed to the face; the Server API v1 grows additively (LUMI-306).
+- The window's Gallery view (⌘3): month groups, a folder filter, thumbnails fetched as their tiles near the screen, the next page near the end; a pinned panel shows a narrow grid. The full picture view, shared with Files: the picture at its own proportions, its path, date, size and dimensions, ← →, Esc, Open in Files. The v4.1 stand-in picture page is gone (LUMI-307).
+- Her pictures in the chat: under her line, from the turn's outcome or from another client's message; a click opens the full picture view over the chat; a broken one keeps its path (LUMI-308).
+- Code review fix: a generated picture whose name holds spaces keeps its whole path (it was cut at the first space, so the chat showed a broken picture and the v0.23 display signal named a missing file).
+- Checked by the owner on dev (2026-11-17). The prod check (her real pictures) follows confirm v4.2.0.
+
 Version 4.1.0 (2026-11-17)
 ---------------------------
 - v4.1 — Files and the markdown reader in the desktop window, the first phase of v4 (the window's views of what her server-side tools leave on the box). The ROADMAP inserted v4 on 2026-11-17; the old v4–v8 are now v5–v9.

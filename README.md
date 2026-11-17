@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.1.0 — The window: Files and the markdown reader** (version 4; version 3 complete, last 3.4.1).
+**4.2.0 — The window: the Gallery and her pictures in the chat** (version 4; version 3 complete, last 3.4.1).
+- **The Gallery** (⌘3) shows every picture in her sandbox, newest first: month groups, a folder filter, 320 px
+  thumbnails loaded as they come into view.
+- **The full picture view** opens a picture with its path, date, size and dimensions (← → step, Esc closes, Open in
+  Files). Files' pictures open in it too.
+- **Her pictures in the chat:** a picture she makes or sends in a turn shows under her line.
+
+The server lists her pictures and makes the thumbnails for the owner's token only, read-only, caching them outside her
+sandbox (`/v1/images`, `/v1/images/thumb`); a turn's outcome and her message carry `pictures`. Guide:
+[docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop window (LUMI-305..308).
+
+**4.1.0 — The window: Files and the markdown reader** (version 4).
 The desktop window shows what her server-side tools leave on the box:
 - **A row of views** over the chat (Chat · Files, ⌘1/⌘2). Any view but Chat can be pinned to a right or bottom-right
   panel beside the chat (resizable, split, ⌘\ folds it).
