@@ -381,3 +381,11 @@ def test_v41_the_reads_leave_the_sandbox_byte_identical(tmp_path):
                       ("/v1/files/raw", "art/p.png"), ("/v1/files/raw", "art/x.svg"), ("/v1/files", "../x")):
         client.get(path, params={"path": rel}, headers=AUTH)
     assert _fingerprint(root) == before
+
+
+def test_review_v41_2_a_nul_byte_in_the_path_is_400(tmp_path):
+    _sandbox(tmp_path / "files")
+    client = _files_client(tmp_path)
+    for path in ("/v1/files", "/v1/files/text", "/v1/files/raw"):
+        res = client.get(path, params={"path": "notes/a\x00b"}, headers=AUTH)
+        assert res.status_code == 400 and "malformed" in res.json()["detail"], path

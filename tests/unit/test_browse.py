@@ -194,3 +194,11 @@ def test_files_root_is_the_users_sandbox_and_creates_nothing(tmp_path):
     assert core(files_dir=files, user_id="alice").files_root == files / "alice"
     assert not files.exists()  # reading the property makes no folder
     assert core().files_root is None  # no sandbox configured
+
+
+def test_review_v41_2_a_nul_byte_in_the_path_is_a_malformed_path(tmp_path):
+    """v4.1 code review #2: os.path raised ValueError (embedded null byte), which reached the server as a 500."""
+    root = _sandbox(tmp_path)
+    for read in (list_folder, read_text, read_picture):
+        with pytest.raises(BadPath, match="malformed"):
+            read(root, "notes/a\x00b.md")

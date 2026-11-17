@@ -105,6 +105,8 @@ def _resolve(root: str | Path, rel: object) -> Path:
         return safe_path(root, rel)
     except _Denied as exc:
         raise BadPath(str(exc)) from None
+    except ValueError:  # code review #2: an embedded NUL byte (os.path refuses it) is a malformed path, not a 500
+        raise BadPath("a malformed path") from None
 
 
 def _rel(base: Path, target: Path) -> str:
