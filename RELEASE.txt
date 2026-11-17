@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 4.1.0 (2026-11-17)
+---------------------------
+- v4.1 — Files and the markdown reader in the desktop window, the first phase of v4 (the window's views of what her server-side tools leave on the box). The ROADMAP inserted v4 on 2026-11-17; the old v4–v8 are now v5–v9.
+- Three read-only owner routes over her sandbox, on core/browse.py: GET /v1/files (a folder: folders first, types by content, counts, dates, at most 1,000 entries), /v1/files/text (at most 256 KB, cut on a character boundary) and /v1/files/raw (png/jpeg/gif/webp by magic bytes, at most 10 MB; never SVG or HTML). The owner's token only (the room's 403). The sandbox guard on every path; nothing written; never the turn lock; no model call. GET /v1/state.features adds files. The Server API v1 grows additively (LUMI-301, LUMI-302).
+- The window's frame: a view row over the chat (Chat · Files, ⌘1/⌘2, an unread mark on Chat). Right panels pin any view but Chat beside the chat: resizable from 280 px up to the window less a 360 px chat (the owner's word at the dev check), split between two panels, folded by ⌘\, and kept per window. The proxy forwards the three routes and passes a picture's nosniff and inline disposition (LUMI-303).
+- The Files view and the markdown reader. Files has a path bar, back/forward (⌘[ ⌘]) and the folder table. The reader renders her markdown as built DOM nodes, never HTML: headings, lists, quotes, code, tables, an outline that follows the scroll, Formatted / Raw, the cut note. Her relative links open her other files; external links are shown with their address and never followed; links out of the sandbox stay text. Pictures, inline or full size, come through fetch into blob: URLs (LUMI-304).
+- Code review fixes: the split between the right panels moves in place (no re-mount or refetch on every move); a NUL byte in a path answers 400, not 500; the window shows only the views the server serves.
+- Checked by the owner on dev (2026-11-17). The prod check (her real sandbox) follows confirm v4.1.0.
+
 Version 3.4.1 (2026-11-17)
 ---------------------------
 - v3.4.1 — Her initiative's compose gap is 10 minutes: INITIATIVE_COMPOSE_GAP_S 1800 → 600, with the agora space API's limits.initiative_compose_gap_s (the contract stays version 2, health "agora": 2). On the owner's word (2026-11-17), after the bridge's quiet stretch went to 600 s and Lumi's half-hour gap had become the binding limit.

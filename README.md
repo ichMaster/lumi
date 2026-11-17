@@ -12,7 +12,19 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**3.4.1 — Agora, her initiative** (version 3; version 2 complete, last 2.12.3).
+**4.1.0 — The window: Files and the markdown reader** (version 4; version 3 complete, last 3.4.1).
+The desktop window shows what her server-side tools leave on the box:
+- **A row of views** over the chat (Chat · Files, ⌘1/⌘2). Any view but Chat can be pinned to a right or bottom-right
+  panel beside the chat (resizable, split, ⌘\ folds it).
+- **Files** browses her sandbox read-only.
+- **The reader** renders her markdown as a formatted page: an outline, Raw, her relative links and pictures inside the
+  text. External links are shown and never opened.
+
+The server serves the sandbox to the owner's token only, read-only, never waiting for her turn (`/v1/files`,
+`/v1/files/text`, `/v1/files/raw`). Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop window
+(LUMI-301..304).
+
+**3.4.1 — Agora, her initiative** (version 3).
 She may open a line of her own in Agora when the room has been quiet: the bridge polls `GET /v1/initiative` (never a
 model call), Lumi composes one offer in the background under its own guards (one at a time, at most one attempt in 10
 minutes — a half-hour in 3.4.0 —, never twice in a row, the hourly cap, never about him), and only the room's ack
