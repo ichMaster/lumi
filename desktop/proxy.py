@@ -4,7 +4,7 @@ A page in the pywebview window can't call the server directly — the server sen
 this small HTTP server on ``127.0.0.1`` (a free port): it serves the static page from ``desktop/ui/`` and forwards
 the public API the page uses (:data:`FORWARDED`) to the configured server, adding ``Authorization: Bearer <token>``
 itself. The page holds no token and calls relative ``/v1`` URLs — the same page can later be served by the server
-itself (v5.3, the web client), unchanged.
+itself (v6.3, the web client), unchanged.
 
 **The local guard.** Other apps, and web pages in a browser, can reach ``127.0.0.1`` too. So every ``/v1`` request
 needs this launch's random key (:data:`KEY_HEADER`, templated into ``index.html`` as
