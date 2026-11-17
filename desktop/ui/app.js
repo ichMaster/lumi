@@ -75,6 +75,20 @@ const ICONS = {
   "wifi-off": [["path", { d: "M12 20h.01" }], ["path", { d: "M8.5 16.429a5 5 0 0 1 7 0" }], ["path", { d: "M5 12.859a10 10 0 0 1 5.17-2.69" }], ["path", { d: "M19 12.859a10 10 0 0 0-2.007-1.523" }], ["path", { d: "M2 8.82a15 15 0 0 1 4.177-2.643" }], ["path", { d: "M22 8.82a15 15 0 0 0-11.288-3.764" }], ["path", { d: "m2 2 20 20" }]],
   "refresh-cw": [["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }], ["path", { d: "M21 3v5h-5" }], ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" }], ["path", { d: "M8 16H3v5" }]],
   x: [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]],
+  // v4.1: the views
+  "panel-right": [["rect", { x: "3", y: "3", width: "18", height: "18" }], ["path", { d: "M15 3v18" }]],
+  "pin-right": [["rect", { x: "3", y: "3", width: "18", height: "18" }], ["rect", { x: "15", y: "3", width: "6", height: "18", fill: "currentColor", stroke: "none" }]],
+  "pin-bottom": [["rect", { x: "3", y: "3", width: "18", height: "18" }], ["path", { d: "M15 3v18" }], ["path", { d: "M15 12h6" }],
+    ["rect", { x: "15", y: "12", width: "6", height: "9", fill: "currentColor", stroke: "none" }]],
+  "chevrons-right": [["path", { d: "m6 17 5-5-5-5" }], ["path", { d: "m13 17 5-5-5-5" }]],
+  "circle-alert": [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 8v4" }], ["path", { d: "M12 16h.01" }]],
+  folder: [["path", { d: "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" }]],
+  "file-text": [["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" }], ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4" }],
+    ["path", { d: "M10 9H8" }], ["path", { d: "M16 13H8" }], ["path", { d: "M16 17H8" }]],
+  file: [["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" }], ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4" }]],
+  image: [["rect", { x: "3", y: "3", width: "18", height: "18" }], ["circle", { cx: "9", cy: "9", r: "2" }], ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" }]],
+  "arrow-left": [["path", { d: "m12 19-7-7 7-7" }], ["path", { d: "M19 12H5" }]],
+  "arrow-right": [["path", { d: "M5 12h14" }], ["path", { d: "m12 5 7 7-7 7" }]],
 };
 
 function icon(name, size) {
@@ -245,6 +259,7 @@ function append(node) {
   st.rows++;
   if (wasEmpty) renderPanel(); // the empty state is over: the panel shows its meta and the mood again
   stick(follow);
+  if (vw.view !== "chat" && !vw.chatUnread) { vw.chatUnread = true; renderViews(); }  // v4.1: seen on return
   return node;
 }
 
@@ -693,6 +708,10 @@ function showScreen(kind, detail) {
   screen.hidden = false;
   $("list").hidden = true;
   $("composer").hidden = true;
+  $("views").hidden = true;
+  $("viewhost").hidden = true;
+  $("side").hidden = true;
+  $("rail").hidden = true;
   st.conn = "stopped";
   $("banner").replaceChildren();
   renderStatus();
@@ -700,8 +719,9 @@ function showScreen(kind, detail) {
 
 function hideScreen() {
   $("screen").hidden = true;
-  $("list").hidden = false;
-  $("composer").hidden = false;
+  $("views").hidden = false;
+  applyView();
+  renderSide();
 }
 
 /* ---------- the push channel ---------- */
@@ -1085,6 +1105,283 @@ function onKey(ev) {
   }
 }
 
+/* ---------- the views (v4.1, design/v4/handoff §1–§3): a row of views over the content column, right panels ----------
+   A view replaces the message list and the input (the banner stays); the push channel keeps running underneath, and a
+   line that arrives meanwhile marks Chat. Any view but Chat can be pinned to a right panel and/or a bottom-right one
+   beside the chat (wide layout only); a pinned view always takes its narrow layout. The pins, the active tabs, the
+   width, the split and the folded state are kept per client in localStorage. Each place keeps its own view state. */
+const VIEWS = ["chat", "files"];  // v4.1 — later phases add gallery, journal, thoughts, state, schedule
+const VIEW_LABEL = { chat: "views.chat", files: "views.files" };
+const VIEW_KINDS = {};  // kind → render(ctx): each view registers itself below
+const PANELS_STORE = "lumi.desktop.panels";
+const SIDE = { min: 280, max: 520, default: 340, step: 20 };
+const SPLIT = { min: 0.2, max: 0.8, default: 0.55, step: 0.05 };
+const VIEW_NARROW_PX = 640;
+const vw = { view: "chat", chatUnread: false, r: [], b: [], rActive: null, bActive: null, open: true,
+  w: SIDE.default, split: SPLIT.default };
+const places = { main: { states: {} }, r: { states: {} }, b: { states: {} } };  // per place: each kind's own state
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function loadPanels() {
+  try {
+    const kept = JSON.parse(localStorage.getItem(PANELS_STORE) || "null");
+    if (!kept || typeof kept !== "object") return;
+    const pinnable = (list) => (Array.isArray(list) ? list.filter((k) => VIEWS.includes(k) && k !== "chat") : []);
+    vw.r = pinnable(kept.r);
+    vw.b = pinnable(kept.b).filter((k) => !vw.r.includes(k));
+    vw.rActive = vw.r.includes(kept.rActive) ? kept.rActive : vw.r[0] || null;
+    vw.bActive = vw.b.includes(kept.bActive) ? kept.bActive : vw.b[0] || null;
+    vw.open = kept.open !== false;
+    if (Number.isFinite(kept.w)) vw.w = clamp(kept.w, SIDE.min, SIDE.max);
+    if (Number.isFinite(kept.split)) vw.split = clamp(kept.split, SPLIT.min, SPLIT.max);
+  } catch (e) { /* none kept — no pins, the defaults */ }
+}
+
+function savePanels() {
+  const { r, b, rActive, bActive, open, w, split } = vw;
+  try { localStorage.setItem(PANELS_STORE, JSON.stringify({ r, b, rActive, bActive, open, w, split })); } catch (e) { /* lasts this window */ }
+}
+
+function viewName(kind) { return t(VIEW_LABEL[kind] || "views.chat"); }
+
+function setView(kind) {
+  if (!VIEWS.includes(kind)) return;
+  vw.view = kind;
+  if (kind === "chat") vw.chatUnread = false;
+  renderViews();
+  applyView();
+}
+
+function applyView() {  // which of the chat or the open view fills the content column
+  if (!$("screen").hidden) return;  // the auth screen owns the column
+  const chat = vw.view === "chat";
+  $("list").hidden = !chat;
+  $("composer").hidden = !chat;
+  const host = $("viewhost");
+  host.hidden = chat;
+  if (chat) {
+    const watch = widthWatch.get(host);
+    if (watch) { watch.disconnect(); widthWatch.delete(host); }
+    host.replaceChildren();
+    stick(true);
+    $("input").focus();
+    return;
+  }
+  mountView("main", host, vw.view);
+}
+
+function pin(kind, slot) {  // a view lives in one panel at a time; pressing again unpins it
+  const mine = slot === "r" ? vw.r : vw.b;
+  const other = slot === "r" ? vw.b : vw.r;
+  if (mine.includes(kind)) {
+    mine.splice(mine.indexOf(kind), 1);
+  } else {
+    if (other.includes(kind)) other.splice(other.indexOf(kind), 1);
+    mine.push(kind);
+    vw.open = true;
+  }
+  if (slot === "r") vw.rActive = mine.includes(kind) ? kind : vw.r[0] || null;
+  else vw.bActive = mine.includes(kind) ? kind : vw.b[0] || null;
+  if (!vw.r.includes(vw.rActive)) vw.rActive = vw.r[0] || null;
+  if (!vw.b.includes(vw.bActive)) vw.bActive = vw.b[0] || null;
+  savePanels();
+  renderViews();
+  renderSide();
+}
+
+function tab(kind, current, onclick, n) {
+  const kids = [viewName(kind)];
+  if (kind === "chat" && vw.chatUnread && vw.view !== "chat") {
+    kids.push(el("span", { class: "unread", role: "img", "aria-label": t("views.chat_unread") }));
+  }
+  return el("button", { type: "button", class: "vtab", "aria-current": current ? "page" : "false",
+    title: n ? `${viewName(kind)}  ${t("views.shortcut", { n })}` : null, onclick }, ...kids);
+}
+
+function renderViews() {
+  const nav = $("views");
+  nav.setAttribute("aria-label", t("views.label"));
+  const tabs = el("div", { class: "views-tabs" },
+    VIEWS.map((kind, i) => tab(kind, kind === vw.view, () => setView(kind), i + 1)));
+  const kids = [tabs];
+  if (vw.view !== "chat" && !NARROW.matches) {
+    const name = viewName(vw.view);
+    kids.push(el("div", { class: "pins", role: "group", "aria-label": t("panels.pin_this") },
+      el("span", { class: "kicker", text: t("panels.pin") }),
+      el("button", { type: "button", class: "ib", "aria-pressed": String(vw.r.includes(vw.view)),
+        "aria-label": vw.r.includes(vw.view) ? t("panels.unpin_right") : t("panels.pin_right", { view: name }),
+        title: t("panels.right"), onclick: () => pin(vw.view, "r") }, icon("pin-right")),
+      el("button", { type: "button", class: "ib", "aria-pressed": String(vw.b.includes(vw.view)),
+        "aria-label": vw.b.includes(vw.view) ? t("panels.unpin_bottom") : t("panels.pin_bottom", { view: name }),
+        title: t("panels.bottom_right"), onclick: () => pin(vw.view, "b") }, icon("pin-bottom"))));
+  }
+  nav.replaceChildren(...kids);
+}
+
+function dragOn(handle, onMove, onEnd) {  // a pointer drag on a handle (mouse or pen)
+  handle.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    handle.setPointerCapture(ev.pointerId);
+    const move = (e) => onMove(e);
+    const up = () => { handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", up); onEnd(); };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  });
+}
+
+function setSideWidth(w) { vw.w = clamp(Math.round(w), SIDE.min, SIDE.max); $("side").style.width = `${vw.w}px`; }
+
+function sidePanel(slot, both) {
+  const list = slot === "r" ? vw.r : vw.b;
+  const active = slot === "r" ? vw.rActive : vw.bActive;
+  const label = slot === "r" ? t("panels.right") : t("panels.bottom_right");
+  const head = el("div", { class: "shead" },
+    el("div", { class: "stabs", role: "group", "aria-label": t("panels.pinned", { panel: label }) },
+      list.map((kind) => tab(kind, kind === active, () => {
+        if (slot === "r") vw.rActive = kind; else vw.bActive = kind;
+        savePanels();
+        renderSide();
+      }))),
+    el("button", { type: "button", class: "ib", "aria-label": t("panels.unpin", { view: viewName(active) }),
+      onclick: () => pin(active, slot) }, icon("x")),
+    slot === "r" ? el("button", { type: "button", class: "ib", "aria-label": t("panels.collapse"), title: t("panels.collapse"),
+      onclick: () => { vw.open = false; savePanels(); renderSide(); } }, icon("chevrons-right")) : null);
+  const body = el("div", { class: "sbody" });
+  const section = el("section", { class: "spanel", "aria-label": label }, head, body);
+  if (both) section.style.flex = `${slot === "r" ? vw.split : 1 - vw.split} 1 0`;
+  else section.style.flex = "1 1 0";
+  if (both && slot === "b") {
+    const split = el("button", { type: "button", class: "split", "aria-label": t("panels.resize_split") });
+    const side = $("side");
+    dragOn(split, (e) => {
+      const box = side.getBoundingClientRect();
+      vw.split = clamp((e.clientY - box.top) / box.height, SPLIT.min, SPLIT.max);
+      renderSide();
+    }, savePanels);
+    split.addEventListener("keydown", (ev) => {
+      if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
+      ev.preventDefault();
+      vw.split = clamp(vw.split + (ev.key === "ArrowUp" ? -SPLIT.step : SPLIT.step), SPLIT.min, SPLIT.max);
+      savePanels();
+      renderSide();
+      $("side").querySelector(".split")?.focus();
+    });
+    section.prepend(split);
+  }
+  mountView(slot, body, active, true);
+  return section;
+}
+
+function renderSide() {
+  const side = $("side");
+  const rail = $("rail");
+  const pinned = vw.r.length + vw.b.length > 0;
+  if (!pinned || NARROW.matches) { side.hidden = true; rail.hidden = true; side.replaceChildren(); return; }
+  if (!vw.open) {
+    side.hidden = true;
+    side.replaceChildren();
+    rail.hidden = false;
+    rail.replaceChildren(
+      el("button", { type: "button", class: "ib", "aria-label": t("panels.open"), title: t("panels.open"),
+        onclick: () => { vw.open = true; savePanels(); renderSide(); } }, icon("panel-right")),
+      el("span", { class: "kicker", text: [...vw.r, ...vw.b].map(viewName).join(" · ") }));
+    return;
+  }
+  rail.hidden = true;
+  side.hidden = false;
+  side.setAttribute("aria-label", t("panels.label"));
+  side.style.width = `${vw.w}px`;
+  const grip = el("button", { type: "button", class: "grip", "aria-label": t("panels.resize_width") });
+  let x0 = 0, w0 = 0;
+  grip.addEventListener("pointerdown", (ev) => { x0 = ev.clientX; w0 = vw.w; });
+  dragOn(grip, (e) => setSideWidth(w0 + (x0 - e.clientX)), savePanels);
+  grip.addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    ev.preventDefault();
+    setSideWidth(vw.w + (ev.key === "ArrowLeft" ? SIDE.step : -SIDE.step));
+    savePanels();
+  });
+  const both = vw.r.length > 0 && vw.b.length > 0;
+  side.replaceChildren(grip, ...(vw.r.length ? [sidePanel("r", both)] : []), ...(vw.b.length ? [sidePanel("b", both)] : []));
+}
+
+/* A view mounts into a host with its context: the place, its own state, the narrow test, and a way to open another
+   view in the same place (navigation inside a panel stays in that panel). */
+function mountView(place, host, kind, forceNarrow) {
+  const render = VIEW_KINDS[kind];
+  if (!render) { host.replaceChildren(); return; }
+  const states = places[place].states;
+  if (!states[kind]) states[kind] = {};
+  const ctx = {
+    place, host, kind, state: states[kind],
+    narrow: () => forceNarrow || host.clientWidth < VIEW_NARROW_PX,
+    rerender: () => render(ctx),
+    open: (other, init) => {
+      if (init) states[other] = Object.assign(states[other] || {}, init);
+      if (place === "main") { setView(other); return; }
+      const list = place === "r" ? vw.r : vw.b;
+      if (!list.includes(other)) { pin(other, place); return; }
+      if (place === "r") vw.rActive = other; else vw.bActive = other;
+      savePanels();
+      renderSide();
+    },
+  };
+  host.classList.toggle("vnarrow", ctx.narrow());
+  if (!forceNarrow) watchWidth(host, ctx);
+  render(ctx);
+}
+
+const widthWatch = new WeakMap();
+function watchWidth(host, ctx) {  // a view goes narrow below 640 px of its own width
+  if (typeof ResizeObserver === "undefined") return;
+  const old = widthWatch.get(host);
+  if (old) old.disconnect();
+  let narrow = ctx.narrow();
+  const ro = new ResizeObserver(() => {
+    const now = host.clientWidth < VIEW_NARROW_PX;
+    if (now === narrow) return;
+    narrow = now;
+    host.classList.toggle("vnarrow", now);
+    ctx.rerender();
+  });
+  ro.observe(host);
+  widthWatch.set(host, ro);
+}
+
+/* the frame every view shares (§3): a header bar, a scrolling body, and the loading / empty / error states */
+function viewFrame(bar, body) {
+  return el("div", { class: "view" }, el("div", { class: "vbar" }, ...bar), el("div", { class: "vscroll" }, body));
+}
+
+function viewLoading(label) {
+  return el("div", { class: "vstate", role: "status" },
+    el("div", { class: "pulse" }, el("i"), el("i"), el("i"), el("span", { text: label })),
+    el("div", { class: "skel", "aria-hidden": "true" },
+      [62, 44, 71, 38, 55].map((w) => el("span", { style: `width:${w}%` }))));
+}
+
+function viewEmpty(kicker, sentence, note, action) {
+  return el("div", { class: "vstate" },
+    kicker ? el("span", { class: "kicker", text: kicker }) : null,
+    el("p", { class: "sentence", text: sentence }),
+    note ? el("p", { class: "note", text: note }) : null,
+    action || null);
+}
+
+function viewError(title, err, retry) {
+  const cause = err instanceof ApiError ? `${err.status} · ${err.message}` : String((err && err.message) || err || "");
+  return el("div", { class: "vstate" },
+    el("div", { class: "verror", role: "alert" }, icon("circle-alert"),
+      el("div", {}, el("div", { class: "title", text: title }), el("div", { class: "cause", text: cause }))),
+    retry ? el("button", { type: "button", class: "btn btn-secondary", onclick: retry }, icon("refresh-cw"), t("state.try_again")) : null);
+}
+
+/* Files (v4.1) — LUMI-304 fills it: the folder table and the reader. */
+VIEW_KINDS.files = (ctx) => {
+  ctx.host.replaceChildren(viewFrame([el("h2", { class: "vtitle", text: viewName("files") })],
+    viewEmpty(null, t("state.nothing"))));
+};
+
 /* ---------- start ---------- */
 async function start() {
   try { S = await (await fetch("strings.en.json")).json(); } catch (e) { S = {}; }
@@ -1111,11 +1408,23 @@ async function start() {
   input.addEventListener("input", () => { grow(); updateSlash(); renderInput(); });
   input.addEventListener("blur", () => { st.slash.open = false; renderSlash(); });
   document.addEventListener("keydown", (ev) => {
+    if ((ev.metaKey || ev.ctrlKey) && /^[1-9]$/.test(ev.key)) {  // v4.1: ⌘1…⌘n (Ctrl elsewhere) switch views
+      const kind = VIEWS[Number(ev.key) - 1];
+      if (kind) { ev.preventDefault(); setView(kind); }
+      return;
+    }
+    if ((ev.metaKey || ev.ctrlKey) && ev.key === "\\") {  // ⌘\ folds or unfolds the right panels
+      if (vw.r.length + vw.b.length) { ev.preventDefault(); vw.open = !vw.open; savePanels(); renderSide(); }
+      return;
+    }
     if (!ev.metaKey) return;
     if (ev.key === "-") { ev.preventDefault(); setChatSize(st.chatSize - 1); }
     else if (ev.key === "=" || ev.key === "+") { ev.preventDefault(); setChatSize(st.chatSize + 1); }
   });
-  NARROW.addEventListener("change", () => { renderPanel(); stick(true); });  // a new width: back to the newest line
+  NARROW.addEventListener("change", () => { renderPanel(); renderViews(); renderSide(); stick(true); });  // a new width
+  loadPanels();
+  renderViews();
+  renderSide();
   renderPanel();
   renderInput();
   renderStatus();

@@ -11,7 +11,7 @@ import socket
 import pytest
 
 from desktop.proxy import KEY_HEADER, KEY_META, Upstream
-from tests._desktop_world import KEY, TOKEN, FakeServer, request, start_proxy
+from tests._desktop_world import KEY, PNG, TOKEN, FakeServer, request, start_proxy
 
 
 @pytest.fixture
@@ -227,3 +227,17 @@ def test_lumi_276_the_emoji_map_is_served_locally():
     finally:
         proxy.stop()
         server.close()
+
+
+def test_v41_a_picture_is_relayed_byte_for_byte_with_its_headers(world):
+    server, proxy = world
+    status, headers, body = request(proxy, "GET", "/v1/files/raw?path=art%2Fp%20q.png")
+    assert status == 200 and body == PNG
+    assert headers["content-type"] == "image/png"
+    assert headers["x-content-type-options"] == "nosniff" and headers["content-disposition"] == "inline"
+    assert headers["cache-control"] == "private, max-age=300"
+    assert "set-cookie" not in headers  # only the passed headers reach the page
+    [seen] = server.requests
+    assert seen["path"] == "/v1/files/raw?path=art%2Fp%20q.png"  # the query reaches the server as the page wrote it
+    assert seen["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    assert request(proxy, "POST", "/v1/files/raw", body={})[0] == 404  # GET only

@@ -17,6 +17,9 @@ TOKEN = "dev-client-TOKEN-0123456789abcdef"
 KEY = "launch-key-for-the-tests"
 
 
+PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256))  # every byte value: a relay must not touch one
+
+
 class FakeServer:
     def __init__(self) -> None:
         self.requests: list[dict[str, Any]] = []
@@ -64,6 +67,16 @@ class FakeServer:
                 elif method == "POST" and path == "/v1/turn/stream":
                     self._sse(["event: delta\ndata: {\"text\": \"При\"}\n\n",
                                "event: done\ndata: {\"reply\": \"Привіт\", \"emotion\": \"calm\"}\n\n"])
+                elif method == "GET" and path == "/v1/files/raw":  # v4.1: a picture's bytes and their headers
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/png")
+                    self.send_header("Content-Length", str(len(PNG)))
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.send_header("Content-Disposition", "inline")
+                    self.send_header("Cache-Control", "private, max-age=300")
+                    self.send_header("Set-Cookie", "never=1")  # a header the proxy must not pass
+                    self.end_headers()
+                    self.wfile.write(PNG)
                 elif method == "POST" and path == "/v1/command":
                     self._send(200, {"handled": True, "echo": json.loads(body or "{}")})
                 else:

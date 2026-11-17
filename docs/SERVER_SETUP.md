@@ -166,7 +166,7 @@ at once and show the same conversation (a line typed in one appears in the other
 
 **Why a local proxy.** The page in the window can't call the server directly: the server sends no CORS headers. So
 the window's Python shell starts a small server on `127.0.0.1` (a free port, `desktop/proxy.py`) that serves the page
-(`desktop/ui/`) and forwards the eight `/v1` routes it uses, adding the token itself — the token never enters the
+(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1), adding the token itself — the token never enters the
 page. Every `/v1` request must carry this launch's random key (templated into the page), and the `Host` must be the
 proxy's own, so another app or a web page on the Mac can't borrow the token. No server change.
 

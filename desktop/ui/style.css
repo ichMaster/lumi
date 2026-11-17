@@ -253,11 +253,77 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin-top: 16px; padding-top: 14px;
   border-top: var(--rule) solid var(--color-divider); font-size: 12px; color: var(--l-muted); }
 
+/* — the view row (v4.1, design/v4/handoff §1): Chat · Files · …, over the content column — */
+.views { flex: none; display: flex; align-items: stretch; box-shadow: inset 0 -2px 0 var(--color-divider);
+  padding: 0 16px 0 26px; }
+.views-tabs { flex: 1; min-width: 0; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.views-tabs::-webkit-scrollbar { display: none; }
+.vtab { flex: none; display: inline-flex; align-items: center; gap: 7px; height: var(--l-tabs); padding: 0 14px;
+  border-bottom: 2px solid transparent; font-size: 13px; font-weight: 600; color: var(--l-muted); white-space: nowrap; }
+.vtab:hover { color: var(--color-text); }
+.vtab[aria-current="page"] { color: var(--color-text); border-bottom-color: var(--color-accent); }
+.vtab .unread { width: 6px; height: 6px; background: var(--color-accent); }
+.pins { flex: none; display: flex; align-items: center; gap: 2px; padding-left: 10px; }
+.pins .kicker { font-size: 10px; margin-right: 4px; }
+.ib { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px;
+  color: var(--l-muted); }
+.ib:hover:not(:disabled) { background: color-mix(in srgb, var(--color-text) 7%, transparent); color: var(--color-text); }
+.ib:disabled { opacity: .35; cursor: default; }
+.ib svg.icon { width: 16px; height: 16px; stroke-width: 2; }
+.ib[aria-pressed="true"] { background: var(--color-surface); color: var(--l-acc-text); }
+
+/* — a view in the content column or a panel (§3): a header bar, a scrolling body, its states — */
+.viewhost { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.vbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-height: var(--l-viewbar);
+  padding: 8px 16px 8px 24px; border-bottom: 1px solid var(--l-hair); }
+.vnarrow .vbar { padding: 8px 12px 8px 16px; }
+.vtitle { margin: 0; font-size: 15px; font-weight: 700; }
+.vmeta { font-size: 12px; color: var(--l-faint); font-variant-numeric: tabular-nums; }
+.vscroll { flex: 1; min-height: 0; overflow-y: auto; }
+.vstate { display: flex; flex-direction: column; gap: 10px; max-width: 560px; padding: 40px 24px; }
+.vnarrow .vstate { padding: 28px 16px; }
+.vstate .pulse { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--l-faint); }
+.vstate .pulse i { width: 6px; height: 6px; background: var(--color-accent); animation: liliPulse 1.2s ease-in-out infinite; }
+.vstate .pulse i:nth-child(2) { animation-delay: .18s; }
+.vstate .pulse i:nth-child(3) { animation-delay: .36s; }
+.vstate .skel { display: flex; flex-direction: column; margin-top: 10px; }
+.vstate .skel span { height: 10px; margin: 11px 0; background: var(--color-surface); }
+.vstate .skel span + span { box-shadow: 0 -11px 0 -10px var(--l-hair); }
+.vstate .sentence { margin: 0; font-size: 17px; line-height: 1.5; }
+.vstate .note { padding: 0; font-size: 13px; color: var(--l-faint); }
+.verror { display: flex; gap: 12px; align-items: flex-start; }
+.verror svg.icon { width: 18px; height: 18px; color: var(--l-acc-text); stroke-width: 2; }
+.verror .title { font-size: 15px; font-weight: 600; }
+.verror .cause { font-size: 13px; color: var(--l-muted); overflow-wrap: anywhere; }
+.vstate .btn-secondary { align-self: flex-start; height: 36px; font-weight: 600; }
+.vstate .btn-secondary svg.icon { width: 16px; height: 16px; }
+
+/* — the right panels (§2): pinned views beside the chat, wide only — */
+.side { flex: none; position: relative; width: var(--l-side); min-width: 0; min-height: 0; display: flex;
+  flex-direction: column; border-left: var(--rule) solid var(--color-divider); }
+.side .grip { position: absolute; z-index: 3; left: -6px; top: 0; bottom: 0; width: 10px; cursor: col-resize; }
+.side .grip:hover, .side .grip:focus-visible { background: color-mix(in srgb, var(--color-accent) 35%, transparent); outline: none; }
+.spanel { position: relative; min-height: var(--l-side-panel-min); display: flex; flex-direction: column; }
+.spanel + .spanel { border-top: var(--rule) solid var(--color-divider); }
+.spanel .split { position: absolute; z-index: 3; left: 0; right: 0; top: -7px; height: 10px; cursor: row-resize; }
+.spanel .split:hover, .spanel .split:focus-visible { background: color-mix(in srgb, var(--color-accent) 35%, transparent); outline: none; }
+.shead { flex: none; display: flex; align-items: center; box-shadow: inset 0 -2px 0 var(--color-divider); padding: 0 4px 0 8px; }
+.shead .stabs { flex: 1; min-width: 0; display: flex; overflow-x: auto; scrollbar-width: none; }
+.shead .vtab { height: 40px; padding: 0 10px; font-size: 12.5px; }
+.shead .ib { color: var(--l-faint); }
+.sbody { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.rail { flex: none; width: 46px; display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 10px;
+  border-left: var(--rule) solid var(--color-divider); }
+.rail .kicker { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+
 /* — every interactive element: the accent focus ring, never the browser's — */
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 /* — narrow (< 760px): the future web client and phone — */
 @media (max-width: 759px) {
+  .views { padding: 0 4px; }
+  .side, .rail, .pins { display: none !important; }
   .list { padding: 16px 16px 12px; }
   .row { grid-template-columns: minmax(0, 1fr); }
   .gutter { flex-direction: row; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }

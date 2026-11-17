@@ -40,9 +40,11 @@ FORWARDED: frozenset[tuple[str, str]] = frozenset({
     ("GET", "/v1/health"), ("GET", "/v1/state"), ("GET", "/v1/events"),
     ("POST", "/v1/turn"), ("POST", "/v1/turn/stream"), ("POST", "/v1/command"), ("POST", "/v1/directive"),
     ("POST", "/v1/session/new"),
+    ("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),  # v4.1: her sandbox, read-only
 })
 PASS_REQUEST = ("Content-Type", "X-Lumi-Client", "Last-Event-ID")  # the page's headers that reach the server
-PASS_RESPONSE = ("Content-Type", "Cache-Control")  # the server's headers that reach the page
+# the server's headers that reach the page (v4.1: a picture keeps its nosniff and inline disposition)
+PASS_RESPONSE = ("Content-Type", "Cache-Control", "X-Content-Type-Options", "Content-Disposition")
 NO_FRAMING = (("X-Frame-Options", "DENY"), ("Content-Security-Policy", "frame-ancestors 'none'"))
 MAX_BODY = 1_000_000  # a request body larger than this is refused (a typed line is a few KB)
 CONNECT_S = 5.0

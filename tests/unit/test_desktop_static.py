@@ -122,7 +122,7 @@ def test_lumi_272_the_panel_follows_every_driver_and_both_widths():
     assert 'event === "turn"' in js and "showFace(data.theme" in js  # any client's turn
     assert "showFace((result.state && result.state.theme)" in js  # this window's own turn
     assert "state.last_emotion" in js and "state.theme !== before.theme" in js  # connect + a new day's theme
-    assert 'matchMedia("(max-width: 759px)")' in js and 'NARROW.addEventListener("change", () => { renderPanel(); stick(true); })' in js
+    assert 'matchMedia("(max-width: 759px)")' in js and 'NARROW.addEventListener("change", () => { renderPanel(); renderViews(); renderSide(); stick(true); })' in js  # v4.1
     assert '"aria-label": `${t("panel.closeness")} ${of}`' in js  # the meter reads "Closeness N of 5"
 
 
@@ -194,3 +194,54 @@ def test_the_switches_keys_resolve_to_text():
         assert _has(strings, key), key
     lookup = js[js.index("function lookup("):js.index("function t(")]
     assert "parts.slice(0, i).join" in lookup  # the longest flat prefix first, like _has
+
+
+# --- v4.1 LUMI-303: the view row, the right panels, the frame, the design's tokens and strings ---------------------
+
+def test_v41_every_new_string_key_resolves_underscores_included():
+    """The key regex above skips keys with an underscore ("views.chat_unread"); the view code uses many."""
+    js, strings = _js(), _strings()
+    used = set(re.findall(r'"((?:views|panels|nav|files|date|reader|state)\.[A-Za-z_]+)"', js))
+    assert {"views.chat", "views.files", "views.chat_unread", "panels.pin_right", "panels.resize_width",
+            "state.try_again"} <= used
+    assert sorted(k for k in used if k not in strings) == []
+
+
+def test_v41_the_views_and_panels_keep_their_layout_guarded():
+    js = _js()
+    assert 'const PANELS_STORE = "lumi.desktop.panels"' in js
+    for body in (js[js.index("function loadPanels("):js.index("function savePanels(")],
+                 js[js.index("function savePanels("):js.index("function viewName(")]):
+        assert "try {" in body and "catch (e)" in body  # every localStorage access is guarded
+    assert "localStorage" not in js[js.index("function setView("):js.index("function viewFrame(")].replace(
+        "localStorage.setItem(PANELS_STORE", "")  # the views touch storage only through the two helpers
+    assert "SIDE = { min: 280, max: 520, default: 340, step: 20 }" in js
+    assert "SPLIT = { min: 0.2, max: 0.8, default: 0.55, step: 0.05 }" in js
+    assert "VIEW_NARROW_PX = 640" in js and "ResizeObserver" in js
+
+
+def test_v41_a_view_replaces_the_list_and_input_and_chat_returns_to_the_newest_line():
+    js = _js()
+    apply = js[js.index("function applyView("):js.index("function pin(")]
+    assert '$("list").hidden = !chat' in apply and '$("composer").hidden = !chat' in apply
+    assert "stick(true)" in apply
+    assert 'if (vw.view !== "chat" && !vw.chatUnread) { vw.chatUnread = true; renderViews(); }' in js  # unread
+    assert 'if (kind === "chat") vw.chatUnread = false' in js
+
+
+def test_v41_the_tokens_only_add_to_v212():
+    """The v2.12 handoff's values are all still in tokens.css (but the documented system-font change), and every
+    v4 addition is declared exactly once, with the design's value."""
+    root = Path(__file__).resolve().parents[2]
+    decl = re.compile(r"(--[\w-]+)\s*:\s*([^;]+);")
+    page = (UI / "tokens.css").read_text(encoding="utf-8")
+    have = {(k, " ".join(v.split())) for k, v in decl.findall(page)}
+    v212 = (root / "design" / "v2.12" / "handoff" / "tokens.css").read_text(encoding="utf-8")
+    for k, v in decl.findall(v212):
+        if k in ("--font-body", "--font-heading"):  # Archivo dropped for the system stack (no Cyrillic, no network)
+            continue
+        assert (k, " ".join(v.split())) in have, k
+    add = (root / "design" / "v4" / "handoff" / "tokens.add.css").read_text(encoding="utf-8")
+    for k, v in decl.findall(add):
+        assert page.count(f"{k}:") == 1, k
+        assert (k, " ".join(v.split())) in have, k

@@ -15,6 +15,7 @@ PAGE_ROUTES = {
     ("GET", "/v1/health"), ("GET", "/v1/state"), ("GET", "/v1/events"),
     ("POST", "/v1/turn"), ("POST", "/v1/turn/stream"), ("POST", "/v1/command"), ("POST", "/v1/directive"),
     ("POST", "/v1/session/new"),
+    ("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),  # v4.1: her sandbox, read-only
 }
 
 
@@ -33,7 +34,8 @@ def test_the_page_is_only_desktop_ui_and_the_token_stays_in_the_proxy():
     assert px.UI_DIR == ROOT / "desktop" / "ui"
     assert px.ui_file("/../proxy.py") is None and px.ui_file("/../../server/app.py") is None
     assert "Authorization" not in px.PASS_REQUEST and "Cookie" not in px.PASS_REQUEST  # the page can't set them
-    assert set(px.PASS_RESPONSE) == {"Content-Type", "Cache-Control"}  # nothing else of the server reaches the page
+    # nothing else of the server reaches the page (v4.1: a picture keeps its nosniff and inline disposition)
+    assert set(px.PASS_RESPONSE) == {"Content-Type", "Cache-Control", "X-Content-Type-Options", "Content-Disposition"}
     up = px.Upstream("http://192.168.1.197:8766", "TOKEN-never-shown-0123456789")
     assert "TOKEN-never-shown" not in repr(up) and "TOKEN-never-shown" not in repr(px.Proxy(up))
 
@@ -46,3 +48,9 @@ def test_face_files_never_ride_the_server_api():
     from desktop import faces
 
     assert faces.BY_BAND == {"low": "02.png", "mid": "01.png", "high": "03.png"}  # the place-faces naming
+
+
+def test_v41_the_window_reads_her_files_through_get_routes_only():
+    """v4.1 LUMI-303: the three read routes are forwarded as GET only — the page has no way to write her sandbox."""
+    files = {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/files")}
+    assert files == {("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw")}
