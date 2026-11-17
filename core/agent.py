@@ -360,6 +360,16 @@ def _is_ymd(s: str) -> bool:
         return False
 
 
+_CREATED_RE = re.compile(r"created (.+) \(\d+ bytes\)", re.DOTALL)
+
+
+def _created_path(result: str) -> str | None:
+    """The sandbox path in ``generate_image``'s ``"created <path> (<n> bytes)"`` — whole, though a name may hold
+    spaces (v4.2 code review #1); ``None`` for any other result."""
+    match = _CREATED_RE.fullmatch(result)
+    return match.group(1) if match else None
+
+
 # v0.41 LUMI-163: bare-full-id → provider inference for /model (checked after aliases + provider:id).
 # Ordered; first matching prefix wins. An unknown prefix keeps the clear reject (never guesses).
 _MODEL_ID_PREFIXES: tuple[tuple[str, str], ...] = (
@@ -2076,8 +2086,10 @@ class Core:
             result = maker.execute(name, tool_input)
             if result.startswith("created "):  # a new PNG landed → count it + show it
                 made["n"] += 1
-                self._emit_image_display(result, root)
-                self._note_picture(root, result.split(" ", 2)[1])  # "created art/cat.png (123 bytes)"
+                rel = _created_path(result)  # "created art/мій кіт.png (123 bytes)" → "art/мій кіт.png"
+                if rel is not None:
+                    self._emit_image_display(rel, root)
+                    self._note_picture(root, rel)
             return result
 
         return GENERATE_TOOLS, capped
@@ -2116,15 +2128,14 @@ class Core:
         if path not in self.last_pictures:
             self.last_pictures.append(path)
 
-    def _emit_image_display(self, result: str, root: Path) -> None:
-        """Show a freshly-generated PNG per ``LUMI_IMAGE_SHOW`` — write its path to the display signal the
-        v0.7 viewer / v0.13 Telegram daemon can pick up. **path** is always satisfied (the tool result
-        names the file). Best-effort: a display failure never breaks the turn."""
+    def _emit_image_display(self, rel: str, root: Path) -> None:
+        """Show a freshly-generated PNG (``rel``, its sandbox path) per ``LUMI_IMAGE_SHOW`` — write its path to the
+        display signal the v0.7 viewer / v0.13 Telegram daemon can pick up. **path** is always satisfied (the tool
+        result names the file). Best-effort: a display failure never breaks the turn."""
         targets = {t.strip() for t in (self._image_show or "").split(",") if t.strip()}
         if self._image_signal_path is None or not ({"viewer", "telegram"} & targets):
             return  # only "path" requested (or no signal configured) → nothing to emit
         try:
-            rel = result.split(" ", 2)[1]  # "created art/cat.png (123 bytes)" → "art/cat.png"
             self._image_signal_path.parent.mkdir(parents=True, exist_ok=True)
             self._image_signal_path.write_text(str(root / rel), encoding="utf-8")
         except Exception:  # noqa: BLE001 — display must never break a turn
