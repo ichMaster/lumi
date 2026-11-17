@@ -261,3 +261,61 @@ Quiet hours 01–07; day cap 2,400.
 - `list_files {path: "notes"}` → "31 files"
 - `read_file {path: "notes/ideas.md"}` → "24 lines"
 - `wiki_search {query: "пам'ять рослин"}` → "5 results"
+
+## The design (2026-11-17)
+The owner made it in Claude Design, in the v2.12 project. Its handoff bundle is in [handoff/](handoff/):
+
+- [handoff/README.md](handoff/README.md) — the spec: the view row, the right panels, a view's frame and states, each
+  view's measurements and behaviour, the safe markdown parser, the data each view expects, keyboard and accessibility.
+  Nothing in v2.12 changes.
+- [handoff/LiliWindow.v4-changes.md](handoff/LiliWindow.v4-changes.md) — the exact changes to the v2.12 window
+  component (markup and logic), as a patch description.
+- [handoff/tokens.add.css](handoff/tokens.add.css) — tokens to append to `tokens.css`; no existing value changes.
+- [handoff/strings.en.add.json](handoff/strings.en.add.json) — every new UI string, English, flat keys (none collide
+  with `desktop/ui/strings.en.json`).
+- `handoff/design/*.dc.html` — the prototypes, a reference only (the design tool's runtime). `LiliViews.dc.html` holds
+  all seven views, the full picture view, the components sheet and the reference logic (`parseMd` / `inl`, navigation,
+  keyboard, states); `LumiV4Board.dc.html` is the board (sections 08–18).
+
+**Added by the design beyond the brief** (kept; placed in the ROADMAP):
+- **Right panels.** Any view but Chat can be pinned to a right panel and/or a bottom-right panel beside the chat.
+  - The panel column is resizable (280–520 px) and can be split between the two panels.
+  - It folds to a 46 px rail (⌘\).
+  - A pinned view always uses its narrow layout.
+  - The pins, the width, the split and the folded state are kept per client in `localStorage`, as the window's other
+    preferences are.
+
+  It lands with the view row in v4.1.
+- **Back and forward** in Files and the reader (⌘[ ⌘]).
+- **"Thoughts →"** in the portrait panel's thought strip opens the Thoughts view (v4.3).
+
+**Corrected after the export** (the design assumed things the code doesn't have):
+- **The chat picture's caption** read «відкрити — пробіл», Ukrainian in the English interface. It is now
+  `picture.open_hint` = "open — Space".
+- **The schedule's footnote** said directives due in the quiet hours "wait until 07:00". The scheduler skips every
+  trigger in the quiet hours except an explicit `at:`, and a skipped periodic one simply fires at its next due time.
+  `schedule.footnote` now says so.
+- **The journal's and the state's empty notes** named times the code doesn't promise ("at 23:50", "around 07:00"):
+  - the journal is written when she chooses;
+  - the mood is made once each local day, the first time it is needed.
+
+  `journal.empty_note` and `state.empty_note` now say so.
+
+**Still to handle when implementing:**
+- **The theme's name in State** is drawn in Ukrainian («Тихий злам»). Use the English name and scene from
+  `strings.en.json` `themes`, as the portrait panel does.
+- **"Made at 07:02" in State.** `MoodState` keeps no time. Either v4.4 adds `made_at` when the mood is computed, or
+  the line shows only the day.
+- **The data the design shows beyond the drafted routes** (now in DESKTOP_VIEWS.md and the ROADMAP):
+  - a folder's item count;
+  - a text file's full size and its cut flag (so text gets its own JSON route, `/v1/files/text`; `/v1/files/raw` serves
+    pictures);
+  - the gallery's total and per-folder counts;
+  - a journal day's stamp flag in the list;
+  - the thoughts' totals (count, per day, the spoken share) and the kinds;
+  - each biorhythm's trend, period and day in the cycle;
+  - the schedule's firings today, each entry's structured trigger (the client words it; `idle` → "if silent") and
+    the next due.
+- **A picture's dimensions** in the reader and the chat come from the loaded image (`naturalWidth` /
+  `naturalHeight`). Only the gallery list carries them from the server.
+- **The font:** SF Pro (system), as in v2.12; nothing loads from the network.

@@ -1,0 +1,31 @@
+/* Лілі · Lumi v4 — tokens ADDED to v2.12 tokens.css. No existing value changes.
+   Append to tokens.css inside :root. */
+
+:root {
+  /* reading (reader, journal, mood of the day) */
+  --l-read: 17px;              /* body text of her files and journal; lh below */
+  --l-read-lh: 1.7;
+  --l-read-measure: 68ch;      /* ≈ 70 Cyrillic characters a line */
+  --fs-read-h1: 32px;          /* 800, lh 1.12, ls -0.02em */
+  --fs-read-h2: 23px;          /* 800, lh 1.2, margin-top 40px */
+  --fs-read-h3: 18px;          /* 700, lh 1.3, margin-top 30px */
+  --fs-read-h4: 12px;          /* 600, caps, ls .1em, --l-muted */
+  --fs-day-title: 36px;        /* journal day heading, 800 (28px narrow) */
+
+  /* layout */
+  --l-tabs: 42px;              /* view row height (2px rule included) */
+  --l-viewbar: 52px;           /* a view's own header: path bar, filters */
+  --l-outline: 220px;          /* reader outline column, wide only */
+  --l-daylist: 260px;          /* journal list of days, wide only */
+  --l-picmeta: 280px;          /* full picture view: meta column, wide only */
+  --l-thumb-min: 150px;        /* gallery grid: auto-fill, minmax(var, 1fr); 3 columns narrow */
+  --l-time-gutter: 64px;       /* journal entry time; thoughts use 56px */
+  --l-view-narrow: 640px;
+
+  /* right panels (pinned views) */
+  --l-side: 340px;             /* default width; drag 280–520 */
+  --l-side-min: 280px;
+  --l-side-max: 520px;
+  --l-side-split: 0.55;        /* top share when both panels are open; drag 0.2–0.8 */
+  --l-side-panel-min: 140px;      /* below this a view switches to its narrow layout */
+}

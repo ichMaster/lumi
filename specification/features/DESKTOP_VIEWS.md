@@ -3,7 +3,9 @@
 **Status:** concept, 2026-11-17, at the owner's request. Placed by the owner as **v4** in the
 [ROADMAP](../ROADMAP.md) (§v4.1–v4.5); the later versions moved up by one. The owner's decisions are in
 [§Decisions](#decisions-the-owner-2026-11-17). The design brief for Claude Design is
-[design/v4/BRIEF.md](../../design/v4/BRIEF.md).
+[design/v4/BRIEF.md](../../design/v4/BRIEF.md). The design itself (2026-11-17) is the handoff in
+[design/v4/handoff/](../../design/v4/handoff/README.md). Its additions and the corrections made after the export are
+listed at the end of the brief.
 
 ## Why
 
@@ -68,7 +70,8 @@ prompt 119, imagine 88, search 23, share 17, review 15, recall 13, note 7, event
 
 ```
 Lili.app (Mac)                                   lumi-prod-server-1 (box)
- page ── 127.0.0.1 proxy (adds the token) ── LAN ──► /v1/files, /v1/files/raw      ← files/<user_id>/ (read-only)     v4.1
+ page ── 127.0.0.1 proxy (adds the token) ── LAN ──► /v1/files, /v1/files/text,    ← files/<user_id>/ (read-only)     v4.1
+                                                     /v1/files/raw
                                                      /v1/images, /v1/images/thumb  ← files/<user_id>/ + cache/thumbs/  v4.2
                                                      /v1/journal, /v1/journal/{d}  ← journal/<user_id>/ (read-only)   v4.3
                                                      /v1/thoughts                  ← the store's thoughts (a copy)    v4.3
@@ -98,15 +101,16 @@ Nothing new runs on the Mac. The window reads only through the API, the existing
 
 | Phase | Route | Returns | Notes |
 |---|---|---|---|
-| v4.1 | `GET /v1/files?path=` | `{path, entries:[{name, kind: dir\|file, type: text\|image\|other, size, created, modified}], truncated}` | Folders first, then by name. `created`/`modified` are the v0.29 `_stat_dates`. Empty `path` is the root. At most 1,000 entries. |
-| v4.1 | `GET /v1/files/raw?path=` | The file's bytes | Text (utf-8, the sandbox's text types): at most 256 KB, then 413. Images: png/jpg/webp/gif, **detected by magic bytes, not the extension**, at most 10 MB. Anything else, SVG and HTML included: 415. Headers: `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, `Cache-Control: private`. |
-| v4.2 | `GET /v1/images?before=&limit=` | `{items:[{path, folder, size, modified, width, height}], next}` | Every picture in the sandbox, newest `modified` first, paged by a cursor (`limit` ≤ 100). `folder` lets the window group or filter. `art/` is where `generate_image` writes, so the view says "in art/", never "made by her": no record of who made a file exists. |
+| v4.1 | `GET /v1/files?path=` | `{path, entries:[{name, kind: dir\|file, type: text\|image\|other, size, count, created, modified}], truncated}` | Folders first, then by name. `count` is a folder's number of entries (the design's "74 items"); `null` for a file. `created`/`modified` are the v0.29 `_stat_dates`. Empty `path` is the root. At most 1,000 entries. |
+| v4.1 | `GET /v1/files/text?path=` | `{path, text, size, cut, type: markdown\|plain\|code\|data}` | A text file (utf-8, the sandbox's text types): `text` is at most 256 KB; `size` is the whole file; `cut` says it was cut (the reader's "Cut at 256 KB · the file is 412 KB"). `type` picks the reader's mode: Formatted/Raw for markdown, a kicker for the rest. Anything not text: 415. |
+| v4.1 | `GET /v1/files/raw?path=` | The picture's bytes | Pictures only: png/jpg/webp/gif, **detected by magic bytes, not the extension**, at most 10 MB. Anything else, SVG and HTML included: 415. Headers: `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, `Cache-Control: private`. A picture's dimensions in the reader and the chat come from the loaded image. |
+| v4.2 | `GET /v1/images?before=&limit=&folder=` | `{items:[{path, folder, size, modified, width, height}], next, total, folders:[{folder, count}]}` | Every picture in the sandbox, newest `modified` first, paged by a cursor (`limit` ≤ 100), optionally one folder. `total` and `folders` feed the header ("112 pictures") and the folder filter's counts. `art/` is where `generate_image` writes, so the view says "in art/", never "made by her": no record of who made a file exists. |
 | v4.2 | `GET /v1/images/thumb?path=` | A JPEG, longest side 320 px | Made by Pillow (a base dependency) on the first request. Cached in `<data root>/cache/thumbs/<user_id>/`, keyed by the path and `mtime`. The cache is **outside** the sandbox, so her file tools never see it. `Image.MAX_IMAGE_PIXELS` bounds decoding. |
-| v4.3 | `GET /v1/journal` | `{days:[{date, sections, size}]}` | The `YYYY-MM-DD.md` files, newest first. Owner-only. |
+| v4.3 | `GET /v1/journal` | `{days:[{date, sections, size, stamp}]}` | The `YYYY-MM-DD.md` files, newest first. `stamp` (bool) marks a day written with the code-owned stamp (the list's "· no stamp"). Owner-only. |
 | v4.3 | `GET /v1/journal/{date}` | `{date, stamp:{mood, biorhythms, forecast}\|null, sections:[{time, text}], markdown}` | Parsed from the v0.28 layout: the `# date` heading; the code-owned blockquote stamp (`> **Настрій:**`, `> **Біоритми:**`, `> **Прогноз:**`); the `## HH:MM` sections. An entry without a stamp gives `stamp: null`. A bad date gives 400; a missing day gives 404. Owner-only. |
-| v4.3 | `GET /v1/thoughts?before=&limit=&kind=&spoken=` | `{items:[{when, kind, text, emotion, spoken}], next}` | Newest first, `limit` ≤ 100. Filtered by the surfacing rule (`thoughts_for(user_id)`), so a thought sparked with another user never shows up. `seeds` stay internal. |
-| v4.4 | `GET /v1/today` | `{mood:{resolution, reading, theme}, biorhythms:{physical, emotional, intellectual}, closeness:{level, name}, plan\|null}` | The structured form of `/mood`, `/biorhythm`, `/closeness`. `plan` once v5.7 exists. |
-| v4.4 | `GET /v1/schedule` | `{entries:[{directive, rule, last_fired, next_due}], quiet_hours, day_cap}` | From `schedule.yaml` with the settings' overrides and `schedule.state`; `next_due` computed by the scheduler's own pure `due`. |
+| v4.3 | `GET /v1/thoughts?before=&limit=&kind=&spoken=&date=` | `{items:[{when, kind, text, emotion, spoken}], next, stats:{total, per_day, spoken_share}, kinds:[…]}` | Newest first, `limit` ≤ 100; `kind` may repeat (several at once); `date` jumps to a day. `stats` feed the header ("5,512 · about 30 a day · 6% spoken"); `kinds` are the directive names. Filtered by the surfacing rule (`thoughts_for(user_id)`), so a thought sparked with another user never shows up. `seeds` stay internal. |
+| v4.4 | `GET /v1/today` | `{mood:{resolution, reading, theme, made_at\|null}, biorhythms:[{name, value, label, trend: rising\|falling, period, day}], closeness:{level, name}, plan: null}` | The structured form of `/mood`, `/biorhythm`, `/closeness`. `period` (23/28/33) and `day` (today's place in the cycle) let the window draw the ±14-day sine; `trend` is the sine's direction. `made_at` needs a new field on `MoodState` (it keeps no time today) or stays `null`. `plan` once v5.7 exists. |
+| v4.4 | `GET /v1/schedule` | `{entries:[{name, directive, trigger:{kind: at\|every\|idle\|between\|cron, …}, enabled, last_fired, next_due}], quiet_hours, day_cap, fired_today}` | From `schedule.yaml` with the settings' overrides and `schedule.state`; `next_due` computed by the scheduler's own pure `due` (for `idle`, from the last input: "if silent"). The trigger is structured; the window words it in English ("every day at 08:00"). |
 
 **Additions to existing routes:**
 - `GET /v1/state.features` gains `files`, `journal`, `thoughts` (and `today`, `schedule`), so a client shows only the
@@ -126,6 +130,17 @@ still added only in the proxy, never in the page. `test_desktop_contract.py` pin
 
 **Navigation.** One row of views: **Chat · Files · Gallery · Journal · Thoughts · State · Schedule**. Each view
 appears as its phase lands. A view replaces the chat column, and the portrait panel stays.
+
+**Right panels** (from the design; v4.1).
+- Any view but Chat can be pinned to a right panel and/or a bottom-right panel, so it stays beside the chat.
+- The panel column is resizable (280–520 px) and can be split between the two panels. It folds to a 46 px rail
+  (⌘\).
+- A pinned view always uses its narrow layout. Navigation inside a panel stays in that panel.
+- The pins, width, split and folded state are kept per client in `localStorage`, as the window's other preferences
+  are.
+- Wide layout only; on a phone a pinned view is just a tab.
+
+The exact measurements are in [design/v4/handoff/README.md](../../design/v4/handoff/README.md) §2.
 
 **The chat keeps running.** The push channel (`/v1/events`) stays connected while another view is open. A reply or a
 spoken thought that arrives meanwhile marks the Chat tab as unread.
@@ -238,9 +253,9 @@ These are candidates, chosen with the owner before v4.5 starts:
 
 | Phase | Delivers | Areas |
 |---|---|---|
-| v4.1 | `/v1/files`, `/v1/files/raw`, `features.files`; the proxy's binary relay; the view row; Files; the markdown reader | core, server, desktop |
-| v4.2 | `/v1/images`, `/v1/images/thumb` and the thumbnail cache; `pictures` on `message` and the outcome; the narrowed face rule; Gallery; pictures in the chat | core, server, desktop |
-| v4.3 | `/v1/journal`, `/v1/journal/{date}` (owner-only), `/v1/thoughts`; Journal; Thoughts | core, server, desktop |
+| v4.1 | `/v1/files`, `/v1/files/text`, `/v1/files/raw`, `features.files`; the proxy's binary relay; the view row and the right panels; Files; the markdown reader | core, server, desktop |
+| v4.2 | `/v1/images`, `/v1/images/thumb` and the thumbnail cache; `pictures` on `message` and the outcome; the narrowed face rule; Gallery and the full picture view; pictures in the chat | core, server, desktop |
+| v4.3 | `/v1/journal`, `/v1/journal/{date}` (owner-only), `/v1/thoughts`; Journal; Thoughts; "Thoughts →" in the strip | core, server, desktop |
 | v4.4 | `/v1/today`, `/v1/schedule`, `tool_calls` on the outcome; State; Schedule; the tool list in details | core, server, desktop |
 | v4.5 | The chosen actions | core, server, desktop |
 

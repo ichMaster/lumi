@@ -1421,15 +1421,19 @@ tools), v0.28 (the journal), v0.12 (the thought stream), v0.42 (the scheduler).
 
 **Goal:** the owner browses her sandbox from the window and reads her markdown files as formatted pages.
 
-Two read routes over her sandbox and the window's first new view. `GET /v1/files?path=` lists a folder: name, kind,
-type, size, created, modified (the v0.29 dates), folders first, at most 1,000 entries. `GET /v1/files/raw?path=`
-returns a file:
-- text at most 256 KB;
-- a picture (png/jpg/webp/gif, detected by magic bytes) at most 10 MB;
-- anything else, SVG and HTML included, refused with 415.
+Three read routes over her sandbox, and the window's first new view:
+- `GET /v1/files?path=` lists a folder: name, kind, type, size, a folder's item count, created, modified (the v0.29
+  dates); folders first; at most 1,000 entries.
+- `GET /v1/files/text?path=` returns a text file as JSON: at most 256 KB of text, the whole size, a cut flag, and its
+  type (markdown / plain / code / data).
+- `GET /v1/files/raw?path=` returns a picture (png/jpg/webp/gif, detected by magic bytes) of at most 10 MB.
+- Anything else, SVG and HTML included, is refused with 415.
 
-The window gets the **view row** (Chat · Files, and the later views as their phases land) and the **Files** view: a
-path bar and a table, a text file opens in the reader, a picture at full size.
+The window gets the **view row** (Chat · Files, and the later views as their phases land). It also gets the **right
+panels** (from the design): any view but Chat can be pinned beside the chat, the column is resizable and splits
+between two panels, and it folds to a rail. The **Files** view has a path bar, back and forward, and a table; a text
+file opens in the reader, a picture at full size. The design is
+[design/v4/handoff/](../design/v4/handoff/README.md).
 
 The **markdown reader** extends the page's safe renderer (DOM nodes, `textContent`, never `innerHTML`):
 - headings, lists, tables, quotes and code;
@@ -1440,12 +1444,17 @@ The **markdown reader** extends the page's safe renderer (DOM nodes, `textConten
 - other text types (txt, json, yaml, code) as plain monospaced text.
 
 **Tasks:**
-- core: the browse logic (list, raw read, type and magic-byte detection, the caps), over `safe_path`.
-- server: the two routes (400 bad path, 404 missing, 413 too large, 415 not served; `nosniff`, `inline`, `private`
+- core: the browse logic (list, text read, picture read, type and magic-byte detection, the caps), over `safe_path`.
+- server: the three routes (400 bad path, 404 missing, 413 too large, 415 not served; `nosniff`, `inline`, `private`
   caching); `GET /v1/state.features.files`.
-- proxy: forward the two routes, relay binary bodies with their `Content-Type`.
-- window: the view row (the push channel stays connected; a reply that arrives meanwhile marks Chat unread), the Files
-  view, the markdown reader.
+- proxy: forward the three routes, relay binary bodies with their `Content-Type`.
+- window:
+  - the view row: the push channel stays connected, and a reply that arrives meanwhile marks Chat unread;
+  - the right panels, with their pins, width, split and fold kept in `localStorage` like the window's other
+    preferences;
+  - the Files view;
+  - the markdown reader;
+  - the design's `tokens.add.css` and `strings.en.add.json`.
 - ARCHITECTURE §Contracts (Server API v1): a "v4.1 (additive)" paragraph.
 
 **DoD:**
@@ -1464,8 +1473,8 @@ English and its renderer builds no HTML. **No paid calls.**
 **Goal:** the owner sees every picture in her sandbox as a gallery, and the pictures she makes or sends show in the
 conversation.
 
-`GET /v1/images?before=&limit=` lists every picture in the sandbox, newest first, with its folder, size, date and
-dimensions, paged by a cursor. `GET /v1/images/thumb?path=` returns a 320 px JPEG. Thumbnails are made by Pillow on the
+`GET /v1/images?before=&limit=&folder=` lists every picture in the sandbox, newest first, with its folder, size, date
+and dimensions, paged by a cursor, with the total and the per-folder counts for the folder filter. `GET /v1/images/thumb?path=` returns a 320 px JPEG. Thumbnails are made by Pillow on the
 first request and cached in `<data root>/cache/thumbs/<user_id>/`, outside the sandbox, so her file tools never see
 them. The **Gallery** view shows a grid of thumbnails with a folder filter; a click shows the picture at full size,
 with its path, date, size and "Open in Files".
@@ -1497,7 +1506,8 @@ when no picture), the face rule unchanged on `turn`. **No paid calls** (the imag
 
 **Goal:** the owner reads her journal day by day and her whole thought stream from the window.
 
-`GET /v1/journal` lists the days, newest first. `GET /v1/journal/{date}` returns a day parsed from the v0.28 layout:
+`GET /v1/journal` lists the days, newest first, each with its entry count and a stamp flag. `GET /v1/journal/{date}`
+returns a day parsed from the v0.28 layout:
 - the code-owned stamp (mood, biorhythms, forecast) as its own fields, or `null` for a day without one;
 - the `## HH:MM` sections;
 - the raw markdown.
@@ -1505,10 +1515,11 @@ when no picture), the face rule unchanged on `turn`. **No paid calls** (the imag
 The journal routes are **owner-only by rule**: the token check plus a role check that the v6.2 accounts fill in. The
 v9.6 journal is admin-only, and another user's token must never read it.
 
-`GET /v1/thoughts?before=&limit=&kind=&spoken=` pages her thoughts, newest first, through the surfacing filter
-(`thoughts_for(user_id)`); `seeds` stay internal. The **Journal** view shows a list of days and an entry: the stamp
+`GET /v1/thoughts?before=&limit=&kind=&spoken=&date=` pages her thoughts, newest first, through the surfacing filter
+(`thoughts_for(user_id)`), with several kinds at once, a date jump, the totals (count, per day, the spoken share) and
+the kinds; `seeds` stay internal. The **Journal** view shows a list of days and an entry: the stamp
 first, then the sections. The **Thoughts** view shows the whole stream with filters (the directive, spoken or silent,
-a date jump); the strip beside the portrait stays.
+a date jump); the strip beside the portrait stays and gains "Thoughts →" to open the view.
 
 **Tasks:**
 - core: the journal parser; a thought page (a copy of the list, filtered, paged).
@@ -1531,14 +1542,17 @@ contract — the routes, auth, the journal refused to a second user, the surfaci
 **Goal:** the owner sees her day, her timetable and the tools she used in a reply.
 
 - **State.** `GET /v1/today` returns:
-  - the day's full mood reading (not only the resolution);
-  - the biorhythm values;
+  - the day's full mood reading (not only the resolution) and its theme;
+  - each biorhythm's value, label, trend (rising / falling), period and day in the cycle, so the window draws the
+    cycle;
   - the closeness level by name;
   - the day's plan once the inner life exists (v5.7).
 
   It is the structured form of `/mood`, `/biorhythm` and `/closeness`.
-- **Schedule.** `GET /v1/schedule` lists each directive of `schedule.yaml` (with the settings' overrides): its rule,
-  when it last fired (`schedule.state`) and when it is next due, computed by the scheduler's own `due`.
+- **Schedule.** `GET /v1/schedule` lists each directive of `schedule.yaml` (with the settings' overrides).
+  - Each entry: its structured trigger (the window words it in English; `idle` reads "if silent"), whether it is
+    enabled, when it last fired (`schedule.state`), and when it is next due (computed by the scheduler's own `due`).
+  - Above them: the quiet hours, the day cap and today's firings.
 - **A turn's tools.** The turn outcome carries the tool calls of that reply: name, a short input, a short result. It
   is bounded, and an image result is reduced to a marker. It is filled only while `files.trace` is on, as the core
   keeps `last_tool_calls` today. The window's details panel lists them.
