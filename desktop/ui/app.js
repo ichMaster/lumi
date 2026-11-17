@@ -578,6 +578,7 @@ function absorb(state) {
   if (!state || typeof state !== "object") return;
   const before = st.server || {};
   st.server = state;
+  syncServed();  // code review #3: the views the server serves (features) — re-rendered only when that set changes
   if (!st.thinkMode) st.thinkMode = THINK_FROM_SERVER[state.think_show] || "collapsed";  // only when none is kept
   if (!face.asked) {  // the first state: her last emotion in today's theme
     const last = state.last_emotion || {};
@@ -1143,10 +1144,27 @@ function savePanels() {
   try { localStorage.setItem(PANELS_STORE, JSON.stringify({ r, b, rActive, bActive, open, w, split })); } catch (e) { /* lasts this window */ }
 }
 
+function served(kind) {  // code review #3: a view shows only when the server says it serves it (state.features)
+  if (kind === "chat") return true;
+  const features = (st.server && st.server.features) || {};
+  return kind === "files" ? features.files === true : false;
+}
+
+function shownViews() { return VIEWS.filter(served); }
+
+let servedKey = null;
+function syncServed() {  // a state push follows every turn: re-render the row and the panels only on a change
+  const key = shownViews().join(",");
+  if (key === servedKey) return;
+  servedKey = key;
+  if (!served(vw.view)) setView("chat"); else renderViews();
+  renderSide();
+}
+
 function viewName(kind) { return t(VIEW_LABEL[kind] || "views.chat"); }
 
 function setView(kind) {
-  if (!VIEWS.includes(kind)) return;
+  if (!VIEWS.includes(kind) || !served(kind)) return;
   vw.view = kind;
   if (kind === "chat") vw.chatUnread = false;
   renderViews();
@@ -1205,7 +1223,7 @@ function renderViews() {
   const nav = $("views");
   nav.setAttribute("aria-label", t("views.label"));
   const tabs = el("div", { class: "views-tabs" },
-    VIEWS.map((kind, i) => tab(kind, kind === vw.view, () => setView(kind), i + 1)));
+    shownViews().map((kind, i) => tab(kind, kind === vw.view, () => setView(kind), i + 1)));
   const kids = [tabs];
   if (vw.view !== "chat" && !NARROW.matches) {
     const name = viewName(vw.view);
@@ -1243,9 +1261,9 @@ function applySideWidth() { $("side").style.width = `${clamp(vw.w, SIDE.min, sid
 
 function setSideWidth(w) { vw.w = clamp(Math.round(w), SIDE.min, sideMax()); applySideWidth(); }
 
-function sidePanel(slot, both) {
-  const list = slot === "r" ? vw.r : vw.b;
-  const active = slot === "r" ? vw.rActive : vw.bActive;
+function sidePanel(slot, both, list) {
+  const kept = slot === "r" ? vw.rActive : vw.bActive;
+  const active = list.includes(kept) ? kept : list[0];
   const label = slot === "r" ? t("panels.right") : t("panels.bottom_right");
   const head = el("div", { class: "shead" },
     el("div", { class: "stabs", role: "group", "aria-label": t("panels.pinned", { panel: label }) },
@@ -1293,7 +1311,9 @@ function applySplit() {  // the two panels' shares from vw.split, on the section
 function renderSide() {
   const side = $("side");
   const rail = $("rail");
-  const pinned = vw.r.length + vw.b.length > 0;
+  const rs = vw.r.filter(served);  // a pinned view the server no longer serves stays pinned but unshown
+  const bs = vw.b.filter(served);
+  const pinned = rs.length + bs.length > 0;
   if (!pinned || NARROW.matches) { side.hidden = true; rail.hidden = true; side.replaceChildren(); return; }
   if (!vw.open) {
     side.hidden = true;
@@ -1302,7 +1322,7 @@ function renderSide() {
     rail.replaceChildren(
       el("button", { type: "button", class: "ib", "aria-label": t("panels.open"), title: t("panels.open"),
         onclick: () => { vw.open = true; savePanels(); renderSide(); } }, icon("panel-right")),
-      el("span", { class: "kicker", text: [...vw.r, ...vw.b].map(viewName).join(" · ") }));
+      el("span", { class: "kicker", text: [...rs, ...bs].map(viewName).join(" · ") }));
     return;
   }
   rail.hidden = true;
@@ -1320,8 +1340,8 @@ function renderSide() {
     setSideWidth(vw.w + (ev.key === "ArrowLeft" ? SIDE.step : -SIDE.step));
     savePanels();
   });
-  const both = vw.r.length > 0 && vw.b.length > 0;
-  side.replaceChildren(grip, ...(vw.r.length ? [sidePanel("r", both)] : []), ...(vw.b.length ? [sidePanel("b", both)] : []));
+  const both = rs.length > 0 && bs.length > 0;
+  side.replaceChildren(grip, ...(rs.length ? [sidePanel("r", both, rs)] : []), ...(bs.length ? [sidePanel("b", both, bs)] : []));
 }
 
 /* A view mounts into a host with its context: the place, its own state, the narrow test, and a way to open another
@@ -1850,7 +1870,7 @@ async function start() {
   input.addEventListener("blur", () => { st.slash.open = false; renderSlash(); });
   document.addEventListener("keydown", (ev) => {
     if ((ev.metaKey || ev.ctrlKey) && /^[1-9]$/.test(ev.key)) {  // v4.1: ⌘1…⌘n (Ctrl elsewhere) switch views
-      const kind = VIEWS[Number(ev.key) - 1];
+      const kind = shownViews()[Number(ev.key) - 1];
       if (kind) { ev.preventDefault(); setView(kind); }
       return;
     }

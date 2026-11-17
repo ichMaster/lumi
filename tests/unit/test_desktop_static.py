@@ -331,3 +331,18 @@ def test_review_v41_1_the_split_moves_in_place_never_rebuilding_the_panels():
     assert split.count("applySplit()") == 2 and "renderSide()" not in split
     apply = js[js.index("function applySplit("):js.index("function renderSide(")]
     assert '.spanel[data-slot="r"]' in apply and '.spanel[data-slot="b"]' in apply and "replaceChildren" not in apply
+
+
+
+def test_review_v41_3_the_page_shows_only_the_views_the_server_serves():
+    """v4.1 code review #3: the Files tab showed against a server without the routes (an error state behind it)."""
+    js = _js()
+    served = js[js.index("function served("):js.index("function shownViews(")]
+    assert 'features.files === true' in served and 'kind === "chat"' in served
+    sync = js[js.index("function syncServed("):js.index("function viewName(")]
+    assert "if (key === servedKey) return;" in sync  # only a change re-renders — a state push follows every turn
+    assert "syncServed();" in js[js.index("function absorb("):js.index("function renderStatus(")]
+    assert "shownViews().map((kind, i) => tab(" in js and "const kind = shownViews()[Number(ev.key) - 1]" in js
+    assert "if (!VIEWS.includes(kind) || !served(kind)) return;" in js
+    side = js[js.index("function renderSide("):js.index("/* A view mounts into a host")]
+    assert "vw.r.filter(served)" in side and "vw.b.filter(served)" in side
