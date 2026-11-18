@@ -513,3 +513,70 @@ console.log(JSON.stringify([longDay("2026-11-16"), shortDay("2026-11-15"), longD
   kbSize(1434), kbSize(7200), signed(0.52), signed(-0.31), signed(0), signed(1)]));""")
     assert got == ["Monday, 16 November", "Sun 15 Nov", "Wednesday, 17 June", "441 B", "1.4 KB", "7.0 KB", "+0.52",
                    "\u22120.31", "+0.00", "+1.00"]
+
+
+# --- v4.3 LUMI-313: Thoughts and "Thoughts →" in the strip --------------------------------------------------------
+
+def test_v43_the_thoughts_strings_resolve_and_are_english():
+    js, strings = _js(), _strings()
+    used = set(re.findall(r'"(thoughts\.[A-Za-z_]+|strip\.open_thoughts)"', js))
+    assert {"thoughts.title", "thoughts.summary", "thoughts.kind", "thoughts.kind_all", "thoughts.kinds_n",
+            "thoughts.clear_kinds", "thoughts.kinds_hint", "thoughts.spoken_filter", "thoughts.all", "thoughts.spoken",
+            "thoughts.silent", "thoughts.jump", "thoughts.today", "thoughts.yesterday", "thoughts.more",
+            "thoughts.empty", "thoughts.empty_note", "thoughts.clear_filters", "thoughts.loading",
+            "thoughts.error_title", "strip.open_thoughts"} <= used
+    assert sorted(k for k in used if k not in strings) == []
+    add = json.loads((UI.parents[1] / "design" / "v4" / "handoff" / "strings.en.add.json").read_text(encoding="utf-8"))
+    for key, value in add.items():
+        if key.startswith("thoughts.") or key == "strip.open_thoughts":
+            assert strings[key] == value, key  # the design's words, as handed off
+    assert not CYRILLIC.search(json.dumps({k: v for k, v in strings.items()
+                                           if k.startswith("thoughts.") or k == "strip.open_thoughts"},
+                                          ensure_ascii=False))
+
+
+def test_v43_thoughts_is_a_view_gated_on_features_thoughts_and_the_strip_opens_it():
+    js = _js()
+    assert 'const VIEWS = ["chat", "files", "gallery", "journal", "thoughts"]' in js and 'thoughts: "views.thoughts"' in js
+    served = js[js.index("function served("):js.index("function shownViews(")]
+    assert 'if (kind === "thoughts") return features.thoughts === true;' in served
+    assert "VIEW_KINDS.thoughts = (ctx) =>" in js
+    strip = js[js.index("function renderThoughts("):js.index("/* ---------- state from the server")]
+    assert 'served("thoughts") ? el("button"' in strip and 'onclick: () => setView("thoughts")' in strip
+    assert "renderThoughts();" in js[js.index("function syncServed("):js.index("function viewName(")]
+
+
+def test_v43_the_stream_pages_by_its_cursor_with_its_filters():
+    js = _js()
+    query = js[js.index("function thoughtsQuery("):js.index("function thoughtsDay(")]
+    assert 'q.append("kind", kind)' in query  # several kinds at once
+    assert 'q.set("spoken", s.spoken === "spoken" ? "true" : "false")' in query
+    assert 'if (before) q.set("before", before); else if (s.date) q.set("date", s.date);' in query
+    load = js[js.index("async function thoughtsLoad("):js.index("function thoughtsFilters(")]
+    assert 'api("/v1/thoughts" + thoughtsQuery(s, more ? s.next : null))' in load
+    assert "if (s.busy || (more && !s.next)) return false;" in load and "if (ticket !== s.ticket) return false;" in load
+    near = js[js.index("function thoughtsNearEnd("):js.index("function thoughtsItems(")]
+    assert "< THOUGHTS_NEAR_END_PX" in near and "THOUGHTS_PAGE = 100" in js
+    item = js[js.index("function thoughtsItem("):js.index("function thoughtsMore(")]
+    assert 'lang: "uk", text: th.text' in item and "innerHTML" not in item
+
+
+def test_v43_the_thoughts_helpers():
+    js = _js()
+    consts = "".join("const " + name + " = " + js.split("const " + name + " = ", 1)[1].split(";", 1)[0] + ";"
+                     for name in ("MONTHS", "WEEKDAYS", "THOUGHTS_PAGE"))
+
+    def one_line(name):
+        start = js.index(f"function {name}(")
+        return js[start:js.index("\n", start) + 1]
+
+    got = _node_eval(consts + "const S = {'thoughts.summary': '{n} · about {perDay} a day · {pct}% spoken'};"
+                     + "function t(k, v) { return S[k].replace(/\\{(\\w+)\\}/g, (_, x) => v[x]); }"
+                     + one_line("num") + _fn("thoughtsSummary") + _fn("thoughtsQuery") + """
+const s = { kinds: ["wonder", "learn"], spoken: "silent", date: "2026-11-15" };
+console.log(JSON.stringify([thoughtsSummary({ total: 5589, per_day: 34.4, spoken_share: 0.0581 }),
+  thoughtsSummary({ total: 22, per_day: 3.14, spoken_share: 1 }), thoughtsQuery(s, null), thoughtsQuery(s, "dDE"),
+  thoughtsQuery({ kinds: [], spoken: "all", date: "" }, null)]));""")
+    assert got == ["5,589 · about 34 a day · 6% spoken", "22 · about 3.1 a day · 100% spoken",
+                   "?limit=100&kind=wonder&kind=learn&spoken=false&date=2026-11-15",
+                   "?limit=100&kind=wonder&kind=learn&spoken=false&before=dDE", "?limit=100"]

@@ -18,6 +18,7 @@ PAGE_ROUTES = {
     ("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),  # v4.1: her sandbox, read-only
     ("GET", "/v1/images"), ("GET", "/v1/images/thumb"),  # v4.2: her pictures and their thumbnails
     ("GET", "/v1/journal"),  # v4.3: her journal's days
+    ("GET", "/v1/thoughts"),  # v4.3: her thought stream
 }
 PAGE_PATTERN_ROUTES = {("GET", "/v1/journal/{date}")}  # v4.3: a day of her journal — the date in the path
 
@@ -76,3 +77,9 @@ def test_v43_the_window_reads_her_journal_through_get_routes_only():
                  "/v1/journal/2026-11-16\n"):
         assert not px.forwarded("GET", path), path
     assert not px.forwarded("POST", "/v1/journal/2026-11-16") and not px.forwarded("POST", "/v1/journal")
+
+
+def test_v43_the_window_reads_her_thoughts_through_one_get_route():
+    """v4.3 LUMI-313: the stream's page, GET only — the page can't write or fire a thought through it."""
+    assert {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/thought")} == {("GET", "/v1/thoughts")}
+    assert not px.forwarded("POST", "/v1/thoughts") and not px.forwarded("GET", "/v1/thoughts/x")

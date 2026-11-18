@@ -92,6 +92,11 @@ class FakeServer:
                     self.send_header("Cache-Control", "private, max-age=300")
                     self.end_headers()
                     self.wfile.write(JPEG)
+                elif method == "GET" and path == "/v1/thoughts":  # v4.3: a page of her thought stream
+                    self._send(200, {"items": [{"when": "2026-11-18T10:00", "kind": "wonder", "text": "Тиха думка.",
+                                                "emotion": "calm", "spoken": False}], "next": None,
+                                     "stats": {"total": 1, "per_day": 1.0, "spoken_share": 0.0},
+                                     "days": {"2026-11-18": 1}, "kinds": ["wonder"]})
                 elif method == "GET" and path == "/v1/journal":  # v4.3: her journal's days
                     self._send(200, {"days": [{"date": "2026-11-16", "sections": 2, "size": 1400, "stamp": True}],
                                      "truncated": False})

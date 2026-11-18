@@ -166,7 +166,7 @@ at once and show the same conversation (a line typed in one appears in the other
 
 **Why a local proxy.** The page in the window can't call the server directly: the server sends no CORS headers. So
 the window's Python shell starts a small server on `127.0.0.1` (a free port, `desktop/proxy.py`) that serves the page
-(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1, thirteen since v4.2), adding the token itself — the token never enters the
+(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1, thirteen since v4.2, sixteen since v4.3), adding the token itself — the token never enters the
 page. Every `/v1` request must carry this launch's random key (templated into the page), and the `Host` must be the
 proxy's own, so another app or a web page on the Mac can't borrow the token. No server change.
 
@@ -219,6 +219,25 @@ sandbox, so her file tools never see them. The cache is small (about 20 KB a pic
 picture changes, and may be deleted at any time; it is inside the data archive the deploy agent takes before a prod
 deploy. A turn's outcome and her `message` push carry `pictures` (the sandbox paths) when she made or sent one in that
 turn; `GET /v1/state.features.gallery` says the Gallery is served.
+
+**v4.3 (the window: Journal and Thoughts).** **Journal** (⌘4) lists her journal's days by month, newest first, beside
+the day: the stamp of the day (mood, biorhythms, forecast) as its own block, then each `HH:MM` entry in her words. A
+day written before she kept a stamp says so. ← → step through the days, and the narrow layout (a pinned panel, a
+phone) shows the list as its own screen. **Thoughts** (⌘5) is her whole thought stream, newest first, a hundred at a
+time as you scroll, back to her first thought, with a header ("5,589 · about 34 a day · 6% spoken") and three filters:
+the kinds (several at once), spoken or silent, and a date to jump to. Each day's divider carries the day's count. The
+strip of quiet thoughts beside the portrait stays as it was, and its header gains "Thoughts →".
+
+**v4.3 (her journal and thoughts — the server's side).** Three more read-only routes:
+- `GET /v1/journal` lists the days of her journal (`journal/<user_id>/` in the data root) and `GET /v1/journal/{date}`
+  returns one day, parsed. The journal is **the owner's only**: the owner's token and a role check (today the owner's
+  id; the accounts of v6.2 replace it), so a server for another user answers 403;
+- `GET /v1/thoughts?before=&limit=&kind=&spoken=&date=` pages through her thoughts through the surfacing filter, so a
+  thought sparked with another user never shows.
+
+Nothing changes in the journal or the store, no model is called, and a read never waits for her turn.
+`GET /v1/state.features` says `journal` (whenever a journal folder is configured, whether or not the journal tool is
+on) and `thoughts` (unless `thoughts.show` is `off`).
 
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another

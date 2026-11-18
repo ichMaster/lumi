@@ -531,6 +531,52 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
 .jback svg.icon { width: 15px; height: 15px; }
 .jgap { flex: 1; }
 
+/* — Thoughts (v4.3, handoff §8): the whole stream, its filters; "Thoughts →" in the strip — */
+.tgap { flex: 1; min-width: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; font-size: 12px;
+  color: var(--color-text); border: 1px solid var(--color-divider); }
+.chip:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.chip .kicker { color: inherit; opacity: .8; }
+.chip svg.icon { width: 14px; height: 14px; }
+.chip[aria-expanded="true"] svg.icon { transform: rotate(180deg); }
+.chip.mono { height: 28px; font-family: var(--font-mono); }
+.chip[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg); }
+.tseg > * { padding: 5px 10px; font-size: 12px; }
+.tjump { display: inline-flex; align-items: center; gap: 8px; }
+.tjump .input { flex: none; width: 150px; min-height: 30px; height: 30px; padding: 2px 8px; font-size: 12px; color-scheme: dark; }
+[data-appearance="light"] .tjump .input { color-scheme: light; }
+.tkinds { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 2px 24px 14px; border-bottom: 1px solid var(--l-hair); }
+.vnarrow .tkinds { padding: 4px 16px 14px; }
+.tchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tkinds-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.tlink { font-size: 12px; font-weight: 600; color: var(--l-acc-text); }
+.tlink:disabled { color: var(--l-faint); cursor: default; }
+.thint { font-size: 11.5px; color: var(--l-faint); }
+.tstream { max-width: 760px; padding: 22px 40px 40px; }
+.tstream.narrow { padding: 14px 16px 32px; }
+.tstream .tday { padding: 24px 0 4px; }
+.tstream .tday:first-child { padding-top: 0; }
+.titem { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 14px; padding: 14px 0; border-top: 1px solid var(--l-hair); }
+.tstream.narrow .titem { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.ttime { padding-top: 2px; font-size: 12px; color: var(--l-faint); font-variant-numeric: tabular-nums; }
+.tbody { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tmeta .ttime { padding-top: 0; font-size: 11px; }
+.tkind { color: var(--l-muted); }
+.tspoken { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--l-acc-text); }
+.tspoken svg.icon { width: 12px; height: 12px; }
+.ttext { margin: 0; font-size: 15.5px; line-height: 1.55; text-wrap: pretty; overflow-wrap: break-word; }
+.tcap { font-size: 12px; color: var(--l-faint); }
+.tmore { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 20px 0 8px; font-size: 12px; color: var(--l-faint); }
+.tmore .pulse { display: flex; align-items: center; gap: 10px; }
+.tmore .pulse i { width: 6px; height: 6px; background: var(--color-accent); animation: liliPulse 1.2s ease-in-out infinite; }
+.tmore .pulse i:nth-child(2) { animation-delay: .18s; }
+.tmore .pulse i:nth-child(3) { animation-delay: .36s; }
+.tmore .btn-secondary { height: 32px; font-weight: 600; font-size: 13px; }
+.thoughts-head .open-view { font-size: 12px; font-weight: 600; color: var(--l-faint); }
+.thoughts-head .open-view:hover { color: var(--color-text); }
+
 /* — narrow (< 760px): the future web client and phone — */
 @media (max-width: 759px) {
   .views { padding: 0 4px; }

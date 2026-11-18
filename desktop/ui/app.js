@@ -89,7 +89,8 @@ const ICONS = {
   image: [["rect", { x: "3", y: "3", width: "18", height: "18" }], ["circle", { cx: "9", cy: "9", r: "2" }], ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" }]],
   "arrow-left": [["path", { d: "m12 19-7-7 7-7" }], ["path", { d: "M19 12H5" }]],
   "arrow-right": [["path", { d: "M5 12h14" }], ["path", { d: "m12 5 7 7-7 7" }]],
-  "chevron-left": [["path", { d: "m15 18-6-6 6-6" }]],  // v4.2: the picture view's previous
+  "chevron-left": [["path", { d: "m15 18-6-6 6-6" }]],
+  "message-circle": [["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z" }]],  // v4.3: a spoken thought  // v4.2: the picture view's previous
 };
 
 function icon(name, size) {
@@ -625,7 +626,10 @@ function renderThoughts() {
     el("div", { class: "thoughts-head" }, el("span", { class: "kicker", text: t("panel.thoughts") }),
       unread ? el("span", { class: "new", text: unread === 1 ? t("panel.thoughts.new.one") : t("panel.thoughts.new.many", { n: unread }) }) : null,
       el("button", { type: "button", class: "toggle", "aria-expanded": String(st.thoughtsOpen), onclick: toggleThoughts,
-        text: st.thoughtsOpen ? t("panel.thoughts.collapse") : t("panel.thoughts.all", { n: st.thoughts.length }) })),
+        text: st.thoughtsOpen ? t("panel.thoughts.collapse") : t("panel.thoughts.all", { n: st.thoughts.length }) }),
+      served("thoughts") ? el("button", { type: "button", class: "open-view", onclick: () => setView("thoughts"),  // v4.3
+        title: `${viewName("thoughts")}  ${t("views.shortcut", { n: shownViews().indexOf("thoughts") + 1 })}`,
+        text: t("strip.open_thoughts") }) : null),
     el("ul", { class: "thought-list" }, shown.map(thoughtItem)));
 }
 
@@ -1168,8 +1172,9 @@ function onKey(ev) {
    line that arrives meanwhile marks Chat. Any view but Chat can be pinned to a right panel and/or a bottom-right one
    beside the chat (wide layout only); a pinned view always takes its narrow layout. The pins, the active tabs, the
    width, the split and the folded state are kept per client in localStorage. Each place keeps its own view state. */
-const VIEWS = ["chat", "files", "gallery", "journal"];  // v4.1 Files, v4.2 Gallery, v4.3 Journal — later: thoughts, state, schedule
-const VIEW_LABEL = { chat: "views.chat", files: "views.files", gallery: "views.gallery", journal: "views.journal" };
+const VIEWS = ["chat", "files", "gallery", "journal", "thoughts"];  // v4.1 Files, v4.2 Gallery, v4.3 Journal and Thoughts
+const VIEW_LABEL = { chat: "views.chat", files: "views.files", gallery: "views.gallery", journal: "views.journal",
+  thoughts: "views.thoughts" };
 const VIEW_KINDS = {};  // kind → render(ctx): each view registers itself below
 const PANELS_STORE = "lumi.desktop.panels";
 // the owner (2026-11-17): the panel widens as far as the window allows — the chat keeps at least chatMin
@@ -1207,6 +1212,7 @@ function served(kind) {  // code review #3: a view shows only when the server sa
   if (kind === "files") return features.files === true;
   if (kind === "gallery") return features.gallery === true;  // v4.2: her pictures and the thumbnail cache
   if (kind === "journal") return features.journal === true;  // v4.3: her journal, the owner's only
+  if (kind === "thoughts") return features.thoughts === true;  // v4.3: her thought stream (unless /thoughts is off)
   return false;
 }
 
@@ -1219,6 +1225,7 @@ function syncServed() {  // a state push follows every turn: re-render the row a
   servedKey = key;
   if (!served(vw.view)) setView("chat"); else renderViews();
   renderSide();
+  renderThoughts();  // v4.3: the strip's "Thoughts →" follows the Thoughts view
 }
 
 function viewName(kind) { return t(VIEW_LABEL[kind] || "views.chat"); }
@@ -2388,6 +2395,207 @@ function renderJournal(ctx) {
   list.scrollTop = s.listScroll;
   const current = list.querySelector('.jrow[aria-current="true"]');
   if (current) current.scrollIntoView({ block: "nearest" });  // ← → keep the day in sight
+}
+
+/* ---------- Thoughts (v4.3 LUMI-313, design/v4/handoff §8) ----------
+   Her whole thought stream, newest first (/v1/thoughts — the server's surfacing filter, so a thought sparked with
+   another user never reaches the page), a page of 100 at a time as the list nears its end, back to her first thought.
+   Filters: kinds (several at once), spoken or silent, and a date to jump to; each change starts again from the newest
+   matching thought (or that day). Day dividers carry the day's count from the server, since a page can cut a day. */
+const THOUGHTS_PAGE = 100;
+const THOUGHTS_NEAR_END_PX = 160;
+
+function thoughtsQuery(s, before) {
+  const q = new URLSearchParams({ limit: String(THOUGHTS_PAGE) });
+  for (const kind of s.kinds) q.append("kind", kind);
+  if (s.spoken !== "all") q.set("spoken", s.spoken === "spoken" ? "true" : "false");
+  if (before) q.set("before", before); else if (s.date) q.set("date", s.date);
+  return "?" + q.toString();
+}
+
+function thoughtsDay(ymd, n) {  // the day divider: "Today · Monday, 16 November · 11"
+  const now = new Date();
+  const day = longDay(ymd);
+  if (ymd === ymdOf(now)) return t("thoughts.today", { day, n: num(n) });
+  if (ymd === ymdOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) {
+    return t("thoughts.yesterday", { day, n: num(n) });
+  }
+  const year = dayOf(ymd).getFullYear();
+  return `${day}${year === now.getFullYear() ? "" : ` ${year}`} · ${num(n)}`;
+}
+
+function thoughtsSummary(stats) {  // "5,589 · about 34 a day · 6% spoken"
+  const perDay = stats.per_day >= 10 ? num(Math.round(stats.per_day)) : String(Math.round(stats.per_day * 10) / 10);
+  return t("thoughts.summary", { n: num(stats.total), perDay, pct: String(Math.round((stats.spoken_share || 0) * 100)) });
+}
+
+VIEW_KINDS.thoughts = (ctx) => {
+  const s = ctx.state;
+  if (s.ctx !== ctx) {  // a fresh mount (or new filters): the newest matching thoughts again
+    Object.assign(s, { ctx, kinds: s.kinds || [], spoken: s.spoken || "all", date: s.date || "", kindsOpen: !!s.kindsOpen,
+      allKinds: s.allKinds || [], items: [], next: null, stats: null, days: {}, phase: "loading", error: null,
+      busy: false, ticket: (s.ticket || 0) + 1, moreFailed: false });
+    renderThoughtsView(ctx);
+    thoughtsLoad(ctx, false);
+    return;
+  }
+  renderThoughtsView(ctx);
+};
+
+function thoughtsReload(ctx) { ctx.state.ctx = null; VIEW_KINDS.thoughts(ctx); }
+
+async function thoughtsLoad(ctx, more) {
+  const s = ctx.state;
+  if (s.busy || (more && !s.next)) return false;
+  const ticket = s.ticket;
+  s.busy = true;
+  s.moreFailed = false;
+  let data;
+  try {
+    data = await api("/v1/thoughts" + thoughtsQuery(s, more ? s.next : null));
+  } catch (err) {
+    s.busy = false;
+    if (ticket !== s.ticket) return false;
+    if (more) { s.moreFailed = true; thoughtsMore(ctx); } else { s.phase = "error"; s.error = err; renderThoughtsView(ctx); }
+    return false;
+  }
+  s.busy = false;
+  if (ticket !== s.ticket) return false;  // a late answer for old filters is dropped
+  const fresh = Array.isArray(data.items) ? data.items : [];
+  s.items.push(...fresh);
+  s.next = data.next || null;
+  Object.assign(s.days, data.days || {});
+  if (!more) {
+    s.stats = data.stats || null;
+    s.allKinds = Array.isArray(data.kinds) ? data.kinds : [];
+    s.phase = "ok";
+    renderThoughtsView(ctx);
+    return true;
+  }
+  thoughtsItems(ctx, fresh);
+  thoughtsMore(ctx);
+  return true;
+}
+
+function thoughtsFilters(ctx) {
+  const s = ctx.state;
+  const label = !s.kinds.length ? t("thoughts.kind_all") : s.kinds.length <= 2 ? s.kinds.join(", ")
+    : t("thoughts.kinds_n", { n: num(s.kinds.length) });
+  const kind = el("button", { type: "button", class: "chip", "aria-expanded": String(s.kindsOpen),
+    onclick: () => { s.kindsOpen = !s.kindsOpen; renderThoughtsView(ctx); } },
+  el("span", { class: "kicker", text: t("thoughts.kind") }), el("span", { class: "chipval", text: label }), icon("chevron-down"));
+  const spoken = el("div", { class: "seg tseg", role: "radiogroup", "aria-label": t("thoughts.spoken_filter") },
+    [["all", "thoughts.all"], ["spoken", "thoughts.spoken"], ["silent", "thoughts.silent"]].map(([value, key]) =>
+      el("button", { type: "button", role: "radio", "aria-checked": String(s.spoken === value),
+        class: s.spoken === value ? "on" : null,
+        onclick: () => { if (s.spoken !== value) { s.spoken = value; thoughtsReload(ctx); } } }, t(key))));
+  const input = el("input", { type: "date", class: "input", value: s.date, max: ymdOf(new Date()),
+    "aria-label": t("thoughts.jump") });
+  input.addEventListener("change", () => {
+    const value = /^\d{4}-\d{2}-\d{2}$/.test(input.value) ? input.value : "";
+    if (value !== s.date) { s.date = value; thoughtsReload(ctx); }
+  });
+  const jump = el("label", { class: "tjump" }, el("span", { class: "kicker", text: t("thoughts.jump") }), input);
+  return [kind, spoken, jump];
+}
+
+function thoughtsKinds(ctx) {  // the in-flow panel under the header: every kind as a toggle, several at once
+  const s = ctx.state;
+  const all = [...s.allKinds, ...s.kinds.filter((k) => !s.allKinds.includes(k))];
+  return el("div", { class: "tkinds" },
+    el("div", { class: "tchips", role: "group", "aria-label": t("thoughts.kind") }, all.map((k) =>
+      el("button", { type: "button", class: "chip mono", "aria-pressed": String(s.kinds.includes(k)),
+        onclick: () => { s.kinds = s.kinds.includes(k) ? s.kinds.filter((x) => x !== k) : [...s.kinds, k]; thoughtsReload(ctx); } }, k))),
+    el("div", { class: "tkinds-foot" },
+      el("button", { type: "button", class: "tlink", disabled: !s.kinds.length,
+        onclick: () => { s.kinds = []; thoughtsReload(ctx); } }, t("thoughts.clear_kinds")),
+      el("span", { class: "thint", text: t("thoughts.kinds_hint") })));
+}
+
+function renderThoughtsView(ctx) {
+  const s = ctx.state;
+  const narrow = ctx.narrow();
+  const bar = el("div", { class: "vbar" }, el("h2", { class: "vtitle", text: t("thoughts.title") }),
+    s.phase === "ok" && s.stats ? el("span", { class: "vmeta", text: thoughtsSummary(s.stats) }) : null,
+    el("span", { class: "tgap" }), ...thoughtsFilters(ctx));
+  const head = [bar, s.kindsOpen ? thoughtsKinds(ctx) : null];
+  const frame = (body) => el("div", { class: "view" }, ...head, el("div", { class: "vscroll" }, body));
+  if (s.phase === "loading") { paint(ctx, frame(viewLoading(t("thoughts.loading")))); return; }
+  if (s.phase === "error") {
+    paint(ctx, frame(viewError(t("thoughts.error_title"), s.error, () => thoughtsReload(ctx))));
+    return;
+  }
+  if (!s.items.length) {
+    const filtered = s.kinds.length || s.spoken !== "all" || s.date;
+    paint(ctx, frame(viewEmpty(t("thoughts.title"), t("thoughts.empty"), t("thoughts.empty_note"),
+      filtered ? el("button", { type: "button", class: "btn btn-secondary", onclick: () => {
+        Object.assign(s, { kinds: [], spoken: "all", date: "" });
+        thoughtsReload(ctx);
+      } }, t("thoughts.clear_filters")) : null)));
+    return;
+  }
+  const stream = el("div", { class: "tstream" + (narrow ? " narrow" : "") });
+  const scroller = el("div", { class: "vscroll" }, stream);
+  s.stream = { node: stream, day: "", narrow, more: null, scroller };
+  scroller.addEventListener("scroll", () => thoughtsNearEnd(ctx), { passive: true });
+  thoughtsItems(ctx, s.items);
+  thoughtsMore(ctx);
+  paint(ctx, el("div", { class: "view" }, ...head, scroller));
+  requestAnimationFrame(() => thoughtsNearEnd(ctx));  // a first page that doesn't fill the screen asks for the next
+}
+
+function thoughtsNearEnd(ctx) {
+  const g = ctx.state.stream;
+  if (!g || ctx.state.moreFailed) return;
+  const sc = g.scroller;
+  if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < THOUGHTS_NEAR_END_PX) {
+    thoughtsLoad(ctx, true).then((got) => { if (got) requestAnimationFrame(() => thoughtsNearEnd(ctx)); });
+  }
+}
+
+function thoughtsItems(ctx, items) {
+  const s = ctx.state;
+  const g = s.stream;
+  if (!g) return;
+  for (const th of items) {
+    const date = String(th.when || "").slice(0, 10);
+    if (date && date !== g.day) {
+      g.day = date;
+      g.node.append(el("div", { class: "divider tday" }, el("span", { class: "kicker", text: thoughtsDay(date, s.days[date] || 0) }),
+        el("span", { class: "line" })));
+    }
+    g.node.append(thoughtsItem(th, g.narrow));
+  }
+  if (g.more) g.node.append(g.more);  // the end row stays last
+}
+
+function thoughtsItem(th, narrow) {
+  const time = el("span", { class: "ttime", text: String(th.when || "").slice(11, 16) });
+  return el("article", { class: "titem" }, narrow ? null : time,
+    el("div", { class: "tbody" },
+      el("div", { class: "tmeta" }, narrow ? time : null, el("span", { class: "kicker tkind", text: th.kind }),
+        th.spoken ? el("span", { class: "tspoken" }, icon("message-circle"), t("thoughts.spoken")) : null),
+      el("p", { class: "ttext", lang: "uk", text: th.text }),
+      S.captions && S.captions[th.emotion] ? el("span", { class: "tcap", text: S.captions[th.emotion] }) : null));
+}
+
+function thoughtsMore(ctx) {  // the end row: loading earlier thoughts · a retry when a page failed · nothing at the first
+  const s = ctx.state;
+  const g = s.stream;
+  if (!g) return;
+  let row;
+  if (s.moreFailed) {
+    row = el("div", { class: "tmore" }, el("span", { text: t("thoughts.error_title") }),
+      el("button", { type: "button", class: "btn btn-secondary", onclick: () => { s.moreFailed = false; thoughtsNearEnd(ctx); thoughtsMore(ctx); } },
+        icon("refresh-cw"), t("state.try_again")));
+  } else if (s.next) {
+    row = el("div", { class: "tmore", role: "status" }, el("div", { class: "pulse" }, el("i"), el("i"), el("i"),
+      el("span", { text: t("thoughts.more") })));
+  } else {
+    row = el("div", { class: "tmore tend" });
+  }
+  if (g.more) g.more.replaceWith(row); else g.node.append(row);
+  g.more = row;
 }
 
 function typing(target) {  // the focus is in a field (the keys belong to it)

@@ -273,3 +273,13 @@ def test_v43_the_journal_is_relayed_and_nothing_else_below_it(world):
         assert request(proxy, "GET", path)[0] == 404, path
     assert request(proxy, "POST", "/v1/journal/2026-11-16", body={})[0] == 404
     assert len(server.requests) == seen  # none of them reached the server
+
+
+def test_v43_a_page_of_thoughts_is_relayed_with_its_repeated_kinds(world):
+    """v4.3 LUMI-313: the query reaches the server as the page wrote it — several kinds, spoken, the cursor."""
+    server, proxy = world
+    status, _, body = request(proxy, "GET", "/v1/thoughts?limit=100&kind=wonder&kind=learn&spoken=true&before=dDE")
+    assert status == 200 and json.loads(body)["stats"]["total"] == 1
+    assert server.requests[-1]["path"] == "/v1/thoughts?limit=100&kind=wonder&kind=learn&spoken=true&before=dDE"
+    assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    assert request(proxy, "POST", "/v1/thoughts", body={})[0] == 404  # GET only
