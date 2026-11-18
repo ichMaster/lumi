@@ -166,7 +166,7 @@ at once and show the same conversation (a line typed in one appears in the other
 
 **Why a local proxy.** The page in the window can't call the server directly: the server sends no CORS headers. So
 the window's Python shell starts a small server on `127.0.0.1` (a free port, `desktop/proxy.py`) that serves the page
-(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1, thirteen since v4.2, sixteen since v4.3), adding the token itself — the token never enters the
+(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1, thirteen since v4.2, sixteen since v4.3, eighteen since v4.4), adding the token itself — the token never enters the
 page. Every `/v1` request must carry this launch's random key (templated into the page), and the `Host` must be the
 proxy's own, so another app or a web page on the Mac can't borrow the token. No server change.
 
@@ -238,6 +238,24 @@ strip of quiet thoughts beside the portrait stays as it was, and its header gain
 Nothing changes in the journal or the store, no model is called, and a read never waits for her turn.
 `GET /v1/state.features` says `journal` (whenever a journal folder is configured, whether or not the journal tool is
 on) and `thoughts` (unless `thoughts.show` is `off`).
+
+**v4.4 (the window: State, Schedule and a reply's tools).** **State** (⌘6) shows her day: the mood of the day in full
+(the theme, the resolution, the reading), the three biorhythms with their cycles drawn ±14 days around today, the
+closeness level, and the place for the day's plan (later). The mood shows once today's is made; until then the view
+says so. **Schedule** (⌘7) shows what wakes her thoughts: the quiet hours, the day cap and today's firings, and every
+directive with its rule in English ("weekdays at 08:00", "after 15 min of silence"), when it last fired and when it is
+next due — the next to fire marked, a disabled one dimmed. With `files.trace` on, the **details panel** lists the tools
+she called in the window's last reply (name, a short input, a short result).
+
+**v4.4 (her day and timetable — the server's side).** Two more read-only routes, the owner's token only:
+- `GET /v1/today` — today's mood (only once it is made; the route never makes it), the biorhythms with their trend
+  and place in the cycle, the closeness level;
+- `GET /v1/schedule` — the running scheduler's view: every entry of `schedule.yaml` (with the settings' overrides),
+  its last firing from `schedule.state`, its next due time by the scheduler's own rules (quiet hours veto everything
+  but an `at`; a reached day cap waits for midnight). 404 while the scheduler is off.
+
+While `files.trace` is on, a turn's outcome carries `tool_calls` (at most 20, each input and result one short line); with
+it off the outcome is unchanged. `GET /v1/state.features` says `today` and `schedule`.
 
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another

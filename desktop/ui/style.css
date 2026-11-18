@@ -654,6 +654,19 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
 .sfoot { margin: 0; padding: 14px 24px 28px; font-size: 12px; color: var(--l-faint); }
 .vnarrow .sfoot { padding: 14px 16px 24px; }
 
+/* — a turn's tools in the details panel (v4.4, handoff §11) — */
+.tools { padding: 8px 14px; border-bottom: 1px solid var(--l-hair); }
+.tools-head { display: flex; align-items: baseline; gap: 8px; padding-bottom: 6px; }
+.tools-n { font-size: 11px; color: var(--l-faint); font-variant-numeric: tabular-nums; }
+.tools-list { max-height: 150px; overflow-y: auto; }
+.tool { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; gap: 2px 14px; align-items: baseline; padding: 5px 0;
+  border-top: 1px solid var(--l-hair); font-size: 12px; }
+.tool-name { font-family: var(--font-mono); font-weight: 600; color: var(--l-acc-text); overflow-wrap: anywhere; }
+.tool-in { font-family: var(--font-mono); color: var(--l-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-out { color: var(--l-muted); max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tools-none { font-size: 12px; color: var(--l-faint); }
+@media (max-width: 759px) { .tool { grid-template-columns: minmax(0, 1fr); } .tool-out { max-width: none; } }
+
 /* — narrow (< 760px): the future web client and phone — */
 @media (max-width: 759px) {
   .views { padding: 0 4px; }

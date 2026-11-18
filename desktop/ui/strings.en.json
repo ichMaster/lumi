@@ -433,5 +433,7 @@
   "schedule.loading": "Reading the schedule…",
   "schedule.error_title": "Couldn’t read the schedule",
   "date.tomorrow": "Tomorrow",
-  "schedule.some_enabled": "{n} enabled"
+  "schedule.some_enabled": "{n} enabled",
+  "tools.title": "Tools · last reply",
+  "tools.none": "No tools in the last reply."
 }

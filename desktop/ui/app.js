@@ -20,6 +20,7 @@ const st = {
   retryIdx: 0, countdown: 0, wake: null, replaying: false, replayTimer: null, missed: [], restored: null,
   slash: { open: false, items: [], index: 0, dismissed: false }, detailsOpen: false, rows: 0, chatSize: 16,
   thinkMode: null, thinkBlocks: [], thoughts: [], thoughtsOpen: false,  // v2.12.2
+  lastTools: null,  // v4.4: the tools of this window's last reply (the server's tool_calls), or null
   emoji: {},  // LUMI-276: the TUI's emotion → emoji map, from the shell
   portraitShown: true,  // LUMI-277: the owner can hide her portrait (kept locally)
 };
@@ -707,7 +708,22 @@ function renderDetails() {
       return el("button", { type: "button", class: on ? "on" : null, "aria-pressed": String(on), text: t(`portrait.modes.${m}`),
         onclick: () => setPortraitShown(m === "shown") });
     })));
-  box.replaceChildren(grid, el("div", { class: "controls" }, portrait, voice, size));
+  box.replaceChildren(grid, toolsBlock(), el("div", { class: "controls" }, portrait, voice, size));
+}
+
+/* v4.4 LUMI-318 (design/v4/handoff §11): the tools of this window's last reply, between the cells and the controls —
+   name, short input, short result; none → one line; no list from the server (the trace off) → no block */
+function toolsBlock() {
+  const calls = st.lastTools;
+  if (!Array.isArray(calls)) return null;
+  return el("div", { class: "tools" },
+    el("div", { class: "tools-head" }, el("span", { class: "kicker", text: t("tools.title") }),
+      el("span", { class: "tools-n", text: String(calls.length) })),
+    calls.length ? el("div", { class: "tools-list" }, calls.slice(0, 20).map((c) => el("div", { class: "tool" },
+      el("span", { class: "tool-name", text: String(c.name || "") }),
+      el("span", { class: "tool-in", text: String(c.input || ""), title: String(c.input || "") }),
+      el("span", { class: "tool-out", text: `\u2192 ${String(c.result || "")}` }))))
+      : el("div", { class: "tools-none", text: t("tools.none") }));
 }
 
 function setPortraitShown(shown) {  // LUMI-277: her picture on or off; everything else in the panel stays
@@ -963,6 +979,9 @@ async function turn(text, queuedRow, waited = false) {
   showFace((result.state && result.state.theme) ?? st.server.theme, result.emotion, result.intensity);
   setEmotion(her.node, result.emotion, result.intensity);
   chatPictures(her, result.pictures);  // v4.2: what she made or sent in this turn
+  // v4.4: the tools of this reply (the server lists them only while files.trace is on — absent, no block)
+  st.lastTools = Array.isArray(result.tool_calls) ? result.tool_calls : null;
+  if (st.detailsOpen) renderDetails();
   stick();
 }
 

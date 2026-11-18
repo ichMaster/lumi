@@ -647,3 +647,17 @@ console.log(JSON.stringify([
                    "weekends at 10:00", "Sundays at 20:00", "Mon, Wed at 09:00", "08:30\u201323:30 every 3 h",
                    "cron */30 9-18 * * 1-5", "45 s", "Today 23:41", "Tomorrow 08:00", "Yesterday 21:10",
                    "22 Nov 20:00", "\u2014", "high", "mid", "low", 71, "140,28.0"]
+
+
+# --- v4.4 LUMI-318: a turn's tools in the details panel ------------------------------------------------------------
+
+def test_v44_the_details_panel_lists_the_last_replys_tools_only_when_the_server_sent_them():
+    js, strings = _js(), _strings()
+    assert strings["tools.title"] == "Tools \u00b7 last reply" and strings["tools.none"] == "No tools in the last reply."
+    turn = js[js.index("async function turn("):js.index("async function streamTurn(")]
+    assert "st.lastTools = Array.isArray(result.tool_calls) ? result.tool_calls : null;" in turn  # absent → no block
+    block = js[js.index("function toolsBlock("):js.index("function setPortraitShown(")]
+    assert "if (!Array.isArray(calls)) return null;" in block and "calls.slice(0, 20)" in block
+    assert 't("tools.title")' in block and 't("tools.none")' in block and "innerHTML" not in block
+    details = js[js.index("function renderDetails("):js.index("function toolsBlock(")]
+    assert "box.replaceChildren(grid, toolsBlock(), " in details  # between the cells and the controls
