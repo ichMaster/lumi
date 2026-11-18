@@ -1397,9 +1397,10 @@ Since v2.5 her tools and her thoughts run in the server on the box. What they le
 sandbox (the v0.19–v0.32 files, the v0.23 pictures), the v0.28 journal and the v0.12 thought stream. The desktop
 window (v2.12, `Lili.app`) shows only the chat and her portrait. This version adds **views of that data to the
 window**: Files with a markdown reader (v4.1); Gallery and her pictures in the chat (v4.2); Journal and Thoughts
-(v4.3); State, Schedule and a turn's tools (v4.4). Then **actions from the window** (v4.5), and **her voice in the
+(v4.3); State, Schedule and a turn's tools (v4.4). Then **actions from the window** (v4.5), **her voice in the
 window** (v4.6): a reply's voice generated once on the server, played in the chat and sent to Telegram, with one
-switch for both. The owner placed it as v4 on 2026-11-17, and the later versions moved up by one.
+switch for both, and **dictation in the window** (v4.7): you speak, the text appears live in the input, you edit and
+send. The owner placed it as v4 on 2026-11-17, and the later versions moved up by one.
 
 **The window only** (the owner, 2026-11-17). The TUI gets nothing new; it keeps `/journal` and `/thoughts`. The concept
 is [DESKTOP_VIEWS.md](features/DESKTOP_VIEWS.md), and the design brief for Claude Design is
@@ -1764,6 +1765,97 @@ the window turns her voice on or off for both.
   - the outcome and the `message` push unchanged with the switch off;
   - the proxy's two routes.
 - static: the play button and the toggle built without HTML, the strings English, no autoplay.
+
+No paid calls.
+
+### v4.7 — Dictation in the window
+
+**Goal:** the owner dictates in the window and sees the words appear while speaking, edits them, and sends — better
+than the TUI's dictation, which shows nothing until the line is already sent.
+
+**Today** (the v0.26 dictator):
+- a separate process records the Mac's mic while the TUI's `listen.flag` is on;
+- when the flag turns off, it recognizes the whole recording at once (Deepgram, ElevenLabs Scribe or a local Whisper);
+- the line goes straight into `inbox.jsonl` as your message: nothing shows while you speak, and nothing can be fixed
+  before it is sent.
+
+The streaming recognizer already exists for the v1.6 voice mode (`voice/stream_stt.py`: `DeepgramStream`,
+`UtteranceTracker`, interim results, Ukrainian). The box already holds the STT key and settings: Telegram voice
+messages are transcribed there (`dictation.stt_provider: deepgram`, `stt_model: nova-2`, `stt_lang: uk`).
+
+**After v4.7:**
+
+1. **A mic button in the composer** and a shortcut.
+   - Hold to talk (press and hold the button or ⌥Space), or click once to start and once to stop.
+   - Esc cancels the recording and leaves the input as it was.
+2. **The words appear live.**
+   - Interim results show in the input as you speak, in a muted style, and settle into ordinary text as each phrase
+     is final.
+   - A level meter and a timer show that the mic hears you.
+3. **Into the input, not straight to her.**
+   - The recognized text lands in the input, after anything already typed. You can fix it and send with Enter.
+   - An option, «Send when I stop», sends the line as soon as the recording ends, for hands-free use. It is kept per
+     window like the other preferences.
+4. **The mic is the shell's, the recognition the server's.**
+   - The window's Python shell records the Mac's mic with `sounddevice` (16 kHz mono PCM, the dictator's format,
+     `dictation.stt_device`) — not the page, so no WebKit microphone permission is involved.
+   - It streams the audio to a new owner-only route on the server, `/v1/dictation` (a WebSocket: PCM in; interim and
+     final text out). The server runs the streaming recognizer with the box's key, so the Mac needs no STT key.
+   - The shell hands the text to the page through a local route behind the window's key.
+5. **A fallback.** Without the streaming recognizer (no `websockets`, the provider down, a provider without
+   streaming), the recording is recognized whole when it stops, through the batch adapter (`voice/stt.py`), as the
+   TUI does today.
+6. **Ukrainian by default** (`dictation.stt_lang`). The window's own words stay English.
+
+**Rules:**
+- The owner's token only; the room's token never reaches the route.
+- No audio is stored, on the Mac or on the box; only the text you send exists afterwards, as an ordinary message.
+- The mic is open only while you record. The level meter shows it, and the shell closes the device on stop, cancel
+  or close.
+- Bounded:
+  - a recording is at most 5 minutes;
+  - one dictation at a time;
+  - the WebSocket closes on stop or after 10 s of no audio.
+- A recognition error leaves the input as it was, with one readable line; nothing is sent.
+- Paid: streaming recognition is a Deepgram call. Tests use a fake stream and the mock STT, never the network.
+- The TUI's dictation is unchanged.
+
+**Tasks:**
+- server:
+  - `/v1/dictation` (the WebSocket, owner-only): the relay to `DeepgramStream` with `UtteranceTracker`, the batch
+    fallback, the caps;
+  - `features.dictation` (a recognizer is configured).
+- shell / proxy:
+  - the mic capture (`sounddevice`, the chosen device);
+  - the WebSocket client to the server with the token;
+  - the local routes the page uses: start, stop, cancel, and the text and level events, behind the window's key.
+- window:
+  - the mic button and the shortcut (hold and toggle);
+  - the live text in the input, the level meter and the timer;
+  - Esc to cancel; «Send when I stop»;
+  - the states: listening, recognizing, error.
+- ARCHITECTURE §Contracts: a "v4.7 (additive)" paragraph; `docs/SERVER_SETUP.md`.
+
+**DoD:**
+- In `Lili.app`, holding the mic button and speaking Ukrainian shows the words in the input while speaking; releasing
+  leaves the text to edit and send.
+- «Send when I stop» sends the line by itself when the recording ends.
+- Esc cancels and leaves the input as it was. An error leaves it as it was, with a readable line.
+- The mic is closed after every stop, cancel and close of the window. No audio file exists afterwards, on the Mac or
+  the box.
+- The room's token gets 403 / no WebSocket.
+- (Manual, owner) on prod: a dictated message in Ukrainian, edited and sent.
+
+**Tests:**
+- unit:
+  - the relay with a fake stream: interim → final text, the phrase hold, the 5-minute and idle caps;
+  - the batch fallback with `MockSTT`;
+  - the shell's capture glue with a fake device: opened on start, closed on stop / cancel.
+- contract:
+  - `/v1/dictation`: the token, the room's refusal, the message shapes (`interim`, `final`, `error`, `done`);
+  - `features.dictation`;
+  - the local routes' key guard.
+- static: the mic button, the live text without HTML, the strings English, Esc.
 
 No paid calls.
 
