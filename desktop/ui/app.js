@@ -1172,9 +1172,9 @@ function onKey(ev) {
    line that arrives meanwhile marks Chat. Any view but Chat can be pinned to a right panel and/or a bottom-right one
    beside the chat (wide layout only); a pinned view always takes its narrow layout. The pins, the active tabs, the
    width, the split and the folded state are kept per client in localStorage. Each place keeps its own view state. */
-const VIEWS = ["chat", "files", "gallery", "journal", "thoughts"];  // v4.1 Files, v4.2 Gallery, v4.3 Journal and Thoughts
+const VIEWS = ["chat", "files", "gallery", "journal", "thoughts", "state", "schedule"];  // v4.1–v4.4, one per phase
 const VIEW_LABEL = { chat: "views.chat", files: "views.files", gallery: "views.gallery", journal: "views.journal",
-  thoughts: "views.thoughts" };
+  thoughts: "views.thoughts", state: "views.state", schedule: "views.schedule" };
 const VIEW_KINDS = {};  // kind → render(ctx): each view registers itself below
 const PANELS_STORE = "lumi.desktop.panels";
 // the owner (2026-11-17): the panel widens as far as the window allows — the chat keeps at least chatMin
@@ -1213,6 +1213,8 @@ function served(kind) {  // code review #3: a view shows only when the server sa
   if (kind === "gallery") return features.gallery === true;  // v4.2: her pictures and the thumbnail cache
   if (kind === "journal") return features.journal === true;  // v4.3: her journal, the owner's only
   if (kind === "thoughts") return features.thoughts === true;  // v4.3: her thought stream (unless /thoughts is off)
+  if (kind === "state") return features.today === true;  // v4.4: her day
+  if (kind === "schedule") return features.schedule === true;  // v4.4: her timetable, while a scheduler runs
   return false;
 }
 
@@ -2220,7 +2222,10 @@ function kbSize(n) { return n < 1024 ? `${num(n)} B` : `${(n / 1024).toFixed(1)}
 
 function entriesLabel(n) { return n === 1 ? t("journal.entry") : t("journal.entries", { n: num(n) }); }
 
-function signed(v) { return (v < 0 ? "−" : "+") + Math.abs(Number(v) || 0).toFixed(2); }
+function signed(v) {  // "+0.52" / "−0.31"; a value that rounds to zero reads "+0.00", never "−0.00"
+  const r = Math.round((Number(v) || 0) * 100) / 100;
+  return (r < 0 ? "−" : "+") + Math.abs(r).toFixed(2);
+}
 
 VIEW_KINDS.journal = (ctx) => {
   const s = ctx.state;
@@ -2596,6 +2601,258 @@ function thoughtsMore(ctx) {  // the end row: loading earlier thoughts · a retr
   }
   if (g.more) g.more.replaceWith(row); else g.node.append(row);
   g.more = row;
+}
+
+/* ---------- State (v4.4 LUMI-317, design/v4/handoff §9) ----------
+   Her day, read-only (/v1/today): the mood of the day in full (the theme, the resolution, the reading's body), the
+   three biorhythms with their ±14-day cycles drawn as SVG built node by node, the closeness level, and the place for
+   the day's plan. The mood is shown only once today's is made; the biorhythms and closeness don't wait for it. */
+const SVG_NS = "http://www.w3.org/2000/svg";
+const BIO_W = 280;
+const BIO_H = 56;
+const BIO_SPAN = 28;  // days across the drawing: ±14
+
+function bioLevel(value) { return value >= 0.33 ? "high" : value <= -0.33 ? "low" : "mid"; }
+
+function bioPoints(day, period) {  // the sine across ±14 days around today, as an SVG polyline's points
+  const pts = [];
+  for (let x = 0; x <= BIO_W; x += 4) {
+    const d = (x / BIO_W - 0.5) * BIO_SPAN;
+    pts.push(`${x},${(BIO_H / 2 - Math.sin((2 * Math.PI * (day + d)) / period) * (BIO_H / 2 - 4)).toFixed(1)}`);
+  }
+  return pts.join(" ");
+}
+
+function svgNode(tag, attrs) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+  return node;
+}
+
+function bioCycle(b) {
+  const name = t(`state.${b.name}`);
+  const label = `${name} ${signed(b.value)}, ${t(`state.${bioLevel(b.value)}`)}, ${t(`state.${b.trend}`)}, ` +
+    `on a ${b.period}-day cycle`;
+  const svg = svgNode("svg", { viewBox: `0 0 ${BIO_W} ${BIO_H}`, preserveAspectRatio: "none", role: "img",
+    "aria-label": label, class: "bsvg" });
+  const cy = BIO_H / 2 - b.value * (BIO_H / 2 - 4);
+  svg.append(svgNode("line", { x1: 0, x2: BIO_W, y1: BIO_H / 2, y2: BIO_H / 2, class: "bzero" }),
+    svgNode("line", { x1: BIO_W / 2, x2: BIO_W / 2, y1: 0, y2: BIO_H, class: "btoday" }),
+    svgNode("polyline", { points: bioPoints(b.day, b.period), class: "bsine" }),
+    svgNode("rect", { x: BIO_W / 2 - 4, y: (cy - 4).toFixed(1), width: 8, height: 8, class: "bdot" }));
+  return el("div", { class: "bcycle" }, svg,
+    el("div", { class: "bscale" }, el("span", { text: "−14 d" }), el("span", { text: t("state.cycle", { p: b.period }) }),
+      el("span", { text: "+14 d" })));
+}
+
+function bioRow(b) {
+  return el("div", { class: "brow" },
+    el("div", { class: "bhead" }, el("span", { class: "bname", text: t(`state.${b.name}`) }),
+      el("span", { class: "bval", text: signed(b.value) }),
+      el("span", { class: "blabel", text: `${t(`state.${bioLevel(b.value)}`)} · ${t(`state.${b.trend}`)}` })),
+    bioCycle(b));
+}
+
+VIEW_KINDS.state = (ctx) => {
+  const s = ctx.state;
+  if (s.ctx !== ctx) {  // a fresh mount: today again
+    Object.assign(s, { ctx, phase: "loading", data: null, error: null, ticket: (s.ticket || 0) + 1 });
+    renderStateView(ctx);
+    stateLoad(ctx);
+    return;
+  }
+  renderStateView(ctx);
+};
+
+async function stateLoad(ctx) {
+  const s = ctx.state;
+  const ticket = s.ticket;
+  try {
+    const data = await api("/v1/today");
+    if (ticket !== s.ticket) return;
+    Object.assign(s, { phase: "ok", data });
+  } catch (err) {
+    if (ticket !== s.ticket) return;
+    Object.assign(s, { phase: "error", error: err });
+  }
+  renderStateView(ctx);
+}
+
+function stateReload(ctx) { ctx.state.ctx = null; VIEW_KINDS.state(ctx); }
+
+function renderStateView(ctx) {
+  const s = ctx.state;
+  const narrow = ctx.narrow();
+  const title = el("h2", { class: "vtitle", text: t("state.title") });
+  if (s.phase === "loading") { paint(ctx, viewFrame([title], viewLoading(t("state.loading")))); return; }
+  if (s.phase === "error") {
+    paint(ctx, viewFrame([title], viewError(t("state.error_title"), s.error, () => stateReload(ctx))));
+    return;
+  }
+  const d = s.data || {};
+  const mood = d.mood;
+  const prose = { host: ctx.host, state: {}, plain: true };  // her reading through the reader's renderer, as text
+  const th = mood ? themeInfo(mood.theme) : null;
+  const moodSection = el("section", { class: "smood", "aria-label": t("state.mood") },
+    el("span", { class: "kicker", text: t("state.mood") }),
+    mood ? [
+      el("div", { class: "stheme" }, el("span", { class: "sthname", text: th.name }), th.sub ? el("span", { class: "sthsub", text: th.sub }) : null),
+      el("p", { class: "sres", lang: "uk", text: mood.resolution || "" }),
+      mood.reading ? el("div", { class: "sreading jprose rpage", lang: "uk" }, readerBlocks(prose, mood.reading, "").blocks) : null,
+    ] : el("div", { class: "snomood" }, el("p", { class: "sentence", text: t("state.empty") }),
+      el("p", { class: "note", text: t("state.empty_note") })));
+  const level = d.closeness ? Number(d.closeness.level) : NaN;
+  const lv = level >= 1 && level <= 5 ? level : null;
+  const meter = el("div", { class: "meter", role: "img", "aria-label": `${t("state.closeness")} ${lv ? t("state.closeness_of", { n: lv }) : ""}`.trim() },
+    ...[1, 2, 3, 4, 5].map((n) => el("span", { class: lv && n <= lv ? "on" : null })));
+  const bio = Array.isArray(d.biorhythms) ? d.biorhythms : [];
+  const side = el("div", { class: "sside" },
+    bio.length ? el("section", { class: "sbio", "aria-label": t("state.biorhythms") },
+      el("span", { class: "kicker", text: t("state.biorhythms") }), bio.map(bioRow)) : null,
+    el("section", { class: "sclose", "aria-label": t("state.closeness") },
+      el("span", { class: "kicker", text: t("state.closeness") }),
+      el("div", { class: "sclname" }, el("span", { class: "sclv", text: closenessName(lv) }),
+        lv ? el("span", { class: "sclof", text: t("state.closeness_of", { n: lv }) }) : null), meter),
+    el("section", { class: "splan", "aria-label": t("state.plan") },
+      el("span", { class: "kicker", text: t("state.plan") }),
+      el("div", { class: "splanbox" }, el("span", { class: "splan1", text: t("state.plan_placeholder") }),
+        el("span", { class: "splan2", text: t("state.plan_later") }))));
+  const meta = d.date ? el("span", { class: "vmeta", text: longDay(d.date) }) : null;
+  paint(ctx, viewFrame([title, meta], el("div", { class: "sgrid" + (narrow ? " narrow" : "") }, moodSection, side)));
+}
+
+/* ---------- Schedule (v4.4 LUMI-317, design/v4/handoff §10) ----------
+   Her timetable, read-only (/v1/schedule): what wakes her thoughts — each directive of the schedule with its rule in
+   English, its last firing and its next due time, computed on the server by the scheduler's own rules (quiet hours,
+   the day cap). The earliest next one is marked; a disabled one is dimmed. Times are the server's local minutes. */
+const WEEKDAYS3 = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];  // the scheduler's weekday numbers, Monday first
+
+function durText(sec) {  // 900 → "15 min", 10800 → "3 h", 5400 → "1 h 30 min"
+  const n = Math.max(0, Math.round(Number(sec) || 0));
+  if (n < 60) return `${n} s`;
+  const h = Math.floor(n / 3600);
+  const m = Math.round((n % 3600) / 60);
+  return [h ? `${h} h` : "", m ? `${m} min` : ""].filter(Boolean).join(" ") || "0 min";
+}
+
+function daysText(days) {
+  const set = [...new Set(days || [])].sort((a, b) => a - b);
+  if (!set.length || set.length === 7) return "every day";
+  if (set.join() === "0,1,2,3,4") return "weekdays";
+  if (set.join() === "5,6") return "weekends";
+  if (set.length === 1) return `${["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][set[0]]}s`;
+  return set.map((d) => WEEKDAYS3[d]).join(", ");
+}
+
+function ruleText(tr) {  // the structured trigger in English
+  if (!tr) return "";
+  if (tr.kind === "every") return `every ${durText(tr.interval_s)}`;
+  if (tr.kind === "idle") return `after ${durText(tr.interval_s)} of silence`;
+  if (tr.kind === "at") return `${daysText(tr.days)} at ${tr.at}`;
+  if (tr.kind === "between") return `${(tr.window || [])[0]}–${(tr.window || [])[1]} every ${durText(tr.interval_s)}`;
+  if (tr.kind === "cron") return `cron ${tr.cron}`;
+  return tr.kind;
+}
+
+function whenText(stamp, now) {  // "YYYY-MM-DDTHH:MM" against the server's now → "Today 23:41" / "Tomorrow 08:30" / "15 Nov 20:00"
+  if (!stamp) return "—";
+  const [day, time] = String(stamp).split("T");
+  const ref = String(now || "").slice(0, 10);
+  const shift = (ymd, n) => { const d = dayOf(ymd); d.setDate(d.getDate() + n); return ymdOf(d); };
+  if (ref && day === ref) return `${t("date.today")} ${time}`;
+  if (ref && day === shift(ref, 1)) return `${t("date.tomorrow")} ${time}`;
+  if (ref && day === shift(ref, -1)) return `${t("date.yesterday")} ${time}`;
+  const d = dayOf(day);
+  return `${d.getDate()} ${MONTHS3[d.getMonth()]} ${time}`;
+}
+
+VIEW_KINDS.schedule = (ctx) => {
+  const s = ctx.state;
+  if (s.ctx !== ctx) {
+    Object.assign(s, { ctx, phase: "loading", data: null, error: null, ticket: (s.ticket || 0) + 1 });
+    renderScheduleView(ctx);
+    scheduleLoad(ctx);
+    return;
+  }
+  renderScheduleView(ctx);
+};
+
+async function scheduleLoad(ctx) {
+  const s = ctx.state;
+  const ticket = s.ticket;
+  try {
+    const data = await api("/v1/schedule");
+    if (ticket !== s.ticket) return;
+    Object.assign(s, { phase: "ok", data });
+  } catch (err) {
+    if (ticket !== s.ticket) return;
+    Object.assign(s, { phase: "error", error: err });
+  }
+  renderScheduleView(ctx);
+}
+
+function scheduleReload(ctx) { ctx.state.ctx = null; VIEW_KINDS.schedule(ctx); }
+
+function scheduleNext(entries) {  // the entry that fires first (the earliest next due among the enabled)
+  let best = null;
+  for (const e of entries) if (e.enabled && e.next_due && (!best || e.next_due < best.next_due)) best = e;
+  return best;
+}
+
+function renderScheduleView(ctx) {
+  const s = ctx.state;
+  const narrow = ctx.narrow();
+  const title = el("h2", { class: "vtitle", text: t("schedule.title") });
+  if (s.phase === "loading") { paint(ctx, viewFrame([title], viewLoading(t("schedule.loading")))); return; }
+  if (s.phase === "error") {
+    paint(ctx, viewFrame([title], viewError(t("schedule.error_title"), s.error, () => scheduleReload(ctx))));
+    return;
+  }
+  const d = s.data || {};
+  const entries = Array.isArray(d.entries) ? d.entries : [];
+  const now = d.now || "";
+  const meta = el("span", { class: "vmeta", text: t("schedule.summary", { time: now.slice(11, 16) }) });
+  if (!entries.length) {
+    paint(ctx, viewFrame([title, meta], viewEmpty(t("schedule.title"), t("schedule.empty"), t("schedule.empty_note"))));
+    return;
+  }
+  const next = scheduleNext(entries);
+  const enabled = entries.filter((e) => e.enabled).length;
+  const q = Array.isArray(d.quiet_hours) ? d.quiet_hours : null;
+  const hh = (h) => `${String(h).padStart(2, "0")}:00`;
+  const cells = [
+    ["schedule.quiet_hours", q ? `${hh(q[0])} – ${hh(q[1])}` : "—", q ? t("schedule.quiet_note") : ""],
+    ["schedule.day_cap", num(d.day_cap), t("schedule.fired_today", { n: num(d.fired_today) })],
+    ["schedule.directives", num(entries.length),
+      enabled === entries.length ? t("schedule.all_enabled") : t("schedule.some_enabled", { n: num(enabled) })],
+    ["schedule.next", next ? next.name || next.directive : "—",
+      next ? `${next.next_due.slice(11, 16)}${next.if_silent ? ` · ${t("schedule.if_silent")}` : ""}` : ""],
+  ];
+  const summary = el("div", { class: "ssum" + (narrow ? " narrow" : "") }, cells.map(([k, v, note]) =>
+    el("div", { class: "scell" }, el("span", { class: "kicker", text: t(k) }),
+      el("div", { class: "sval" + (k === "schedule.next" ? " mono" : ""), text: v }), note ? el("div", { class: "snote", text: note }) : null)));
+  const nextTag = () => el("span", { class: "snext", text: t("schedule.next") });
+  const rows = entries.map((e) => {
+    const isNext = e === next;
+    const due = el("span", { class: "sdue" }, e.enabled ? whenText(e.next_due, now) : "—",
+      e.enabled && e.if_silent ? el("span", { class: "scond", text: ` · ${t("schedule.if_silent")}` }) : null);
+    const cls = "srow" + (isNext ? " next" : "") + (e.enabled ? "" : " off") + (narrow ? " narrow" : "");
+    const name = el("span", { class: "sname", text: e.name || e.directive });
+    if (narrow) {
+      return el("div", { class: cls },
+        el("div", { class: "sline" }, name, el("span", { class: "kicker", text: e.directive }), isNext ? nextTag() : null),
+        el("span", { class: "srule", text: ruleText(e.trigger) }),
+        el("span", { class: "swhen", text: t("schedule.last_next", { last: whenText(e.last_fired, now),
+          next: e.enabled ? whenText(e.next_due, now) : "—" }) }));
+    }
+    return el("div", { class: cls }, el("span", { class: "snamecell" }, name, isNext ? nextTag() : null),
+      el("span", { class: "kicker sdir", text: e.directive }), el("span", { class: "srule", text: ruleText(e.trigger) }),
+      el("span", { class: "slast", text: whenText(e.last_fired, now) }), due);
+  });
+  const head = narrow ? null : el("div", { class: "sthead" }, ["schedule.col_name", "schedule.col_directive", "schedule.col_rule",
+    "schedule.col_last", "schedule.col_next"].map((k) => el("span", { class: "kicker", text: t(k) })));
+  paint(ctx, viewFrame([title, meta], el("div", { class: "sched" }, summary, head, rows,
+    el("p", { class: "sfoot", text: t("schedule.footnote") }))));
 }
 
 function typing(target) {  // the focus is in a field (the keys belong to it)

@@ -19,6 +19,7 @@ PAGE_ROUTES = {
     ("GET", "/v1/images"), ("GET", "/v1/images/thumb"),  # v4.2: her pictures and their thumbnails
     ("GET", "/v1/journal"),  # v4.3: her journal's days
     ("GET", "/v1/thoughts"),  # v4.3: her thought stream
+    ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable
 }
 PAGE_PATTERN_ROUTES = {("GET", "/v1/journal/{date}")}  # v4.3: a day of her journal — the date in the path
 
@@ -83,3 +84,10 @@ def test_v43_the_window_reads_her_thoughts_through_one_get_route():
     """v4.3 LUMI-313: the stream's page, GET only — the page can't write or fire a thought through it."""
     assert {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/thought")} == {("GET", "/v1/thoughts")}
     assert not px.forwarded("POST", "/v1/thoughts") and not px.forwarded("GET", "/v1/thoughts/x")
+
+
+def test_v44_the_window_reads_her_day_and_timetable_through_get_routes_only():
+    """v4.4 LUMI-317: the State's and the Schedule's routes, GET only."""
+    assert {(m, p) for m, p in px.FORWARDED if p in ("/v1/today", "/v1/schedule")} == {
+        ("GET", "/v1/today"), ("GET", "/v1/schedule")}
+    assert not px.forwarded("POST", "/v1/schedule") and not px.forwarded("GET", "/v1/schedule/next")

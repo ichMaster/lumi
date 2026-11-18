@@ -508,11 +508,11 @@ def test_v43_the_journal_helpers():
         return js[start:js.index("\n", start) + 1]
 
     got = _node_eval(consts + one_line("num") + _fn("dayOf") + "".join(one_line(n) for n in
-                                                                  ("longDay", "shortDay", "kbSize", "signed")) + """
+                                                                  ("longDay", "shortDay", "kbSize")) + _fn("signed") + """
 console.log(JSON.stringify([longDay("2026-11-16"), shortDay("2026-11-15"), longDay("2026-06-17"), kbSize(441),
-  kbSize(1434), kbSize(7200), signed(0.52), signed(-0.31), signed(0), signed(1)]));""")
+  kbSize(1434), kbSize(7200), signed(0.52), signed(-0.31), signed(0), signed(1), signed(-0.0001)]));""")
     assert got == ["Monday, 16 November", "Sun 15 Nov", "Wednesday, 17 June", "441 B", "1.4 KB", "7.0 KB", "+0.52",
-                   "\u22120.31", "+0.00", "+1.00"]
+                   "\u22120.31", "+0.00", "+1.00", "+0.00"]
 
 
 # --- v4.3 LUMI-313: Thoughts and "Thoughts →" in the strip --------------------------------------------------------
@@ -537,7 +537,7 @@ def test_v43_the_thoughts_strings_resolve_and_are_english():
 
 def test_v43_thoughts_is_a_view_gated_on_features_thoughts_and_the_strip_opens_it():
     js = _js()
-    assert 'const VIEWS = ["chat", "files", "gallery", "journal", "thoughts"]' in js and 'thoughts: "views.thoughts"' in js
+    assert 'const VIEWS = ["chat", "files", "gallery", "journal", "thoughts"' in js and 'thoughts: "views.thoughts"' in js
     served = js[js.index("function served("):js.index("function shownViews(")]
     assert 'if (kind === "thoughts") return features.thoughts === true;' in served
     assert "VIEW_KINDS.thoughts = (ctx) =>" in js
@@ -580,3 +580,70 @@ console.log(JSON.stringify([thoughtsSummary({ total: 5589, per_day: 34.4, spoken
     assert got == ["5,589 · about 34 a day · 6% spoken", "22 · about 3.1 a day · 100% spoken",
                    "?limit=100&kind=wonder&kind=learn&spoken=false&date=2026-11-15",
                    "?limit=100&kind=wonder&kind=learn&spoken=false&before=dDE", "?limit=100"]
+
+
+# --- v4.4 LUMI-317: State and Schedule ----------------------------------------------------------------------------
+
+def test_v44_the_state_and_schedule_strings_resolve_and_are_english():
+    js, strings = _js(), _strings()
+    used = set(re.findall(r'"((?:state|schedule)\.[A-Za-z_]+)"', js))
+    assert {"state.title", "state.mood", "state.biorhythms", "state.cycle", "state.closeness", "state.closeness_of",
+            "state.plan", "state.plan_placeholder", "state.plan_later", "state.empty", "state.empty_note",
+            "state.loading", "state.error_title", "schedule.title", "schedule.summary", "schedule.quiet_hours",
+            "schedule.quiet_note", "schedule.day_cap", "schedule.fired_today", "schedule.directives",
+            "schedule.all_enabled", "schedule.next", "schedule.col_name", "schedule.col_directive", "schedule.col_rule",
+            "schedule.col_last", "schedule.col_next", "schedule.last_next", "schedule.if_silent", "schedule.footnote",
+            "schedule.empty", "schedule.empty_note", "schedule.loading", "schedule.error_title"} <= used
+    for key in ("state.physical", "state.emotional", "state.intellectual", "state.low", "state.mid", "state.high",
+                "state.rising", "state.falling"):  # built as `state.${…}` from the server's names
+        assert key in strings, key
+    assert sorted(k for k in used if k not in strings) == []
+    add = json.loads((UI.parents[1] / "design" / "v4" / "handoff" / "strings.en.add.json").read_text(encoding="utf-8"))
+    for key, value in add.items():
+        if key.startswith(("state.", "schedule.")):
+            assert strings[key] == value, key  # the design's words, as handed off
+    assert not CYRILLIC.search(json.dumps({k: v for k, v in strings.items() if k.startswith(("state.", "schedule."))},
+                                          ensure_ascii=False))
+
+
+def test_v44_state_and_schedule_are_views_gated_on_their_features():
+    js = _js()
+    assert 'const VIEWS = ["chat", "files", "gallery", "journal", "thoughts", "state", "schedule"]' in js
+    served = js[js.index("function served("):js.index("function shownViews(")]
+    assert 'if (kind === "state") return features.today === true;' in served
+    assert 'if (kind === "schedule") return features.schedule === true;' in served
+    assert "VIEW_KINDS.state = (ctx) =>" in js and "VIEW_KINDS.schedule = (ctx) =>" in js
+    section = js[js.index("/* ---------- State (v4.4"):js.index("function typing(")]
+    assert 'api("/v1/today")' in section and 'api("/v1/schedule")' in section
+    assert "document.createElementNS(SVG_NS, tag)" in section and "innerHTML" not in section
+    assert "if (ticket !== s.ticket) return;" in section
+
+
+def test_v44_the_schedule_and_biorhythm_helpers():
+    js = _js()
+    consts = "".join("const " + name + " = " + js.split("const " + name + " = ", 1)[1].split(";", 1)[0] + ";"
+                     for name in ("MONTHS3", "WEEKDAYS3", "BIO_W", "BIO_H", "BIO_SPAN"))
+
+    def one_line(name):
+        start = js.index(f"function {name}(")
+        return js[start:js.index("\n", start) + 1]
+
+    got = _node_eval(consts + "const S = {'date.today': 'Today', 'date.tomorrow': 'Tomorrow', 'date.yesterday': "
+                     "'Yesterday'}; function t(k) { return S[k]; } const pad = (n) => String(n).padStart(2, '0');"
+                     + _fn("dayOf") + one_line("ymdOf") + _fn("durText") + _fn("daysText") + _fn("ruleText")
+                     + _fn("whenText") + one_line("bioLevel") + _fn("bioPoints") + """
+const at = (at, days) => ({ kind: "at", at, days: days || [] });
+console.log(JSON.stringify([
+  ruleText({ kind: "idle", interval_s: 900 }), ruleText({ kind: "every", interval_s: 5400 }),
+  ruleText(at("08:00")), ruleText(at("08:00", [0, 1, 2, 3, 4])), ruleText(at("10:00", [5, 6])),
+  ruleText(at("20:00", [6])), ruleText(at("09:00", [0, 2])),
+  ruleText({ kind: "between", interval_s: 10800, window: ["08:30", "23:30"] }),
+  ruleText({ kind: "cron", cron: "*/30 9-18 * * 1-5" }), durText(45),
+  whenText("2026-11-18T23:41", "2026-11-18T23:56"), whenText("2026-11-19T08:00", "2026-11-18T23:56"),
+  whenText("2026-11-17T21:10", "2026-11-18T23:56"), whenText("2026-11-22T20:00", "2026-11-18T23:56"),
+  whenText(null, "2026-11-18T23:56"), bioLevel(0.5), bioLevel(0.1), bioLevel(-0.4),
+  bioPoints(0, 23).split(" ").length, bioPoints(0, 28).split(" ")[35]]));""")
+    assert got == ["after 15 min of silence", "every 1 h 30 min", "every day at 08:00", "weekdays at 08:00",
+                   "weekends at 10:00", "Sundays at 20:00", "Mon, Wed at 09:00", "08:30\u201323:30 every 3 h",
+                   "cron */30 9-18 * * 1-5", "45 s", "Today 23:41", "Tomorrow 08:00", "Yesterday 21:10",
+                   "22 Nov 20:00", "\u2014", "high", "mid", "low", 71, "140,28.0"]

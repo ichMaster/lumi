@@ -577,6 +577,83 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
 .thoughts-head .open-view { font-size: 12px; font-weight: 600; color: var(--l-faint); }
 .thoughts-head .open-view:hover { color: var(--color-text); }
 
+/* — State (v4.4, handoff §9): the mood of the day; the biorhythms, closeness and plan beside it — */
+.sgrid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); }
+.sgrid.narrow { grid-template-columns: minmax(0, 1fr); }
+.smood { min-width: 0; padding: 36px 44px 48px; }
+.sgrid.narrow .smood { padding: 20px 18px 28px; }
+.stheme { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin: 8px 0 18px; }
+.sthname { font-weight: 600; }
+.sthsub { font-size: 12px; color: var(--l-faint); }
+.sres { max-width: 30ch; margin: 0 0 22px; font-size: 24px; line-height: 1.35; font-weight: 600; letter-spacing: -.01em;
+  text-wrap: balance; }
+.sgrid.narrow .sres { font-size: 20px; }
+.sreading { max-width: 64ch; }
+.snomood { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.snomood .sentence { margin: 0; font-size: 15px; }
+.snomood .note { margin: 0; padding: 0; font-size: 13px; color: var(--l-faint); }
+.sside { min-width: 0; display: flex; flex-direction: column; border-left: var(--rule) solid var(--color-divider); }
+.sgrid.narrow .sside { border-left: 0; border-top: var(--rule) solid var(--color-divider); }
+.sbio { padding: 28px 28px 16px; }
+.sgrid.narrow .sbio { padding: 16px 18px 14px; }
+.brow { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; align-items: center; padding: 14px 0;
+  border-top: 1px solid var(--l-hair); }
+.sgrid.narrow .brow { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.bhead { display: flex; flex-direction: column; gap: 2px; }
+.sgrid.narrow .bhead { flex-direction: row; align-items: baseline; gap: 10px; }
+.bname { font-size: 13px; font-weight: 600; }
+.bval { font-size: 24px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.blabel { font-size: 11.5px; color: var(--l-faint); }
+.bcycle { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bsvg { display: block; width: 100%; height: 56px; overflow: visible; }
+.bzero { stroke: var(--l-hair); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.btoday { stroke: var(--color-divider); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.bsine { fill: none; stroke: var(--l-muted); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.bdot { fill: var(--color-accent); }
+.bscale { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--l-faint);
+  font-variant-numeric: tabular-nums; }
+.sclose { display: flex; flex-direction: column; gap: 8px; padding: 18px 28px 22px; border-top: var(--rule) solid var(--color-divider); }
+.sclname { display: flex; align-items: baseline; gap: 8px; }
+.sclv { font-size: 18px; font-weight: 700; }
+.sclof { font-size: 12px; color: var(--l-faint); }
+.sclose .meter { max-width: 160px; }
+.splan { display: flex; flex-direction: column; gap: 10px; padding: 18px 28px 28px; border-top: var(--rule) solid var(--color-divider); }
+.sgrid.narrow .sclose, .sgrid.narrow .splan { padding: 16px 18px; }
+.splanbox { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px solid var(--l-hair); }
+.splan1 { font-size: 14px; color: var(--l-muted); }
+.splan2 { font-size: 12px; color: var(--l-faint); }
+
+/* — Schedule (v4.4, handoff §10): the summary cells, the table of directives, the footnote — */
+.ssum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: var(--rule) solid var(--color-divider); }
+.ssum.narrow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.scell { min-width: 0; padding: 14px 24px; }
+.ssum .scell + .scell { border-left: 1px solid var(--l-hair); }
+.ssum.narrow .scell { padding: 12px 16px; }
+.ssum.narrow .scell:nth-child(3) { border-left: 0; }
+.ssum.narrow .scell:nth-child(n + 3) { border-top: 1px solid var(--l-hair); }
+.sval { margin-top: 3px; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sval.mono { font-family: var(--font-mono); font-size: 14px; }
+.snote { font-size: 12px; color: var(--l-faint); }
+.sthead, .srow { display: grid; grid-template-columns: minmax(0, 1.1fr) 92px minmax(0, 1.5fr) 120px 140px; gap: 16px;
+  align-items: center; padding: 8px 24px; }
+.sthead { position: sticky; top: 0; z-index: 1; background: var(--color-bg); border-bottom: var(--rule) solid var(--color-divider); }
+.srow { min-height: 44px; border-bottom: 1px solid var(--l-hair); }
+.srow.next { background: var(--color-surface); box-shadow: inset 2px 0 0 var(--color-accent); }
+.srow.off { color: var(--l-faint); }
+.srow.narrow { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 12px 16px; }
+.snamecell, .sline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; min-width: 0; }
+.sname { font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.snext { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--l-acc-text); }
+.sdir { color: var(--l-muted); }
+.srule { font-size: 14px; }
+.slast, .swhen { font-size: 12px; color: var(--l-faint); font-variant-numeric: tabular-nums; }
+.sdue { font-size: 13px; color: var(--l-muted); font-variant-numeric: tabular-nums; }
+.srow.next .sdue { color: var(--color-text); font-weight: 600; }
+.scond { font-size: 11.5px; font-weight: 400; color: var(--l-faint); }
+.sfoot { margin: 0; padding: 14px 24px 28px; font-size: 12px; color: var(--l-faint); }
+.vnarrow .sfoot { padding: 14px 16px 24px; }
+
 /* — narrow (< 760px): the future web client and phone — */
 @media (max-width: 759px) {
   .views { padding: 0 4px; }

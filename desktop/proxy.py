@@ -46,6 +46,7 @@ FORWARDED: frozenset[tuple[str, str]] = frozenset({
     ("GET", "/v1/images"), ("GET", "/v1/images/thumb"),  # v4.2: her pictures and their thumbnails, read-only
     ("GET", "/v1/journal"),  # v4.3: her journal's days (the owner's only — the server checks)
     ("GET", "/v1/thoughts"),  # v4.3: her thought stream, through the server's surfacing filter
+    ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable, read-only
 })
 # v4.3: a route with a value in its path — (method, the server's route, the one pattern its paths must match whole).
 # Nothing else under that prefix is forwarded: /v1/journal/<YYYY-MM-DD> and no other path below /v1/journal/.
