@@ -61,7 +61,9 @@ def test_the_interface_is_english_and_every_string_key_exists():
 def test_the_page_calls_only_what_the_proxy_forwards_by_relative_urls():
     js = _js()
     paths = set(re.findall(r'"(/v1/[a-z/]+)"', js))
-    assert paths and paths <= {path for _, path in px.FORWARDED}
+    # v4.3: a route with its value in the path is called by its prefix ("/v1/journal/" + the date)
+    prefixes = {route.split("{", 1)[0] for _, route, _ in px.FORWARDED_PATTERNS}
+    assert paths and paths <= {path for _, path in px.FORWARDED} | prefixes
     assert "http://" not in js.replace("http://www.w3.org/2000/svg", "")  # the SVG namespace only
     assert f'"{px.KEY_HEADER}"' in js and f'meta[name="{px.KEY_META}"]' in js
 
@@ -368,7 +370,7 @@ def test_v42_the_gallery_and_picture_strings_resolve_and_are_english():
 
 def test_v42_the_gallery_is_a_view_gated_on_features_gallery():
     js = _js()
-    assert 'const VIEWS = ["chat", "files", "gallery"]' in js and 'gallery: "views.gallery"' in js
+    assert 'const VIEWS = ["chat", "files", "gallery", ' in js and 'gallery: "views.gallery"' in js
     served = js[js.index("function served("):js.index("function shownViews(")]
     assert 'if (kind === "gallery") return features.gallery === true;' in served
     assert "VIEW_KINDS.gallery = (ctx) =>" in js
@@ -443,3 +445,71 @@ def test_v42_a_chat_picture_is_a_button_loaded_by_blob_and_opens_over_the_chat()
     opener = js[js.index("function openChatPicture("):js.index("function addCommand(")]
     assert "openPicture(ctx, {" in opener and "const host = $(\"chat\");" in js
     assert '.chat { position: relative;' in css and ".mfig { margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; width: min(100%, 320px); }" in css
+
+
+# --- v4.3 LUMI-312: the Journal ----------------------------------------------------------------------------------
+
+def test_v43_the_journal_strings_resolve_and_are_english():
+    js, strings = _js(), _strings()
+    used = set(re.findall(r'"(journal\.[A-Za-z_]+)"', js))
+    assert {"journal.title", "journal.days", "journal.month_days", "journal.entry", "journal.entries",
+            "journal.no_stamp_short", "journal.no_stamp", "journal.day_of", "journal.stamp", "journal.mood",
+            "journal.biorhythms", "journal.forecast", "journal.previous", "journal.next", "journal.first",
+            "journal.latest", "journal.all_days", "journal.keys", "journal.empty", "journal.empty_note",
+            "journal.loading", "journal.error_title"} <= used  # every one of the design's
+    assert sorted(k for k in used if k not in strings) == []
+    add = json.loads((UI.parents[1] / "design" / "v4" / "handoff" / "strings.en.add.json").read_text(encoding="utf-8"))
+    for key, value in add.items():
+        if key.startswith("journal."):
+            assert strings[key] == value, key  # the design's words, as handed off
+    assert not CYRILLIC.search(json.dumps({k: v for k, v in strings.items() if k.startswith("journal.")},
+                                          ensure_ascii=False))
+
+
+def test_v43_the_journal_is_a_view_gated_on_features_journal():
+    js = _js()
+    assert 'const VIEWS = ["chat", "files", "gallery", "journal"' in js and 'journal: "views.journal"' in js
+    served = js[js.index("function served("):js.index("function shownViews(")]
+    assert 'if (kind === "journal") return features.journal === true;' in served
+    assert "VIEW_KINDS.journal = (ctx) =>" in js
+
+
+def test_v43_the_journal_reads_its_two_routes_and_keeps_her_prose_as_text():
+    js = _js()
+    section = js[js.index("/* ---------- Journal (v4.3"):js.index("function typing(")]
+    assert 'api("/v1/journal")' in section and 'api("/v1/journal/" + encodeURIComponent(date))' in section
+    assert "if (ticket !== s.ticket) return;" in section  # a late answer for an old mount is dropped
+    assert "{ host: ctx.host, state: {}, plain: true }" in section and "readerBlocks(prose, sec.text" in section
+    assert 'lang: "uk"' in section and "innerHTML" not in section
+    link = js[js.index("function readerLink("):js.index("function readerInline(")]
+    assert "if (ctx.plain && !/^https?:" in link  # a relative link in her journal stays text
+    picture = js[js.index("function readerPicture("):js.index("const MD_STARTS")]
+    assert "if (ctx.plain) return el(\"p\", { text: alt || src });" in picture  # no picture is loaded for it
+
+
+def test_v43_arrows_step_days_only_when_the_focus_is_not_in_a_field():
+    js = _js()
+    keys = js[js.index('if ((ev.key === "ArrowLeft" || ev.key === "ArrowRight") && vw.view === "journal"'):]
+    keys = keys[:keys.index("return;\n    }")]
+    assert "!ev.defaultPrevented" in keys and "!typing(ev.target)" in keys and "!ev.metaKey" in keys
+    assert 'journalStep(places.main.ctx, ev.key === "ArrowLeft" ? -1 : 1)' in keys
+    got = _node_eval(_fn("typing") + """
+console.log(JSON.stringify([typing({ tagName: "INPUT" }), typing({ tagName: "TEXTAREA" }), typing({ tagName: "BUTTON" }),
+  typing({ tagName: "DIV", isContentEditable: true }), typing(null)]));""")
+    assert got == [True, True, False, True, False]
+
+
+def test_v43_the_journal_helpers():
+    js = _js()
+    consts = "".join("const " + name + " = " + js.split("const " + name + " = ", 1)[1].split(";", 1)[0] + ";"
+                     for name in ("MONTHS", "MONTHS3", "WEEKDAYS"))
+    def one_line(name):  # a one-line function: its own line
+        start = js.index(f"function {name}(")
+        return js[start:js.index("\n", start) + 1]
+
+    got = _node_eval(consts + one_line("num") + _fn("dayOf") + "".join(one_line(n) for n in
+                                                                  ("longDay", "shortDay", "kbSize", "signed")) + """
+console.log(JSON.stringify([longDay("2026-11-16"), shortDay("2026-11-15"), longDay("2026-06-17"), kbSize(441),
+  kbSize(1434), kbSize(7200), signed(0.52), signed(-0.31), signed(0), signed(1)]));""")
+    assert got == ["Monday, 16 November", "Sun 15 Nov", "Wednesday, 17 June", "441 B", "1.4 KB", "7.0 KB", "+0.52",
+                   "\u22120.31", "+0.00", "+1.00"]

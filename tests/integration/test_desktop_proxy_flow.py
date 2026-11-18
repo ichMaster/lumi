@@ -256,3 +256,20 @@ def test_v42_a_thumbnail_and_a_page_of_pictures_are_relayed(world):
     assert server.requests[-1]["path"] == "/v1/images?limit=100&folder=art&before=MTph"
     assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
     assert request(proxy, "POST", "/v1/images/thumb", body={})[0] == 404  # GET only
+
+
+def test_v43_the_journal_is_relayed_and_nothing_else_below_it(world):
+    """v4.3 LUMI-312: the day list and a day by its date reach the server with the token; any other path under
+    /v1/journal/ stops at the proxy."""
+    server, proxy = world
+    status, _, body = request(proxy, "GET", "/v1/journal")
+    assert status == 200 and json.loads(body)["days"][0]["date"] == "2026-11-16"
+    status, _, body = request(proxy, "GET", "/v1/journal/2026-11-16")
+    assert status == 200 and json.loads(body)["date"] == "2026-11-16"
+    assert server.requests[-1]["path"] == "/v1/journal/2026-11-16"
+    assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    seen = len(server.requests)
+    for path in ("/v1/journal/latest", "/v1/journal/2026-11-16/x", "/v1/journal/..%2Fstate"):
+        assert request(proxy, "GET", path)[0] == 404, path
+    assert request(proxy, "POST", "/v1/journal/2026-11-16", body={})[0] == 404
+    assert len(server.requests) == seen  # none of them reached the server

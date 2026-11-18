@@ -92,6 +92,12 @@ class FakeServer:
                     self.send_header("Cache-Control", "private, max-age=300")
                     self.end_headers()
                     self.wfile.write(JPEG)
+                elif method == "GET" and path == "/v1/journal":  # v4.3: her journal's days
+                    self._send(200, {"days": [{"date": "2026-11-16", "sections": 2, "size": 1400, "stamp": True}],
+                                     "truncated": False})
+                elif method == "GET" and path.startswith("/v1/journal/"):  # v4.3: one day
+                    self._send(200, {"date": path.rsplit("/", 1)[1], "stamp": None,
+                                     "sections": [{"time": "00:30", "text": "Тихо."}], "markdown": "# день\n"})
                 elif method == "POST" and path == "/v1/command":
                     self._send(200, {"handled": True, "echo": json.loads(body or "{}")})
                 else:

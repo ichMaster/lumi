@@ -482,6 +482,55 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
 /* — every interactive element: the accent focus ring, never the browser's — */
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
+/* — the Journal (v4.3, handoff §7): the days beside a day; the stamp apart from her prose — */
+.jwrap { flex: 1; min-height: 0; display: flex; }
+.jdays { flex: none; width: var(--l-daylist); overflow-y: auto; border-right: var(--rule) solid var(--color-divider); }
+.jdays.vscroll { width: auto; border-right: 0; }
+.jmonth { position: sticky; top: 0; z-index: 1; display: flex; align-items: baseline; gap: 8px; padding: 14px 16px 6px 20px;
+  background: var(--color-bg); border-bottom: var(--rule) solid var(--color-divider); }
+.jmcount, .jsize { font-size: 11px; color: var(--l-faint); font-variant-numeric: tabular-nums; }
+.jrow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%;
+  min-height: 48px; padding: 7px 16px 7px 20px; text-align: left; color: var(--color-text); border-bottom: 1px solid var(--l-hair); }
+.jrow:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.jrow[aria-current="true"] { background: var(--color-surface); box-shadow: inset 2px 0 0 var(--color-accent); }
+.jnum { font-size: 20px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.jwd { display: flex; flex-direction: column; min-width: 0; font-size: 13px; }
+.jnote { font-size: 11.5px; color: var(--l-faint); }
+.jscroll { flex: 1; min-width: 0; }
+.jday { max-width: 72ch; padding: 36px 44px 56px; }
+.jday.narrow { padding: 20px 18px 40px; }
+.jkick { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.jtitle { margin: 0 0 24px; font-family: var(--font-heading); font-size: var(--fs-day-title); line-height: 1.08;
+  letter-spacing: -.02em; font-weight: 800; text-wrap: balance; }
+.jday.narrow .jtitle { font-size: 28px; }
+.jyear { margin-left: 10px; font-size: .6em; font-weight: 400; letter-spacing: 0; color: var(--l-faint); }
+.jstamp { margin: 0 0 36px; background: var(--color-surface); border-top: var(--rule) solid var(--color-divider);
+  font-size: 14px; line-height: 1.5; }
+.jsrow { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; padding: 11px 18px; }
+.jsrow + .jsrow { border-top: 1px solid var(--l-hair); }
+.jsrow .kicker { padding-top: 2px; }
+.jstamp.narrow .jsrow { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 14px; }
+.jbio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.jbio.narrow { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.jcell { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.jcname { color: var(--l-muted); }
+.jcval { font-weight: 600; font-variant-numeric: tabular-nums; }
+.jclabel { font-size: 11px; color: var(--l-faint); }
+.jnostamp { margin: 0 0 28px; font-size: 13px; color: var(--l-faint); }
+.jentry { display: grid; grid-template-columns: var(--l-time-gutter) minmax(0, 1fr); gap: 16px; padding: 18px 0;
+  border-top: 1px solid var(--l-hair); }
+.jentry.narrow { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.jtime { padding-top: 4px; font-size: 13px; font-weight: 600; color: var(--l-acc-text); font-variant-numeric: tabular-nums; }
+.jprose.rpage, .vnarrow .jprose.rpage { max-width: none; margin: 0; padding: 0; }  /* the reader's prose rules, in place */
+.jprose > :last-child { margin-bottom: 0; }
+.jfoot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding-top: 24px;
+  border-top: var(--rule) solid var(--color-divider); }
+.jfoot .btn { height: 36px; font-size: 13px; font-weight: 600; }
+.jkeys { margin: 12px 0 0; font-size: 11.5px; color: var(--l-faint); }
+.jback { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--l-acc-text); }
+.jback svg.icon { width: 15px; height: 15px; }
+.jgap { flex: 1; }
+
 /* — narrow (< 760px): the future web client and phone — */
 @media (max-width: 759px) {
   .views { padding: 0 4px; }

@@ -2,7 +2,8 @@
 
 A page in the pywebview window can't call the server directly — the server sends no CORS headers. So the shell runs
 this small HTTP server on ``127.0.0.1`` (a free port): it serves the static page from ``desktop/ui/`` and forwards
-the public API the page uses (:data:`FORWARDED`) to the configured server, adding ``Authorization: Bearer <token>``
+the public API the page uses (:data:`FORWARDED`, and the routes with a value in their path,
+:data:`FORWARDED_PATTERNS`) to the configured server, adding ``Authorization: Bearer <token>``
 itself. The page holds no token and calls relative ``/v1`` URLs — the same page can later be served by the server
 itself (v6.3, the web client), unchanged.
 
@@ -22,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import re
 import secrets
 import threading
 from dataclasses import dataclass, field
@@ -42,7 +44,18 @@ FORWARDED: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/v1/session/new"),
     ("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),  # v4.1: her sandbox, read-only
     ("GET", "/v1/images"), ("GET", "/v1/images/thumb"),  # v4.2: her pictures and their thumbnails, read-only
+    ("GET", "/v1/journal"),  # v4.3: her journal's days (the owner's only — the server checks)
 })
+# v4.3: a route with a value in its path — (method, the server's route, the one pattern its paths must match whole).
+# Nothing else under that prefix is forwarded: /v1/journal/<YYYY-MM-DD> and no other path below /v1/journal/.
+FORWARDED_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
+    ("GET", "/v1/journal/{date}", re.compile(r"/v1/journal/\d{4}-\d{2}-\d{2}")),
+)
+
+
+def forwarded(method: str, path: str) -> bool:
+    """Whether the page may reach ``method path`` on the server: an exact route, or a path one pattern matches whole."""
+    return (method, path) in FORWARDED or any(m == method and rx.fullmatch(path) for m, _, rx in FORWARDED_PATTERNS)
 PASS_REQUEST = ("Content-Type", "X-Lumi-Client", "Last-Event-ID")  # the page's headers that reach the server
 # the server's headers that reach the page (v4.1: a picture keeps its nosniff and inline disposition)
 PASS_RESPONSE = ("Content-Type", "Cache-Control", "X-Content-Type-Options", "Content-Disposition")
@@ -319,7 +332,7 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
                 if not self._key_ok():
                     self._json(403, "forbidden", "a request without this window's key")
                     return
-                if (method, path) not in FORWARDED:
+                if not forwarded(method, path):
                     self._json(404, "not_found", "not a route this window forwards")
                     return
                 self._forward(method, path, parts.query)

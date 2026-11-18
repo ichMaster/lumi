@@ -1168,8 +1168,8 @@ function onKey(ev) {
    line that arrives meanwhile marks Chat. Any view but Chat can be pinned to a right panel and/or a bottom-right one
    beside the chat (wide layout only); a pinned view always takes its narrow layout. The pins, the active tabs, the
    width, the split and the folded state are kept per client in localStorage. Each place keeps its own view state. */
-const VIEWS = ["chat", "files", "gallery"];  // v4.1 Files, v4.2 Gallery — later phases add journal, thoughts, state, schedule
-const VIEW_LABEL = { chat: "views.chat", files: "views.files", gallery: "views.gallery" };
+const VIEWS = ["chat", "files", "gallery", "journal"];  // v4.1 Files, v4.2 Gallery, v4.3 Journal — later: thoughts, state, schedule
+const VIEW_LABEL = { chat: "views.chat", files: "views.files", gallery: "views.gallery", journal: "views.journal" };
 const VIEW_KINDS = {};  // kind → render(ctx): each view registers itself below
 const PANELS_STORE = "lumi.desktop.panels";
 // the owner (2026-11-17): the panel widens as far as the window allows — the chat keeps at least chatMin
@@ -1206,6 +1206,7 @@ function served(kind) {  // code review #3: a view shows only when the server sa
   const features = (st.server && st.server.features) || {};
   if (kind === "files") return features.files === true;
   if (kind === "gallery") return features.gallery === true;  // v4.2: her pictures and the thumbnail cache
+  if (kind === "journal") return features.journal === true;  // v4.3: her journal, the owner's only
   return false;
 }
 
@@ -1715,6 +1716,7 @@ async function renderFolder(ctx, cur) {
 /* her markdown for the reader: headings h1–h4, fences, rules, a picture on its own line, quotes, pipe tables, lists,
    paragraphs; inline code, bold, italic and links — everything else is literal text */
 function readerLink(ctx, label, href, base) {
+  if (ctx.plain && !/^https?:\/\//i.test(href)) return document.createTextNode(label);  // v4.3: the journal's prose
   if (/^https?:\/\//i.test(href)) {  // external: shown with its address, never followed in this window
     const addr = href.replace(/^https?:\/\//i, "").replace(/\/$/, "");
     return el("span", { class: "xlink", title: t("reader.external") }, el("span", { class: "xtext", text: label }), " ",
@@ -1751,6 +1753,7 @@ function readerInline(ctx, text, base) {
 
 function readerPicture(ctx, alt, src, base) {
   if (/^https?:\/\//i.test(src)) return el("p", {}, readerLink(ctx, alt || src, src, base));
+  if (ctx.plain) return el("p", { text: alt || src });  // v4.3: the journal's prose loads no picture
   const path = resolveIn(base, src);
   if (!path || !PICTURE_EXT.test(path)) return el("p", { text: alt || src });
   const img = el("img", { class: "rimg", alt: alt || path });
@@ -2189,6 +2192,208 @@ function galleryMore(ctx) {  // the end row: loading more · that's all · a ret
   g.more = row;
 }
 
+/* ---------- Journal (v4.3 LUMI-312, design/v4/handoff §7) ----------
+   Her journal, read-only: /v1/journal (the days, newest first) and /v1/journal/<date> (one day: the code-owned stamp
+   apart from her prose, then each `## HH:MM` section). Wide: the list of days beside the day; narrow (and pinned): the
+   list is its own screen. A fresh mount asks for the days again and opens the newest (or the day it showed); ← → step
+   through the days when the focus isn't in a field. Her prose goes through the reader's renderer — built nodes, never
+   HTML — with links and pictures kept as text: the journal lives outside her sandbox. */
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function dayOf(ymd) {  // "YYYY-MM-DD" → that local day (no time-zone shift)
+  const [y, m, d] = String(ymd || "").split("-").map(Number);
+  return new Date(y || 1970, (m || 1) - 1, d || 1);
+}
+
+function longDay(ymd) { const d = dayOf(ymd); return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`; }
+
+function shortDay(ymd) { const d = dayOf(ymd); return `${WEEKDAYS[d.getDay()].slice(0, 3)} ${d.getDate()} ${MONTHS3[d.getMonth()]}`; }
+
+function kbSize(n) { return n < 1024 ? `${num(n)} B` : `${(n / 1024).toFixed(1)} KB`; }
+
+function entriesLabel(n) { return n === 1 ? t("journal.entry") : t("journal.entries", { n: num(n) }); }
+
+function signed(v) { return (v < 0 ? "−" : "+") + Math.abs(Number(v) || 0).toFixed(2); }
+
+VIEW_KINDS.journal = (ctx) => {
+  const s = ctx.state;
+  if (s.ctx !== ctx) {  // a fresh mount: the days again, the day it showed (or the newest)
+    Object.assign(s, { ctx, phase: "loading", days: [], error: null, entries: new Map(), dayError: null, list: false,
+      ticket: (s.ticket || 0) + 1, dayTicket: 0, listScroll: 0 });
+    renderJournal(ctx);
+    journalLoad(ctx);
+    return;
+  }
+  renderJournal(ctx);
+};
+
+function journalReload(ctx) { ctx.state.ctx = null; VIEW_KINDS.journal(ctx); }
+
+async function journalLoad(ctx) {
+  const s = ctx.state;
+  const ticket = s.ticket;
+  let data;
+  try {
+    data = await api("/v1/journal");
+  } catch (err) {
+    if (ticket === s.ticket) { s.phase = "error"; s.error = err; renderJournal(ctx); }
+    return;
+  }
+  if (ticket !== s.ticket) return;
+  s.days = Array.isArray(data.days) ? data.days : [];
+  s.phase = "ok";
+  if (!s.days.some((d) => d.date === s.day)) s.day = s.days.length ? s.days[0].date : null;
+  if (s.day) journalOpen(ctx, s.day); else renderJournal(ctx);
+}
+
+async function journalOpen(ctx, date) {  // show a day: from what this mount read, else the server
+  const s = ctx.state;
+  s.day = date;
+  s.list = false;
+  s.dayError = null;
+  renderJournal(ctx);
+  if (s.entries.has(date)) return;
+  const ticket = ++s.dayTicket;
+  const mount = s.ticket;
+  let entry;
+  try {
+    entry = await api("/v1/journal/" + encodeURIComponent(date));
+  } catch (err) {
+    if (ticket === s.dayTicket && mount === s.ticket) { s.dayError = err; renderJournal(ctx); }
+    return;
+  }
+  if (mount !== s.ticket) return;
+  s.entries.set(date, entry);
+  if (ticket === s.dayTicket && s.day === date) renderJournal(ctx);
+}
+
+function journalStep(ctx, delta) {  // delta −1: the previous (older) day; +1: the next (newer) one
+  const s = ctx.state;
+  if (s.phase !== "ok") return;
+  const i = s.days.findIndex((d) => d.date === s.day);
+  const to = s.days[i - delta];
+  if (i >= 0 && to) journalOpen(ctx, to.date);
+}
+
+function journalList(ctx, wide) {
+  const s = ctx.state;
+  const perMonth = new Map();
+  for (const d of s.days) { const m = d.date.slice(0, 7); perMonth.set(m, (perMonth.get(m) || 0) + 1); }
+  const nav = el("nav", { class: "jdays" + (wide ? "" : " vscroll"), "aria-label": t("journal.days_label") });
+  let month = "";
+  for (const d of s.days) {
+    const m = d.date.slice(0, 7);
+    if (m !== month) {
+      month = m;
+      const at = dayOf(d.date);
+      nav.append(el("div", { class: "jmonth" }, el("span", { class: "kicker", text: `${MONTHS[at.getMonth()]} ${at.getFullYear()}` }),
+        el("span", { class: "jmcount", text: t("journal.month_days", { n: num(perMonth.get(m)) }) })));
+    }
+    const at = dayOf(d.date);
+    const note = entriesLabel(d.sections) + (d.stamp ? "" : ` · ${t("journal.no_stamp_short")}`);
+    nav.append(el("button", { type: "button", class: "jrow", "aria-current": String(wide && d.date === s.day),
+      "data-date": d.date, onclick: () => journalOpen(ctx, d.date) },
+    el("span", { class: "jnum", text: String(at.getDate()) }),
+    el("span", { class: "jwd" }, el("span", { text: WEEKDAYS[at.getDay()] }), el("span", { class: "jnote", text: note })),
+    el("span", { class: "jsize", text: kbSize(d.size) })));
+  }
+  nav.addEventListener("scroll", () => { s.listScroll = nav.scrollTop; }, { passive: true });
+  return nav;
+}
+
+function journalStamp(stamp, narrow) {
+  if (!stamp) return el("p", { class: "jnostamp", text: t("journal.no_stamp") });
+  const rows = [];
+  if (stamp.mood) rows.push(["journal.mood", el("span", { lang: "uk", text: stamp.mood })]);
+  if (Array.isArray(stamp.biorhythms) && stamp.biorhythms.length) {
+    rows.push(["journal.biorhythms", el("div", { class: "jbio" + (narrow ? " narrow" : "") }, stamp.biorhythms.map((c) =>
+      el("span", { class: "jcell" }, el("span", { class: "jcname", lang: "uk", text: c.name }),
+        el("span", { class: "jcval", text: signed(c.value) }), el("span", { class: "jclabel", text: c.label }))))]);
+  }
+  if (stamp.forecast) rows.push(["journal.forecast", el("span", { lang: "uk", text: stamp.forecast })]);
+  return el("section", { class: "jstamp" + (narrow ? " narrow" : ""), "aria-label": t("journal.stamp") },
+    rows.map(([key, value]) => el("div", { class: "jsrow" }, el("span", { class: "kicker", text: t(key) }), value)));
+}
+
+function journalDay(ctx, narrow) {
+  const s = ctx.state;
+  const i = s.days.findIndex((d) => d.date === s.day);
+  const day = s.days[i];
+  const entry = s.entries.get(s.day);
+  if (!entry) {
+    if (s.dayError) return viewError(t("journal.error_title"), s.dayError, () => journalOpen(ctx, s.day));
+    return viewLoading(t("journal.loading"));
+  }
+  const older = s.days[i + 1];
+  const newer = s.days[i - 1];
+  const prose = { host: ctx.host, state: {}, plain: true };  // the reader's renderer, links and pictures as text
+  const sections = (entry.sections || []).map((sec) => el("div", { class: "jentry" + (narrow ? " narrow" : "") },
+    el("span", { class: "jtime", text: sec.time || "" }),
+    el("div", { class: "jprose rpage", lang: "uk" }, readerBlocks(prose, sec.text, "").blocks)));
+  const step = (to, delta) => el("button", { type: "button", class: "btn btn-secondary", disabled: !to,
+    onclick: to ? () => journalStep(ctx, delta) : null },
+  delta < 0 ? icon("chevron-left") : null,
+  to ? t(delta < 0 ? "journal.previous" : "journal.next", { day: shortDay(to.date) })
+    : t(delta < 0 ? "journal.first" : "journal.latest"),
+  delta > 0 ? icon("chevron-right") : null);
+  return el("article", { class: "jday" + (narrow ? " narrow" : "") },
+    el("div", { class: "jkick" }, el("span", { class: "kicker", text: t("journal.title") }),
+      el("span", { class: "vmeta", text: [t("journal.day_of", { i: num(s.days.length - i), n: num(s.days.length) }),
+        entriesLabel(day.sections), kbSize(day.size)].join(" · ") })),
+    el("h1", { class: "jtitle" }, longDay(s.day), el("span", { class: "jyear", text: String(dayOf(s.day).getFullYear()) })),
+    journalStamp(entry.stamp, narrow),
+    sections,
+    el("div", { class: "jfoot" }, step(older, -1), step(newer, 1)),
+    narrow ? null : el("p", { class: "jkeys", text: t("journal.keys") }));
+}
+
+function renderJournal(ctx) {
+  const s = ctx.state;
+  const narrow = ctx.narrow();
+  const title = el("h2", { class: "vtitle", text: t("journal.title") });
+  if (s.phase === "loading") { paint(ctx, viewFrame([title], viewLoading(t("journal.loading")))); return; }
+  if (s.phase === "error") {
+    paint(ctx, viewFrame([title], viewError(t("journal.error_title"), s.error, () => journalReload(ctx))));
+    return;
+  }
+  if (!s.days.length) {
+    paint(ctx, viewFrame([title], viewEmpty(t("journal.title"), t("journal.empty"), t("journal.empty_note"))));
+    return;
+  }
+  const meta = el("span", { class: "vmeta", text: t("journal.days", { n: num(s.days.length) }) });
+  if (narrow && s.list) {  // the list is its own screen
+    const list = journalList(ctx, false);
+    paint(ctx, el("div", { class: "view" }, el("div", { class: "vbar" }, title, meta), list));
+    list.scrollTop = s.listScroll;
+    return;
+  }
+  const pane = el("div", { class: "vscroll jscroll" }, journalDay(ctx, narrow));
+  if (narrow) {
+    const i = s.days.findIndex((d) => d.date === s.day);
+    const older = s.days[i + 1];
+    const newer = s.days[i - 1];
+    const bar = [
+      el("button", { type: "button", class: "jback", onclick: () => { s.list = true; renderJournal(ctx); } },
+        icon("chevron-left"), t("journal.all_days")),
+      el("span", { class: "jgap" }),
+      el("button", { type: "button", class: "ib", disabled: !older, onclick: () => journalStep(ctx, -1),
+        "aria-label": older ? t("journal.previous", { day: shortDay(older.date) }) : t("journal.first") }, icon("chevron-left")),
+      el("button", { type: "button", class: "ib", disabled: !newer, onclick: () => journalStep(ctx, 1),
+        "aria-label": newer ? t("journal.next", { day: shortDay(newer.date) }) : t("journal.latest") }, icon("chevron-right"))];
+    paint(ctx, el("div", { class: "view" }, el("div", { class: "vbar" }, ...bar), pane));
+    return;
+  }
+  const list = journalList(ctx, true);
+  paint(ctx, el("div", { class: "view" }, el("div", { class: "vbar" }, title, meta), el("div", { class: "jwrap" }, list, pane)));
+  list.scrollTop = s.listScroll;
+  const current = list.querySelector('.jrow[aria-current="true"]');
+  if (current) current.scrollIntoView({ block: "nearest" });  // ← → keep the day in sight
+}
+
+function typing(target) {  // the focus is in a field (the keys belong to it)
+  return !!(target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)));
+}
+
 /* ---------- start ---------- */
 async function start() {
   try { S = await (await fetch("strings.en.json")).json(); } catch (e) { S = {}; }
@@ -2223,6 +2428,12 @@ async function start() {
     if ((ev.metaKey || ev.ctrlKey) && (ev.key === "[" || ev.key === "]") && vw.view === "files" && places.main.ctx) {
       ev.preventDefault();  // ⌘[ ⌘] back / forward in Files and the reader
       filesStep(places.main.ctx, ev.key === "[" ? -1 : 1);
+      return;
+    }
+    if ((ev.key === "ArrowLeft" || ev.key === "ArrowRight") && vw.view === "journal" && places.main.ctx
+        && !ev.defaultPrevented && !ev.metaKey && !ev.ctrlKey && !ev.altKey && !ev.shiftKey && !typing(ev.target)) {
+      ev.preventDefault();  // v4.3: ← → the previous / next day, when the focus isn't in a field
+      journalStep(places.main.ctx, ev.key === "ArrowLeft" ? -1 : 1);
       return;
     }
     if ((ev.metaKey || ev.ctrlKey) && ev.key === "\\") {  // ⌘\ folds or unfolds the right panels
