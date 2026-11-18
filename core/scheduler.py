@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from core.nudge import _in_quiet_hours, load_nudges, pick_nudge_index
@@ -27,7 +27,9 @@ from core.schedule import (
     due,
     last_fired_of,
     load_state,
+    next_due,
     save_state,
+    trigger_view,
 )
 from core.thoughts import should_graduate
 
@@ -128,6 +130,15 @@ def _at_matches(entry: ScheduleEntry, minute: datetime) -> bool:
     return False
 
 
+def _minute(when: datetime | None, now: datetime) -> str | None:
+    """A moment as the server's local minute ``YYYY-MM-DDTHH:MM`` (in ``now``'s zone), or ``None``."""
+    if when is None:
+        return None
+    if when.tzinfo is not None and now.tzinfo is not None:
+        when = when.astimezone(now.tzinfo)
+    return when.strftime("%Y-%m-%dT%H:%M")
+
+
 class Scheduler:
     """Holds the schedule + last-fired state and decides which entries fire on a tick.
 
@@ -145,6 +156,7 @@ class Scheduler:
         per_dir_cap: int | None = None,
         quiet_hours: tuple[int, int] | None = None,
     ) -> None:
+        self._all = list(entries)  # v4.4: every entry, enabled or not, for the window's view
         self._entries = [e for e in entries if e.enabled]
         self._state_path = Path(state_path)
         self._state: dict[str, str] = load_state(state_path)
@@ -188,6 +200,42 @@ class Scheduler:
             self._stamp(entry, now)
             fires.append(entry)
         return fires
+
+    # --- v4.4 LUMI-315: the window's view (read-only) ----------------------------------------------
+    def view(self, now: datetime, *, last_input: datetime | None = None) -> dict:
+        """Every entry with its rule, its last firing and its next due time, by the rules :meth:`due_now` fires by:
+        ``{now, quiet_hours, day_cap, fired_today, entries:[{name, directive, seeds, show, enabled, trigger,
+        last_fired, next_due, if_silent}]}``.
+
+        ``next_due`` is :func:`core.schedule.next_due` (the quiet hours, ``at`` beating them), moved past local
+        midnight when today's day cap or the directive's own cap is reached; ``None`` for a disabled entry. ``idle``
+        is "if silent": new input moves it. Times are the server's local minutes (``YYYY-MM-DDTHH:MM``).
+
+        Read-only: no stamp, no count, no file — copies of the state and the counts, taken whole."""
+        today = now.date().isoformat()
+        counting = self._day == today  # yesterday's counts are 0 today (the next tick rolls them)
+        fired = self._day_count if counting else 0
+        per_dir = dict(self._per_dir) if counting else {}
+        state = dict(self._state)
+        midnight = datetime.combine(now.date() + timedelta(days=1), time.min, tzinfo=now.tzinfo)
+        entries: list[dict] = []
+        for entry in self._all:
+            last = last_fired_of(state, entry)
+            when = None
+            if entry.enabled:
+                when = next_due(now, last, entry.trigger, last_input=last_input, quiet_hours=self._quiet_hours)
+                capped = fired >= self._day_cap or per_dir.get(entry.directive, 0) >= self._per_dir_cap
+                if when is not None and capped and when < midnight:
+                    when = next_due(midnight, last, entry.trigger, last_input=last_input,
+                                    quiet_hours=self._quiet_hours)
+            entries.append({
+                "name": entry.name or None, "directive": entry.directive, "seeds": entry.seeds or None,
+                "show": entry.show, "enabled": entry.enabled, "trigger": trigger_view(entry.trigger),
+                "last_fired": _minute(last, now), "next_due": _minute(when, now),
+                "if_silent": entry.trigger.kind == "idle",
+            })
+        return {"now": _minute(now, now), "quiet_hours": list(self._quiet_hours) if self._quiet_hours else None,
+                "day_cap": self._day_cap, "fired_today": fired, "entries": entries}
 
     # --- startup catch-up -------------------------------------------------------------------------
     def catch_up(self, now: datetime, *, catchup_h: int = 6) -> list[ScheduleEntry]:

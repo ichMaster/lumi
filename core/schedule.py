@@ -24,8 +24,10 @@ import json
 import logging
 import tomllib
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+
+from core.nudge import _in_quiet_hours
 
 _log = logging.getLogger("lumi.schedule")
 
@@ -170,6 +172,76 @@ def due(
     if k == "cron":
         return _cron_match(trigger.cron, now) and _new_minute(last_fired, now)
     return False
+
+
+# --- v4.4 LUMI-315: when an entry is next due, for the window's Schedule (read-only) ----------------
+NEXT_DUE_HORIZON_DAYS = 8  # a week and a day: every weekly `at` / cron is found
+
+
+def _quiet_for(trigger: Trigger, minute: datetime, quiet_hours: tuple[int, int] | None) -> bool:
+    """The scheduler's veto (``core.scheduler._quiet_vetoed``): quiet hours stop every kind but an ``at``."""
+    return bool(quiet_hours) and trigger.kind != "at" and _in_quiet_hours(minute, quiet_hours)
+
+
+def next_due(
+    now: datetime,
+    last_fired: datetime | None,
+    trigger: Trigger,
+    *,
+    last_input: datetime | None = None,
+    quiet_hours: tuple[int, int] | None = None,
+    horizon_days: int = NEXT_DUE_HORIZON_DAYS,
+) -> datetime | None:
+    """The first moment from ``now`` on when the scheduler would fire this trigger: :func:`due` holds and the quiet
+    hours don't veto it (an ``at`` beats quiet hours, as the scheduler's own veto does). The day caps are the
+    caller's (:meth:`core.scheduler.Scheduler.view`). ``None`` past ``horizon_days``.
+
+    ``every`` / ``between`` start at ``last_fired + interval``, ``idle`` at the later of the last input and the last
+    fire plus the interval ("if silent" — new input moves it); an ``at`` jumps day by day to its minute; the rest step
+    by the minute. Pure: no clock read, no state."""
+    end = now + timedelta(days=max(0, horizon_days))
+    anchor_input = last_input or now
+    k = trigger.kind
+    if k == "at":
+        if trigger.at_hm is None:
+            return None
+        h, m = trigger.at_hm
+        this_minute = now.replace(second=0, microsecond=0)
+        day = this_minute.replace(hour=h, minute=m)
+        while day <= end:
+            when = max(day, now)  # inside the minute already → now; later today or another day → its minute
+            if day >= this_minute and due(when, last_fired, trigger):
+                return when
+            day += timedelta(days=1)
+        return None
+    start = now
+    if k in ("every", "between") and last_fired is not None:
+        start = max(now, last_fired + timedelta(seconds=trigger.interval_s))
+    elif k == "idle":
+        anchor = max(anchor_input, last_fired) if last_fired is not None else anchor_input
+        start = max(now, anchor + timedelta(seconds=trigger.interval_s))
+    when = start
+    while when <= end:
+        if due(when, last_fired, trigger, last_input=anchor_input) and not _quiet_for(trigger, when, quiet_hours):
+            return when
+        when = when.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    return None
+
+
+def trigger_view(trigger: Trigger) -> dict:
+    """The structured trigger for a client: ``{kind, interval_s, at, days, window, cron}`` — ``at`` and the window's
+    ends as ``"HH:MM"``, ``days`` as weekday numbers (0 = Monday), absent parts ``None`` / ``[]``."""
+    def hm(value: tuple[int, int] | None) -> str | None:
+        return f"{value[0]:02d}:{value[1]:02d}" if value else None
+
+    return {
+        "kind": trigger.kind,
+        "interval_s": trigger.interval_s or None,
+        "at": hm(trigger.at_hm),
+        "days": list(trigger.days),
+        "window": [hm(trigger.window[0]), hm(trigger.window[1])] if trigger.window else None,
+        "cron": trigger.cron or None,
+    }
 
 
 # --- cron (5-field: minute hour day-of-month month day-of-week) ------------------------------------
