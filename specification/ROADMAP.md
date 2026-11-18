@@ -1571,24 +1571,101 @@ bounds; contract — the routes, auth, read-only, the outcome field (absent with
 
 ### v4.5 — Actions from the window
 
-**Goal:** the owner acts on her data from the window, not only reads it. The actions and their rules are chosen with
-the owner before this phase starts (the owner, 2026-11-17: "actions too, in a later version").
+**Goal:** the owner acts on her sandbox from the window, not only reads it: brings files in, shows her a picture, takes
+files out, opens a link, and tidies up. The owner chose all five candidate actions on 2026-11-19.
 
-**Candidates:**
-- upload a file or a picture from the Mac into her sandbox (create-only, a new name, size caps);
-- "show this to her": a sandbox picture sent with a typed line as a turn's image;
-- download a file to the Mac.
-- Rename or delete, only if the owner wants them: her own tools stay non-destructive, and a client action would be the
-  owner's, logged.
+**The actions:**
+
+1. **Upload a file or a picture from the Mac.**
+   - Window: Files gets «Upload» in the folder's action area (a file picker) and takes files dropped on the table. The
+     folder refreshes, and the new file is marked.
+   - Server: `POST /v1/files/upload?path=<folder>&name=<name>`, the body the file's bytes.
+     - Create-only: a name already taken gets a new one (`rain (2).png`), and nothing is ever overwritten.
+     - The name is cleaned: one segment, no leading dot, at most 120 characters. The folder must exist in the sandbox.
+     - Caps: pictures (png / jpeg / gif / webp by magic bytes) up to 10 MB; UTF-8 text files up to 1 MB; anything else
+       415.
+     - The answer: `{path, size}`.
+   - She sees the file with her own tools (`list_files`, `read_file`, `view_image`).
+   - The proxy lets this one route's body reach 10 MB (1 MB elsewhere).
+2. **"Show this to her": a picture from her sandbox with a typed line, as a turn.**
+   - Window: the full picture view (its reserved action area) and the Gallery get «Show to Lili». You type a line;
+     the line and the picture go to the chat as your turn. Your line shows the picture as her pictures do (v4.2).
+   - Server: the turn routes take `sandbox_images: [path]` (at most 4). The server reads each picture from her
+     sandbox through `safe_path` and the v4.1 picture read (≤ 10 MB, by magic bytes) and passes it as the turn's
+     image, as `/image` does. The window never sends the bytes. The emotion contract is unchanged. A turn with a
+     picture is a paid vision call, like any image turn.
+3. **Download a file to the Mac.**
+   - Window: «Download» on a Files row, in the reader and in the picture view. The file lands in `~/Downloads`; a name
+     already there gets a new one. The window says where it went, with «Show in Finder».
+   - Server: `GET /v1/files/download?path=` — any regular file of the sandbox up to 50 MB, as
+     `Content-Disposition: attachment`, `nosniff`. Read-only.
+   - The proxy does the saving: a local route, with the window's key, fetches the download and writes the file. The
+     page never touches the disk.
+4. **Open an external link in the browser.**
+   - Window: the reader's external links (shown, never followed in the window since v4.1) get «Open in browser».
+   - The proxy's local route, with the window's key, opens `http` / `https` addresses only in the default browser.
+     Anything else (`file:`, `javascript:`, a sandbox path) is refused. No server change.
+5. **Rename, and move to trash with restore.**
+   - Window: a Files row gets «Rename…» and «Move to trash…». Each needs a confirmation in the window: rename shows
+     the new name before it applies; trash asks «Move notes/x.md to the trash?».
+   - Server: `POST /v1/files/rename {path, name}` renames a file or a folder within its folder (the new name cleaned,
+     never over an existing one). `POST /v1/files/trash {path}` moves it into `.trash/<YYYY-MM-DD>/` inside the sandbox.
+     `POST /v1/files/restore {path}` moves an item from `.trash/` back to where it came from, if that place is free.
+   - Nothing is ever deleted: the trash stays in her sandbox as an ordinary folder. Her own file tools stay
+     non-destructive (create and append only); these are the owner's actions.
 
 **Rules for every action:**
-- The owner's token only.
-- Every write through `safe_path`.
-- Nothing destructive without a confirmation in the window.
-- Each action logged.
-- Contract-tested like the read routes.
+- The owner's token only. The room's token gets 403, no token 401.
+- Every path through `safe_path`. A write lands only in `files/<user_id>/` — never the journal, the store, the caches,
+  the settings.
+- Nothing destructive without a confirmation in the window. Upload is create-only and needs none.
+- Every action is logged to `<data root>/actions.jsonl`: `{ts, action, path, to, size, client}`, never a file's content.
+- No action takes the turn lock except "show this to her", which is a turn.
+- Every route is contract-tested like the read routes.
 
-**DoD and tests:** written with the chosen actions.
+**Tasks:**
+- core: the upload's name rules, caps and create-only write; rename, trash and restore over `safe_path`; the action log.
+- server:
+  - the write routes;
+  - `sandbox_images` on the turn routes;
+  - the download route;
+  - `features.actions`.
+- proxy:
+  - the new routes;
+  - the upload's body cap;
+  - the two local routes (save to `~/Downloads`, open in the browser) behind the window's key.
+- window:
+  - «Upload» and drop in Files;
+  - «Show to Lili» in the picture view and the Gallery;
+  - «Download» in Files, the reader and the picture view;
+  - «Open in browser» on external links;
+  - «Rename…», «Move to trash…» and «Restore» with their confirmations.
+- ARCHITECTURE §Contracts (Server API v1): a "v4.5 (additive)" paragraph.
+
+**DoD:**
+- From `Lili.app` the owner uploads a picture and a text file. They appear in Files and she can read them; a name
+  already taken gets a new name; a file too large or of another kind is refused.
+- "Show to Lili" sends a sandbox picture with a line; she answers about it in the chat.
+- Any file downloads to `~/Downloads` (a name already there gets a new one).
+- An external link opens in the default browser; anything that isn't `http` / `https` never does.
+- Rename and trash ask first. Trash moves into `.trash/`, restore brings it back, and nothing is ever deleted.
+- Every action is in `actions.jsonl`. The room's token gets 403 on every write route. The other files of the sandbox
+  stay byte-identical.
+- (Manual, owner) on prod.
+
+**Tests:**
+- unit:
+  - the name rules (cleaning, the new name on a clash) and the caps (magic bytes, sizes);
+  - rename, trash and restore over `safe_path`, with traversal and links out refused;
+  - the log line has no content.
+- contract:
+  - the routes, 401 and the room's 403;
+  - create-only (never an overwrite) and the other files byte-identical;
+  - `sandbox_images` on a turn with a mock model;
+  - the proxy's routes, its body cap, and the local routes' key guard and http-only rule.
+- static: the confirmations, the strings, no HTML.
+
+No paid calls: the turn uses the mock model.
 
 ---
 

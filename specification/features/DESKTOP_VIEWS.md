@@ -207,21 +207,24 @@ the 256 KB cap says so at its end.
 **States.** Every view has an empty state, a loading state and an error line. A server that stops shows the existing
 no-server screen.
 
-## Actions (v4.5, later)
+## Actions (v4.5)
 
-These are candidates, chosen with the owner before v4.5 starts:
-- upload a file or a picture from the Mac into her sandbox (create-only, a new name, size caps);
-- "show this to her": a sandbox picture sent with a typed line as a turn's image;
-- download a file to the Mac;
-- open an external link in the system browser;
-- rename or delete, only if the owner wants them. Her own tools stay non-destructive; a client action would be the
-  owner's, logged and confirmed.
+The owner chose all five candidates on 2026-11-19. ROADMAP §v4.5 describes each one with its routes, caps, Tasks and
+DoD:
+1. **Upload** a file or a picture from the Mac into her sandbox. It is create-only (a taken name gets a new one,
+   nothing is overwritten), with caps: pictures by magic bytes up to 10 MB, UTF-8 text up to 1 MB.
+2. **"Show this to her"**: a sandbox picture with a typed line, sent as a turn. The server reads the picture by its
+   sandbox path (`sandbox_images`), so the window never sends the bytes.
+3. **Download** a file to `~/Downloads`, saved by the proxy, never by the page.
+4. **Open an external link** in the default browser (`http` / `https` only), through the proxy's local route.
+5. **Rename**, and **move to trash** with **restore**. Each is confirmed in the window. The trash is `.trash/` inside
+   the sandbox, and nothing is ever deleted.
 
 **Rules for every action:**
 - The owner's token only.
-- Every write through `safe_path`.
+- Every write through `safe_path`, into `files/<user_id>/` only.
 - Nothing destructive without a confirmation in the window.
-- Each action logged.
+- Each action logged to `<data root>/actions.jsonl` (never a file's content).
 - Contract-tested like the read routes.
 
 ## Contract changes
