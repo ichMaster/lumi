@@ -58,7 +58,7 @@ from core.config import (
     ModelProfile,
     load_config,
 )
-from core.cycle import CyclePhase, format_cycle, menstrual_phase, parse_cycle_anchor
+from core.cycle import CyclePhase, cycle_detail, format_cycle, menstrual_phase, parse_cycle_anchor
 from core.deidentify import deidentify, personal_terms, topic_words
 from core.embedder import Embedder
 from core.emotion import DEFAULT_EMOTION, DEFAULT_INTENSITY, Emotion, EmotionState, validate
@@ -1026,6 +1026,16 @@ class Core:
         """Today's computed biorhythm cycles (v0.8), cached with the mood; ``None`` when off."""
         return self._biorhythms
 
+    def cycle_view(self) -> dict | None:
+        """v4.4 LUMI-319: today's hormonal cycle for the window (:func:`core.cycle.cycle_detail`) — computed from the
+        natal anchor and the clock when ``mood.cycle`` is on, ``None`` when off or without the anchor. No model call."""
+        if not self._cycle_enabled:
+            return None
+        anchor = parse_cycle_anchor(self._natal)
+        if anchor is None:
+            return None
+        return cycle_detail(anchor[0], self._clock().date(), anchor[1])
+
     @property
     def tool_trace(self) -> bool:
         """v4.4: whether the tool trace is on (``files.trace``) — the turn's outcome then lists its tools."""
@@ -1038,7 +1048,8 @@ class Core:
         ``mood`` is ``{resolution, reading, theme, made_at}`` only when today's mood is already computed (``reading``
         is its body, :func:`core.mood.mood_body`; ``made_at`` is ``None`` — the mood keeps no time), else ``None``.
         ``biorhythms`` (:func:`core.biorhythm.biorhythm_detail`) are computed from the birth date and the clock when
-        they are on, else ``[]``. ``plan`` waits for v5.7. Read-only: never a model call, never computes the mood."""
+        they are on, else ``[]``. ``cycle`` (v4.4 LUMI-319) is :meth:`cycle_view`. ``plan`` waits for v5.7. Read-only:
+        never a model call, never computes the mood."""
         today = self._clock().date()
         mood = self._mood
         bio: list[dict] = []
@@ -1049,6 +1060,7 @@ class Core:
         level, name = self.closeness_status()
         return {
             "date": today.isoformat(),
+            "cycle": self.cycle_view(),
             "mood": ({"resolution": mood.resolution, "reading": mood_body(mood.reading), "theme": mood.theme,
                       "made_at": None} if mood is not None and mood.date == today.isoformat() else None),
             "biorhythms": bio,

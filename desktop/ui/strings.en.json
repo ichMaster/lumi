@@ -435,5 +435,16 @@
   "date.tomorrow": "Tomorrow",
   "schedule.some_enabled": "{n} enabled",
   "tools.title": "Tools · last reply",
-  "tools.none": "No tools in the last reply."
+  "tools.none": "No tools in the last reply.",
+  "state.hormonal": "Hormonal",
+  "state.days_left": "{n} days left",
+  "state.day_left": "1 day left",
+  "state.last_day": "last day of the phase",
+  "phase.menstrual": "menstrual",
+  "phase.follicular": "follicular",
+  "phase.ovulation": "ovulation",
+  "phase.luteal": "luteal",
+  "phase.pms": "PMS",
+  "panel.cycle": "Cycle",
+  "panel.cycle.day": "day {d} of {n}"
 }

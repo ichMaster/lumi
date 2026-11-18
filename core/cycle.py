@@ -59,6 +59,24 @@ def menstrual_phase(anchor: date, today: date, length: int = DEFAULT_LENGTH) -> 
     return CyclePhase(day, length, phase, _NOTES[phase])
 
 
+# v4.4: the phases' keys for a client (its own words in its own language); the core's names stay Ukrainian.
+PHASE_KEYS: dict[str, str] = {"менструація": "menstrual", "фолікулярна": "follicular", "овуляція": "ovulation",
+                              "лютеїнова": "luteal", "ПМС": "pms"}
+
+
+def cycle_detail(anchor: date, today: date, length: int = DEFAULT_LENGTH) -> dict:
+    """v4.4: the cycle for the window — ``{day, length, phase, note, phases}``.
+
+    ``day`` and ``note`` are :func:`menstrual_phase`'s; ``phase`` is its phase's key (:data:`PHASE_KEYS`); ``phases``
+    the key of every day ``1…length``, so a client can draw any stretch of the cycle around today."""
+    today_phase = menstrual_phase(anchor, today, length)
+    offset = today_phase.day - 1  # days since this cycle's day 1
+    phases = [PHASE_KEYS[menstrual_phase(anchor, date.fromordinal(today.toordinal() - offset + i), length).phase]
+              for i in range(length)]
+    return {"day": today_phase.day, "length": length, "phase": PHASE_KEYS[today_phase.phase],
+            "note": today_phase.note, "phases": phases}
+
+
 def parse_cycle_anchor(natal_text: str) -> tuple[date, int] | None:
     """Parse ``Цикл: день 1 — DD.MM.YYYY, довжина NN`` → ``(anchor, length)`` (else ``None``).
 

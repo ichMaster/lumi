@@ -116,3 +116,44 @@ def test_no_biorhythms_when_off_or_without_a_birth_date(tmp_path):
     clock = _Clock(datetime(2026, 11, 18, 9, 0, tzinfo=UTC))
     assert _core(tmp_path / "off", clock, bio=False).today_view()["biorhythms"] == []
     assert _core(tmp_path / "nobirth", clock, natal="Сонце 15° Риб").today_view()["biorhythms"] == []
+
+
+# --- v4.4 LUMI-319: the hormonal cycle ---------------------------------------------------------------------------
+from datetime import timedelta  # noqa: E402
+
+from core.cycle import PHASE_KEYS, cycle_detail, menstrual_phase  # noqa: E402
+
+ANCHOR = date(2026, 5, 25)
+NATAL_CYCLE = NATAL + "\nЦикл: день 1 — 25.05.2026, довжина 28 днів."
+
+
+def test_cycle_detail_equals_the_command_day_by_day():
+    for length in (21, 28, 35):
+        for n in range(length * 2):
+            today = ANCHOR + timedelta(days=n)
+            detail = cycle_detail(ANCHOR, today, length)
+            phase = menstrual_phase(ANCHOR, today, length)
+            assert (detail["day"], detail["length"], detail["note"]) == (phase.day, length, phase.note)
+            assert detail["phase"] == PHASE_KEYS[phase.phase]
+            assert len(detail["phases"]) == length and detail["phases"][phase.day - 1] == detail["phase"]
+            for i, key in enumerate(detail["phases"]):  # every day of the cycle, as the command names it
+                assert key == PHASE_KEYS[menstrual_phase(ANCHOR, today + timedelta(days=i - phase.day + 1), length).phase]
+
+
+def test_a_28_day_cycle_reads_as_the_core_draws_it():
+    detail = cycle_detail(ANCHOR, ANCHOR, 28)
+    assert detail["day"] == 1 and detail["phase"] == "menstrual"
+    assert detail["phases"] == (["menstrual"] * 5 + ["follicular"] * 7 + ["ovulation"] * 3 + ["luteal"] * 8
+                                + ["pms"] * 5)  # ovulation on days 13–15 (L − 14 ± 1), PMS the last five
+
+
+def test_today_carries_the_cycle_when_on_and_none_without_the_anchor(tmp_path):
+    clock = _Clock(datetime(2026, 11, 19, 9, 0, tzinfo=UTC))
+    on = Core(llm=MockLLMClient(READING), repository=JsonRepository(tmp_path / "on.json"), canon="C", model="m",
+              clock=clock, natal=NATAL_CYCLE, mood_enabled=True, cycle_enabled=True)
+    assert on.today_view()["cycle"] == cycle_detail(ANCHOR, date(2026, 11, 19), 28)
+    assert on.cycle_view()["phase"] in PHASE_KEYS.values()
+    off = Core(llm=MockLLMClient(READING), repository=JsonRepository(tmp_path / "off.json"), canon="C", model="m",
+               clock=clock, natal=NATAL_CYCLE, mood_enabled=True, cycle_enabled=False)
+    assert off.today_view()["cycle"] is None
+    assert _core(tmp_path / "noanchor", clock).today_view()["cycle"] is None  # NATAL has no «Цикл:» line

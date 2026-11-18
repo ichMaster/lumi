@@ -325,6 +325,7 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
         "think_show": getattr(core, "think_show", "debug"),
         "stream_enabled": bool(getattr(core, "stream_enabled", False)),  # v2.3: the client streams when on
         "closeness": {"level": level, "name": name},  # v2.4
+        "cycle": cycle_brief(core),  # v4.4: today's hormonal phase for the portrait panel, or None
         # v2.6: what the SERVER can do — a client on another machine gates /image and /web on these, not its .env
         "features": {"image": bool(getattr(core, "image_enabled", False)),
                      "web_lookup": bool(getattr(core, "web_lookup_enabled", False)),
@@ -339,6 +340,13 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
                      "today": callable(getattr(core, "today_view", None)),
                      "schedule": schedule},
     }
+
+
+def cycle_brief(core: Any) -> dict[str, Any] | None:
+    """v4.4 LUMI-319: ``{phase, day, length}`` of today's hormonal cycle (``Core.cycle_view``), or ``None``."""
+    view = getattr(core, "cycle_view", None)
+    detail = view() if callable(view) else None
+    return {k: detail[k] for k in ("phase", "day", "length")} if detail else None
 
 
 def journal_served(core: Any) -> bool:

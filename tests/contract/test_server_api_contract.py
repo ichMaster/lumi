@@ -72,6 +72,7 @@ def test_state_shape_is_pinned(tmp_path):
         "stream_enabled",  # v2.3
         "closeness",  # v2.4
         "features",  # v2.6: what the server can do — a remote client gates /image and /web on it
+        "cycle",  # v4.4: today's hormonal phase {phase, day, length}, or None
     }
     assert set(state["closeness"]) == {"level", "name"}  # the level by name — never the raw value
     assert state["features"] == {"image": False, "web_lookup": False, "files": False,  # a bare core: all off
@@ -837,7 +838,7 @@ def test_v44_today_answers_with_its_shape_and_never_computes_the_mood(tmp_path):
     res = client.get("/v1/today", headers=AUTH)
     assert res.status_code == 200 and res.headers["cache-control"] == "no-store"
     body = res.json()
-    assert set(body) == {"date", "mood", "biorhythms", "closeness", "plan"}
+    assert set(body) == {"date", "mood", "biorhythms", "closeness", "plan", "cycle"}
     assert body["mood"] is None and core._llm.calls == []  # not computed yet, and the route didn't compute it
     assert [b["name"] for b in body["biorhythms"]] == ["physical", "emotional", "intellectual"]
     assert set(body["biorhythms"][0]) == {"name", "value", "label", "trend", "period", "day"}
@@ -942,3 +943,21 @@ def test_v44_the_tool_list_is_bounded(tmp_path):
     assert all(len(c["input"]) <= TOOL_INPUT_CHARS and len(c["result"]) <= TOOL_RESULT_CHARS for c in calls)
     assert all("\n" not in c["input"] and "\n" not in c["result"] for c in calls)
     assert calls[0]["input"].startswith("path=a0.md content=слово") and calls[0]["input"].endswith("…")
+
+
+def test_v44_the_hormonal_cycle_on_today_and_on_the_state(tmp_path):
+    from datetime import UTC, datetime
+
+    from core.clock import fixed_clock
+    natal = NATAL + "\nЦикл: день 1 — 25.05.2026, довжина 28 днів."
+    core = Core(llm=MockLLMClient(READING), repository=JsonRepository(tmp_path / "c.json"), canon="C", model="m",
+                clock=fixed_clock(datetime(2026, 11, 19, 10, 0, tzinfo=UTC)), natal=natal, mood_enabled=True,
+                cycle_enabled=True)
+    client = TestClient(create_app(core, token=TOKEN, env="dev", version="4.4.0"))
+    cycle = client.get("/v1/today", headers=AUTH).json()["cycle"]
+    assert set(cycle) == {"day", "length", "phase", "note", "phases"} and cycle["length"] == 28
+    assert len(cycle["phases"]) == 28 and cycle["phases"][cycle["day"] - 1] == cycle["phase"]
+    assert client.get("/v1/state", headers=AUTH).json()["cycle"] == {k: cycle[k] for k in ("phase", "day", "length")}
+    off = TestClient(create_app(_day_core(tmp_path / "off"), token=TOKEN))  # no «Цикл:» anchor
+    assert off.get("/v1/today", headers=AUTH).json()["cycle"] is None
+    assert off.get("/v1/state", headers=AUTH).json()["cycle"] is None

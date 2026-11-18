@@ -661,3 +661,28 @@ def test_v44_the_details_panel_lists_the_last_replys_tools_only_when_the_server_
     assert 't("tools.title")' in block and 't("tools.none")' in block and "innerHTML" not in block
     details = js[js.index("function renderDetails("):js.index("function toolsBlock(")]
     assert "box.replaceChildren(grid, toolsBlock(), " in details  # between the cells and the controls
+
+
+# --- v4.4 LUMI-319: the hormonal cycle in State and in the portrait panel -----------------------------------------
+
+def test_v44_the_hormonal_cycle_is_drawn_and_named():
+    js, strings = _js(), _strings()
+    for key in ("state.hormonal", "state.days_left", "state.day_left", "state.last_day", "panel.cycle",
+                "panel.cycle.day", "phase.menstrual", "phase.follicular", "phase.ovulation", "phase.luteal", "phase.pms"):
+        assert key in strings and not CYRILLIC.search(strings[key]), key
+    row = js[js.index("function hormonalRow("):js.index("VIEW_KINDS.state = (ctx) =>")]
+    assert 'svgNode("rect"' in row and 'lang: "uk", text: c.note' in row and "innerHTML" not in row
+    assert "cycle ? hormonalRow(cycle) : null" in js
+    assert "cycleCell(s.cycle)" in js[js.index("function metaGrid("):js.index("function cycleCell(")]
+
+
+def test_v44_the_hormonal_cycle_helpers():
+    js = _js()
+    consts = "const BIO_SPAN = 28; const PHASE_BAR = " + js.split("const PHASE_BAR = ", 1)[1].split(";", 1)[0] + ";"
+    got = _node_eval(consts + _fn("phaseAt") + _fn("phaseLeft") + """
+const phases = [...Array(5).fill("menstrual"), ...Array(7).fill("follicular"), ...Array(3).fill("ovulation"),
+  ...Array(8).fill("luteal"), ...Array(5).fill("pms")];
+const at = (day) => ({ day, length: 28, phase: phases[day - 1], phases });
+console.log(JSON.stringify([phaseAt(at(19), 0), phaseAt(at(19), 5), phaseAt(at(28), 1), phaseAt(at(1), -1),
+  phaseAt(at(1), -14), phaseLeft(at(19)), phaseLeft(at(23)), phaseLeft(at(14)), phaseLeft(at(1))]));""")
+    assert got == ["luteal", "pms", "menstrual", "pms", "ovulation", 4, 0, 1, 4]

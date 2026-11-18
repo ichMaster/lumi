@@ -26,9 +26,10 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--l-hair); }
 .meta .meta-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .meta .meta-cell:first-child { padding: 10px 12px 0 0; border-right: 1px solid var(--l-hair); }
-.meta .meta-cell:last-child { padding: 10px 0 0 12px; }
+.meta .meta-cell:nth-child(2) { padding: 10px 0 0 12px; }  /* the closeness; v4.4: the cycle may follow */
 .meta .name { font-size: 14px; font-weight: 600; }
 .meta .of, .meta .sub { font-size: 12px; line-height: 1.35; color: var(--l-faint); font-weight: 400; }
+.meta .meta-cycle { grid-column: 1 / -1; padding: 10px 0 0; margin-top: 10px; border-top: 1px solid var(--l-hair); }  /* v4.4 */
 .meter { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; max-width: 120px; margin-top: 6px; }
 .meter span { height: 6px; background: var(--l-hair); }
 .meter span.on { background: var(--color-accent); }
@@ -610,6 +611,10 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
 .btoday { stroke: var(--color-divider); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .bsine { fill: none; stroke: var(--l-muted); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .bdot { fill: var(--color-accent); }
+.hbar { fill: var(--l-muted); fill-opacity: .45; }  /* v4.4: the hormonal cycle's phase bars */
+.hbar.ph-menstrual, .hbar.ph-ovulation { fill: var(--color-accent); fill-opacity: .7; }
+.hbar.ph-pms { fill-opacity: .75; }
+.hnote { margin: 6px 0 0; font-size: 12px; line-height: 1.45; color: var(--l-faint); }
 .bscale { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--l-faint);
   font-variant-numeric: tabular-nums; }
 .sclose { display: flex; flex-direction: column; gap: 8px; padding: 18px 28px 22px; border-top: var(--rule) solid var(--color-divider); }

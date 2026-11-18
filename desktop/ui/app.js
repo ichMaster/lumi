@@ -488,7 +488,17 @@ function metaGrid(s) {
     el("div", { class: "meta-cell" }, el("span", { class: "kicker", text: t("panel.theme") }), el("span", { class: "name", text: th.name }),
       th.sub ? el("span", { class: "sub", text: th.sub }) : null),
     el("div", { class: "meta-cell" }, el("span", { class: "kicker", text: t("panel.closeness") }),
-      el("span", { class: "name" }, closenessName(level), level ? el("span", { class: "of", text: ` ${of}` }) : null), meter));
+      el("span", { class: "name" }, closenessName(level), level ? el("span", { class: "of", text: ` ${of}` }) : null), meter),
+    cycleCell(s.cycle));
+}
+
+function phaseName(key) { return t(`phase.${key}`); }  // v4.4: the hormonal phase in the window's words
+
+function cycleCell(c) {  // v4.4 LUMI-319: today's hormonal phase, a row of its own under the theme and the closeness
+  if (!c || !c.phase) return null;
+  return el("div", { class: "meta-cell meta-cycle" }, el("span", { class: "kicker", text: t("panel.cycle") }),
+    el("span", { class: "name" }, phaseName(c.phase).replace(/^./, (ch) => ch.toUpperCase()),  // a name here: "Luteal"
+      el("span", { class: "of", text: ` ${t("panel.cycle.day", { d: c.day, n: c.length })}` })));
 }
 
 function metaLine(s) {
@@ -2672,6 +2682,47 @@ function bioRow(b) {
     bioCycle(b));
 }
 
+/* v4.4 LUMI-319: the hormonal cycle as a fourth cycle — one bar a day across the same ±14 days, its height by phase
+   (low in menstruation and PMS, highest at ovulation), today marked as on the sines */
+const PHASE_BAR = { menstrual: 12, follicular: 26, ovulation: 46, luteal: 30, pms: 18 };
+
+function phaseAt(c, offset) {  // the phase key `offset` days from today, the cycle repeating
+  const n = c.length;
+  return c.phases[(((c.day - 1 + offset) % n) + n) % n];
+}
+
+function phaseLeft(c) {  // days left in today's phase after today
+  let left = 0;
+  while (left < c.length - 1 && phaseAt(c, left + 1) === c.phase) left += 1;
+  return left;
+}
+
+function hormonalRow(c) {
+  const left = phaseLeft(c);
+  const leftText = left === 0 ? t("state.last_day") : left === 1 ? t("state.day_left") : t("state.days_left", { n: left });
+  const label = `${t("state.hormonal")}, ${t("panel.cycle.day", { d: c.day, n: c.length })}, ${phaseName(c.phase)}, ${leftText}`;
+  const svg = svgNode("svg", { viewBox: `0 0 ${BIO_W} ${BIO_H}`, preserveAspectRatio: "none", role: "img",
+    "aria-label": label, class: "bsvg" });
+  const step = BIO_W / BIO_SPAN;
+  for (let off = -BIO_SPAN / 2; off <= BIO_SPAN / 2; off += 1) {
+    const key = phaseAt(c, off);
+    const h = PHASE_BAR[key] || 20;
+    svg.append(svgNode("rect", { x: ((off + BIO_SPAN / 2) * step - step * 0.4).toFixed(1), y: BIO_H - h,
+      width: (step * 0.8).toFixed(1), height: h, class: `hbar ph-${key}` }));
+  }
+  const hToday = PHASE_BAR[c.phase] || 20;
+  svg.append(svgNode("line", { x1: BIO_W / 2, x2: BIO_W / 2, y1: 0, y2: BIO_H, class: "btoday" }),
+    svgNode("rect", { x: BIO_W / 2 - 4, y: Math.max(0, BIO_H - hToday - 10), width: 8, height: 8, class: "bdot" }));
+  return el("div", { class: "brow hrow" },
+    el("div", { class: "bhead" }, el("span", { class: "bname", text: t("state.hormonal") }),
+      el("span", { class: "bval", text: `${c.day}/${c.length}` }),
+      el("span", { class: "blabel", text: `${phaseName(c.phase)} \u00b7 ${leftText}` })),
+    el("div", { class: "bcycle" }, svg,
+      el("div", { class: "bscale" }, el("span", { text: "\u221214 d" }), el("span", { text: t("state.cycle", { p: c.length }) }),
+        el("span", { text: "+14 d" })),
+      c.note ? el("p", { class: "hnote", lang: "uk", text: c.note }) : null));
+}
+
 VIEW_KINDS.state = (ctx) => {
   const s = ctx.state;
   if (s.ctx !== ctx) {  // a fresh mount: today again
@@ -2725,9 +2776,10 @@ function renderStateView(ctx) {
   const meter = el("div", { class: "meter", role: "img", "aria-label": `${t("state.closeness")} ${lv ? t("state.closeness_of", { n: lv }) : ""}`.trim() },
     ...[1, 2, 3, 4, 5].map((n) => el("span", { class: lv && n <= lv ? "on" : null })));
   const bio = Array.isArray(d.biorhythms) ? d.biorhythms : [];
+  const cycle = d.cycle && Array.isArray(d.cycle.phases) && d.cycle.phases.length ? d.cycle : null;
   const side = el("div", { class: "sside" },
-    bio.length ? el("section", { class: "sbio", "aria-label": t("state.biorhythms") },
-      el("span", { class: "kicker", text: t("state.biorhythms") }), bio.map(bioRow)) : null,
+    bio.length || cycle ? el("section", { class: "sbio", "aria-label": t("state.biorhythms") },
+      el("span", { class: "kicker", text: t("state.biorhythms") }), bio.map(bioRow), cycle ? hormonalRow(cycle) : null) : null,
     el("section", { class: "sclose", "aria-label": t("state.closeness") },
       el("span", { class: "kicker", text: t("state.closeness") }),
       el("div", { class: "sclname" }, el("span", { class: "sclv", text: closenessName(lv) }),
