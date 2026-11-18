@@ -926,6 +926,13 @@ class Core:
         return Path(self._files_dir) / self._user_id
 
     @property
+    def journal_root(self) -> Path:
+        """v4.3 LUMI-309: this user's journal (``journal_dir/<user_id>``) for the window's Journal view — the folder
+        the v0.28 tool writes, whether or not the tool is on. Never created here; who may read it is
+        :func:`core.user.may_read_journal`'s question."""
+        return Path(self._journal_dir) / self._user_id
+
+    @property
     def clock(self) -> Clock:
         """The injected clock (so a client fetches ambient context with the same time)."""
         return self._clock

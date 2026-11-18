@@ -19,11 +19,23 @@ overwrite, no delete); **never raises**
 (Anthropic tool names allow no ``.``). The on-disk file is ``<date>.md`` under a **dedicated per-user
 journal root** (``.lumi/journal/<user_id>/``) — **outside the file-tool sandbox**, so only the journal tool
 ever writes there (the raw file tools structurally cannot reach it).
+
+**The window's read side (v4.3 LUMI-309).** :func:`list_days`, :func:`read_day` and :func:`parse_entry` read a user's
+journal root for the window's Journal view: the days newest first, and one day parsed into the code-owned stamp
+(mood, biorhythms, forecast) and its ``## HH:MM`` sections. They never write, and they take the v4.1
+:mod:`core.browse` errors (:class:`~core.browse.BadPath` / :class:`~core.browse.NotFound` /
+:class:`~core.browse.TooLarge`) so the server maps them the same way. The journal is the owner's by rule
+(:func:`core.user.may_read_journal`); that check is the server's.
 """
 from __future__ import annotations
 
+import os
+import re
+import stat
+from datetime import date as _date
 from pathlib import Path
 
+from core.browse import BadPath, NotFound, TooLarge, _inside, _resolve
 from core.files import safe_path
 
 # Anthropic-style function-calling schemas for the three journal tools. Registered alongside the terminal
@@ -166,3 +178,146 @@ class JournalTools:
         if not entries:
             return "journal: ще немає записів."
         return "journal:\n" + "\n".join(f"  - {d}" for d in entries)
+
+
+# --- v4.3 LUMI-309: the window's read side — the days, and one day parsed (never a write) -------------------------
+JOURNAL_MAX_DAYS = 5000  # days a listing returns (the rest → "truncated")
+JOURNAL_MAX_DAY = 256 * 1024  # bytes of one day the window reads (a larger day is refused)
+STAMP_KEYS = {"Настрій": "mood", "Біоритми": "biorhythms", "Прогноз": "forecast"}  # the code-owned stamp's lines
+_DAY_FILE = re.compile(r"(\d{4}-\d{2}-\d{2})\.md")
+_SECTION = re.compile(r"## (\d{2}:\d{2})[ \t]*")  # a whole line: the tool's `## HH:MM`
+_STAMP_LINE = re.compile(r"> \*\*([^*:]+):\*\*[ \t]*(.*)")  # a whole line: `> **Key:** value`
+_CELL = re.compile(r"(\S+) ([+\-−]\d+(?:\.\d+)?) \(([^()]+)\)")  # `фізичний +0.52 (rising)` (format_biorhythms)
+
+
+def is_day(value: object) -> bool:
+    """True iff ``value`` is a ``YYYY-MM-DD`` string naming a real date (``2026-02-30`` is not)."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        _date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def parse_biorhythms(value: str) -> list[dict] | None:
+    """The stamp's biorhythm line as cells ``[{name, value, label}]``, or ``None`` when any cell doesn't parse.
+
+    The line is ``format_biorhythms``'s (``фізичний +0.52 (rising) · емоційний +1.00 (high) · …``); a ``−`` (U+2212)
+    minus is read as ``-``."""
+    cells = [c.strip() for c in value.split(" · ") if c.strip()]
+    out: list[dict] = []
+    for cell in cells:
+        m = _CELL.fullmatch(cell)
+        if m is None:
+            return None
+        out.append({"name": m.group(1), "value": float(m.group(2).replace("−", "-")), "label": m.group(3)})
+    return out or None
+
+
+def parse_entry(date: str, text: str) -> dict:
+    """One journal day: ``{date, stamp, sections, markdown}``.
+
+    - A first line starting with ``# `` is the heading and is dropped (it may be the date or anything else).
+    - ``stamp`` is the run of ``> **Key:** value`` lines before the first section: ``Настрій`` → ``mood``,
+      ``Біоритми`` → ``biorhythms`` (:func:`parse_biorhythms`), ``Прогноз`` → ``forecast``; a missing key is
+      ``None``, and a day with none of them has ``stamp: None``. A line with another key stays in the prose.
+    - ``sections`` split on the lines that are exactly ``## HH:MM``: ``[{time, text}]``. Prose before the first one
+      (a day written before the tool timed its sections) is a first section with ``time: None``.
+    - ``markdown`` is the whole text. Never raises on content."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    i = 1 if lines and lines[0].startswith("# ") else 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    stamp: dict = {}
+    prose: list[str] = []  # the stamp-like lines with another key, kept with the prose
+    while i < len(lines):
+        m = _STAMP_LINE.fullmatch(lines[i].rstrip())
+        if m is None:
+            break
+        key = STAMP_KEYS.get(m.group(1).strip())
+        if key is None:
+            prose.append(lines[i])
+        elif key not in stamp:
+            stamp[key] = m.group(2).strip()
+        i += 1
+    sections: list[dict] = []
+    time: str | None = None
+    body: list[str] = prose
+    for line in lines[i:]:
+        m = _SECTION.fullmatch(line.rstrip())
+        if m is None:
+            body.append(line)
+            continue
+        if time is not None or "\n".join(body).strip():
+            sections.append({"time": time, "text": "\n".join(body).strip()})
+        time, body = m.group(1), []
+    if time is not None or "\n".join(body).strip():
+        sections.append({"time": time, "text": "\n".join(body).strip()})
+    parsed_stamp = None
+    if stamp:
+        bio = stamp.get("biorhythms")
+        parsed_stamp = {"mood": stamp.get("mood") or None,
+                        "biorhythms": parse_biorhythms(bio) if bio else None,
+                        "forecast": stamp.get("forecast") or None}
+    return {"date": date, "stamp": parsed_stamp, "sections": sections, "markdown": text}
+
+
+def _day_text(path: Path, limit: int) -> str:
+    with path.open("rb") as fh:
+        return fh.read(limit).decode("utf-8", errors="replace")
+
+
+def list_days(root: str | Path) -> dict:
+    """The journal's days, newest first: ``{days:[{date, sections, size, stamp}], truncated}``.
+
+    Only regular ``YYYY-MM-DD.md`` files that name a real date count; other names, folders, FIFOs and links that leave
+    the root are skipped. ``sections`` is the day's number of sections and ``stamp`` whether it carries the code-owned
+    stamp (:func:`parse_entry`, over at most :data:`JOURNAL_MAX_DAY` bytes). At most :data:`JOURNAL_MAX_DAYS` days. A
+    journal that doesn't exist yet lists empty."""
+    base = Path(root).resolve()
+    if not base.is_dir():
+        return {"days": [], "truncated": False}
+    names: list[str] = []
+    with os.scandir(base) as it:
+        for entry in it:
+            m = _DAY_FILE.fullmatch(entry.name)
+            if m is not None and is_day(m.group(1)):
+                names.append(entry.name)
+    names.sort(reverse=True)
+    days: list[dict] = []
+    for name in names[:JOURNAL_MAX_DAYS]:
+        path = base / name
+        if not _inside(base, path):
+            continue
+        try:
+            st = path.stat()
+            if not stat.S_ISREG(st.st_mode):
+                continue
+            entry = parse_entry(name[:-3], _day_text(path, JOURNAL_MAX_DAY))
+        except OSError:
+            continue
+        days.append({"date": name[:-3], "sections": len(entry["sections"]), "size": st.st_size,
+                     "stamp": entry["stamp"] is not None})
+    return {"days": days, "truncated": len(names) > JOURNAL_MAX_DAYS}
+
+
+def read_day(root: str | Path, date: object) -> dict:
+    """One day of the journal, parsed (:func:`parse_entry`).
+
+    ``date`` must be a real ``YYYY-MM-DD`` (else :class:`BadPath`); the file goes through the sandbox guard; a missing
+    day is :class:`NotFound` and one over :data:`JOURNAL_MAX_DAY` bytes :class:`TooLarge`. Read as UTF-8 (a broken
+    byte becomes U+FFFD)."""
+    if not is_day(date):
+        raise BadPath("not a date (YYYY-MM-DD)")
+    path = _resolve(root, f"{date}.md")
+    try:
+        st = path.stat()
+    except OSError:
+        raise NotFound(f"no journal entry for {date}") from None
+    if not stat.S_ISREG(st.st_mode):
+        raise NotFound(f"no journal entry for {date}")
+    if st.st_size > JOURNAL_MAX_DAY:
+        raise TooLarge(f"the entry for {date} is larger than {JOURNAL_MAX_DAY // 1024} KB")
+    return parse_entry(str(date), _day_text(path, JOURNAL_MAX_DAY))

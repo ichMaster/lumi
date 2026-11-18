@@ -28,3 +28,12 @@ class User:
 def default_user() -> User:
     """The default local ``owner`` user."""
     return User(id=DEFAULT_USER_ID, role="user", created_at=now_iso())
+
+
+def may_read_journal(user_id: str) -> bool:
+    """v4.3 LUMI-309: whether ``user_id`` may read Лілі's journal from a client.
+
+    The journal is owner/admin-only by rule (ROADMAP §v9.6: her private literary life, never shown to other users).
+    Today the owner is the only user and the admin, so the rule is the owner's id; the v6.2 accounts replace it with
+    the account's role. The server checks it on every journal route, after the token."""
+    return user_id == DEFAULT_USER_ID
