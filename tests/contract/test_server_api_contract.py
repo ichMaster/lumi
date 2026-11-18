@@ -34,6 +34,8 @@ def test_the_route_set_is_pinned(tmp_path):
         ("POST", "/v1/directive"),  # v2.4: a typed %directive runs on the server
         ("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),  # v4.1: her sandbox, read-only
         ("GET", "/v1/images"), ("GET", "/v1/images/thumb"),  # v4.2: her pictures and their thumbnails, read-only
+        ("GET", "/v1/journal"), ("GET", "/v1/journal/{date}"),  # v4.3: her journal, the owner's only
+        ("GET", "/v1/thoughts"),  # v4.3: her thought stream through the surfacing filter
     }
 
 
@@ -72,7 +74,10 @@ def test_state_shape_is_pinned(tmp_path):
     }
     assert set(state["closeness"]) == {"level", "name"}  # the level by name — never the raw value
     assert state["features"] == {"image": False, "web_lookup": False, "files": False,  # a bare core: all off
-                                 "gallery": False}  # v4.2
+                                 "gallery": False,  # v4.2
+                                 # v4.3: the views read what exists — the journal root always has a default (the
+                                 # owner reads it), and the thought stream is served unless /thoughts is off
+                                 "journal": True, "thoughts": True}
     assert set(state["totals"]) == {
         "turns", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "latency_ms",
     }
@@ -611,3 +616,169 @@ def test_v42_the_servers_own_turns_push_her_pictures(tmp_path):
         events.append(sub.get_nowait())
     hers = [d for e, d in events if e == "message" and d["role"] == "lili"]
     assert hers[-1]["pictures"] == ["art/tea.png"] and hers[-1]["source"] == "telegram"
+
+
+# --- v4.3 LUMI-311: her journal (the owner's only) and her thought stream for the window ---------------------------
+
+DAY = ("# 2026-11-16\n\n> **Настрій:** Тихо.\n"
+       "> **Біоритми:** фізичний +0.52 (rising) · емоційний +1.00 (high) · інтелектуальний -0.31 (falling)\n"
+       "> **Прогноз:** Повільний день.\n\n## 00:30\n\nПерший запис.\n\n## 15:16\n\nДругий.\n")
+OLD_DAY = "# 17 червня\n\nДень без штампа.\n\n### Нотатка\n\nТекст.\n"
+
+
+def _journal(journal_dir, user_id="owner"):
+    root = journal_dir / user_id
+    root.mkdir(parents=True)
+    (root / "2026-11-16.md").write_text(DAY, encoding="utf-8")
+    (root / "2026-06-17.md").write_text(OLD_DAY, encoding="utf-8")
+    return root
+
+
+def _thought(when, kind="think", text="думка", user_id="owner", spoken=False):
+    from core.repository import Thought
+    return Thought(when=when, kind=kind, text=text, emotion="calm", seeds=("mood",), user_id=user_id, spoken=spoken)
+
+
+def _views_core(tmp_path, user_id="owner", *, thoughts_show="hidden"):
+    repo = JsonRepository(tmp_path / "store.json")
+    if not (tmp_path / "store.json").exists():
+        for i, (kind, user, spoken) in enumerate([("think", "owner", False), ("wonder", "ada", False),
+                                                  ("wonder", "owner", True), ("learn", "owner", False),
+                                                  ("think", "ada", True), ("think", "owner", False)]):
+            repo.add_thought(_thought(f"2026-11-1{6 + i // 3}T10:0{i}", kind, f"{user} {i}", user, spoken))
+    return Core(llm=MockLLMClient(states={"reply": "так", "emotion": "calm", "intensity": 0.5}), repository=repo,
+                canon="C", model="m", user_id=user_id, journal_dir=tmp_path / "journal", thoughts_show=thoughts_show)
+
+
+def _views_client(tmp_path, user_id="owner", **kw):
+    return TestClient(create_app(_views_core(tmp_path, user_id, **kw), token=TOKEN, env="dev", version="4.3.0"))
+
+
+def test_v43_the_journal_routes_answer_with_their_shapes(tmp_path):
+    _journal(tmp_path / "journal")
+    client = _views_client(tmp_path)
+    days = client.get("/v1/journal", headers=AUTH)
+    assert days.status_code == 200 and days.headers["cache-control"] == "no-store"
+    assert days.json() == {"truncated": False, "days": [
+        {"date": "2026-11-16", "sections": 2, "size": len(DAY.encode()), "stamp": True},
+        {"date": "2026-06-17", "sections": 1, "size": len(OLD_DAY.encode()), "stamp": False}]}
+    day = client.get("/v1/journal/2026-11-16", headers=AUTH)
+    assert day.status_code == 200 and day.headers["cache-control"] == "no-store"
+    body = day.json()
+    assert set(body) == {"date", "stamp", "sections", "markdown"} and body["markdown"] == DAY
+    assert body["stamp"]["mood"] == "Тихо." and body["stamp"]["forecast"] == "Повільний день."
+    assert body["stamp"]["biorhythms"][1] == {"name": "емоційний", "value": 1.0, "label": "high"}
+    assert body["sections"] == [{"time": "00:30", "text": "Перший запис."}, {"time": "15:16", "text": "Другий."}]
+    old = client.get("/v1/journal/2026-06-17", headers=AUTH).json()
+    assert old["stamp"] is None and old["sections"][0]["time"] is None and "### Нотатка" in old["sections"][0]["text"]
+
+
+def test_v43_the_thoughts_route_answers_with_its_shape(tmp_path):
+    client = _views_client(tmp_path)
+    res = client.get("/v1/thoughts", headers=AUTH)
+    assert res.status_code == 200 and res.headers["cache-control"] == "no-store"
+    body = res.json()
+    assert set(body) == {"items", "next", "stats", "days", "kinds"}
+    assert [i["text"] for i in body["items"]] == ["owner 5", "owner 3", "owner 2", "owner 0"]
+    assert set(body["items"][0]) == {"when", "kind", "text", "emotion", "spoken"}
+    assert body["stats"] == {"total": 4, "per_day": 2.0, "spoken_share": 0.25}
+    assert body["days"] == {"2026-11-17": 2, "2026-11-16": 2} and body["next"] is None
+    assert body["kinds"] == ["think", "learn", "wonder"]
+    page = client.get("/v1/thoughts", params={"limit": 3}, headers=AUTH).json()
+    rest = client.get("/v1/thoughts", params={"limit": 3, "before": page["next"]}, headers=AUTH).json()
+    assert [i["text"] for i in page["items"] + rest["items"]] == ["owner 5", "owner 3", "owner 2", "owner 0"]
+    assert rest["next"] is None
+    several = client.get("/v1/thoughts", params=[("kind", "wonder"), ("kind", "learn")], headers=AUTH).json()
+    assert [i["text"] for i in several["items"]] == ["owner 3", "owner 2"]
+    spoken = client.get("/v1/thoughts", params={"spoken": "true"}, headers=AUTH).json()
+    assert [i["text"] for i in spoken["items"]] == ["owner 2"]
+    silent = client.get("/v1/thoughts", params={"spoken": "false", "date": "2026-11-16"}, headers=AUTH).json()
+    assert [i["text"] for i in silent["items"]] == ["owner 0"]
+
+
+def test_v43_features_say_whether_the_journal_and_thoughts_are_served(tmp_path):
+    features = _views_client(tmp_path).get("/v1/state", headers=AUTH).json()["features"]
+    assert features["journal"] is True and features["thoughts"] is True
+    ada = _views_client(tmp_path, "ada").get("/v1/state", headers=AUTH).json()["features"]
+    assert ada["journal"] is False and ada["thoughts"] is True  # the journal is the owner's; her thoughts are filtered
+    off = _views_client(tmp_path, thoughts_show="off")
+    assert off.get("/v1/state", headers=AUTH).json()["features"]["thoughts"] is False
+    assert off.get("/v1/thoughts", headers=AUTH).status_code == 404  # the owner turned the thought view off
+    assert _views_client(tmp_path).get("/v1/journal", headers=AUTH).json() == {"days": [], "truncated": False}
+
+
+def test_v43_a_second_users_server_reads_no_journal(tmp_path):
+    _journal(tmp_path / "journal", "owner")
+    _journal(tmp_path / "journal", "ada")  # even her own folder
+    ada = _views_client(tmp_path, "ada")
+    for path in ("/v1/journal", "/v1/journal/2026-11-16", "/v1/journal/2026-06-17"):
+        res = ada.get(path, headers=AUTH)
+        assert res.status_code == 403 and res.json()["detail"] == "the journal is the owner's", path
+        assert "Тихо" not in res.text
+
+
+def test_v43_the_reads_are_the_owners_token_only(tmp_path):
+    from tests._agora_world import OWNER_AUTH, ROOM_AUTH, agora_client
+    _journal(tmp_path / "journal")
+    client = agora_client(tmp_path, core=_views_core(tmp_path))
+    for path in ("/v1/journal", "/v1/journal/2026-11-16", "/v1/thoughts"):
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert client.get(path, headers=ROOM_AUTH).status_code == 403  # the room never reads her journal or thoughts
+        assert client.get(path, headers=OWNER_AUTH).status_code == 200
+
+
+def test_v43_a_thought_sparked_with_another_user_never_shows(tmp_path):
+    owner = _views_client(tmp_path)
+    texts = []
+    cursor = None
+    while True:
+        page = owner.get("/v1/thoughts", params={"limit": 1, **({"before": cursor} if cursor else {})},
+                         headers=AUTH).json()
+        texts += [i["text"] for i in page["items"]]
+        cursor = page["next"]
+        if cursor is None:
+            break
+    assert texts == ["owner 5", "owner 3", "owner 2", "owner 0"]
+    for kind in ("think", "wonder"):
+        assert all("ada" not in i["text"] for i in owner.get("/v1/thoughts", params={"kind": kind},
+                                                              headers=AUTH).json()["items"])
+    ada = _views_client(tmp_path, "ada").get("/v1/thoughts", headers=AUTH).json()
+    assert [i["text"] for i in ada["items"]] == ["ada 4", "ada 1"]
+
+
+def test_v43_refusals_are_mapped_and_name_no_absolute_path(tmp_path):
+    _journal(tmp_path / "journal")
+    client = _views_client(tmp_path)
+    cases = [("/v1/journal/2026-11-17", {}, 404), ("/v1/journal/2026-02-30", {}, 400),
+             ("/v1/journal/16.11.2026", {}, 400), ("/v1/journal/..", {}, 404),
+             ("/v1/thoughts", {"before": "%%%"}, 400), ("/v1/thoughts", {"limit": 0}, 400),
+             ("/v1/thoughts", {"limit": 101}, 400), ("/v1/thoughts", {"spoken": "maybe"}, 400),
+             ("/v1/thoughts", {"date": "2026-13-01"}, 400)]
+    for path, params, status in cases:
+        res = client.get(path, params=params, headers=AUTH)
+        assert res.status_code == status, (path, params, res.status_code)
+        assert str(tmp_path) not in res.text
+
+
+def test_v43_the_reads_never_wait_for_the_turn_lock(tmp_path):
+    _journal(tmp_path / "journal")
+    client = _views_client(tmp_path)
+    service = client.app.state.service
+    assert service.lock.acquire(timeout=1)  # a turn that runs for minutes holds it
+    try:
+        for path in ("/v1/journal", "/v1/journal/2026-11-16", "/v1/thoughts"):
+            assert client.get(path, headers=AUTH).status_code == 200, path
+    finally:
+        service.lock.release()
+
+
+def test_v43_the_reads_leave_the_journal_and_the_store_byte_identical(tmp_path):
+    root = _journal(tmp_path / "journal")
+    client = _views_client(tmp_path)
+    before = (_fingerprint(root), (tmp_path / "store.json").read_bytes())
+    for path, params in (("/v1/journal", {}), ("/v1/journal/2026-11-16", {}), ("/v1/journal/2026-06-17", {}),
+                         ("/v1/journal/2026-01-01", {}), ("/v1/thoughts", {}), ("/v1/thoughts", {"kind": "think"}),
+                         ("/v1/thoughts", {"date": "2026-11-16", "spoken": "false", "limit": 1})):
+        client.get(path, params=params, headers=AUTH)
+    assert (_fingerprint(root), (tmp_path / "store.json").read_bytes()) == before

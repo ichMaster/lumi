@@ -33,9 +33,9 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -51,7 +51,10 @@ from core.browse import (
 )
 from core.commands import run_command
 from core.gallery import GALLERY_MAX_LIMIT, list_pictures, thumbnail
+from core.journal import list_days, read_day
 from core.llm import LLMError
+from core.thoughts import THOUGHT_PAGE_MAX
+from core.user import may_read_journal
 from state.bus import mirror_reply, mirror_user
 
 log = logging.getLogger("lumi.server")
@@ -102,6 +105,8 @@ FILES_JSON_HEADERS = {"Cache-Control": "no-store"}
 FILES_RAW_HEADERS = {"X-Content-Type-Options": "nosniff", "Content-Disposition": "inline",
                      "Cache-Control": "private, max-age=300"}
 ROOM_BUSY = "Лілі is answering the room — try again"
+JOURNAL_OWNER_ONLY = "the journal is the owner's"  # v4.3: owner/admin-only by rule (ROADMAP §v9.6)
+SPOKEN_FILTER = {"true": True, "false": False}  # v4.3: /v1/thoughts?spoken=
 INITIATIVE_NONE = {"outcome": "none"}  # v3.4: nothing to say now (no fresh offer, off, or a compose under way)
 
 
@@ -325,8 +330,21 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
                      # v4.1: her sandbox is served to the window's views (read-only) — whatever her file tools may do
                      "files": files_served,
                      # v4.2: her pictures and their thumbnails (the sandbox and the cache outside it are both served)
-                     "gallery": files_served and thumbs_dir is not None},
+                     "gallery": files_served and thumbs_dir is not None,
+                     # v4.3: her journal (the owner's only, by rule) and her thought stream (unless /thoughts is off)
+                     "journal": journal_served(core),
+                     "thoughts": thoughts_served(core)},
     }
+
+
+def journal_served(core: Any) -> bool:
+    """v4.3: the journal is served when a journal root exists in config and the resolved user may read it."""
+    return isinstance(getattr(core, "journal_root", None), Path) and may_read_journal(str(getattr(core, "user_id", "")))
+
+
+def thoughts_served(core: Any) -> bool:
+    """v4.3: the thought stream is served unless the owner turned the thought view off (``thoughts.show: off``)."""
+    return getattr(core, "thoughts_show", "hidden") != "off"
 
 
 def turn_pictures(core: Any) -> list[str]:
@@ -692,6 +710,44 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             log.warning("the thumbnail cache %s is inside the sandbox — not served", cache)
             raise HTTPException(status_code=404, detail="thumbnails are not served") from None
         return Response(content=data, media_type="image/jpeg", headers=FILES_RAW_HEADERS)
+
+    # --- v4.3 LUMI-311: her journal and her thoughts for the window — read-only, never the lock, no model call ---
+    def _journal_root() -> Path:
+        if not may_read_journal(str(core.user_id)):  # the role check after the token: never another user's read
+            raise HTTPException(status_code=403, detail=JOURNAL_OWNER_ONLY)
+        root = getattr(core, "journal_root", None)
+        if not isinstance(root, Path):
+            raise HTTPException(status_code=404, detail="the journal is not served")
+        return root
+
+    @app.get("/v1/journal", dependencies=guarded)
+    def journal() -> JSONResponse:
+        """Her journal's days, newest first: ``{days, truncated}`` (``core.journal.list_days``). Owner-only."""
+        root = _journal_root()
+        return JSONResponse(_mapped(lambda: list_days(root)), headers=FILES_JSON_HEADERS)
+
+    @app.get("/v1/journal/{date}", dependencies=guarded)
+    def journal_day(date: str) -> JSONResponse:
+        """One day, parsed: ``{date, stamp, sections, markdown}`` (``core.journal.read_day``). Owner-only."""
+        root = _journal_root()
+        return JSONResponse(_mapped(lambda: read_day(root, date)), headers=FILES_JSON_HEADERS)
+
+    @app.get("/v1/thoughts", dependencies=guarded)
+    def thoughts(before: str | None = None, limit: int = THOUGHT_PAGE_MAX,
+                 kind: Annotated[list[str] | None, Query()] = None,
+                 spoken: str | None = None, date: str | None = None) -> JSONResponse:
+        """One page of her thought stream, newest first: ``{items, next, stats, days, kinds}``
+        (``Core.thoughts_page`` — the surfacing filter, so a thought sparked with another user never shows)."""
+        if not thoughts_served(core):
+            raise HTTPException(status_code=404, detail="thoughts are not served")
+        if spoken not in (None, "") and spoken not in SPOKEN_FILTER:
+            raise HTTPException(status_code=400, detail="spoken is true or false")
+        try:
+            page = core.thoughts_page(before=before or None, limit=limit, kinds=kind or (),
+                                      spoken=SPOKEN_FILTER.get(spoken or ""), date=date or None)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        return JSONResponse(page, headers=FILES_JSON_HEADERS)
 
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:
