@@ -1,6 +1,13 @@
 Lumi — Release notes
 ====================
 
+Version 4.4.1 (2026-11-19)
+---------------------------
+- Fix: text in the desktop window can be selected and copied again. pywebview's create_window turns text selection off unless text_select=True, so nothing in Lili.app could be selected or copied; the window now asks for it (the Edit menu's Copy already existed). A regression test checks the shell's call.
+- ROADMAP: v4.5 now names the five actions the owner chose (upload from the Mac, "show this to her", download to ~/Downloads, open an external link in the browser, rename and move to trash with restore), with their routes, caps, rules, DoD and tests.
+- ROADMAP: v4.6, her voice in the window — each of her lines voiced once on the server, played in the chat with a play button and reused by Telegram (no second ElevenLabs call), one Voice switch in the window for both.
+- ROADMAP: v4.7, dictation in the window — a mic button in the composer, the words appearing live in the input (the v1.6 streaming recognizer through an owner-only /v1/dictation on the server), editable before sending, no audio stored.
+
 Version 4.4.0 (2026-11-19)
 ---------------------------
 - v4.4 — her day, her timetable and a reply's tools in the window, the fourth phase of v4 (the window's views of what her server-side tools leave on the box).

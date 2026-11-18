@@ -12,7 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.4.0 — The window: her day, her timetable and a reply's tools** (version 4; version 3 complete, last 3.4.1).
+**4.4.1 — Text in the window can be selected and copied** (version 4; version 3 complete, last 3.4.1).
+A fix on 4.4.0: pywebview turns text selection off unless asked, so nothing in `Lili.app` could be selected or copied;
+the window now asks for it. The ROADMAP describes the next three phases: v4.5 actions from the window (all five
+chosen), v4.6 her voice in the window (one generation shared with Telegram, one switch for both), v4.7 dictation in
+the window (the words appear live, editable before sending).
+
+**4.4.0 — The window: her day, her timetable and a reply's tools** (version 4).
 - **State** (⌘6) shows her day: the mood of the day in full (theme, resolution, reading), four cycles drawn ±14 days
   around today — the physical, emotional and intellectual biorhythms and the hormonal cycle — and the closeness.
 - **Schedule** (⌘7) shows what wakes her thoughts: the quiet hours and the day cap, then every directive with its rule
