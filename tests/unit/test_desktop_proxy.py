@@ -47,3 +47,32 @@ def test_without_pywebview_the_shell_says_how_to_get_it(monkeypatch, capsys):
     assert shell.main([]) == 1
     err = capsys.readouterr().err
     assert "pywebview" in err and "./lumi-desktop" in err
+
+
+def test_the_window_lets_the_owner_select_and_copy_text(monkeypatch):
+    """pywebview's create_window disables text selection unless text_select=True (2026-11-19: the owner couldn't
+    select or copy anything in Lili.app)."""
+    import sys
+    import types
+
+    from desktop import __main__ as shell
+
+    seen: dict = {}
+    fake = types.SimpleNamespace(create_window=lambda *a, **kw: seen.update(kw), start=lambda *a, **kw: None)
+    monkeypatch.setitem(sys.modules, "webview", fake)
+
+    class _Proxy:
+        def __init__(self, *a, **kw):
+            pass
+
+        def start(self):
+            return "http://127.0.0.1:1/"
+
+        def stop(self):
+            pass
+
+    import desktop.proxy as px
+    monkeypatch.setattr(px, "Proxy", _Proxy)
+    monkeypatch.setattr(px, "upstream_from", lambda cfg: None)
+    assert shell.main([]) == 0
+    assert seen.get("text_select") is True

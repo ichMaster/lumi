@@ -31,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
                   emoji=emoji_table(cfg.emoji_path))  # LUMI-276: the TUI's emoji map, under each of her replies
     url = proxy.start()
     try:
-        webview.create_window(TITLE, url, width=SIZE[0], height=SIZE[1], min_size=MIN_SIZE)
+        # text_select: pywebview turns text selection off by default — the owner selects and copies her words
+        webview.create_window(TITLE, url, width=SIZE[0], height=SIZE[1], min_size=MIN_SIZE, text_select=True)
         webview.start()
     finally:
         proxy.stop()
