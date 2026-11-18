@@ -686,3 +686,16 @@ const at = (day) => ({ day, length: 28, phase: phases[day - 1], phases });
 console.log(JSON.stringify([phaseAt(at(19), 0), phaseAt(at(19), 5), phaseAt(at(28), 1), phaseAt(at(1), -1),
   phaseAt(at(1), -14), phaseLeft(at(19)), phaseLeft(at(23)), phaseLeft(at(14)), phaseLeft(at(1))]));""")
     assert got == ["luteal", "pms", "menstrual", "pms", "ovulation", 4, 0, 1, 4]
+
+
+# --- v4.4 LUMI-320: what each scheduled directive does ------------------------------------------------------------
+
+def test_v44_the_schedule_shows_each_rows_topic_and_its_seeds_behind_a_toggle():
+    js, strings = _js(), _strings()
+    for key in ("schedule.seeds_n", "schedule.seeds_one", "schedule.placeholders", "schedule.no_seeds"):
+        assert key in strings and not CYRILLIC.search(strings[key]), key
+    what = js[js.index("function scheduleWhat("):js.index("function scheduleNext(")]
+    assert 'lang: "uk", text: e.topic' in what and '"aria-expanded": String(open)' in what
+    assert 'e.seed_lines.map((line) => el("li", { lang: "uk", text: line }))' in what and "innerHTML" not in what
+    view = js[js.index("function renderScheduleView("):js.index("function typing(")]
+    assert view.count("scheduleWhat(ctx, e)") == 2  # wide and narrow

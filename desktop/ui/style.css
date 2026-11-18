@@ -657,6 +657,16 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
 .srow.next .sdue { color: var(--color-text); font-weight: 600; }
 .scond { font-size: 11.5px; font-weight: 400; color: var(--l-faint); }
 .sfoot { margin: 0; padding: 14px 24px 28px; font-size: 12px; color: var(--l-faint); }
+.srulecell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }  /* v4.4: the rule, then what it does */
+.swhat { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.stopic { font-size: 13px; color: var(--l-muted); overflow-wrap: anywhere; }
+.sph { font-size: 11.5px; color: var(--l-faint); }
+.sseedbtn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--l-acc-text); }
+.sseedbtn svg.icon { width: 14px; height: 14px; }
+.sseedbtn[aria-expanded="true"] svg.icon { transform: rotate(180deg); }
+.sseeds { margin: 2px 0 4px; padding: 0 0 0 14px; display: flex; flex-direction: column; gap: 3px; font-family: var(--font-mono);
+  font-size: 12px; color: var(--l-muted); overflow-wrap: anywhere; }
+.srow { align-items: start; }
 .vnarrow .sfoot { padding: 14px 16px 24px; }
 
 /* — a turn's tools in the details panel (v4.4, handoff §11) — */

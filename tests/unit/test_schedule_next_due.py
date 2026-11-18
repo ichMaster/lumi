@@ -117,7 +117,9 @@ def test_the_view_lists_every_entry_with_its_last_and_next(tmp_path):
     assert view["day_cap"] == 24 and view["fired_today"] == 0
     rows = {e["name"]: e for e in view["entries"]}
     assert list(rows) == ["muse-silent", "morning-brief", "catchup", "learn-night"]  # the schedule's order
+    from core.nudge import load_nudges
     assert rows["muse-silent"] == {"name": "muse-silent", "directive": "think", "seeds": "core/think_seeds.md",
+                                   "topic": None, "seed_lines": load_nudges("core/think_seeds.md"),
                                    "show": False, "enabled": True, "trigger": trigger_view(IDLE_15),
                                    "last_fired": None, "next_due": "2026-11-18T10:05", "if_silent": True}
     assert rows["morning-brief"]["last_fired"] == "2026-11-18T08:00"
@@ -157,3 +159,29 @@ def test_yesterdays_counts_are_not_today_s(tmp_path):
     assert view["fired_today"] == 0
     assert {e["name"]: e for e in view["entries"]}["muse-silent"]["next_due"] == "2026-11-18T10:05"
     assert sched._day == "2026-11-17"  # the view never rolls the day
+
+
+# --- v4.4 LUMI-320: what each entry does ---------------------------------------------------------------------------
+def test_the_view_carries_each_rows_topic_and_a_seeds_rows_menu(tmp_path):
+    seeds = tmp_path / "seeds.md"
+    seeds.write_text("# a comment\n%think {recent}\n\n%wonder про дощ\n%think " + "я" * 400 + "\n", encoding="utf-8")
+    entries = [ScheduleEntry("think", IDLE_15, seeds=str(seeds), name="muse"),
+               ScheduleEntry("learn", at(22, 30), topic="{thoughts}", name="learn-thoughts"),
+               ScheduleEntry("prompt", at(7, 10), topic="тихий ранковий дотик", name="morning-touch"),
+               ScheduleEntry("think", IDLE_15, seeds=str(tmp_path / "missing.md"), name="lost")]
+    view = Scheduler(entries, tmp_path / "schedule.state").view(hm(0, 10, 0), last_input=hm(0, 9, 50))
+    rows = {e["name"]: e for e in view["entries"]}
+    assert rows["muse"]["topic"] is None
+    assert rows["muse"]["seed_lines"][:2] == ["%think {recent}", "%wonder про дощ"]
+    assert len(rows["muse"]["seed_lines"][2]) == 300 and rows["muse"]["seed_lines"][2].endswith("…")
+    assert rows["learn-thoughts"] == {**rows["learn-thoughts"], "topic": "{thoughts}", "seed_lines": None}
+    assert rows["morning-touch"]["topic"] == "тихий ранковий дотик" and rows["morning-touch"]["seed_lines"] is None
+    assert rows["lost"]["seed_lines"] == []  # a missing file: nothing to fire, nothing to show
+
+
+def test_a_long_menu_is_capped(tmp_path):
+    seeds = tmp_path / "seeds.md"
+    seeds.write_text("\n".join(f"%think {i}" for i in range(80)), encoding="utf-8")
+    view = Scheduler([ScheduleEntry("think", IDLE_15, seeds=str(seeds), name="m")], tmp_path / "s").view(
+        hm(0, 10, 0), last_input=hm(0, 9, 50))
+    assert len(view["entries"][0]["seed_lines"]) == 50

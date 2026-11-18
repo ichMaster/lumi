@@ -446,5 +446,9 @@
   "phase.luteal": "luteal",
   "phase.pms": "PMS",
   "panel.cycle": "Cycle",
-  "panel.cycle.day": "day {d} of {n}"
+  "panel.cycle.day": "day {d} of {n}",
+  "schedule.seeds_n": "{n} seeds",
+  "schedule.seeds_one": "1 seed",
+  "schedule.placeholders": "placeholders fill in when it fires",
+  "schedule.no_seeds": "The seeds file is empty or missing."
 }

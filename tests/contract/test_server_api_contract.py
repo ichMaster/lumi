@@ -858,8 +858,9 @@ def test_v44_the_schedule_answers_with_every_entry(tmp_path):
     assert body["quiet_hours"] == [1, 7] and body["day_cap"] == 24 and body["fired_today"] == 0
     rows = {e["name"]: e for e in body["entries"]}
     assert list(rows) == ["muse-silent", "morning-brief", "learn-night"]
-    assert set(rows["muse-silent"]) == {"name", "directive", "seeds", "show", "enabled", "trigger", "last_fired",
-                                        "next_due", "if_silent"}
+    assert set(rows["muse-silent"]) == {"name", "directive", "seeds", "topic", "seed_lines", "show", "enabled",
+                                        "trigger", "last_fired", "next_due", "if_silent"}
+    assert isinstance(rows["muse-silent"]["seed_lines"], list) and rows["morning-brief"]["seed_lines"] is None
     assert rows["muse-silent"]["if_silent"] is True and rows["muse-silent"]["trigger"]["kind"] == "idle"
     assert rows["morning-brief"]["trigger"] == {"kind": "at", "interval_s": None, "at": "08:00", "days": [],
                                                 "window": None, "cron": None}

@@ -130,6 +130,19 @@ def _at_matches(entry: ScheduleEntry, minute: datetime) -> bool:
     return False
 
 
+SEED_LINES_MAX = 50  # v4.4: a seeds row's menu, as the window shows it
+SEED_LINE_CHARS = 300
+
+
+def _seed_lines(entry: ScheduleEntry) -> list[str] | None:
+    """v4.4 LUMI-320: a seeds row's ``%directive`` lines, read the way a fire reads them (``load_nudges``) — at most
+    :data:`SEED_LINES_MAX`, each cut at :data:`SEED_LINE_CHARS`; ``[]`` for a missing file, ``None`` for a plain row."""
+    if not entry.seeds:
+        return None
+    lines = load_nudges(entry.seeds)[:SEED_LINES_MAX]
+    return [line if len(line) <= SEED_LINE_CHARS else line[: SEED_LINE_CHARS - 1] + "…" for line in lines]
+
+
 def _minute(when: datetime | None, now: datetime) -> str | None:
     """A moment as the server's local minute ``YYYY-MM-DDTHH:MM`` (in ``now``'s zone), or ``None``."""
     if when is None:
@@ -204,8 +217,9 @@ class Scheduler:
     # --- v4.4 LUMI-315: the window's view (read-only) ----------------------------------------------
     def view(self, now: datetime, *, last_input: datetime | None = None) -> dict:
         """Every entry with its rule, its last firing and its next due time, by the rules :meth:`due_now` fires by:
-        ``{now, quiet_hours, day_cap, fired_today, entries:[{name, directive, seeds, show, enabled, trigger,
-        last_fired, next_due, if_silent}]}``.
+        ``{now, quiet_hours, day_cap, fired_today, entries:[{name, directive, seeds, topic, seed_lines, show, enabled,
+        trigger, last_fired, next_due, if_silent}]}`` — v4.4 LUMI-320: ``topic`` raw (its placeholders fill in when it
+        fires) and a seeds row's menu (:func:`_seed_lines`).
 
         ``next_due`` is :func:`core.schedule.next_due` (the quiet hours, ``at`` beating them), moved past local
         midnight when today's day cap or the directive's own cap is reached; ``None`` for a disabled entry. ``idle``
@@ -230,6 +244,7 @@ class Scheduler:
                                     quiet_hours=self._quiet_hours)
             entries.append({
                 "name": entry.name or None, "directive": entry.directive, "seeds": entry.seeds or None,
+                "topic": entry.topic or None, "seed_lines": _seed_lines(entry),
                 "show": entry.show, "enabled": entry.enabled, "trigger": trigger_view(entry.trigger),
                 "last_fired": _minute(last, now), "next_due": _minute(when, now),
                 "if_silent": entry.trigger.kind == "idle",

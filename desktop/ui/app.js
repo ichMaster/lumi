@@ -2840,7 +2840,8 @@ function whenText(stamp, now) {  // "YYYY-MM-DDTHH:MM" against the server's now 
 VIEW_KINDS.schedule = (ctx) => {
   const s = ctx.state;
   if (s.ctx !== ctx) {
-    Object.assign(s, { ctx, phase: "loading", data: null, error: null, ticket: (s.ticket || 0) + 1 });
+    Object.assign(s, { ctx, phase: "loading", data: null, error: null, ticket: (s.ticket || 0) + 1,
+      openSeeds: s.openSeeds || new Set() });
     renderScheduleView(ctx);
     scheduleLoad(ctx);
     return;
@@ -2863,6 +2864,31 @@ async function scheduleLoad(ctx) {
 }
 
 function scheduleReload(ctx) { ctx.state.ctx = null; VIEW_KINDS.schedule(ctx); }
+
+/* v4.4 LUMI-320: what a row does — its topic (placeholders fill in when it fires), or a seeds row's menu behind a
+   toggle; kept open per row while the view lives */
+function scheduleWhat(ctx, e) {
+  const s = ctx.state;
+  const parts = [];
+  if (e.topic) {
+    parts.push(el("span", { class: "stopic", lang: "uk", text: e.topic }));
+    if (/\{[a-z_]+\}/.test(e.topic)) parts.push(el("span", { class: "sph", text: t("schedule.placeholders") }));
+  }
+  if (Array.isArray(e.seed_lines)) {
+    const key = e.name || e.directive;
+    const open = s.openSeeds.has(key);
+    const n = e.seed_lines.length;
+    parts.push(el("button", { type: "button", class: "sseedbtn", "aria-expanded": String(open), onclick: () => {
+      if (open) s.openSeeds.delete(key); else s.openSeeds.add(key);
+      renderScheduleView(ctx);
+    } }, n === 1 ? t("schedule.seeds_one") : t("schedule.seeds_n", { n: num(n) }), icon("chevron-down")));
+    if (open) {
+      parts.push(n ? el("ul", { class: "sseeds" }, e.seed_lines.map((line) => el("li", { lang: "uk", text: line })))
+        : el("span", { class: "sph", text: t("schedule.no_seeds") }));
+    }
+  }
+  return parts.length ? el("div", { class: "swhat" }, parts) : null;
+}
 
 function scheduleNext(entries) {  // the entry that fires first (the earliest next due among the enabled)
   let best = null;
@@ -2912,18 +2938,23 @@ function renderScheduleView(ctx) {
     if (narrow) {
       return el("div", { class: cls },
         el("div", { class: "sline" }, name, el("span", { class: "kicker", text: e.directive }), isNext ? nextTag() : null),
-        el("span", { class: "srule", text: ruleText(e.trigger) }),
+        el("span", { class: "srule", text: ruleText(e.trigger) }), scheduleWhat(ctx, e),
         el("span", { class: "swhen", text: t("schedule.last_next", { last: whenText(e.last_fired, now),
           next: e.enabled ? whenText(e.next_due, now) : "—" }) }));
     }
     return el("div", { class: cls }, el("span", { class: "snamecell" }, name, isNext ? nextTag() : null),
-      el("span", { class: "kicker sdir", text: e.directive }), el("span", { class: "srule", text: ruleText(e.trigger) }),
+      el("span", { class: "kicker sdir", text: e.directive }),
+      el("div", { class: "srulecell" }, el("span", { class: "srule", text: ruleText(e.trigger) }), scheduleWhat(ctx, e)),
       el("span", { class: "slast", text: whenText(e.last_fired, now) }), due);
   });
   const head = narrow ? null : el("div", { class: "sthead" }, ["schedule.col_name", "schedule.col_directive", "schedule.col_rule",
     "schedule.col_last", "schedule.col_next"].map((k) => el("span", { class: "kicker", text: t(k) })));
+  const before = ctx.host.querySelector(".sched");  // a toggle re-renders: keep the scroll where it was
+  const top = before && before.parentElement ? before.parentElement.scrollTop : 0;
   paint(ctx, viewFrame([title, meta], el("div", { class: "sched" }, summary, head, rows,
     el("p", { class: "sfoot", text: t("schedule.footnote") }))));
+  const after = ctx.host.querySelector(".sched");
+  if (after && after.parentElement) after.parentElement.scrollTop = top;
 }
 
 function typing(target) {  // the focus is in a field (the keys belong to it)
