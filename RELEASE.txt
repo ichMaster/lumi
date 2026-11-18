@@ -1,6 +1,18 @@
 Lumi — Release notes
 ====================
 
+Version 4.4.0 (2026-11-19)
+---------------------------
+- v4.4 — her day, her timetable and a reply's tools in the window, the fourth phase of v4 (the window's views of what her server-side tools leave on the box).
+- Her day in core: mood_body (the reading without its resolution and theme line), biorhythm_detail (the /biorhythm values and labels with the trend and the day in the cycle) and Core.today_view — today's mood only once it is made (never yesterday's, never computed by the view), the biorhythms, the closeness, plan null (LUMI-314).
+- The schedule in core: next_due (the first moment the scheduler's own due holds and the quiet hours don't veto — every kind but an at), trigger_view, and Scheduler.view — every entry, disabled ones too, with its last firing from schedule.state and its next due time, moved past midnight by a reached day cap; read-only (LUMI-315).
+- Two read-only owner routes: GET /v1/today and GET /v1/schedule (the brain host's scheduler; 404 while none runs); features.today and features.schedule. While files.trace is on the turn outcome carries tool_calls (at most 20, each input and result one short line, an image a marker); with it off the outcome is byte-identical. The Server API v1 grows additively (LUMI-316).
+- The window's State view (⌘6: the theme, the resolution, the reading; the biorhythms with their ±14-day sines drawn as SVG; the closeness; the plan's place) and Schedule view (⌘7: the quiet hours, the day cap and today's firings, the directives count, the next to fire; every directive with its rule in English, its last and next firing) (LUMI-317).
+- The tools of the last reply in the details panel (LUMI-318).
+- At the owner's request: the hormonal cycle as a fourth cycle in State — cycle on /v1/today (cycle_detail: the /biorhythm day and phase, a key per day) drawn as one bar a day across ±14 days with today marked and the phase's note — and today's phase in the portrait panel (the state's cycle) (LUMI-319); what each scheduled directive does — its topic (placeholders fill in when it fires) and a seeds row's lines on /v1/schedule, shown under each rule (LUMI-320).
+- Code review: four LOW findings, all deferred; no fix pass.
+- The owner's go after the dev build (2026-11-19). The prod check follows the deploy.
+
 Version 4.3.0 (2026-11-18)
 ---------------------------
 - v4.3 — the Journal and her thoughts in the window, the third phase of v4 (the window's views of what her server-side tools leave on the box).

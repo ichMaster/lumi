@@ -12,7 +12,19 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.3.0 — The window: her journal and her thoughts** (version 4; version 3 complete, last 3.4.1).
+**4.4.0 — The window: her day, her timetable and a reply's tools** (version 4; version 3 complete, last 3.4.1).
+- **State** (⌘6) shows her day: the mood of the day in full (theme, resolution, reading), four cycles drawn ±14 days
+  around today — the physical, emotional and intellectual biorhythms and the hormonal cycle — and the closeness.
+- **Schedule** (⌘7) shows what wakes her thoughts: the quiet hours and the day cap, then every directive with its rule
+  in English, what it does (its topic, or its seeds), when it last fired and when it is next due.
+- **The details panel** lists the tools she called in the last reply (while `files.trace` is on), and the portrait
+  panel names today's hormonal phase.
+
+The server answers for the owner only, read-only, never waiting for her turn and never calling a model (`/v1/today`,
+`/v1/schedule`; `tool_calls` on a reply's outcome). Guide: [docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop
+window (LUMI-314..320).
+
+**4.3.0 — The window: her journal and her thoughts** (version 4).
 - **The Journal** (⌘4) lists her journal's days by month beside the day: the stamp of the day (mood, biorhythms,
   forecast) as its own block, then each `HH:MM` entry in her words. A day written before she kept a stamp opens too;
   ← → step through the days.
