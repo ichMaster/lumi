@@ -1397,8 +1397,9 @@ Since v2.5 her tools and her thoughts run in the server on the box. What they le
 sandbox (the v0.19–v0.32 files, the v0.23 pictures), the v0.28 journal and the v0.12 thought stream. The desktop
 window (v2.12, `Lili.app`) shows only the chat and her portrait. This version adds **views of that data to the
 window**: Files with a markdown reader (v4.1); Gallery and her pictures in the chat (v4.2); Journal and Thoughts
-(v4.3); State, Schedule and a turn's tools (v4.4). It closes with **actions from the window** (v4.5), chosen before
-that phase starts. The owner placed it as v4 on 2026-11-17, and the later versions moved up by one.
+(v4.3); State, Schedule and a turn's tools (v4.4). Then **actions from the window** (v4.5), and **her voice in the
+window** (v4.6): a reply's voice generated once on the server, played in the chat and sent to Telegram, with one
+switch for both. The owner placed it as v4 on 2026-11-17, and the later versions moved up by one.
 
 **The window only** (the owner, 2026-11-17). The TUI gets nothing new; it keeps `/journal` and `/thoughts`. The concept
 is [DESKTOP_VIEWS.md](features/DESKTOP_VIEWS.md), and the design brief for Claude Design is
@@ -1666,6 +1667,105 @@ files out, opens a link, and tidies up. The owner chose all five candidate actio
 - static: the confirmations, the strings, no HTML.
 
 No paid calls: the turn uses the mock model.
+
+### v4.6 — Her voice in the window
+
+**Goal:** her replies can be heard in the window, from the same voice file Telegram gets, made once; and one switch in
+the window turns her voice on or off for both.
+
+**Today** (prod, 2026-11-19: `telegram.voice: true`):
+- the Telegram outbound daemon voices every `kind="lili"` outbox record itself: ElevenLabs (`voice.voice_id`,
+  `voice.model`) → MP3 → ffmpeg → OGG/Opus → `send_voice`, with the reply as the caption;
+- the window has no sound;
+- whether her replies go to Telegram as voice is a fixed setting, changed by editing `settings.yaml` and restarting.
+
+**After v4.6:**
+
+1. **One generation, on the server.**
+   - While her voice is on, the server makes the audio of each of her lines once:
+     - a client turn, a Telegram turn, a spoken thought;
+     - from the text with her voice tags (`speech`, v2.7.1) and her emotion (the v0.14 voice settings per emotion);
+     - with the same ElevenLabs adapter (`voice/tts.py`).
+   - It runs after the reply is shown, off the turn's critical path (the v1.5 post-turn queue), so the text never waits
+     for the sound.
+   - The file is stored in `<data root>/voice/<user_id>/<message id>.mp3`. It is kept 30 days, then removed by the
+     server's housekeeping (bounded, never her sandbox).
+2. **Telegram reuses it.**
+   - Her outbox record carries the file (`voice: "<message id>.mp3"`), written once the audio is ready.
+   - The outbound daemon converts that MP3 to OGG/Opus and sends it as before. It never calls ElevenLabs again: one
+     character bill per line, not two.
+   - A record without `voice` (voice off, or the generation failed) goes as text.
+   - An old record from before v4.6 is voiced the old way, so nothing in flight is lost.
+3. **A play button in the chat.**
+   - Her line gets a ▶ button once its audio is ready; until then a quiet "voicing…" mark.
+   - The audio reaches the page as a `voice` push `{message, ready}` after her `message`, and plays from
+     `GET /v1/voice/<id>`: owner-only, `audio/mpeg`, `nosniff`, through the proxy with the window's key, as a `blob:`
+     URL like her pictures.
+   - One line plays at a time. ▶ / ❚❚ and the elapsed time are on the line; Esc stops.
+   - No autoplay: the window never makes a sound by itself.
+4. **One switch for both.**
+   - A «Voice» toggle in the window's status line turns the generation on or off: `POST /v1/voice {enabled}`,
+     owner-only.
+   - The state persists in the data root (`voice.json`), so it survives a restart. Its first value is
+     `telegram.voice`.
+   - `GET /v1/state` carries `voice: {enabled, available}`. `available` is false without an ElevenLabs key and a
+     voice id; the toggle is then disabled, with the reason.
+   - Off: no audio is made, the chat shows no ▶, and Telegram gets text. On: both get her voice from the next line.
+   - The TUI's `/voice` and the local voicer (v0.14) are unchanged; they can move to the shared file later.
+
+**Rules:**
+- The voice file is made only while the switch is on, once per line, whatever the number of clients.
+- The owner's token only, for the audio route and the switch; the room's 403. The room's lines are never voiced.
+- The emotion contract is untouched: the audio follows the validated emotion, it never sets it.
+- A failed generation degrades to text: no ▶, Telegram gets text, a line in the log; the turn is never affected.
+- Bounded:
+  - a line's text for the voice is capped (the ElevenLabs request limit);
+  - the files expire after 30 days;
+  - one generation at a time, in order.
+- Paid: every generation is an ElevenLabs call. Tests use the mock TTS (`voice/tts.py` `MockTTS`), never the network.
+
+**Tasks:**
+- core / server:
+  - the post-turn voice job (the queue, the store under `voice/<user_id>/`, the 30-day housekeeping);
+  - `voice` on the outbox record;
+  - the `voice` push;
+  - `GET /v1/voice/<id>` and `POST /v1/voice`;
+  - `voice` on the state;
+  - the persisted switch.
+- telegram: `outbound.py` sends the stored file when the record has one, text when it doesn't, the old way for an old
+  record.
+- proxy: the audio route (binary relay) and the switch route.
+- window:
+  - the ▶ / ❚❚ button and the "voicing…" mark on her lines;
+  - one player at a time;
+  - the «Voice» toggle in the status line, disabled with its reason when unavailable.
+- ARCHITECTURE §Contracts: a "v4.6 (additive)" paragraph; `docs/TELEGRAM_SETUP.md` and `docs/SERVER_SETUP.md`.
+
+**DoD:**
+- With the switch on, a reply shows ▶ in the window within seconds and plays her voice. The same reply reaches
+  Telegram as a voice message, and ElevenLabs was called once for it (the usage log shows one request per line).
+- With the switch off, no audio is made, the window shows no ▶, and Telegram gets text. Switching back on voices the
+  next line.
+- The switch survives a server restart. Without a key it is disabled and says why.
+- A failed generation leaves the text everywhere and the turn unchanged.
+- (Manual, owner) on prod: a reply played in the window and the same voice in Telegram; the switch in both directions.
+
+**Tests:**
+- unit:
+  - the voice job: one generation per line, `speech` and the emotion used, a failure → no file;
+  - the 30-day expiry;
+  - the persisted switch (first value from `telegram.voice`);
+  - `outbound.py`'s three cases (a file, no file, an old record) with a fake bot, the mock TTS never called for a
+    record with a file.
+- contract:
+  - `/v1/voice/<id>` and `POST /v1/voice`: auth, the room's 403, `audio/mpeg`, a missing id 404;
+  - the `voice` push after `message`;
+  - `voice` on the state;
+  - the outcome and the `message` push unchanged with the switch off;
+  - the proxy's two routes.
+- static: the play button and the toggle built without HTML, the strings English, no autoplay.
+
+No paid calls.
 
 ---
 
