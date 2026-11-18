@@ -36,6 +36,7 @@ def test_the_route_set_is_pinned(tmp_path):
         ("GET", "/v1/images"), ("GET", "/v1/images/thumb"),  # v4.2: her pictures and their thumbnails, read-only
         ("GET", "/v1/journal"), ("GET", "/v1/journal/{date}"),  # v4.3: her journal, the owner's only
         ("GET", "/v1/thoughts"),  # v4.3: her thought stream through the surfacing filter
+        ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable
     }
 
 
@@ -77,7 +78,9 @@ def test_state_shape_is_pinned(tmp_path):
                                  "gallery": False,  # v4.2
                                  # v4.3: the views read what exists — the journal root always has a default (the
                                  # owner reads it), and the thought stream is served unless /thoughts is off
-                                 "journal": True, "thoughts": True}
+                                 "journal": True, "thoughts": True,
+                                 # v4.4: her day is always served; the schedule only while a scheduler runs
+                                 "today": True, "schedule": False}
     assert set(state["totals"]) == {
         "turns", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "latency_ms",
     }
@@ -782,3 +785,160 @@ def test_v43_the_reads_leave_the_journal_and_the_store_byte_identical(tmp_path):
                          ("/v1/thoughts", {"date": "2026-11-16", "spoken": "false", "limit": 1})):
         client.get(path, params=params, headers=AUTH)
     assert (_fingerprint(root), (tmp_path / "store.json").read_bytes()) == before
+
+
+# --- v4.4 LUMI-316: her day, her timetable, and a turn's tools ----------------------------------------------------
+
+NATAL = "Сонце 15° Риб\nНародження: 14.03.2001, 03:10, Київ"
+READING = "Тиха ніч.\n\nРЕЗОЛЮЦІЯ: Зосереджена, без поспіху.\nТЕМА: quiet-collapse"
+SCHEDULE_YAML = """schedule:
+  - name: muse-silent
+    seeds: core/think_seeds.md
+    idle: "15m"
+    enabled: true
+  - name: morning-brief
+    directive: brief
+    at: "08:00"
+    enabled: true
+  - name: learn-night
+    directive: learn
+    at: "22:30"
+    enabled: false
+"""
+
+
+def _day_core(tmp_path):
+    from datetime import UTC, datetime
+
+    from core.clock import fixed_clock
+    return Core(llm=MockLLMClient(READING), repository=JsonRepository(tmp_path / "day.json"), canon="C", model="m",
+                clock=fixed_clock(datetime(2026, 11, 18, 10, 0, tzinfo=UTC)), natal=NATAL, mood_enabled=True,
+                theme_descriptions={"quiet-collapse": "вигорання"})
+
+
+def _schedule_client(tmp_path, core=None, *, scheduler=True):
+    import dataclasses
+
+    from core.config import load_config
+    from server.brain import BrainHost
+    (tmp_path / "schedule.yaml").write_text(SCHEDULE_YAML, encoding="utf-8")
+    core = core or _day_core(tmp_path)
+    client = TestClient(create_app(core, token=TOKEN, env="dev", version="4.4.0"))
+    cfg = dataclasses.replace(load_config(load_env=False), scheduler=scheduler, schedule_path=tmp_path / "schedule.yaml",
+                              schedule_state_path=tmp_path / "schedule.state", schedule_overrides=(),
+                              sched_day_cap=24, thoughts_quiet_hours=(1, 7))
+    client.app.state.brain = BrainHost(client.app.state.service, cfg)
+    return client
+
+
+def test_v44_today_answers_with_its_shape_and_never_computes_the_mood(tmp_path):
+    core = _day_core(tmp_path)
+    client = TestClient(create_app(core, token=TOKEN, env="dev", version="4.4.0"))
+    res = client.get("/v1/today", headers=AUTH)
+    assert res.status_code == 200 and res.headers["cache-control"] == "no-store"
+    body = res.json()
+    assert set(body) == {"date", "mood", "biorhythms", "closeness", "plan"}
+    assert body["mood"] is None and core._llm.calls == []  # not computed yet, and the route didn't compute it
+    assert [b["name"] for b in body["biorhythms"]] == ["physical", "emotional", "intellectual"]
+    assert set(body["biorhythms"][0]) == {"name", "value", "label", "trend", "period", "day"}
+    assert set(body["closeness"]) == {"level", "name"} and body["plan"] is None
+    core.ensure_mood()
+    mood = client.get("/v1/today", headers=AUTH).json()["mood"]
+    assert mood == {"resolution": "Зосереджена, без поспіху.", "reading": "Тиха ніч.", "theme": "quiet-collapse",
+                    "made_at": None}
+
+
+def test_v44_the_schedule_answers_with_every_entry(tmp_path):
+    client = _schedule_client(tmp_path)
+    res = client.get("/v1/schedule", headers=AUTH)
+    assert res.status_code == 200 and res.headers["cache-control"] == "no-store"
+    body = res.json()
+    assert set(body) == {"now", "quiet_hours", "day_cap", "fired_today", "entries"}
+    assert body["quiet_hours"] == [1, 7] and body["day_cap"] == 24 and body["fired_today"] == 0
+    rows = {e["name"]: e for e in body["entries"]}
+    assert list(rows) == ["muse-silent", "morning-brief", "learn-night"]
+    assert set(rows["muse-silent"]) == {"name", "directive", "seeds", "show", "enabled", "trigger", "last_fired",
+                                        "next_due", "if_silent"}
+    assert rows["muse-silent"]["if_silent"] is True and rows["muse-silent"]["trigger"]["kind"] == "idle"
+    assert rows["morning-brief"]["trigger"] == {"kind": "at", "interval_s": None, "at": "08:00", "days": [],
+                                                "window": None, "cron": None}
+    assert rows["learn-night"]["enabled"] is False and rows["learn-night"]["next_due"] is None
+    assert client.get("/v1/state", headers=AUTH).json()["features"]["schedule"] is True
+
+
+def test_v44_no_scheduler_no_schedule(tmp_path):
+    off = _schedule_client(tmp_path, scheduler=False)
+    assert off.get("/v1/schedule", headers=AUTH).status_code == 404
+    assert off.get("/v1/state", headers=AUTH).json()["features"]["schedule"] is False
+    assert _client(tmp_path / "bare").get("/v1/schedule", headers=AUTH).status_code == 404
+
+
+def test_v44_the_reads_are_the_owners_token_only(tmp_path):
+    from tests._agora_world import OWNER_AUTH, ROOM_AUTH, agora_client
+    client = agora_client(tmp_path, core=_day_core(tmp_path))
+    service = client.app.state.service
+    service.schedule_view = lambda now: {"now": None, "quiet_hours": None, "day_cap": 0, "fired_today": 0,
+                                         "entries": []}
+    for path in ("/v1/today", "/v1/schedule"):
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert client.get(path, headers=ROOM_AUTH).status_code == 403  # the room never reads her day
+        assert client.get(path, headers=OWNER_AUTH).status_code == 200
+
+
+def test_v44_the_reads_never_wait_for_the_turn_lock_and_write_nothing(tmp_path):
+    from core.schedule import save_state
+    client = _schedule_client(tmp_path)
+    state_path = tmp_path / "schedule.state"
+    save_state(state_path, {"brief#at|0|(8, 0)|()|None|##": "2026-11-18T08:00:03+00:00"})
+    store = tmp_path / "day.json"
+    before = (state_path.read_bytes(), store.read_bytes() if store.exists() else None)
+    service = client.app.state.service
+    assert service.lock.acquire(timeout=1)  # a turn that runs for minutes holds it
+    try:
+        assert client.get("/v1/today", headers=AUTH).status_code == 200
+        assert client.get("/v1/schedule", headers=AUTH).status_code == 200
+    finally:
+        service.lock.release()
+    assert (state_path.read_bytes(), store.read_bytes() if store.exists() else None) == before
+
+
+def _tools_core(tmp_path, *, trace, script):
+    root = tmp_path / "files" / "owner"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "note.md").write_text("рядок", encoding="utf-8")
+    return Core(llm=MockLLMClient(states={"reply": "ось", "emotion": "calm", "intensity": 0.5}, tool_script=script),
+                repository=JsonRepository(tmp_path / f"t-{trace}.json"), canon="C", model="m",
+                files_dir=tmp_path / "files", user_id="owner", mood_enabled=False, closeness_enabled=False,
+                thoughts_enabled=False, file_tool_enabled=True, file_tool_trace=trace, tool_max_steps=30)
+
+
+def test_v44_the_outcome_lists_the_turns_tools_while_the_trace_is_on(tmp_path):
+    script = [("list_files", {}), ("read_file", {"path": "note.md"})]
+    on = TestClient(create_app(_tools_core(tmp_path, trace=True, script=script), token=TOKEN))
+    calls = on.post("/v1/turn", json={"text": "?"}, headers=AUTH).json()["tool_calls"]
+    assert [c["name"] for c in calls] == ["list_files", "read_file"]
+    assert set(calls[1]) == {"name", "input", "result"} and calls[1]["input"] == "path=note.md"
+    streamed = TestClient(create_app(_tools_core(tmp_path / "s", trace=True, script=script), token=TOKEN))
+    res = streamed.post("/v1/turn/stream", json={"text": "?", "turn_id": "t-1"}, headers=AUTH)
+    assert [c["name"] for c in _events(res.text)[-1][1]["tool_calls"]] == ["list_files", "read_file"]
+    quiet = TestClient(create_app(_tools_core(tmp_path / "q", trace=True, script=[]), token=TOKEN))
+    assert quiet.post("/v1/turn", json={"text": "?"}, headers=AUTH).json()["tool_calls"] == []  # none called
+
+
+def test_v44_without_the_trace_the_outcome_is_byte_identical(tmp_path):
+    off = TestClient(create_app(_tools_core(tmp_path, trace=False, script=[("list_files", {})]), token=TOKEN))
+    res = off.post("/v1/turn", json={"text": "?"}, headers=AUTH).json()
+    assert "tool_calls" not in res
+    assert set(res) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "timing", "state"}
+
+
+def test_v44_the_tool_list_is_bounded(tmp_path):
+    from core.agent import TOOL_CALLS_MAX, TOOL_INPUT_CHARS, TOOL_RESULT_CHARS
+    script = [("create_file", {"path": f"a{i}.md", "content": "слово " * 400}) for i in range(TOOL_CALLS_MAX + 3)]
+    client = TestClient(create_app(_tools_core(tmp_path, trace=True, script=script), token=TOKEN))
+    calls = client.post("/v1/turn", json={"text": "?"}, headers=AUTH).json()["tool_calls"]
+    assert len(calls) == TOOL_CALLS_MAX
+    assert all(len(c["input"]) <= TOOL_INPUT_CHARS and len(c["result"]) <= TOOL_RESULT_CHARS for c in calls)
+    assert all("\n" not in c["input"] and "\n" not in c["result"] for c in calls)
+    assert calls[0]["input"].startswith("path=a0.md content=слово") and calls[0]["input"].endswith("…")

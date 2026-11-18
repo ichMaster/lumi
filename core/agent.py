@@ -217,6 +217,29 @@ def _tool_trace_repr(result: object) -> str:
     return str(result)
 
 
+# v4.4 LUMI-316: the bounds of a turn's tool list on the outcome (the window's details panel)
+TOOL_CALLS_MAX = 20  # calls listed
+TOOL_INPUT_CHARS = 120  # one line of key=value pairs
+TOOL_RESULT_CHARS = 160  # one line of the (already short-marked) result
+
+
+def _one_line(text: str, limit: int) -> str:
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+
+
+def tool_calls_view(calls: Iterable[tuple[str, dict, str]]) -> list[dict]:
+    """v4.4: a turn's tool trace (``Core.last_tool_calls``) bounded for a client — ``[{name, input, result}]``, at
+    most :data:`TOOL_CALLS_MAX` calls; ``input`` one line of ``key=value`` pairs and ``result`` one line, each cut with
+    ``…`` (an image or a recollection is already a short marker, :func:`_tool_trace_repr`)."""
+    out: list[dict] = []
+    for name, args, result in list(calls)[:TOOL_CALLS_MAX]:
+        pairs = " ".join(f"{k}={v}" for k, v in (args or {}).items())
+        out.append({"name": str(name), "input": _one_line(pairs, TOOL_INPUT_CHARS),
+                    "result": _one_line(result or "", TOOL_RESULT_CHARS)})
+    return out
+
+
 def _monday_of(date_str: str) -> str:
     """The Monday ("YYYY-MM-DD") of the Mon–Sun week containing ``date_str`` (date-based recall weeks)."""
     d = date.fromisoformat(date_str)
@@ -1002,6 +1025,11 @@ class Core:
     def biorhythms(self) -> Biorhythms | None:
         """Today's computed biorhythm cycles (v0.8), cached with the mood; ``None`` when off."""
         return self._biorhythms
+
+    @property
+    def tool_trace(self) -> bool:
+        """v4.4: whether the tool trace is on (``files.trace``) — the turn's outcome then lists its tools."""
+        return bool(self._file_tool_trace)
 
     def today_view(self) -> dict:
         """v4.4 LUMI-314: her day for the window's State — the structured form of ``/mood``, ``/biorhythm`` and

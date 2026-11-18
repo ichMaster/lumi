@@ -53,6 +53,7 @@ class BrainHost:
             self._scheduler = Scheduler(load_schedule(cfg.schedule_path, getattr(cfg, "schedule_overrides", ())), cfg.schedule_state_path,
                                         day_cap=cfg.sched_day_cap, quiet_hours=cfg.thoughts_quiet_hours)
             self._ticks = TickService()  # the v3 needs register their %update_state here
+            service.schedule_view = self.schedule_view  # v4.4: the window's Schedule reads it (GET /v1/schedule)
         # When the scheduler is on it owns the idle rule (as in-process); off → the legacy timers run.
         self._nudges = load_nudges(cfg.nudge_path) if (cfg.idle_nudge and not cfg.scheduler) else []
         self._think = bool(cfg.thoughts and not cfg.scheduler)
@@ -66,6 +67,13 @@ class BrainHost:
         self._due = {"sched": now, "fast": now, "idle": now}
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+
+    def schedule_view(self, now: datetime) -> dict[str, Any] | None:
+        """v4.4: the scheduler's read-only view at ``now`` (``Scheduler.view``), idle anchored on the last real input;
+        ``None`` with the scheduler off."""
+        if self._scheduler is None:
+            return None
+        return self._scheduler.view(now, last_input=self._service.last_input)
 
     @property
     def active(self) -> bool:

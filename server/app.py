@@ -39,6 +39,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.agent import tool_calls_view
 from core.browse import (
     BadPath,
     BrowseError,
@@ -305,7 +306,7 @@ def totals_dict(totals: Any) -> dict[str, int]:
 
 
 def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | None,
-                   thumbs_dir: Path | None = None) -> dict[str, Any]:
+                   thumbs_dir: Path | None = None, schedule: bool = False) -> dict[str, Any]:
     """Everything a client's status/stats lines read — one fetch per turn/command, not one per render."""
     files_served = isinstance(getattr(core, "files_root", None), Path)
     emo = getattr(core, "last_emotion", None)
@@ -333,7 +334,10 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
                      "gallery": files_served and thumbs_dir is not None,
                      # v4.3: her journal (the owner's only, by rule) and her thought stream (unless /thoughts is off)
                      "journal": journal_served(core),
-                     "thoughts": thoughts_served(core)},
+                     "thoughts": thoughts_served(core),
+                     # v4.4: her day (mood, biorhythms, closeness) and her timetable (while a scheduler runs)
+                     "today": callable(getattr(core, "today_view", None)),
+                     "schedule": schedule},
     }
 
 
@@ -380,13 +384,16 @@ class _Service:
         self.lock = threading.Lock()
         self._bg = False  # v2.5: the lock is held by the server's own act (the brain host), not a client
         self.last_input = core.clock()  # v2.5: the last real input (a client turn / directive, a Telegram line)
+        # v4.4: the scheduler's view (``now`` → dict), registered by the brain host while it runs a scheduler; or None
+        self.schedule_view: Callable[[Any], dict[str, Any]] | None = None
         self._turns: OrderedDict[str, _TurnRecord] = OrderedDict()  # v2.3: turn_id → record
         self._turns_lock = threading.Lock()
         self.bus = EventBus()  # v2.4: the push channel
         self.last_state = self.state()  # the last consistent snapshot — what a new listener starts from
 
     def state(self) -> dict[str, Any]:
-        return state_snapshot(self.core, self.session, env=self.env, version=self.version, thumbs_dir=self.thumbs_dir)
+        return state_snapshot(self.core, self.session, env=self.env, version=self.version, thumbs_dir=self.thumbs_dir,
+                              schedule=self.schedule_view is not None)
 
     def acquire(self) -> None:
         """A client request's turn at the lock: at once; or — while the server's own act holds it (v2.5) —
@@ -533,6 +540,8 @@ class _Service:
         }
         if pictures := turn_pictures(core):  # v4.2: only when she made or sent a picture this turn
             payload["pictures"] = pictures
+        if getattr(core, "tool_trace", False):  # v4.4: the tools of this reply, while files.trace is on (else absent)
+            payload["tool_calls"] = tool_calls_view(getattr(core, "last_tool_calls", None) or ())
         return payload
 
 
@@ -748,6 +757,21 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
         return JSONResponse(page, headers=FILES_JSON_HEADERS)
+
+    # --- v4.4 LUMI-316: her day and her timetable for the window — read-only, never the lock, no model call ---
+    @app.get("/v1/today", dependencies=guarded)
+    def today() -> JSONResponse:
+        """Her day: ``{date, mood, biorhythms, closeness, plan}`` (``Core.today_view`` — never computes the mood)."""
+        return JSONResponse(core.today_view(), headers=FILES_JSON_HEADERS)
+
+    @app.get("/v1/schedule", dependencies=guarded)
+    def schedule() -> JSONResponse:
+        """Her timetable: ``{now, quiet_hours, day_cap, fired_today, entries}`` (the brain host's
+        ``Scheduler.view``); no scheduler running → 404."""
+        view = service.schedule_view
+        if view is None:
+            raise HTTPException(status_code=404, detail="the schedule is not served")
+        return JSONResponse(view(core.clock()), headers=FILES_JSON_HEADERS)
 
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:
