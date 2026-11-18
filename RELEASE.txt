@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 4.3.0 (2026-11-18)
+---------------------------
+- v4.3 — the Journal and her thoughts in the window, the third phase of v4 (the window's views of what her server-side tools leave on the box).
+- The journal's read side in core/journal.py: list_days (her journal's regular YYYY-MM-DD.md days, newest first, each with its entry count and a stamp flag; other names, folders, FIFOs and links out of the root skipped; at most 5,000) and read_day / parse_entry (one day: the code-owned stamp — mood, the biorhythms as three cells, the forecast, each line optional — and the ## HH:MM sections; prose before the first section is an untimed one, so a day written before she kept a stamp opens too). Core.journal_root; core.user.may_read_journal, the owner only until the v6.2 accounts (LUMI-309).
+- The thought page in core/thoughts.py: thought_page and Core.thoughts_page — her stream newest first through the surfacing filter (thoughts_for), paged by an opaque cursor that names a thought by its time and its place among those sharing it, so thoughts written meanwhile never shift older pages; kinds (several at once), spoken or silent, a date jump; the totals and each day's count over the filtered stream; the kinds most frequent first; seeds and user_id never leave (LUMI-310).
+- Three read-only routes: GET /v1/journal, GET /v1/journal/{date} — owner-only by rule, the token plus the role check, so another user's server gets 403 — and GET /v1/thoughts (404 when thoughts.show is off). Never the turn lock; no model call; the journal folder and the store unchanged. GET /v1/state.features adds journal and thoughts. The Server API v1 grows additively (LUMI-311).
+- The window's Journal view (⌘4): the days by month beside the day, the day's English date title, the stamp block or the no-stamp line, each entry's time and her prose through the reader's renderer with links and pictures kept as text, previous / next and ← → outside a field; narrow, the list is its own screen. The proxy forwards /v1/journal and one narrow pattern, /v1/journal/<YYYY-MM-DD> (LUMI-312).
+- The window's Thoughts view (⌘5): the header's totals, the kind chips, Spoken / Silent, Jump to a date, day dividers with the day's count, a hundred thoughts at a time back to the first; «Thoughts →» in the quiet-thoughts strip beside the portrait (LUMI-313).
+- Code review: six LOW findings, all deferred; no fix pass.
+- Checked by the owner on dev (2026-11-18). The prod check (her real journal, 143 days, and 5,589 thoughts) follows confirm v4.3.0.
+
 Version 4.2.0 (2026-11-17)
 ---------------------------
 - v4.2 — the Gallery and her pictures in the chat, the second phase of v4 (the window's views of what her server-side tools leave on the box).

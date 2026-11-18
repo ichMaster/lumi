@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.2.0 — The window: the Gallery and her pictures in the chat** (version 4; version 3 complete, last 3.4.1).
+**4.3.0 — The window: her journal and her thoughts** (version 4; version 3 complete, last 3.4.1).
+- **The Journal** (⌘4) lists her journal's days by month beside the day: the stamp of the day (mood, biorhythms,
+  forecast) as its own block, then each `HH:MM` entry in her words. A day written before she kept a stamp opens too;
+  ← → step through the days.
+- **Thoughts** (⌘5) is her whole thought stream, newest first, back to her first thought, with the kinds (several at
+  once), spoken or silent, and a date to jump to. The strip beside the portrait gains «Thoughts →».
+
+The server reads her journal for the owner only (the token plus a role check) and pages her thoughts through the
+surfacing filter, read-only, never waiting for her turn (`/v1/journal`, `/v1/journal/{date}`, `/v1/thoughts`). Guide:
+[docs/SERVER_SETUP.md](docs/SERVER_SETUP.md) §The desktop window (LUMI-309..313).
+
+**4.2.0 — The window: the Gallery and her pictures in the chat** (version 4).
 - **The Gallery** (⌘3) shows every picture in her sandbox, newest first: month groups, a folder filter, 320 px
   thumbnails loaded as they come into view.
 - **The full picture view** opens a picture with its path, date, size and dimensions (← → step, Esc closes, Open in
