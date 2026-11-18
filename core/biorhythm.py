@@ -70,6 +70,22 @@ def biorhythms(birth_date: date, today: date) -> Biorhythms:
     return Biorhythms(cycles["physical"], cycles["emotional"], cycles["intellectual"])
 
 
+def biorhythm_detail(birth_date: date, today: date) -> list[dict]:
+    """v4.4: the three cycles for the window's State — ``{name, value, label, trend, period, day}`` each.
+
+    ``value`` and ``label`` are :func:`biorhythms`'s; ``trend`` is ``rising`` or ``falling`` (tomorrow's value against
+    today's); ``day`` is today's place in the cycle, ``0`` … ``period − 1``, so a client can draw the sine around it."""
+    d = (today - birth_date).days
+    out: list[dict] = []
+    for cycle in biorhythms(birth_date, today):
+        period = PERIODS[cycle.name]
+        value_next = math.sin(2 * math.pi * (d + 1) / period)
+        out.append({"name": cycle.name, "value": cycle.value, "label": cycle.label,
+                    "trend": "rising" if value_next > cycle.value else "falling", "period": period,
+                    "day": d % period})
+    return out
+
+
 def parse_birth_date(natal_text: str) -> date | None:
     """Parse ``Народження: DD.MM.YYYY`` from the natal **text** → a ``date`` (else ``None``)."""
     match = _BIRTH_RE.search(natal_text or "")

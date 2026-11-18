@@ -29,6 +29,7 @@ from pathlib import Path
 
 from core.biorhythm import (
     Biorhythms,
+    biorhythm_detail,
     format_biorhythms,
     parse_birth_date,
 )
@@ -95,6 +96,7 @@ from core.memory import (
 from core.mood import (
     MoodState,
     load_natal,
+    mood_body,
     mood_request,
     reading_from_log,
     reading_is_complete,
@@ -1000,6 +1002,31 @@ class Core:
     def biorhythms(self) -> Biorhythms | None:
         """Today's computed biorhythm cycles (v0.8), cached with the mood; ``None`` when off."""
         return self._biorhythms
+
+    def today_view(self) -> dict:
+        """v4.4 LUMI-314: her day for the window's State — the structured form of ``/mood``, ``/biorhythm`` and
+        ``/closeness``: ``{date, mood, biorhythms, closeness, plan}``.
+
+        ``mood`` is ``{resolution, reading, theme, made_at}`` only when today's mood is already computed (``reading``
+        is its body, :func:`core.mood.mood_body`; ``made_at`` is ``None`` — the mood keeps no time), else ``None``.
+        ``biorhythms`` (:func:`core.biorhythm.biorhythm_detail`) are computed from the birth date and the clock when
+        they are on, else ``[]``. ``plan`` waits for v5.7. Read-only: never a model call, never computes the mood."""
+        today = self._clock().date()
+        mood = self._mood
+        bio: list[dict] = []
+        if self._biorhythms_enabled:
+            birth = parse_birth_date(self._natal)
+            if birth is not None:
+                bio = biorhythm_detail(birth, today)
+        level, name = self.closeness_status()
+        return {
+            "date": today.isoformat(),
+            "mood": ({"resolution": mood.resolution, "reading": mood_body(mood.reading), "theme": mood.theme,
+                      "made_at": None} if mood is not None and mood.date == today.isoformat() else None),
+            "biorhythms": bio,
+            "closeness": {"level": level, "name": name},
+            "plan": None,
+        }
 
     @property
     def cycle(self) -> CyclePhase | None:

@@ -164,6 +164,20 @@ def reading_is_complete(reading: str, *, want_theme: bool) -> bool:
     return not want_theme or split_theme(reading) is not None
 
 
+def mood_body(reading: str) -> str:
+    """v4.4: the reading without its resolution and its theme line — what the window's State shows above the
+    resolution, so the resolution isn't shown twice.
+
+    The text before the «резолюція» line (the :func:`split_resolution` marker rule); with no marker, every paragraph
+    but the last, since the last one is then the resolution."""
+    lines = strip_theme(reading).splitlines()
+    for i, line in enumerate(lines):
+        if "резолюц" in line.lower():
+            return "\n".join(lines[:i]).strip()
+    paragraphs = [p.strip() for p in strip_theme(reading).split("\n\n") if p.strip()]
+    return "\n\n".join(paragraphs[:-1])
+
+
 def split_resolution(reading: str) -> str:
     """Extract the RESOLUTION from a reading — the text after the «резолюція» line.
 
