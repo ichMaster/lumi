@@ -8,13 +8,22 @@ the emotion, and records a ``Thought`` (see ``core.agent.Core.think``).
 
 ``%think`` (everyday musing) and ``%wonder`` (curiosity) ship in v0.12; ``%dream`` / ``%reflect`` /
 ``%recall`` are the **same engine** retrofitted by later phases (v1.8 / v1.10 / v0.16).
+
+v4.3 LUMI-310: :func:`thought_page` — one page of the stream for the window's Thoughts view (newest first, a stable
+cursor, kind / spoken / date filters, the totals), over the list the surfacing filter returns.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
+from bisect import bisect_left, bisect_right
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date as _date
+from datetime import timedelta
 
 # The feedback window: the prompt injects thoughts from the last N hours (config-overridable),
 # capped by a hard line backstop for a busy day (ARCHITECTURE / THOUGHT_STREAM.md).
@@ -402,3 +411,119 @@ def thoughts_diary_block(thoughts: Sequence, *, max_lines: int = THOUGHTS_MAX_LI
         return None
     kept = list(thoughts)[-max_lines:]  # newest within the window (the window itself is the filter)
     return "\n".join(f"- {t.when[11:16]} — {t.text}" for t in kept)
+
+
+# --- v4.3 LUMI-310: one page of the stream for the window's Thoughts view ----------------------------------------
+THOUGHT_PAGE_MAX = 100  # thoughts a page holds
+THOUGHT_PAGE_TEXT = 10_000  # characters of one thought a page carries (the rest → "…")
+_CURSOR_PREFIX = "t1|"
+
+
+def encode_thought_cursor(when: str, k: int) -> str:
+    """The opaque cursor before the ``k``-th thought (0-based, oldest first) of those stamped ``when``."""
+    raw = f"{_CURSOR_PREFIX}{when}|{int(k)}".encode()
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def decode_thought_cursor(cursor: str) -> tuple[str, int]:
+    """``(when, k)`` from :func:`encode_thought_cursor`'s output; anything else is a :class:`ValueError`."""
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode("utf-8")
+    except (ValueError, binascii.Error, UnicodeDecodeError):
+        raise ValueError("a malformed cursor") from None
+    if not raw.startswith(_CURSOR_PREFIX):
+        raise ValueError("a malformed cursor")
+    when, sep, k = raw[len(_CURSOR_PREFIX):].rpartition("|")
+    if not sep or not when or not k.isdigit():
+        raise ValueError("a malformed cursor")
+    return when, int(k)
+
+
+def _is_day(value: str) -> bool:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        _date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def thought_page(thoughts: Sequence, *, before: str | None = None, limit: int = THOUGHT_PAGE_MAX,
+                 kinds: Sequence[str] = (), spoken: bool | None = None, date: str | None = None) -> dict:
+    """One page of the stream, newest first: ``{items, next, stats, days, kinds}``.
+
+    ``thoughts`` is the list the surfacing filter returns (``Repository.thoughts_for``), oldest first; it is never
+    changed. The page:
+
+    - ``items`` — ``[{when, kind, text, emotion, spoken}]``, at most ``limit`` (1..100); ``seeds`` and ``user_id``
+      never leave; a text over :data:`THOUGHT_PAGE_TEXT` characters is cut with ``…``;
+    - ``next`` — an opaque cursor for the older page (``before``), ``None`` when nothing older matches. It names a
+      thought by its ``when`` and its place among the thoughts with that ``when``, so thoughts written meanwhile never
+      shift it;
+    - ``kinds`` (any number; empty = all) and ``spoken`` (``True`` / ``False`` / ``None``) filter; ``date``
+      (``YYYY-MM-DD``, used only without ``before``) starts at the newest thought on or before that day's end;
+    - ``stats`` — ``{total, per_day, spoken_share}`` over the stream filtered by ``kinds`` and ``spoken``:
+      ``per_day`` is ``total`` over the days from the first thought to the last, ``spoken_share`` spoken / total;
+    - ``days`` — ``{date: count}`` over the same filtered stream, for each date on the page;
+    - ``kinds`` — every kind in the stream, most frequent first.
+
+    A malformed cursor, a ``limit`` outside 1..100 or a bad ``date`` is a :class:`ValueError`."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= THOUGHT_PAGE_MAX:
+        raise ValueError(f"limit is 1..{THOUGHT_PAGE_MAX}")
+    if date and not _is_day(date):
+        raise ValueError("not a date (YYYY-MM-DD)")
+    stream = sorted(thoughts, key=lambda t: t.when)  # stable: a copy, oldest first
+    whens = [t.when for t in stream]
+    wanted = {k for k in kinds if k}
+
+    def matches(t) -> bool:
+        return (not wanted or t.kind in wanted) and (spoken is None or bool(t.spoken) == spoken)
+
+    if before:
+        when, k = decode_thought_cursor(before)
+        start = min(bisect_left(whens, when) + k, bisect_right(whens, when))
+    elif date:
+        try:
+            start = bisect_left(whens, (_date.fromisoformat(date) + timedelta(days=1)).isoformat())
+        except OverflowError:  # 9999-12-31: every thought is on or before it
+            start = len(stream)
+    else:
+        start = len(stream)
+
+    picked: list[int] = []
+    i = start - 1
+    while i >= 0 and len(picked) < limit:
+        if matches(stream[i]):
+            picked.append(i)
+        i -= 1
+    older = any(matches(stream[j]) for j in range(picked[-1] - 1, -1, -1)) if picked else False
+    nxt = None
+    if older:
+        oldest = stream[picked[-1]]
+        nxt = encode_thought_cursor(oldest.when, picked[-1] - bisect_left(whens, oldest.when))
+
+    filtered = [t for t in stream if matches(t)]
+    per_date = Counter(t.when[:10] for t in filtered)
+    total = len(filtered)
+    span = 0
+    if stream:
+        try:
+            span = (_date.fromisoformat(whens[-1][:10]) - _date.fromisoformat(whens[0][:10])).days + 1
+        except ValueError:
+            span = len({w[:10] for w in whens})
+    items = []
+    for idx in picked:
+        t = stream[idx]
+        text = t.text if len(t.text) <= THOUGHT_PAGE_TEXT else t.text[:THOUGHT_PAGE_TEXT].rstrip() + "…"
+        items.append({"when": t.when, "kind": t.kind, "text": text, "emotion": t.emotion, "spoken": bool(t.spoken)})
+    kind_counts = Counter(t.kind for t in stream)
+    return {
+        "items": items,
+        "next": nxt,
+        "stats": {"total": total,
+                  "per_day": round(total / span, 1) if span else 0.0,
+                  "spoken_share": round(sum(1 for t in filtered if t.spoken) / total, 4) if total else 0.0},
+        "days": {item["when"][:10]: per_date[item["when"][:10]] for item in items},
+        "kinds": sorted(kind_counts, key=lambda k: (-kind_counts[k], k)),
+    }

@@ -22,7 +22,7 @@ import re
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -149,6 +149,7 @@ from core.thoughts import (
     parse_thought,
     should_graduate,
     thought_full_seed,
+    thought_page,
     thought_request,
     thought_tool_hint,
     thoughts_diary_block,
@@ -1445,6 +1446,15 @@ class Core:
         """The recent dated diary for ``/thoughts`` — this user's surfaceable thoughts over the
         last ``days``, dated, capped. **Per-user filtered** (never the cross-user stream)."""
         return thoughts_diary_block(self.recent_thoughts(window_h=days * 24), max_lines=max_lines)
+
+    def thoughts_page(self, *, before: str | None = None, limit: int = 100, kinds: Sequence[str] = (),
+                      spoken: bool | None = None, date: str | None = None) -> dict:
+        """v4.3 LUMI-310: one page of this user's thought stream for the window (:func:`core.thoughts.thought_page`).
+
+        Always through the surfacing filter (``thoughts_for``), never the raw global stream, so a thought sparked
+        with another user never shows. A copy of the list: no write, no turn lock, no model call."""
+        return thought_page(self._repo.thoughts_for(self._user_id, ""), before=before, limit=limit, kinds=kinds,
+                            spoken=spoken, date=date)
 
     def run_directive(
         self,
