@@ -130,6 +130,7 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 
 /* — markdown in her replies — */
 .text p { margin: 0; }
+.text a { overflow-wrap: anywhere; }  /* v4.5 LUMI-326: a long address wraps inside the column */
 .text ol, .text ul { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; }
 .text li { padding-left: 4px; }
 .text blockquote { margin: 0; padding-left: 16px; border-left: 2px solid var(--color-divider); color: var(--l-muted); }

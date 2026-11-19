@@ -1604,7 +1604,10 @@ files out, opens a link, and tidies up. The owner chose all five candidate actio
    - The proxy does the saving: a local route, with the window's key, fetches the download and writes the file. The
      page never touches the disk.
 4. **Open an external link in the browser.**
-   - Window: the reader's external links (shown, never followed in the window since v4.1) get «Open in browser».
+   - Window: the reader's external links (shown, never followed in the window since v4.1) get «Open in browser», and a
+     bare address in a file gets it too.
+   - Window: in the chat, an `http` / `https` address in her reply or your line (bare or a markdown link) is a link; a
+     click opens it in the default browser, never in the window (added during the owner's dev check, LUMI-326).
    - The proxy's local route, with the window's key, opens `http` / `https` addresses only in the default browser.
      Anything else (`file:`, `javascript:`, a sandbox path) is refused. No server change.
 5. **Rename, and move to trash with restore.**
@@ -1640,7 +1643,7 @@ files out, opens a link, and tidies up. The owner chose all five candidate actio
   - «Upload» and drop in Files;
   - «Show to Lili» in the picture view and the Gallery;
   - «Download» in Files, the reader and the picture view;
-  - «Open in browser» on external links;
+  - «Open in browser» on external links in the reader, and links in the chat;
   - «Rename…», «Move to trash…» and «Restore» with their confirmations.
 - ARCHITECTURE §Contracts (Server API v1): a "v4.5 (additive)" paragraph.
 
@@ -1649,7 +1652,8 @@ files out, opens a link, and tidies up. The owner chose all five candidate actio
   already taken gets a new name; a file too large or of another kind is refused.
 - "Show to Lili" sends a sandbox picture with a line; she answers about it in the chat.
 - Any file downloads to `~/Downloads` (a name already there gets a new one).
-- An external link opens in the default browser; anything that isn't `http` / `https` never does.
+- An external link, in the reader or in the chat, opens in the default browser; anything that isn't `http` / `https`
+  never does.
 - Rename and trash ask first. Trash moves into `.trash/`, restore brings it back, and nothing is ever deleted.
 - Every action is in `actions.jsonl`. The room's token gets 403 on every write route. The other files of the sandbox
   stay byte-identical.

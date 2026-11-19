@@ -750,3 +750,47 @@ def test_v45_show_to_lili_sends_the_line_with_the_pictures_sandbox_path():
     assert "chatPictures(mine, data.pictures)" in js  # another window's line shows what it showed her
     for key in ("actions.show", "actions.show_placeholder", "actions.show_busy", "actions.title"):
         assert key in strings and not CYRILLIC.search(strings[key])
+
+
+# --- v4.5 LUMI-326: links in the chat and bare addresses in the reader --------------------------------------------
+
+def test_v45_a_bare_address_keeps_its_punctuation_outside_and_needs_a_host():
+    js = _js()
+    inline_re = js[js.index("const INLINE"):js.index("\n", js.index("const INLINE"))]
+    got = _node_eval(inline_re + "\n" + _fn("bareUrl") + r"""
+const cases = ["https://a.com/x.", "https://uk.wikipedia.org/wiki/Дюна_(роман),", "https://a.com/x)", "https://c.net/z?q=1#top!",
+  "https://.", "https://b.org/y…"];
+const found = ["(https://a.com/x) і «https://b.org/y». javascript:alert(1) file:///etc/passwd `https://code.x`"]
+  .map((s) => { const out = []; let rest = s; for (;;) { const m = INLINE.exec(rest); if (!m) break;
+    out.push(m[6] ? bareUrl(m[0])[0] : m[1] ? "code" : "other"); rest = rest.slice(m.index + m[0].length); } return out; });
+console.log(JSON.stringify([cases.map(bareUrl), found]));""")
+    assert got == [[["https://a.com/x", "."], ["https://uk.wikipedia.org/wiki/Дюна_(роман)", ","],
+                    ["https://a.com/x", ")"], ["https://c.net/z?q=1#top", "!"], ["", "https://."],
+                    ["https://b.org/y", "…"]],
+                   [["https://a.com/x", "https://b.org/y", "code"]]]
+
+
+def test_v45_a_link_in_the_chat_opens_through_the_proxy_never_in_the_window():
+    js = _js()
+    head = js[js.index("const INLINE"):js.index("function inline(")]
+    assert '|(https?:\\/\\/[^\\s<>"\'«»`]+)/i;' in head  # the bare address: http / https only
+    link = _fn("chatLink")
+    assert "onclick: (ev) => { ev.preventDefault(); openExternal(href); }" in link
+    assert 'target: "_blank", rel: "noopener noreferrer"' in link and "innerHTML" not in link
+    body = _fn("inline")
+    assert 'out.push(chatLink(m[5], tok.slice(1, tok.indexOf("]("))));' in body  # a markdown link too
+    assert "if (url) out.push(chatLink(url, url));" in body
+    mine = _fn("addMine")
+    assert "withLinks(String(text))" in mine and "text }" not in mine  # your line: only its addresses become links
+    assert "out.push(chatLink(url, url));" in _fn("withLinks")
+    assert "openExternal(" in _fn("openExternal") and 'api("/local/open", { url: href })' in _fn("openExternal")
+
+
+def test_v45_a_bare_address_in_the_reader_gets_open_in_browser():
+    js = _js()
+    reader_re = js[js.index("const READER_INLINE"):js.index("\n", js.index("const READER_INLINE"))]
+    assert reader_re.endswith('|(https?:\\/\\/[^\\s<>"\'«»`]+)/;')
+    body = _fn("readerInline")
+    assert "if (url) out.push(readerLink(ctx, null, url, base));" in body
+    link = _fn("readerLink")
+    assert 'if (label === null) return el("span", { class: "xlink" }, el("span", { class: "xaddr", text: href }), " ", open);' in link

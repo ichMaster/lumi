@@ -186,8 +186,8 @@ blocks, inline code, bold, italic, horizontal rules.
 - A **relative link to another file in her sandbox** opens that file in the reader. An `#anchor` scrolls to the
   heading.
 - A **relative image** (`![](art/x.png)`) shows inline through `/v1/files/raw`.
-- An **external link** (http/https only) is shown with its address and never loaded inside the window. Opening it in
-  the system browser is a v4.5 candidate.
+- An **external link** (http/https only) is shown with its address and never loaded inside the window. Since v4.5 it
+  has «Open in browser», which opens it in the system browser. A bare address in the text gets the same button.
 - A link that leaves the sandbox is shown as text.
 
 **Navigation inside the reader:**
@@ -216,7 +216,9 @@ DoD:
 2. **"Show this to her"**: a sandbox picture with a typed line, sent as a turn. The server reads the picture by its
    sandbox path (`sandbox_images`), so the window never sends the bytes.
 3. **Download** a file to `~/Downloads`, saved by the proxy, never by the page.
-4. **Open an external link** in the default browser (`http` / `https` only), through the proxy's local route.
+4. **Open an external link** in the default browser (`http` / `https` only), through the proxy's local route: from the
+   reader, and from the chat, where an address in her reply or your line is a link (LUMI-326, added during the owner's
+   dev check).
 5. **Rename**, and **move to trash** with **restore**. Each is confirmed in the window. The trash is `.trash/` inside
    the sandbox, and nothing is ever deleted.
 

@@ -181,7 +181,27 @@ async function* sse(res, onByte) {
 }
 
 /* ---------- her markdown → DOM (a small safe subset; links http/https only) ---------- */
-const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*|_[^_\n]+_)|(\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\))/i;
+const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*|_[^_\n]+_)|(\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\))|(https?:\/\/[^\s<>"'«»`]+)/i;
+
+/* v4.5 LUMI-326: a bare http / https address ends at a space, a quote, «» or <>; trailing punctuation and a bracket it
+   didn't open stay outside it. → [the address or "" when nothing is left of it, the text after it] */
+function bareUrl(raw) {
+  let url = raw;
+  for (;;) {
+    const last = url.slice(-1);
+    const count = (ch) => url.split(ch).length - 1;
+    if (/[.,;:!?…*_]/.test(last)) url = url.slice(0, -1);
+    else if (last === ")" && count("(") < count(")")) url = url.slice(0, -1);
+    else if (last === "]" && count("[") < count("]")) url = url.slice(0, -1);
+    else break;
+  }
+  return /^https?:\/\/[^/?#\s]+/i.test(url) ? [url, raw.slice(url.length)] : ["", raw];
+}
+
+function chatLink(href, label) {  // v4.5 LUMI-326: the proxy opens it in the default browser; this window never navigates
+  return el("a", { href, title: href, target: "_blank", rel: "noopener noreferrer",
+    onclick: (ev) => { ev.preventDefault(); openExternal(href); } }, label);
+}
 
 function inline(text) {
   const out = [];
@@ -194,12 +214,28 @@ function inline(text) {
     if (m[1]) out.push(el("code", { text: tok.slice(1, -1) }));
     else if (m[2]) out.push(el("strong", {}, inline(tok.slice(2, -2))));
     else if (m[3]) out.push(el("em", {}, inline(tok.slice(1, -1))));
-    else if (m[4]) {
-      const label = tok.slice(1, tok.indexOf("]("));
-      out.push(el("a", { href: m[5], target: "_blank", rel: "noopener noreferrer" }, label));
+    else if (m[4]) out.push(chatLink(m[5], tok.slice(1, tok.indexOf("]("))));
+    else {
+      const [url, after] = bareUrl(tok);
+      if (url) out.push(chatLink(url, url));
+      if (after) out.push(after);
     }
     rest = rest.slice(m.index + tok.length);
   }
+  return out;
+}
+
+function withLinks(text) {  // v4.5 LUMI-326: your line stays as you typed it; only its http / https addresses are links
+  const out = [];
+  let at = 0;
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"'«»`]+/gi)) {
+    const [url] = bareUrl(m[0]);
+    if (!url) continue;
+    if (m.index > at) out.push(text.slice(at, m.index));
+    out.push(chatLink(url, url));
+    at = m.index + url.length;
+  }
+  if (at < text.length) out.push(text.slice(at));
   return out;
 }
 
@@ -291,7 +327,7 @@ function row(kind, { time, source, origin, queued } = {}) {
 
 function addMine(text, opts = {}) {
   const r = row("mine", opts);
-  r.content.append(el("div", { class: "text", lang: "uk", text }));
+  r.content.append(el("div", { class: "text", lang: "uk" }, withLinks(String(text))));
   append(r.node);
   return r;
 }
@@ -1531,7 +1567,7 @@ function viewError(title, err, retry) {
 const PICTURE_EXT = /\.(png|jpe?g|gif|webp)$/i;
 const MONTHS3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const READER_MODE = { plain: "reader.plain", code: "reader.code", data: "reader.data" };
-const READER_INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[([^\]\n]+)\]\(([^)\s]+)\))/;
+const READER_INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[([^\]\n]+)\]\(([^)\s]+)\))|(https?:\/\/[^\s<>"'«»`]+)/;
 const blobsByHost = new WeakMap();
 
 function qpath(path) { return "?path=" + encodeURIComponent(path || ""); }
@@ -1960,10 +1996,11 @@ function openExternal(href) {  // the proxy opens http / https in the default br
 function readerLink(ctx, label, href, base) {
   if (ctx.plain && !/^https?:\/\//i.test(href)) return document.createTextNode(label);  // v4.3: the journal's prose
   if (/^https?:\/\//i.test(href)) {  // external: shown with its address, never followed in this window
+    const open = el("button", { type: "button", class: "xopen", onclick: () => openExternal(href) }, t("actions.open"));  // v4.5
+    if (label === null) return el("span", { class: "xlink" }, el("span", { class: "xaddr", text: href }), " ", open);  // LUMI-326: a bare address
     const addr = href.replace(/^https?:\/\//i, "").replace(/\/$/, "");
     return el("span", { class: "xlink", title: t("reader.external") }, el("span", { class: "xtext", text: label }), " ",
-      el("span", { class: "xaddr", text: `↗ ${addr}` }), " ",
-      el("button", { type: "button", class: "xopen", onclick: () => openExternal(href) }, t("actions.open")));  // v4.5
+      el("span", { class: "xaddr", text: `↗ ${addr}` }), " ", open);
   }
   if (href.startsWith("#")) {
     return el("button", { type: "button", class: "ilink", onclick: () => scrollToSlug(ctx, href.slice(1)) }, label);
@@ -1988,7 +2025,12 @@ function readerInline(ctx, text, base) {
     if (m[1]) out.push(el("code", { class: "icode", text: tok.slice(1, -1) }));
     else if (m[2]) out.push(el("strong", {}, readerInline(ctx, tok.slice(2, -2), base)));
     else if (m[3]) out.push(el("em", {}, readerInline(ctx, tok.slice(1, -1), base)));
-    else out.push(readerLink(ctx, m[5], m[6], base));
+    else if (m[4]) out.push(readerLink(ctx, m[5], m[6], base));
+    else {  // v4.5 LUMI-326: a bare address
+      const [url, after] = bareUrl(tok);
+      if (url) out.push(readerLink(ctx, null, url, base));
+      if (after) out.push(after);
+    }
     rest = rest.slice(m.index + tok.length);
   }
   return out;
