@@ -875,3 +875,90 @@ def test_v46_the_voice_switch_reflects_the_state_and_says_why_it_is_disabled():
                 "voice.switch.on", "voice.switch.off", "voice.switch.unavailable", "voice.switch.failed"):
         assert key in strings and not CYRILLIC.search(strings[key]), key
     assert strings["voice.switch.unavailable"] == "No ElevenLabs key or voice id on the server"
+
+
+# --- v4.7 LUMI-334: dictation in the window -----------------------------------------------------------------------
+
+def test_v47_the_mic_shows_only_when_the_server_and_the_shell_can_dictate():
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    assert '<button id="mic" class="btn btn-secondary mic" type="button" aria-pressed="false" hidden></button>' in html
+    assert html.index('id="mic"') < html.index('id="send"')  # beside the send button
+    assert 'id="dictation" class="dictation" aria-live="polite" hidden' in html
+    shown = _fn("micShown")
+    assert "dict.available" in shown and "st.server.features.dictation === true" in shown
+    assert 'fetch("/local/dictation", { headers: headers() })' in _fn("dictCheck")
+    assert "mic.hidden = !shown;" in _fn("renderMic")
+    assert "dictCheck();" in _fn("start")
+
+
+def test_v47_click_toggles_hold_talks_and_option_space_does_both():
+    down, up, key = _fn("micDown"), _fn("micUp"), _fn("micKey")
+    assert 'if (dict.state === "idle") { dict.press = { at: Date.now() }; dictStart(); }' in down
+    assert "if (press.stop) { dictStop(); return; }" in up  # the second click of a toggle
+    assert "if (Date.now() - press.at >= HOLD_MS) dictStop();" in up  # held: stop on release
+    assert 'ev.altKey && ev.code === "Space"' in key and "ev.preventDefault();" in key and "ev.repeat" in key
+    js = _js()
+    assert "const HOLD_MS = 350;" in js
+    assert 'mic.addEventListener("pointerdown", micDown);' in js and 'mic.addEventListener("pointerup", micUp);' in js
+    assert "if (micKey(ev)) return;" in js
+
+
+def test_v47_esc_cancels_and_leaves_the_input_as_it_was():
+    js = _js()
+    esc = 'if (ev.key === "Escape" && dict.state !== "idle") { ev.preventDefault(); dictCancel(); return; }'
+    assert esc in js
+    assert js.index(esc) < js.index('if (ev.key === "Escape" && voice.now')  # before her voice's Esc
+    cancel = _fn("dictCancel")
+    assert '$("input").value = dict.base;' in cancel and 'api("/local/dictation/cancel", {})' in cancel
+    assert "dict.base = $(\"input\").value;" in _fn("dictStart")  # remembered when the recording starts
+    error = _fn("onDictEvent")
+    assert error.index('kind === "error"') < error.index('$("input").value = dict.base;')  # an error restores it
+
+
+def test_v47_the_live_words_are_text_never_html():
+    js = _js()
+    live = _fn("renderDictation")
+    assert 'el("span", { class: "dict-interim", text: dict.interim })' in live
+    assert "innerHTML" not in live and "innerHTML" not in _fn("onDictEvent") and "innerHTML" not in _fn("dictAppend")
+    assert "insertAdjacentHTML" not in js
+    got = _node_eval("""
+const input = { value: "" }; const $ = () => input; let said = false;
+const dict = {}; function grow() {} function renderInput() {}
+""" + _fn("dictAppend") + """
+dictAppend("Привіт.");
+input.value += "  (виправив) ";
+dictAppend("<b>не тег</b>");
+console.log(JSON.stringify(input.value));""")
+    assert got == "Привіт.  (виправив) <b>не тег</b>"  # appended after whatever is there; the text stays text
+
+
+def test_v47_send_when_i_stop_is_kept_and_sends_only_what_was_said():
+    js = _js()
+    assert 'const DICT_STORE = "lumi.desktop.sendWhenStop";' in js
+    assert 'localStorage.setItem(DICT_STORE, dict.sendWhenStop ? "on" : "off")' in _fn("setSendWhenStop")
+    assert 'dict.sendWhenStop = localStorage.getItem(DICT_STORE) === "on";' in js
+    done = _fn("onDictEvent")
+    assert "const send = dict.sendWhenStop && dict.said && $(\"input\").value.trim();" in done
+    assert "submit(text);" in done
+    assert 't("dictation.send_when_stop")' in _fn("renderInput")
+
+
+def test_v47_the_stream_reads_the_shells_events_and_stops_through_the_proxy():
+    start = _fn("dictStart")
+    assert 'fetch("/local/dictation/start", { method: "POST"' in start and "for await (const frame of sse(res))" in start
+    assert 'res.status === 409 ? t("dictation.busy")' in start
+    assert 'api("/local/dictation/stop", {})' in _fn("dictStop")
+    events = _fn("onDictEvent")
+    for kind in ("ready", "level", "interim", "final", "error", "done"):
+        assert f'kind === "{kind}"' in events, kind
+    assert "dictAppend(String(data.text" in events
+
+
+def test_v47_the_strings_are_english():
+    strings = _strings()
+    keys = ("dictation.mic", "dictation.mic_hint", "dictation.stop", "dictation.starting", "dictation.listening",
+            "dictation.recognizing", "dictation.esc", "dictation.hint", "dictation.send_when_stop",
+            "dictation.failed", "dictation.busy", "dictation.broken")
+    for key in keys:
+        assert key in strings and not CYRILLIC.search(strings[key]), key
+    assert strings["dictation.send_when_stop"] == "Send when I stop"

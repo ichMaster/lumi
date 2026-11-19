@@ -99,6 +99,8 @@ const ICONS = {
     ["path", { d: "M16 9a5 5 0 0 1 0 6" }], ["path", { d: "M19.364 18.364a9 9 0 0 0 0-12.728" }]],  // v4.6: the switch, on
   "volume-off": [["path", { d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" }],
     ["line", { x1: "22", x2: "16", y1: "9", y2: "15" }], ["line", { x1: "16", x2: "22", y1: "9", y2: "15" }]],  // off
+  mic: [["path", { d: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" }], ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }],
+    ["line", { x1: "12", x2: "12", y1: "19", y2: "22" }]],  // v4.7: dictation
   more: [["circle", { cx: "12", cy: "12", r: "1" }], ["circle", { cx: "19", cy: "12", r: "1" }],
     ["circle", { cx: "5", cy: "12", r: "1" }]],  // v4.5: a row's actions  // v4.2: the picture view's previous
 };
@@ -728,6 +730,7 @@ function renderStatus() {
   kids.push(open);
   bar.replaceChildren(...kids.filter(Boolean));
   renderDetails();
+  if (dict.checked) renderInput();  // v4.7: the server's features decide whether the mic shows
 }
 
 function fmtMs(ms) { return ms === null || ms === undefined ? "—" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`; }
@@ -1097,6 +1100,232 @@ async function setVoice(on) {
   }
 }
 
+/* dictation (v4.7 LUMI-334): the mic button in the composer. The shell records the Mac's mic and the server recognizes
+   it; the page drives it through the proxy's /local/dictation routes and reads one event stream per recording. A click
+   starts and a second click stops; holding the button (or ⌥Space) talks while held. The phrase being spoken shows in a
+   muted line under the input; each settled phrase is appended to the input, after what is typed, to edit and send.
+   Esc cancels, and an error leaves the input as it was. «Send when I stop» sends the line when the recording ends. */
+const DICT_STORE = "lumi.desktop.sendWhenStop";
+const HOLD_MS = 350;  // a press longer than this is "hold to talk": the release stops
+const dict = { available: false, reason: "", checked: false, state: "idle", base: "", interim: "", level: 0,
+  started: 0, timer: null, ctrl: null, press: null, error: "", errorTimer: null, sendWhenStop: false, said: false };
+
+function micShown() {
+  return dict.available && !!(st.server && st.server.features && st.server.features.dictation === true);
+}
+
+async function dictCheck() {
+  try {
+    const res = await fetch("/local/dictation", { headers: headers() });
+    const data = await res.json();
+    dict.available = res.ok && data.available === true;
+    dict.reason = typeof data.reason === "string" ? data.reason : "";
+  } catch (e) { dict.available = false; dict.reason = ""; }
+  dict.checked = true;
+  renderInput();
+}
+
+function setSendWhenStop(on) {
+  dict.sendWhenStop = !!on;
+  try { localStorage.setItem(DICT_STORE, dict.sendWhenStop ? "on" : "off"); } catch (e) { /* lasts this window */ }
+}
+
+function renderMic() {
+  const mic = $("mic");
+  if (!mic) return;
+  const shown = micShown();
+  mic.hidden = !shown;
+  const live = dict.state !== "idle";
+  mic.disabled = shown && !live && st.conn !== "online";
+  mic.classList.toggle("on", live);
+  mic.setAttribute("aria-pressed", String(live));
+  const label = live ? t("dictation.stop") : t("dictation.mic");
+  mic.setAttribute("aria-label", label);
+  mic.title = live ? label : t("dictation.mic_hint");
+  if (!mic.firstChild) mic.append(icon("mic"));
+  renderDictation();
+}
+
+function renderDictation() {  // the live line under the input: the level, the timer, the phrase being spoken
+  const box = $("dictation");
+  if (!box) return;
+  const live = dict.state !== "idle";
+  box.hidden = !live && !dict.error;
+  if (box.hidden) { box.replaceChildren(); return; }
+  if (dict.error && !live) {
+    box.replaceChildren(el("span", { class: "dict-error", text: dict.error }));
+    return;
+  }
+  const status = dict.state === "recognizing" ? t("dictation.recognizing")
+    : dict.state === "starting" ? t("dictation.starting") : t("dictation.listening");
+  const secs = dict.started ? (Date.now() - dict.started) / 1000 : 0;
+  const bar = el("span", { class: "dict-bar" });
+  bar.style.width = `${Math.round(Math.min(1, dict.level * 3) * 100)}%`;  // speech peaks low: the meter is scaled
+  box.replaceChildren(
+    el("span", { class: "dict-level", "aria-hidden": "true" }, bar),
+    el("span", { class: "dict-status", text: status }),
+    el("span", { class: "dict-time num", text: mmss(secs) }),
+    el("span", { class: "dict-interim", text: dict.interim }),  // text only — never HTML
+    el("span", { class: "dict-esc", text: t("dictation.esc") }));
+}
+
+function dictFail(detail) {
+  dict.error = t("dictation.failed", { detail });
+  clearTimeout(dict.errorTimer);
+  dict.errorTimer = setTimeout(() => { dict.error = ""; renderDictation(); }, 8000);
+}
+
+function dictEnd() {
+  dict.state = "idle";
+  dict.interim = "";
+  dict.level = 0;
+  dict.started = 0;
+  clearInterval(dict.timer);
+  dict.timer = null;
+  dict.ctrl = null;
+  dict.press = null;
+  renderMic();
+}
+
+function dictAppend(text) {  // a settled phrase, after whatever is in the input now (typed meanwhile too)
+  const input = $("input");
+  const now = input.value;
+  input.value = now + (now && !/\s$/.test(now) ? " " : "") + text;
+  dict.said = true;
+  grow();
+  renderInput();
+}
+
+function onDictEvent(kind, data) {
+  if (kind === "ready") {
+    if (dict.state === "starting") dict.state = "listening";
+    dict.started = Date.now();
+    dict.timer = setInterval(renderDictation, 250);
+  } else if (kind === "level") {
+    dict.level = Number(data.value) || 0;
+  } else if (kind === "interim") {
+    dict.interim = String(data.text || "");
+  } else if (kind === "final") {
+    dict.interim = "";
+    dictAppend(String(data.text || ""));
+  } else if (kind === "error") {
+    $("input").value = dict.base;  // the input as it was before the recording
+    grow();
+    dictFail(String(data.detail || ""));
+    dictEnd();
+    renderInput();
+    return "end";
+  } else if (kind === "done") {
+    const send = dict.sendWhenStop && dict.said && $("input").value.trim();
+    dictEnd();
+    if (send) {
+      const input = $("input");
+      const text = input.value;
+      input.value = "";
+      grow();
+      updateSlash();
+      submit(text);
+    } else {
+      $("input").focus();
+    }
+    return "end";
+  }
+  renderDictation();
+  return null;
+}
+
+async function dictStart() {
+  if (dict.state !== "idle" || !micShown() || st.conn !== "online") return;
+  dict.state = "starting";
+  dict.base = $("input").value;
+  dict.interim = "";
+  dict.said = false;
+  dict.error = "";
+  const ctrl = new AbortController();
+  dict.ctrl = ctrl;
+  renderMic();
+  try {
+    const res = await fetch("/local/dictation/start", { method: "POST", body: "{}", signal: ctrl.signal,
+      headers: headers({ "Content-Type": "application/json" }) });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      dictFail(res.status === 409 ? t("dictation.busy") : String(data.detail || `HTTP ${res.status}`));
+      dictEnd();
+      return;
+    }
+    for await (const frame of sse(res)) {
+      if (dict.ctrl !== ctrl) return;  // cancelled meanwhile
+      if (onDictEvent(frame.event, frame.data) === "end") return;
+    }
+    if (dict.ctrl === ctrl) {  // the stream ended without a word of why
+      $("input").value = dict.base;
+      grow();
+      dictFail(t("dictation.broken"));
+      dictEnd();
+      renderInput();
+    }
+  } catch (e) {
+    if (dict.ctrl !== ctrl) return;  // aborted by a cancel
+    $("input").value = dict.base;
+    grow();
+    dictFail(e.message || "network");
+    dictEnd();
+    renderInput();
+  }
+}
+
+async function dictStop() {
+  if (dict.state !== "listening" && dict.state !== "starting") return;
+  dict.state = "recognizing";
+  dict.level = 0;
+  renderDictation();
+  renderMic();
+  try { await api("/local/dictation/stop", {}); } catch (e) { /* the stream reports how it ended */ }
+}
+
+async function dictCancel() {
+  if (dict.state === "idle") return;
+  const ctrl = dict.ctrl;
+  $("input").value = dict.base;  // Esc: the input as it was
+  grow();
+  dictEnd();
+  renderInput();
+  try { await api("/local/dictation/cancel", {}); } catch (e) { /* the shell closes the mic when the stream goes */ }
+  if (ctrl) ctrl.abort();
+}
+
+function micDown(ev) {  // a press: start now; a long press is "hold to talk"
+  if (ev.button !== undefined && ev.button !== 0) return;
+  ev.preventDefault();
+  if (dict.state === "idle") { dict.press = { at: Date.now() }; dictStart(); }
+  else dict.press = { stop: true };
+}
+
+function micUp() {
+  const press = dict.press;
+  dict.press = null;
+  if (!press) return;
+  if (press.stop) { dictStop(); return; }  // the second click of a toggle
+  if (Date.now() - press.at >= HOLD_MS) dictStop();  // held: talk while held, stop on release
+}
+
+function micKey(ev) {  // ⌥Space: the same as the button — a tap toggles, a hold talks while held
+  if (ev.type === "keydown") {
+    if (!(ev.altKey && ev.code === "Space") || ev.repeat || !micShown()) return false;
+    ev.preventDefault();
+    if (dict.state === "idle") { dict.press = { at: Date.now(), key: true }; dictStart(); }
+    else if (dict.state === "listening" || dict.state === "starting") { dict.press = null; dictStop(); }
+    return true;
+  }
+  if (ev.code === "Space" && dict.press && dict.press.key) {
+    const press = dict.press;
+    dict.press = null;
+    if (Date.now() - press.at >= HOLD_MS) dictStop();
+    return true;
+  }
+  return false;
+}
+
 /* ---------- turns, commands, directives ---------- */
 function setAnswering(on) {
   st.answering = on;
@@ -1296,8 +1525,14 @@ function renderInput() {
     el("span", {}, ...keys("Shift + Enter", t("input.hint.shift").replace(/^Shift \+ Enter/, ""))),
     el("span", {}, ...keys("/", t("input.hint.slash").replace(/^\//, ""))),
   ];
+  if (micShown()) {  // v4.7: dictation's key and the «Send when I stop» preference
+    parts.push(el("span", {}, ...keys("⌥Space", t("dictation.hint").replace(/^⌥Space/, ""))));
+    parts.push(el("label", { class: "dict-send" }, el("input", { type: "checkbox", checked: dict.sendWhenStop,
+      onchange: (ev) => setSendWhenStop(ev.target.checked) }), el("span", { text: t("dictation.send_when_stop") })));
+  }
   if (st.queue.length) parts.push(el("span", { class: "queued", text: t("queue.count", { n: st.queue.length }) }));
   hints.replaceChildren(...parts); // a null passed to replaceChildren would print as text
+  renderMic();
 }
 
 function grow() {
@@ -3475,11 +3710,23 @@ async function start() {
   const send = $("send");
   send.setAttribute("aria-label", t("input.send"));
   send.append(icon("arrow-up"));
+  const mic = $("mic");  // v4.7: dictation
+  mic.addEventListener("pointerdown", micDown);
+  mic.addEventListener("pointerup", micUp);
+  mic.addEventListener("pointerleave", () => { if (dict.press && !dict.press.stop) micUp(); });
+  mic.addEventListener("click", (ev) => {  // a keyboard press on the focused button (no pointer): a toggle
+    if (ev.detail !== 0) return;
+    if (dict.state === "idle") dictStart(); else dictStop();
+  });
+  try { dict.sendWhenStop = localStorage.getItem(DICT_STORE) === "on"; } catch (e) { /* off */ }
+  document.addEventListener("keyup", (ev) => { micKey(ev); });
   $("composer").addEventListener("submit", (ev) => { ev.preventDefault(); const text = input.value; input.value = ""; grow(); updateSlash(); submit(text); });
   input.addEventListener("keydown", onKey);
   input.addEventListener("input", () => { grow(); updateSlash(); renderInput(); });
   input.addEventListener("blur", () => { st.slash.open = false; renderSlash(); });
   document.addEventListener("keydown", (ev) => {
+    if (micKey(ev)) return;  // v4.7: ⌥Space dictates
+    if (ev.key === "Escape" && dict.state !== "idle") { ev.preventDefault(); dictCancel(); return; }  // v4.7: cancel
     if (ev.key === "Escape" && voice.now && !ev.defaultPrevented) { voiceStop(); return; }  // v4.6: Esc stops her voice
     if ((ev.metaKey || ev.ctrlKey) && /^[1-9]$/.test(ev.key)) {  // v4.1: ⌘1…⌘n (Ctrl elsewhere) switch views
       const kind = shownViews()[Number(ev.key) - 1];
@@ -3515,6 +3762,7 @@ async function start() {
   renderStatus();
   input.focus();
   connect();
+  dictCheck();  // v4.7: can this window record?
 }
 
 start();

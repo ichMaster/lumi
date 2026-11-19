@@ -255,6 +255,36 @@ once, with one switch for both. ROADMAP §v4.6 holds the Tasks and DoD.
   and absent on an older server.
 - **The proxy** forwards `POST /v1/voice` and `GET /v1/voice/<32 hex>`, and nothing else below `/v1/voice/`.
 
+## Dictation (v4.7)
+
+The owner asked on 2026-11-19 to dictate in the window and see the words while speaking, then edit before sending.
+ROADMAP §v4.7 holds the Tasks and DoD.
+
+- **The mic button** sits in the composer, left of Send. It shows when the server has a recognizer
+  (`features.dictation`) and the window's shell can record (`GET /local/dictation`).
+  - A click starts and a second click stops.
+  - Holding the button, or ⌥Space, longer than a short moment (350 ms) talks while held and stops on release.
+  - Esc cancels and puts the input back as it was before the recording.
+- **The live line** under the input shows a level meter, «Listening» with a timer, and the phrase being spoken in a
+  muted style (text only). After a stop it shows «Recognizing…» until the server is done.
+- **The words go into the input.** Each settled phrase is appended after what is in the input, typed text included,
+  and stays there to edit; Enter sends as usual. An error puts the input back as it was, with one line under it.
+- **«Send when I stop»** is a checkbox in the hints row, kept per window in `localStorage`. When on, the line is sent
+  as soon as the recording ends, if anything was said.
+- **The shell records, the server recognizes.**
+  - The window's Python shell opens the Mac's mic with `sounddevice` (16 kHz mono int16, `dictation.stt_device`),
+    only after the server is ready.
+  - It streams the audio to `WS /v1/dictation` with the client token, and passes the server's words to the page.
+  - The page drives it through the proxy's local routes, behind the window's key and never forwarded:
+    - `POST /local/dictation/start` answers with an event stream: `ready`, `level`, `interim`, `final`, `error`,
+      `done`;
+    - `POST /local/dictation/stop` and `POST /local/dictation/cancel`.
+  - The mic closes on every stop, cancel, error, the 5-minute cap and the window's close. No audio is kept, on the
+    Mac or the box.
+  - The `desktop` extra adds `sounddevice` and `websockets`.
+- **The server** recognizes with the box's own settings and key. With Deepgram the words are live; otherwise the
+  recording is recognized whole when it stops. The TUI's dictation is unchanged.
+
 ## Contract changes
 
 - **Server API v1, additive.** New routes, and new fields in `features`, `message` and the turn outcome. Each phase
@@ -295,6 +325,7 @@ once, with one switch for both. ROADMAP §v4.6 holds the Tasks and DoD.
 | v4.4 | `/v1/today`, `/v1/schedule`, `tool_calls` on the outcome; State; Schedule; the tool list in details | core, server, desktop |
 | v4.5 | The chosen actions | core, server, desktop |
 | v4.6 | Her voice: the server-side voice of each line (once, while the switch is on), `voice` on the state, the outcome and `message`, the `voice` push, `/v1/voice/<id>` and `POST /v1/voice`; Telegram sends the stored file; ▶ / ❚❚ on her lines and the «Voice» toggle | server, telegram, desktop |
+| v4.7 | Dictation: `WS /v1/dictation` (streaming or batch, the owner's token), `features.dictation`; the shell's mic and the `/local/dictation` routes; the mic button, ⌥Space, the live words, Esc and «Send when I stop» | server, voice, desktop |
 
 **Tests in every phase:**
 - unit tests for the core logic: listing, magic bytes, the journal parser, paging, the thumbnail cache, next-due;

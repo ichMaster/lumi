@@ -194,6 +194,23 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .hints { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 11.5px; color: var(--l-faint); }
 .hints b { font-weight: 600; color: var(--l-muted); }
 .hints .queued { margin-left: auto; font-weight: 600; color: var(--l-acc-text); }
+/* v4.7: dictation — the mic button, the live line under the input, «Send when I stop» */
+.mic { width: var(--l-control); height: var(--l-control); padding: 0; justify-content: center; flex: none; color: var(--l-muted); }
+.mic svg.icon { width: 19px; height: 19px; }
+.mic:hover:not(:disabled) { color: var(--color-text); }
+.mic.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg); }
+.dictation { display: flex; align-items: center; gap: 10px; min-height: 20px; font-size: 12.5px; color: var(--l-muted); }
+.dict-level { flex: none; width: 48px; height: 6px; background: var(--l-hair); overflow: hidden; }
+.dict-bar { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width .1s linear; }
+.dict-status { flex: none; font-weight: 600; color: var(--color-text); }
+.dict-time { flex: none; }
+.dict-interim { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic;
+  color: var(--l-faint); }
+.dict-esc { flex: none; color: var(--l-faint); }
+.dict-error { color: var(--l-acc-text); }
+.hints .dict-send { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.hints .dict-send input { margin: 0; accent-color: var(--color-accent); }
+@media (prefers-reduced-motion: reduce) { .dict-bar { transition: none; } }
 
 .slash { position: absolute; left: 0; right: 56px; bottom: calc(100% + 10px); max-height: 300px; overflow-y: auto; z-index: 5;
   background: var(--color-surface); border-top: var(--rule) solid var(--color-divider); box-shadow: var(--shadow-lg); }
