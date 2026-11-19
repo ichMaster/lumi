@@ -1850,12 +1850,18 @@ function dropTarget(ctx, folder, frame) {  // files dropped on the folder upload
   return frame;
 }
 
+const UPLOAD_MAX_FILE = 10 * 1024 * 1024;  // the server's largest upload cap (a picture); its own caps decide the rest
+
 async function uploadFiles(ctx, folder, files) {  // one at a time, each its own answer
   const s = ctx.state;
   const done = [];
   const failed = [];
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
+    if (file.size > UPLOAD_MAX_FILE) {  // never sent: the server would refuse it (code review #3)
+      failed.push(t("actions.failed", { name: file.name, reason: t("actions.too_large") }));
+      continue;
+    }
     s.notice = { text: t("actions.uploading", { i: i + 1, n: files.length, name: file.name }) };
     renderFilesPlace(ctx);
     try {

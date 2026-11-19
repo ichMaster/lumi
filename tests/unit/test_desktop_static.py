@@ -804,3 +804,14 @@ def test_review_v45_2_restore_is_offered_only_where_the_log_knows_the_origin():
     assert "const entries = rowEntries(ctx, item);" in _fn("openRowMenu")
     assert "if (!rowEntries(ctx, item).length) return null;" in _fn("rowMenuButton")  # no empty menu
 
+
+def test_review_v45_3_a_file_over_the_largest_cap_is_never_sent():
+    """v4.5 code review #3: a large file was sent whole before the 413 (over 64 MB the proxy closed the connection)."""
+    js, strings = _js(), _strings()
+    assert "const UPLOAD_MAX_FILE = 10 * 1024 * 1024;" in js
+    body = _fn("uploadFiles")
+    check = body.index("if (file.size > UPLOAD_MAX_FILE) {")
+    assert check < body.index('fetch("/v1/files/upload?"') and 't("actions.too_large")' in body[check:]
+    assert "actions.too_large" in strings and not CYRILLIC.search(strings["actions.too_large"])
+    import core.actions as actions
+    assert actions.UPLOAD_MAX_PICTURE == 10 * 1024 * 1024 >= actions.UPLOAD_MAX_TEXT  # the page's bound is the largest cap
