@@ -276,7 +276,10 @@ def test_v41_pictures_reach_the_page_only_by_fetch_into_blob_urls():
     getter = files[files.index("function blobURL("):files.index("function resolveIn(")]
     assert "fetch(route, { headers: headers() })" in getter  # with the window's key
     assert "URL.createObjectURL" in getter
-    assert files.count("fetch(") == 1  # the only fetch in Files, the reader, the picture view and the Gallery
+    upload = files[files.index("async function uploadFiles("):files.index("function rowMenuButton(")]
+    assert upload.count("fetch(") == 1  # v4.5: a file's bytes go up as the raw body (api() sends JSON)
+    assert files.replace(upload, "").count("fetch(") == 1  # else the only fetch in Files, the reader, the picture view
+    # and the Gallery
     assert files.count('"/v1/files/raw"') == 1 and files.count('"/v1/images/thumb"') == 1  # nowhere else
     assert 'src: "/v1' not in js and '.src = "/v1' not in js and "src=\"/v1" not in js
     assert "URL.revokeObjectURL" in files and "releaseBlobs(host)" in js  # released when the place changes
@@ -699,3 +702,33 @@ def test_v44_the_schedule_shows_each_rows_topic_and_its_seeds_behind_a_toggle():
     assert 'e.seed_lines.map((line) => el("li", { lang: "uk", text: line }))' in what and "innerHTML" not in what
     view = js[js.index("function renderScheduleView("):js.index("function typing(")]
     assert view.count("scheduleWhat(ctx, e)") == 2  # wide and narrow
+
+
+# --- v4.5 LUMI-324: the owner's actions in Files and the reader ----------------------------------------------------
+
+def test_v45_the_actions_ask_first_and_show_only_while_served():
+    js, strings = _js(), _strings()
+    section = js[js.index("/* ---------- the owner's actions (v4.5"):js.index("/* her markdown for the reader")]
+    assert "function actionsOn() { return !!(st.server && st.server.features && st.server.features.actions === true); }" in section
+    for act in ("renameItem", "trashItem", "restoreItem"):
+        body = section[section.index(f"async function {act}("):]
+        body = body[:body.index("\n}\n")]
+        assert "await actionDialog(" in body and "if (!" in body, act  # nothing is written before the owner says yes
+    assert '"Content-Type": "application/octet-stream"' in section and 'fetch("/v1/files/upload?"' in section
+    assert 'api("/local/save", { path })' in section and 'api("/local/open", { url: href })' in section
+    assert 'api("/local/reveal", { saved: n.saved })' in section
+    assert "innerHTML" not in section and 'role: "dialog", "aria-modal": "true"' in section
+    assert 'ev.key === "Escape"' in section
+    assert "if (!actionsOn()) return row;" in js and "if (!actionsOn()) return frame;" in section
+    used = set(re.findall(r'"(actions\.[a-z_]+)"', js))
+    assert used and sorted(k for k in used if k not in strings) == []
+    assert not CYRILLIC.search(json.dumps({k: v for k, v in strings.items() if k.startswith("actions.")},
+                                          ensure_ascii=False))
+
+
+def test_v45_the_reader_can_open_a_link_in_the_browser_and_download():
+    js = _js()
+    link = js[js.index("function readerLink("):js.index("function readerInline(")]
+    assert 'onclick: () => openExternal(href)' in link and 't("actions.open")' in link
+    reader = js[js.index("async function renderReader("):js.index("/* ---------- the full picture view")]
+    assert "downloadFile(ctx, cur.path)" in reader and "actionsOn() ?" in reader

@@ -91,7 +91,10 @@ const ICONS = {
   "arrow-left": [["path", { d: "m12 19-7-7 7-7" }], ["path", { d: "M19 12H5" }]],
   "arrow-right": [["path", { d: "M5 12h14" }], ["path", { d: "m12 5 7 7-7 7" }]],
   "chevron-left": [["path", { d: "m15 18-6-6 6-6" }]],
-  "message-circle": [["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z" }]],  // v4.3: a spoken thought  // v4.2: the picture view's previous
+  "message-circle": [["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z" }]],  // v4.3: a spoken thought
+  "arrow-down": [["path", { d: "M12 5v14" }], ["path", { d: "m19 12-7 7-7-7" }]],  // v4.5: download
+  more: [["circle", { cx: "12", cy: "12", r: "1" }], ["circle", { cx: "19", cy: "12", r: "1" }],
+    ["circle", { cx: "5", cy: "12", r: "1" }]],  // v4.5: a row's actions  // v4.2: the picture view's previous
 };
 
 function icon(name, size) {
@@ -1597,6 +1600,8 @@ function slugOf(text) {
 
 function filesGo(ctx, entry) {
   const s = ctx.state;
+  s.notice = null;  // v4.5: a notice belongs to the folder it was said in
+  s.fresh = null;
   closePicture(ctx, false);
   s.hist = s.hist.slice(0, s.idx + 1);
   s.hist.push(entry);
@@ -1709,12 +1714,14 @@ function fileRow(ctx, dir, e, narrow, pics) {
   const attrs = { type: "button", class: "frow", onclick: open, "aria-disabled": shown ? null : "true",
     title: shown ? null : t("files.not_shown_hint") };
   const glyphEl = el("span", { class: "ficon" + (isDir ? " dir" : "") }, icon(glyph));
-  if (narrow) {
-    return el("button", attrs, glyphEl, el("span", { class: "fstack" }, name,
-      el("span", { class: "fcell", text: [size, fmtWhen(e.modified)].filter(Boolean).join(" · ") })));
-  }
-  return el("button", attrs, el("span", { class: "fnamecell" }, glyphEl, name), el("span", { class: "fcell", text: size }),
-    el("span", { class: "fcell", text: fmtDate(e.created) }), el("span", { class: "fcell", text: fmtWhen(e.modified) }));
+  if (ctx.state.fresh && ctx.state.fresh.has(full)) attrs.class += " fresh";  // v4.5: just uploaded
+  const row = narrow
+    ? el("button", attrs, glyphEl, el("span", { class: "fstack" }, name,
+      el("span", { class: "fcell", text: [size, fmtWhen(e.modified)].filter(Boolean).join(" · ") })))
+    : el("button", attrs, el("span", { class: "fnamecell" }, glyphEl, name), el("span", { class: "fcell", text: size }),
+      el("span", { class: "fcell", text: fmtDate(e.created) }), el("span", { class: "fcell", text: fmtWhen(e.modified) }));
+  if (!actionsOn()) return row;
+  return el("div", { class: "frowwrap" }, row, rowMenuButton(ctx, { path: full, name: e.name, isDir }));
 }
 
 async function renderFolder(ctx, cur) {
@@ -1722,7 +1729,7 @@ async function renderFolder(ctx, cur) {
   const ticket = ++s.ticket;
   const label = cur.path || t("nav.root");
   const bar = (count) => [...navButtons(ctx), crumbs(ctx, cur.path), count ? el("span", { class: "vmeta", text: count }) : null,
-    el("span", { class: "vactions", "aria-hidden": "true" })];  // the right end stays free for v4.5's actions
+    folderActions(ctx, cur.path)];  // v4.5: Upload (the right end was kept free for it)
   paint(ctx, viewFrame(bar(), viewLoading(t("files.loading", { path: label }))));
   let data;
   try {
@@ -1736,19 +1743,212 @@ async function renderFolder(ctx, cur) {
   const entries = data.entries || [];
   const count = data.truncated ? t("files.items_cut") : itemsLabel(entries.length);
   if (!entries.length) {
-    paint(ctx, viewFrame(bar(count), viewEmpty(`${label}/`, t("files.empty"), t("files.empty_note"))));
+    paint(ctx, dropTarget(ctx, cur.path, viewFrame(bar(count), [noticeLine(ctx),
+      viewEmpty(`${label}/`, t("files.empty"), t("files.empty_note"))])));
     return;
   }
   const narrow = ctx.narrow();
   const pics = entries.filter((e) => e.kind === "file" && e.type === "image")  // v4.2: ← → step through them
     .map((e) => ({ path: cur.path ? `${cur.path}/${e.name}` : e.name, size: e.size, modified: e.modified }));
-  const table = el("div", { class: "ftable" + (narrow ? " narrow" : "") },
+  const table = el("div", { class: "ftable" + (narrow ? " narrow" : "") + (actionsOn() ? " actions" : "") },
     narrow ? null : el("div", { class: "fhead" },
       ["files.col_name", "files.col_size", "files.col_created", "files.col_modified"].map((k) => el("span", { class: "kicker", text: t(k) }))),
     entries.map((e) => fileRow(ctx, cur.path, e, narrow, pics)),
     data.truncated ? el("div", { class: "fcut" }, el("span", { class: "title", text: t("files.cut_title") }),
       el("span", { class: "cut-note", text: t("files.cut_note") })) : null);
-  paint(ctx, viewFrame(bar(count), table));
+  paint(ctx, dropTarget(ctx, cur.path, viewFrame(bar(count), [noticeLine(ctx), table])));
+}
+
+/* ---------- the owner's actions (v4.5 LUMI-324): upload, download, rename, trash, restore, a link in the browser ----
+   Shown only while the server serves them (features.actions). Every write goes to the server, which keeps them
+   create-only and never deletes; the Mac's side (saving a download, showing it in Finder, opening a link) is the
+   proxy's, behind the window's key. Rename, trash and restore ask first; a line under the header says what happened. */
+function actionsOn() { return !!(st.server && st.server.features && st.server.features.actions === true); }
+
+function setNotice(ctx, notice) {  // {text, kind?: "error", saved?} — redrawn with the place
+  ctx.state.notice = notice;
+  renderFilesPlace(ctx);
+}
+
+function noticeLine(ctx) {
+  const n = ctx.state.notice;
+  if (!n) return null;
+  return el("div", { class: "anotice" + (n.kind === "error" ? " error" : ""), role: n.kind === "error" ? "alert" : "status" },
+    el("span", { class: "atext", text: n.text }),
+    n.saved ? el("button", { type: "button", class: "tlink", onclick: () => api("/local/reveal", { saved: n.saved })
+      .catch((err) => setNotice(ctx, { kind: "error", text: err.message })) }, t("actions.reveal")) : null,
+    el("button", { type: "button", class: "ib aclose", "aria-label": t("actions.dismiss"),
+      onclick: () => setNotice(ctx, null) }, icon("x")));
+}
+
+function folderActions(ctx, folder) {
+  if (!actionsOn()) return el("span", { class: "vactions", "aria-hidden": "true" });
+  const input = el("input", { type: "file", multiple: true, hidden: true });
+  input.addEventListener("change", () => { const files = [...input.files]; input.value = ""; uploadFiles(ctx, folder, files); });
+  return el("span", { class: "vactions" }, input,
+    el("button", { type: "button", class: "btn btn-secondary abtn", title: t("actions.upload_hint"),
+      onclick: () => input.click() }, icon("arrow-up"), t("actions.upload")));
+}
+
+function dropTarget(ctx, folder, frame) {  // files dropped on the folder upload into it
+  if (!actionsOn()) return frame;
+  const area = frame.querySelector(".vscroll") || frame;
+  area.setAttribute("data-drop", t("actions.drop"));
+  area.addEventListener("dragover", (ev) => {
+    if (![...(ev.dataTransfer ? ev.dataTransfer.types : [])].includes("Files")) return;
+    ev.preventDefault();
+    area.classList.add("dropping");
+  });
+  area.addEventListener("dragleave", () => area.classList.remove("dropping"));
+  area.addEventListener("drop", (ev) => {
+    area.classList.remove("dropping");
+    const files = ev.dataTransfer ? [...ev.dataTransfer.files] : [];
+    if (!files.length) return;
+    ev.preventDefault();
+    uploadFiles(ctx, folder, files);
+  });
+  return frame;
+}
+
+async function uploadFiles(ctx, folder, files) {  // one at a time, each its own answer
+  const s = ctx.state;
+  const done = [];
+  const failed = [];
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    s.notice = { text: t("actions.uploading", { i: i + 1, n: files.length, name: file.name }) };
+    renderFilesPlace(ctx);
+    try {
+      const q = new URLSearchParams({ path: folder || "", name: file.name });
+      const res = await fetch("/v1/files/upload?" + q.toString(), { method: "POST",
+        headers: headers({ "Content-Type": "application/octet-stream" }), body: file });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, data.kind, typeof data.detail === "string" ? data.detail : "");
+      done.push(data.path);
+    } catch (err) {
+      failed.push(t("actions.failed", { name: file.name, reason: err.message }));
+    }
+  }
+  s.fresh = new Set(done);
+  s.cache.clear();
+  const ok = !done.length ? null
+    : done.length === 1 ? t("actions.uploaded_one", { name: done[0] }) : t("actions.uploaded_many", { n: done.length });
+  const text = [ok, ...failed].filter(Boolean).join(" · ");  // what landed, then each refusal with its reason
+  setNotice(ctx, { text, kind: failed.length ? "error" : null });
+}
+
+function rowMenuButton(ctx, item) {
+  return el("button", { type: "button", class: "ib fmenu", "aria-haspopup": "menu", "aria-expanded": "false",
+    "aria-label": t("actions.menu", { name: item.name }),
+    onclick: (ev) => { ev.stopPropagation(); openRowMenu(ctx, ev.currentTarget, item); } }, icon("more"));
+}
+
+function openRowMenu(ctx, button, item) {
+  closeRowMenu();
+  const inTrash = item.path.split("/")[0] === ".trash" && item.path.split("/").length >= 3;
+  const entries = [];
+  if (!item.isDir) entries.push(["actions.download", () => downloadFile(ctx, item.path)]);
+  if (inTrash) entries.push(["actions.restore", () => restoreItem(ctx, item)]);
+  else if (item.path.split("/")[0] !== ".trash") {
+    entries.push(["actions.rename", () => renameItem(ctx, item)], ["actions.trash", () => trashItem(ctx, item)]);
+  }
+  const menu = el("div", { class: "amenu", role: "menu" }, entries.map(([key, act]) =>
+    el("button", { type: "button", role: "menuitem", onclick: () => { closeRowMenu(); act(); } }, t(key))));
+  button.setAttribute("aria-expanded", "true");
+  button.parentElement.append(menu);
+  rowMenu = { menu, button };
+  const first = menu.querySelector("button");
+  if (first) first.focus();
+  menu.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { ev.preventDefault(); closeRowMenu(true); } });
+  setTimeout(() => document.addEventListener("click", closeRowMenuOnce), 0);
+}
+
+let rowMenu = null;
+function closeRowMenuOnce() { closeRowMenu(); }
+function closeRowMenu(refocus) {
+  document.removeEventListener("click", closeRowMenuOnce);
+  if (!rowMenu) return;
+  const { menu, button } = rowMenu;
+  rowMenu = null;
+  menu.remove();
+  button.setAttribute("aria-expanded", "false");
+  if (refocus && button.isConnected) button.focus();
+}
+
+function actionDialog(ctx, opts) {  // {title, note?, value?, label?, go} → the typed value / true, or null on cancel
+  return new Promise((resolve) => {
+    const opener = document.activeElement;
+    const input = opts.value !== undefined ? el("input", { class: "input adinput", value: opts.value,
+      "aria-label": opts.label || opts.title }) : null;
+    const finish = (value) => {
+      node.remove();
+      if (opener && opener.isConnected) opener.focus();
+      resolve(value);
+    };
+    const go = () => finish(input ? input.value.trim() || null : true);
+    const node = el("div", { class: "adialog", role: "dialog", "aria-modal": "true", "aria-label": opts.title },
+      el("div", { class: "adbox" },
+        el("h3", { class: "adtitle", text: opts.title }),
+        opts.note ? el("p", { class: "adnote", text: opts.note }) : null,
+        input,
+        el("div", { class: "adbtns" },
+          el("button", { type: "button", class: "btn btn-secondary", onclick: () => finish(null) }, t("actions.cancel")),
+          el("button", { type: "button", class: "btn btn-primary adgo", onclick: go }, opts.go))));
+    node.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); finish(null); }
+      else if (ev.key === "Enter" && (ev.target === input || ev.target.classList.contains("adgo"))) { ev.preventDefault(); go(); }
+    });
+    ctx.host.append(node);
+    if (input) { input.focus(); const dot = input.value.lastIndexOf("."); input.setSelectionRange(0, dot > 0 ? dot : input.value.length); }
+    else node.querySelector(".adgo").focus();
+  });
+}
+
+async function downloadFile(ctx, path) {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  setNotice(ctx, { text: t("actions.saving", { name }) });
+  try {
+    const res = await api("/local/save", { path });
+    setNotice(ctx, { text: t("actions.saved", { name: res.name }), saved: res.saved });
+  } catch (err) {
+    setNotice(ctx, { kind: "error", text: t("actions.failed", { name, reason: err.message }) });
+  }
+}
+
+async function renameItem(ctx, item) {
+  const name = await actionDialog(ctx, { title: t("actions.rename_title", { name: item.name }), value: item.name,
+    label: t("actions.rename_label"), go: t("actions.rename_go") });
+  if (!name || name === item.name) return;
+  await fileWrite(ctx, "/v1/files/rename", { path: item.path, name }, (res) => t("actions.renamed", { name: res.to }));
+}
+
+async function trashItem(ctx, item) {
+  const ok = await actionDialog(ctx, { title: t("actions.trash_title", { path: item.path }), note: t("actions.trash_note"),
+    go: t("actions.trash_go") });
+  if (!ok) return;
+  await fileWrite(ctx, "/v1/files/trash", { path: item.path }, () => t("actions.trashed", { name: item.name }));
+}
+
+async function restoreItem(ctx, item) {
+  const ok = await actionDialog(ctx, { title: t("actions.restore_title", { path: item.path }), note: t("actions.restore_note"),
+    go: t("actions.restore_go") });
+  if (!ok) return;
+  await fileWrite(ctx, "/v1/files/restore", { path: item.path }, (res) => t("actions.restored", { path: res.to }));
+}
+
+async function fileWrite(ctx, route, body, said) {  // a write; the folder is read again and the notice says what happened
+  try {
+    const res = await api(route, body);
+    ctx.state.cache.clear();
+    ctx.state.fresh = new Set([res.to]);
+    setNotice(ctx, { text: said(res) });
+  } catch (err) {
+    setNotice(ctx, { kind: "error", text: t("actions.failed", { name: body.path, reason: err.message }) });
+  }
+}
+
+function openExternal(href) {  // the proxy opens http / https in the default browser; the window never navigates
+  api("/local/open", { url: href }).catch(() => {});
 }
 
 /* her markdown for the reader: headings h1–h4, fences, rules, a picture on its own line, quotes, pipe tables, lists,
@@ -1758,7 +1958,8 @@ function readerLink(ctx, label, href, base) {
   if (/^https?:\/\//i.test(href)) {  // external: shown with its address, never followed in this window
     const addr = href.replace(/^https?:\/\//i, "").replace(/\/$/, "");
     return el("span", { class: "xlink", title: t("reader.external") }, el("span", { class: "xtext", text: label }), " ",
-      el("span", { class: "xaddr", text: `↗ ${addr}` }));
+      el("span", { class: "xaddr", text: `↗ ${addr}` }), " ",
+      el("button", { type: "button", class: "xopen", onclick: () => openExternal(href) }, t("actions.open")));  // v4.5
   }
   if (href.startsWith("#")) {
     return el("button", { type: "button", class: "ilink", onclick: () => scrollToSlug(ctx, href.slice(1)) }, label);
@@ -1940,7 +2141,11 @@ async function renderReader(ctx, cur) {
     onclick: () => { s.outlineOpen = !s.outlineOpen; renderFilesPlace(ctx); } }, t("reader.contents"), icon(s.outlineOpen ? "chevron-up" : "chevron-down")) : null;
   if (narrow && outline && s.outlineOpen) scroller.prepend(el("div", { class: "routline-band" },
     el("span", { class: "kicker", text: t("reader.outline") }), outline));
-  const bar = [...head, mode, el("span", { class: "vmeta", text: meta }), contents];
+  const bar = [...head, mode, el("span", { class: "vmeta", text: meta }), contents,
+    actionsOn() ? el("span", { class: "vactions" }, el("button", { type: "button", class: "btn btn-secondary abtn",
+      onclick: () => downloadFile(ctx, cur.path) }, icon("arrow-down"), t("actions.download"))) : null];  // v4.5
+  const notice = noticeLine(ctx);
+  if (notice) scroller.prepend(notice);
   const body = !narrow && outline
     ? el("div", { class: "rwrap" }, scroller, el("aside", { class: "routline" }, el("span", { class: "kicker", text: t("reader.outline") }), outline))
     : scroller;
