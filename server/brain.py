@@ -149,11 +149,12 @@ class BrainHost:
                 service.last_input = self._clock()  # a Telegram / dictated line is real input
                 service.publish_message("user", record["text"], source)
                 state = self._core.reply(record["text"], service.session)
-                service.her_line(state, getattr(self._core, "last_speech", None))
+                voice_id = service.voicer.new_id()  # v4.6: the message names it, the voice push follows
                 service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
                                              "theme": self._core.theme, "origin": None})
                 service.publish_message("lili", state.reply, source, state=state,
-                                        pictures=turn_pictures(self._core))  # v4.2
+                                        pictures=turn_pictures(self._core), voice=voice_id)  # v4.2
+                service.her_line(state, getattr(self._core, "last_speech", None), voice_id)
             except Exception:  # noqa: BLE001 — one bad line never stops the bus
                 log.exception("inbox turn failed")
             finally:
@@ -231,11 +232,12 @@ class BrainHost:
         """She speaks first: a hidden self-turn (the seed is never shown), her reply pushed as a ``message``
         with the face event. The caller holds the lock."""
         state = self._core.reply(seed, self._service.session)
-        self._service.her_line(state, getattr(self._core, "last_speech", None))  # Telegram too
+        voice_id = self._service.voicer.new_id()  # v4.6: the message names it, the voice push follows
         self._service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
                                            "theme": self._core.theme, "origin": None})
         self._service.publish_message("lili", state.reply, source, state=state,
-                                      pictures=turn_pictures(self._core))  # v4.2: what she made or sent
+                                      pictures=turn_pictures(self._core), voice=voice_id)  # v4.2: what she made or sent
+        self._service.her_line(state, getattr(self._core, "last_speech", None), voice_id)  # Telegram too
 
     def _push_thought(self, thought: Any) -> None:
         self._service.bus.publish("thought", {"kind": thought.kind, "text": thought.text,

@@ -68,7 +68,15 @@ from core.journal import list_days, read_day
 from core.llm import LLMError
 from core.thoughts import THOUGHT_PAGE_MAX
 from core.user import may_read_journal
-from server.voice import LineVoicer, VoiceSetup, VoiceStore, VoiceSwitch
+from server.voice import (
+    AUTO,
+    VOICE_ID_RE,
+    LineVoicer,
+    VoiceSetup,
+    VoiceStore,
+    VoiceSwitch,
+    VoiceUnavailable,
+)
 from state.bus import mirror_reply, mirror_thought, mirror_user
 
 log = logging.getLogger("lumi.server")
@@ -87,6 +95,15 @@ class TurnRequest(BaseModel):
     register_: str | None = Field(default=None, alias="register")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceRequest(BaseModel):
+    """v4.6: the «Voice» switch — on or off for the window and Telegram both."""
+    enabled: bool
+
+
+VOICE_HEADERS = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400"}
+VOICE_NOT_SERVED = "voice is not served"
 
 
 class PathRequest(BaseModel):
@@ -145,7 +162,7 @@ HEARTBEAT_S = 15.0  # a ':' comment after this much silence keeps the stream hon
 ORIGIN_MAX = 64  # an X-Lumi-Client id longer than this is cut
 BG_WAIT_S = 300.0  # v2.5: how long a client request waits for the server's own act (a scheduled thought…)
 REPLAY_MAX = 50  # v2.5: the conversation events a fresh listener gets first — what happened meanwhile
-_REPLAYABLE = ("message", "thought")
+_REPLAYABLE = ("message", "thought", "voice")  # v4.6: a replayed line that names a voice gets its readiness too
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
@@ -333,8 +350,10 @@ def totals_dict(totals: Any) -> dict[str, int]:
 
 
 def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | None,
-                   thumbs_dir: Path | None = None, schedule: bool = False, actions: bool = False) -> dict[str, Any]:
-    """Everything a client's status/stats lines read — one fetch per turn/command, not one per render."""
+                   thumbs_dir: Path | None = None, schedule: bool = False, actions: bool = False,
+                   voice: dict[str, bool] | None = None) -> dict[str, Any]:
+    """Everything a client's status/stats lines read — one fetch per turn/command, not one per render. v4.6: ``voice``
+    ``{enabled, available}`` — her voice's switch — only on a server that can voice her (absent otherwise)."""
     files_served = isinstance(getattr(core, "files_root", None), Path)
     emo = getattr(core, "last_emotion", None)
     level, name = core.closeness_status()  # v2.4: the level by name only — the raw value stays internal
@@ -368,7 +387,7 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
                      "schedule": schedule,
                      # v4.5: the owner's actions on her sandbox (the sandbox and the action log both configured)
                      "actions": files_served and actions},
-    }
+    } | ({"voice": voice} if voice is not None else {})
 
 
 def cycle_brief(core: Any) -> dict[str, Any] | None:
@@ -421,7 +440,7 @@ class _Service:
         self.voice_store = VoiceStore(voice.root) if voice is not None else None
         self.voicer = LineVoicer(outbox.path if outbox is not None else None, switch=self.voice_switch,
                                  store=self.voice_store, tts=voice.tts if voice is not None else None,
-                                 user_id=str(getattr(core, "user_id", "owner")))
+                                 user_id=str(getattr(core, "user_id", "owner")), on_ready=self._voice_ready)
         self.thumbs_dir = thumbs_dir  # v4.2: the thumbnail cache (per user below it), outside her sandbox; or None
         self.actions_log = actions_log  # v4.5: the owner's action log (<data root>/actions.jsonl), or None
         self.session = session
@@ -439,7 +458,12 @@ class _Service:
 
     def state(self) -> dict[str, Any]:
         return state_snapshot(self.core, self.session, env=self.env, version=self.version, thumbs_dir=self.thumbs_dir,
-                              schedule=self.schedule_view is not None, actions=self.actions_log is not None)
+                              schedule=self.schedule_view is not None, actions=self.actions_log is not None,
+                              voice=self.voice_switch.view() if self.voice_switch is not None else None)
+
+    def _voice_ready(self, voice_id: str, ok: bool) -> None:
+        """v4.6: a line's audio is ready (or failed) — the ``voice`` push, after that line's ``message``."""
+        self.bus.publish("voice", {"message": voice_id, "ready": bool(ok)})
 
     def acquire(self) -> None:
         """A client request's turn at the lock: at once; or — while the server's own act holds it (v2.5) —
@@ -482,25 +506,29 @@ class _Service:
         writer (``LineVoicer``) — at once, or behind a line of hers still being voiced."""
         self.voicer.write(write, *args)
 
-    def her_line(self, state: Any, speech: str | None) -> str | None:
-        """v4.6: her reply to the outbox — and, while the switch is on, its voice (made once, after the line is
-        shown). Returns the line's voice id, or ``None`` while the switch is off."""
+    def her_line(self, state: Any, speech: str | None, voice_id: Any = AUTO) -> str | None:
+        """v4.6: her reply to the outbox — and, with a voice id (``voicer.new_id()``, taken while the switch is on),
+        its voice, made once after the line is shown. Returns the line's voice id, or ``None``."""
         return self.voicer.line(mirror_reply, state, speech, text=speech or state.reply,
-                                emotion=state.emotion.value)
+                                emotion=state.emotion.value, voice_id=voice_id)
 
     def her_thought(self, text: str, emotion: str) -> str | None:
         """v4.6: a shown thought to the outbox (``scheduler.show_to_outbox``), voiced like her lines while on."""
         return self.voicer.line(mirror_thought, text, emotion, text=text, emotion=emotion)
 
     def publish_message(self, role: str, text: str, source: str, *, state: Any = None,
-                        origin: str | None = None, pictures: list[str] | None = None) -> None:
+                        origin: str | None = None, pictures: list[str] | None = None,
+                        voice: str | None = None) -> None:
         """v2.5: one conversation line as a ``message`` event (a hidden seed is never one). v4.2: her line carries
-        ``pictures`` — the sandbox paths of what she made or sent in that turn — only when there are any."""
+        ``pictures`` — the sandbox paths of what she made or sent in that turn — only when there are any. v4.6: and
+        ``voice`` — its voice id — while the switch is on; a ``voice`` push follows when the audio is ready."""
         data: dict[str, Any] = {"role": role, "text": text, "source": source}
         if state is not None:
             data.update(emotion=state.emotion.value, intensity=state.intensity)
         if pictures:
             data["pictures"] = list(pictures)
+        if voice:
+            data["voice"] = voice
         data["origin"] = origin
         self.bus.publish("message", data)
 
@@ -559,14 +587,15 @@ class _Service:
             if self.outbox is not None and self.outbox.mirror_user:
                 self.mirror(mirror_user, req.text)  # your line → Telegram first, as in-process keyboard turns
             result = self.core.reply(req.text, self.session, images=req.images, **hooks)
-            self.her_line(result, getattr(self.core, "last_speech", None))
+            voice_id = self.voicer.new_id()  # v4.6: taken now — the message names it, the voice push follows
             self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
                                       "theme": self.core.theme, "origin": origin})
             self.publish_message("user", req.text, "client", origin=origin,
                                  pictures=req.sandbox_images)  # v4.5: the pictures you showed her
             self.publish_message("lili", result.reply, "client", state=result, origin=origin,
-                                 pictures=turn_pictures(self.core))
-            record.result = self.turn_payload(result, origin, received=record.received)
+                                 pictures=turn_pictures(self.core), voice=voice_id)
+            self.her_line(result, getattr(self.core, "last_speech", None), voice_id)
+            record.result = self.turn_payload(result, origin, received=record.received, voice=voice_id)
         except LLMError as exc:  # the model failed — a readable error, the session stays usable
             log.warning("turn failed: %s", exc)
             record.error = (502, f"model unavailable: {exc}")
@@ -580,7 +609,8 @@ class _Service:
             record.done.set()
             record.events.put(_END)
 
-    def turn_payload(self, result: Any, origin: str | None = None, *, received: float | None = None) -> dict[str, Any]:
+    def turn_payload(self, result: Any, origin: str | None = None, *, received: float | None = None,
+                     voice: str | None = None) -> dict[str, Any]:
         """The turn's outcome; its ``state`` is the snapshot just pushed (taken under the runner's lock)."""
         core = self.core
         payload = {
@@ -594,6 +624,8 @@ class _Service:
             payload["pictures"] = pictures
         if getattr(core, "tool_trace", False):  # v4.4: the tools of this reply, while files.trace is on (else absent)
             payload["tool_calls"] = tool_calls_view(getattr(core, "last_tool_calls", None) or ())
+        if voice:  # v4.6: her line's voice id, while the switch is on (else absent — the outcome byte-identical)
+            payload["voice"] = voice
         return payload
 
 
@@ -929,6 +961,34 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         if fresh:
             for rel in req.sandbox_images or []:
                 _log("show", {"path": rel.strip().strip("/")}, client)
+
+    # --- v4.6 LUMI-328: her voice — the audio of a line, the switch; owner-only, never the turn lock ---
+    @app.get("/v1/voice/{voice_id}", dependencies=guarded)
+    def voice_audio(voice_id: str) -> Response:
+        """One line's audio (``audio/mpeg``) from ``<data root>/voice/<user_id>/<id>.mp3`` — 404 for anything else."""
+        if service.voice_store is None or not VOICE_ID_RE.fullmatch(voice_id):
+            raise HTTPException(status_code=404, detail="no such voice")
+        data = service.voice_store.read(str(core.user_id), voice_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="no such voice")
+        return Response(content=data, media_type="audio/mpeg", headers=VOICE_HEADERS)
+
+    @app.post("/v1/voice", dependencies=guarded)
+    def voice_switch(req: VoiceRequest) -> dict[str, bool]:
+        """The «Voice» switch: on → her next lines are voiced (the window's ▶, Telegram's voice), off → text. Persisted;
+        409 while the server has no ElevenLabs key or voice id."""
+        if service.voice_switch is None:
+            raise HTTPException(status_code=404, detail=VOICE_NOT_SERVED)
+        try:
+            view = service.voice_switch.set(req.enabled)
+        except VoiceUnavailable as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        if service.lock.acquire(blocking=False):  # the new state now; a running turn pushes it when it ends
+            try:
+                service._publish_state_quietly(None)
+            finally:
+                service.lock.release()
+        return view
 
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:

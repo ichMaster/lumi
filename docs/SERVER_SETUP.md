@@ -276,6 +276,23 @@ may carry `sandbox_images` (pictures of her sandbox by path, read by the server;
 The Gallery leaves out what is in the trash. `GET /v1/state.features` says `actions`. The window's proxy saves a
 download into `~/Downloads` and opens an http(s) link in the default browser itself, behind its key.
 
+**v4.6 (her voice — the server's side).** While the switch is on, the server voices each of her lines **once**,
+after the line is shown: a reply in the window, a Telegram turn, a nudge, a spoken or shown thought. It uses the box's
+ElevenLabs key and voice (`voice.elevenlabs_api_key`, `voice.voice_id`, `voice.model`), her voice tags and the
+emotion's voice settings.
+- The file goes to `<data root>/voice/<user_id>/<id>.mp3` and is removed after 30 days (checked at start and daily).
+- Her outbox record names the file (`voice`), and the Telegram daemon sends that file instead of calling ElevenLabs
+  again.
+- `GET /v1/voice/<id>` gives the audio and `POST /v1/voice {enabled}` turns the switch. Both are owner-only; the room's
+  token gets 403.
+- The switch lives in `<data root>/voice.json` and survives a restart. Until it is first turned, it follows
+  `telegram.voice`.
+- Without a key or a voice id the switch is unavailable (`GET /v1/state.voice.available` false), and `POST /v1/voice`
+  answers 409.
+- With the switch off, no audio is made and Telegram gets text. A failed generation leaves the text everywhere.
+- The server log has one line per generation: `voice: made <id> (<n> chars, <ms> ms)` or `voice: failed <id>`, never
+  the text.
+
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another
 checkout, `--portrait` for another picture). It opens from Launchpad, Spotlight or the Dock, as one "Lili" tile. The

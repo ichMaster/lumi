@@ -201,6 +201,7 @@ class VoiceStore:
 
 
 _Write = Callable[..., Any]
+AUTO = object()  # LineVoicer.line: take a voice id now (the switch decides)
 
 
 class LineVoicer:
@@ -238,21 +239,36 @@ class LineVoicer:
         """One outbox write in its turn. Run in the caller's thread when nothing is ahead of it — holding the queue's
         lock, so nothing else appends meanwhile; queued behind a line still being voiced otherwise."""
         with self._cv:
-            if self._queue or self._busy:
-                self._enqueue(("write", fn, args, fields))
-                return
-            self._append(fn, args, fields)
+            self.write_locked(fn, args, fields)
 
-    def line(self, fn: _Write, *args: Any, text: str, emotion: str | None) -> str | None:
-        """Her line's outbox record and, while the switch is on, its voice. Returns the voice id, or ``None`` (off —
-        the record is written as any other, with ``voice: null``)."""
-        if not self.active:
+    def new_id(self) -> str | None:
+        """A voice id for her next line while the switch is on, else ``None`` — taken before the line is shown, so its
+        ``message`` push names the id and the ``voice`` push always comes after it."""
+        return uuid.uuid4().hex if self.active else None
+
+    def line(self, fn: _Write, *args: Any, text: str, emotion: str | None, voice_id: Any = AUTO) -> str | None:
+        """Her line's outbox record and, with a voice id, its voice. ``voice_id`` from :meth:`new_id` (``AUTO``: take
+        one now). Returns the voice id, or ``None`` (the switch off — the record is written as any other, with
+        ``voice: null``)."""
+        if voice_id is AUTO:
+            voice_id = self.new_id()
+        if voice_id is None:
             self.write(fn, *args, voice=None)
             return None
-        voice_id = uuid.uuid4().hex
         with self._cv:
+            if self.tts is None or self.store is None:  # nothing can voice it: the text goes, the line is told
+                self.write_locked(fn, args, {"voice": None})
+                self._report(voice_id, False)
+                return voice_id
             self._enqueue(("line", fn, args, voice_id, text, emotion))
         return voice_id
+
+    def write_locked(self, fn: _Write, args: tuple[Any, ...], fields: dict[str, Any]) -> None:
+        """``write`` for a caller that holds the queue's lock."""
+        if self._queue or self._busy:
+            self._enqueue(("write", fn, args, fields))
+        else:
+            self._append(fn, args, fields)
 
     def _enqueue(self, job: tuple[Any, ...]) -> None:  # the caller holds self._cv
         if self._closed:  # stopping: the write still happens, in the caller's thread, unvoiced

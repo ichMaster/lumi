@@ -210,6 +210,52 @@ def actions_log_of(cfg):
     return cfg.data_root / "actions.jsonl"
 
 
+def voice_of(cfg):
+    """v4.6: her voice on the server — the ElevenLabs synthesizer when the box has a key and a voice id (else none: the
+    switch is unavailable), the files under ``<data root>/voice``, the switch in ``<data root>/voice.json`` whose first
+    value is ``telegram.voice``."""
+    from server.voice import VoiceSetup
+
+    tts = None
+    if cfg.elevenlabs_api_key and cfg.voice_id:
+        from voice.tts import ElevenLabsTTS
+
+        tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
+    return VoiceSetup(tts=tts, root=cfg.data_root / "voice", switch_path=cfg.data_root / "voice.json",
+                      first=bool(cfg.telegram_voice))
+
+
+VOICE_HOUSEKEEPING_S = 24 * 3600  # v4.6: the voice files' expiry — once at start, then daily
+
+
+def start_voice_housekeeping(store, clock, *, every_s: float = VOICE_HOUSEKEEPING_S):
+    """v4.6: the 30-day expiry of her voice files on a daemon thread of its own — once at start, then every ``every_s``
+    (bounded per pass, never her sandbox). Returns the stop function. ``None`` store → nothing runs."""
+    if store is None:
+        return lambda: None
+    stop = threading.Event()
+
+    def run() -> None:
+        while True:
+            try:
+                removed = store.expire(clock())
+                if removed:
+                    log.info("voice housekeeping: %d file(s) past 30 days removed", removed)
+            except Exception:  # noqa: BLE001 — a pass never kills the housekeeping
+                log.exception("voice housekeeping failed")
+            if stop.wait(every_s):
+                return
+
+    thread = threading.Thread(target=run, daemon=True, name="lumi-voice-housekeeping")
+    thread.start()
+
+    def stopper(wait_s: float = 5.0) -> None:
+        stop.set()
+        thread.join(wait_s)
+
+    return stopper
+
+
 def telegram_sink_of(cfg, write=None):
     """The v0.24 ``send_image`` sink — a photo record in the server's outbox (bridge + image on), else None.
 
@@ -392,7 +438,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
                      on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg),
                      space=space, room_token=cfg.agora_token if space is not None else None,
-                     thumbs_dir=thumbs_dir_of(cfg), actions_log=actions_log_of(cfg))
+                     thumbs_dir=thumbs_dir_of(cfg), actions_log=actions_log_of(cfg), voice=voice_of(cfg))
     service = writer["service"] = app.state.service
     from server.brain import BrainHost
 
@@ -405,11 +451,13 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
           f"({cfg.env or 'no env'} v{cfg.app_version or '?'}) — Ctrl+C to stop", flush=True)
     brain.start()
     stop_housekeeping = start_space_housekeeping(space, core.clock)  # v3.2: the room's digest and day gists
+    stop_voice_housekeeping = start_voice_housekeeping(service.voice_store, core.clock)  # v4.6: the 30-day expiry
     try:
         serve(app, host=cfg.server_host, port=cfg.server_port)
     finally:
         brain.stop()
         stop_housekeeping()
+        stop_voice_housekeeping()
         close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
         app.state.service.voicer.close()  # v4.6: the lines still being voiced reach the outbox (bounded)
         close_space(space)  # v3.1: the room's store, beside his session

@@ -39,6 +39,7 @@ def test_the_route_set_is_pinned(tmp_path):
         ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable
         ("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),  # v4.5: the owner's
         ("POST", "/v1/files/restore"), ("GET", "/v1/files/download"),  # actions on her sandbox
+        ("GET", "/v1/voice/{voice_id}"), ("POST", "/v1/voice"),  # v4.6: her voice — a line's audio, the switch
     }
 
 
@@ -1152,3 +1153,188 @@ def test_review_v45_1_a_download_and_a_shown_picture_are_logged_once(tmp_path):
     _gallery_sandbox(tmp_path / "bare" / "files")
     bare = TestClient(create_app(_files_core(tmp_path / "bare"), token=TOKEN))  # no action log configured
     assert bare.get("/v1/files/download", params={"path": "art/p.png"}, headers=AUTH).status_code == 200
+
+
+# --- v4.6 LUMI-328: her voice — the audio route, the switch, the ids and the voice push --------------------------
+
+def _voice_setup(tmp_path, *, tts="mock", first=True):
+    from server.voice import VoiceSetup
+    from voice.tts import MockTTS
+
+    tts = MockTTS() if tts == "mock" else tts
+    return VoiceSetup(tts=tts, root=tmp_path / "voice", switch_path=tmp_path / "voice.json", first=first), tts
+
+
+def _voice_client(tmp_path, **kw):
+    setup, tts = _voice_setup(tmp_path, **kw)
+    core = Core(llm=MockLLMClient(states={"reply": "так", "emotion": "tender", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m")
+    return TestClient(create_app(core, token=TOKEN, env="dev", version="4.6.0", voice=setup)), tts
+
+
+def _bus_events(sub):
+    out = []
+    while not sub.empty():
+        item = sub.get_nowait()
+        out.append((item[0], item[1]))
+    return out
+
+
+def test_v46_the_state_carries_the_switch_only_where_the_server_can_voice(tmp_path):
+    client, _ = _voice_client(tmp_path)
+    assert client.get("/v1/state", headers=AUTH).json()["voice"] == {"enabled": True, "available": True}
+    assert "voice" not in _client(tmp_path / "bare").get("/v1/state", headers=AUTH).json()  # no setup: absent
+    keyless, _ = _voice_client(tmp_path / "k", tts=None)
+    assert keyless.get("/v1/state", headers=AUTH).json()["voice"] == {"enabled": False, "available": False}
+
+
+def test_v46_a_client_turn_names_its_voice_and_the_voice_push_follows_the_message(tmp_path):
+    client, tts = _voice_client(tmp_path)
+    service = client.app.state.service
+    subs = [service.bus.subscribe(), service.bus.subscribe()]  # two listeners — still one generation
+    res = client.post("/v1/turn", json={"text": "?"}, headers=AUTH).json()
+    assert service.voicer.drain(5)
+    vid = res["voice"]
+    assert len(vid) == 32 and tts.calls == [("так", "tender")]
+    for sub in subs:
+        events = [(e, d) for e, d in _bus_events(sub) if e in {"message", "voice"}]
+        assert [e for e, _ in events] == ["message", "message", "voice"]
+        assert events[1][1]["voice"] == vid and "voice" not in events[0][1]  # her line names it; yours never
+        assert events[2][1] == {"message": vid, "ready": True}
+    audio = client.get(f"/v1/voice/{vid}", headers=AUTH)
+    assert audio.status_code == 200 and audio.content == b"AUDIO:" + "так".encode()
+    assert audio.headers["content-type"] == "audio/mpeg" and audio.headers["x-content-type-options"] == "nosniff"
+
+
+def test_v46_the_streamed_outcome_names_the_voice_too(tmp_path):
+    client, _ = _voice_client(tmp_path)
+    done = _events(client.post("/v1/turn/stream", json={"text": "?", "turn_id": "v-1"}, headers=AUTH).text)[-1]
+    assert done[0] == "done" and len(done[1]["voice"]) == 32
+
+
+def test_v46_with_the_switch_off_nothing_is_voiced_and_the_shapes_are_v45s(tmp_path):
+    client, tts = _voice_client(tmp_path, first=False)
+    service = client.app.state.service
+    sub = service.bus.subscribe()
+    res = client.post("/v1/turn", json={"text": "?"}, headers=AUTH).json()
+    assert set(res) == {"reply", "emotion", "intensity", "thinking", "intent", "style", "stats", "timing", "state"}
+    events = _bus_events(sub)
+    assert "voice" not in [e for e, _ in events]
+    assert all("voice" not in d for e, d in events if e == "message")
+    assert tts.calls == []
+
+
+def test_v46_a_failed_generation_leaves_the_text_and_says_so(tmp_path):
+    class Broken:
+        calls = 0
+
+        def synth(self, text, *, emotion=None):
+            Broken.calls += 1
+            raise RuntimeError("network down")
+
+    client, _ = _voice_client(tmp_path, tts=Broken())
+    service = client.app.state.service
+    sub = service.bus.subscribe()
+    res = client.post("/v1/turn", json={"text": "?"}, headers=AUTH)
+    assert res.status_code == 200 and res.json()["reply"] == "так"  # the turn is unchanged
+    service.voicer.drain(5)
+    assert ("voice", {"message": res.json()["voice"], "ready": False}) in _bus_events(sub)
+    assert client.get(f"/v1/voice/{res.json()['voice']}", headers=AUTH).status_code == 404
+
+
+def test_v46_a_telegram_turn_and_a_spoken_turn_are_voiced_and_pushed(tmp_path):
+    import dataclasses
+
+    from core.config import load_config
+    from server.app import Outbox
+    from server.brain import BrainHost
+    from state import fifo
+
+    setup, tts = _voice_setup(tmp_path)
+    core = Core(llm=MockLLMClient(states={"reply": "так", "emotion": "joy", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m")
+    app = create_app(core, token=TOKEN, outbox=Outbox(tmp_path / "outbox.jsonl"), voice=setup)
+    cfg = dataclasses.replace(load_config(load_env=False), bridge=True, inbox_path=tmp_path / "inbox.jsonl",
+                              outbox_path=tmp_path / "outbox.jsonl", scheduler=False, thoughts=False,
+                              idle_nudge=False)
+    fifo.append(tmp_path / "inbox.jsonl", "привіт", source="telegram")
+    service = app.state.service
+    sub = service.bus.subscribe()
+    host = BrainHost(service, cfg)
+    host.inbox_tick(host._clock())
+    with service.background():
+        host._spoken_turn("seed", source="nudge")
+    assert service.voicer.drain(5)
+    events = [(e, d) for e, d in _bus_events(sub) if e in {"message", "voice"}]
+    lili = [d for e, d in events if e == "message" and d["role"] == "lili"]
+    assert [d["source"] for d in lili] == ["telegram", "nudge"] and len(tts.calls) == 2
+    for line in lili:  # each line's voice push comes after its message
+        at = events.index(("message", line))
+        assert ("voice", {"message": line["voice"], "ready": True}) in events[at + 1:]
+    assert [r["voice"] for r in fifo.read_since(tmp_path / "outbox.jsonl", 0)] == [f"{d['voice']}.mp3" for d in lili]
+
+
+def test_v46_a_reconnecting_listener_gets_the_voice_push_replayed(tmp_path):
+    client, _ = _voice_client(tmp_path)
+    service = client.app.state.service
+    vid = client.post("/v1/turn", json={"text": "?"}, headers=AUTH).json()["voice"]
+    service.voicer.drain(5)
+    replayed = _bus_events(service.bus.subscribe(replay=True))
+    assert ("voice", {"message": vid, "ready": True, "replay": True}) in replayed
+
+
+def test_v46_the_audio_route_serves_only_a_known_line(tmp_path):
+    client, _ = _voice_client(tmp_path)
+    service = client.app.state.service
+    vid = "ab" * 16
+    service.voice_store.write("owner", vid, b"MP3")
+    assert client.get(f"/v1/voice/{vid}", headers=AUTH).content == b"MP3"
+    for bad in ("cd" * 16, "AB" * 16, "ab" * 15, "..%2Fvoice.json", "x.mp3"):
+        assert client.get(f"/v1/voice/{bad}", headers=AUTH).status_code == 404
+    assert client.get(f"/v1/voice/{vid}").status_code == 401
+    assert _client(tmp_path / "bare").get(f"/v1/voice/{vid}", headers=AUTH).status_code == 404
+
+
+def test_v46_the_switch_persists_and_is_refused_without_a_voice(tmp_path):
+    client, tts = _voice_client(tmp_path)
+    assert client.post("/v1/voice", json={"enabled": False}, headers=AUTH).json() == {"enabled": False,
+                                                                                      "available": True}
+    assert client.get("/v1/state", headers=AUTH).json()["voice"]["enabled"] is False
+    restarted, _ = _voice_client(tmp_path)  # a new app on the same data root: the switch survives
+    assert restarted.get("/v1/state", headers=AUTH).json()["voice"]["enabled"] is False
+    restarted.post("/v1/turn", json={"text": "?"}, headers=AUTH)
+    assert tts.calls == []
+    assert restarted.post("/v1/voice", json={"enabled": True}, headers=AUTH).json()["enabled"] is True
+    keyless, _ = _voice_client(tmp_path / "k", tts=None)
+    res = keyless.post("/v1/voice", json={"enabled": True}, headers=AUTH)
+    assert res.status_code == 409 and "no ElevenLabs key or voice id" in res.json()["detail"]
+    assert not (tmp_path / "k" / "voice.json").exists()
+    assert _client(tmp_path / "bare").post("/v1/voice", json={"enabled": True}, headers=AUTH).status_code == 404
+    assert client.post("/v1/voice", json={"enabled": True}).status_code == 401
+
+
+def test_v46_the_switch_never_waits_for_the_turn_lock(tmp_path):
+    client, _ = _voice_client(tmp_path)
+    service = client.app.state.service
+    assert service.lock.acquire(timeout=1)
+    try:
+        assert client.post("/v1/voice", json={"enabled": False}, headers=AUTH).status_code == 200
+        assert client.get(f"/v1/voice/{'ab' * 16}", headers=AUTH).status_code == 404
+    finally:
+        service.lock.release()
+
+
+def test_v46_the_room_never_reaches_her_voice(tmp_path):
+    from tests._agora_world import ROOM_AUTH, agora_client
+
+    setup, tts = _voice_setup(tmp_path)
+    client = agora_client(tmp_path, voice=setup)
+    vid = "ab" * 16
+    client.app.state.service.voice_store.write("owner", vid, b"MP3")
+    assert client.get(f"/v1/voice/{vid}", headers=ROOM_AUTH).status_code == 403
+    assert client.post("/v1/voice", json={"enabled": False}, headers=ROOM_AUTH).status_code == 403
+    assert client.app.state.service.voice_switch.enabled is True  # unchanged
+    res = client.post("/v1/turn", json={"text": "привіт", "channel": "agora", "turn_id": "r1", "speaker": "Ада"},
+                       headers=ROOM_AUTH)
+    assert res.status_code == 200
+    assert client.app.state.service.voicer.drain(5) and tts.calls == []  # the room's lines are never voiced

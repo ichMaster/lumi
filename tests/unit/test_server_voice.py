@@ -323,3 +323,33 @@ def test_the_timer_measures_the_generation(tmp_path, caplog):
     voicer.drain(5)
     time.sleep(0)
     assert f"voice: made {vid} (7 chars, 1250 ms)" in caplog.text and "Привіт" not in caplog.text
+
+
+# --- the server's wiring (LUMI-328) -------------------------------------------------------------------------
+
+def test_voice_of_builds_the_synthesizer_only_with_a_key_and_a_voice(tmp_path):
+    from server.__main__ import voice_of
+    from voice.tts import ElevenLabsTTS
+
+    cfg = dataclasses.replace(load_config(load_env=False), data_root=tmp_path, telegram_voice=True,
+                              elevenlabs_api_key="", voice_id="v")
+    setup = voice_of(cfg)
+    assert setup.tts is None and setup.first is True
+    assert setup.root == tmp_path / "voice" and setup.switch_path == tmp_path / "voice.json"
+    keyed = voice_of(dataclasses.replace(cfg, elevenlabs_api_key="k", voice_id="v", voice_model="eleven_v3"))
+    assert isinstance(keyed.tts, ElevenLabsTTS) and keyed.tts.voice_id == "v" and keyed.tts.model == "eleven_v3"
+    assert voice_of(dataclasses.replace(cfg, elevenlabs_api_key="k", voice_id="")).tts is None
+    assert voice_of(dataclasses.replace(cfg, telegram_voice=False)).first is False
+
+
+def test_the_voice_housekeeping_runs_at_start_and_stops(tmp_path):
+    from server.__main__ import start_voice_housekeeping
+
+    old = _aged(tmp_path / "voice" / "owner" / f"{'a' * 32}.mp3", 31)
+    stop = start_voice_housekeeping(VoiceStore(tmp_path / "voice"), lambda: NOW, every_s=3600)
+    deadline = time.monotonic() + 5
+    while old.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    stop()
+    assert not old.exists()
+    start_voice_housekeeping(None, lambda: NOW)()  # no store: nothing runs
