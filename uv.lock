@@ -986,6 +986,8 @@ dependencies = [
 [package.optional-dependencies]
 desktop = [
     { name = "pywebview" },
+    { name = "sounddevice" },
+    { name = "websockets" },
 ]
 dev = [
     { name = "fastapi" },
@@ -1037,11 +1039,13 @@ requires-dist = [
     { name = "pywebview", marker = "extra == 'desktop'", specifier = ">=6" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "sounddevice", marker = "extra == 'desktop'", specifier = ">=0.4" },
     { name = "sounddevice", marker = "extra == 'dictation'", specifier = ">=0.4" },
     { name = "sounddevice", marker = "extra == 'realtime'", specifier = ">=0.4" },
     { name = "textual", specifier = ">=0.80" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.29" },
     { name = "voyageai", marker = "extra == 'embed'", specifier = ">=0.2" },
+    { name = "websockets", marker = "extra == 'desktop'", specifier = ">=12" },
     { name = "websockets", marker = "extra == 'realtime'", specifier = ">=12" },
 ]
 provides-extras = ["dev", "server", "telegram", "voice", "realtime", "dictation", "embed", "models", "desktop"]

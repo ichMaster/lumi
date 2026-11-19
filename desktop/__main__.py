@@ -23,12 +23,15 @@ def main(argv: list[str] | None = None) -> int:
         print(MISSING, file=sys.stderr)
         return 1
     from core.config import load_config
+    from desktop.dictation import Dictation
     from desktop.faces import FacePicker, emoji_table
     from desktop.proxy import Proxy, upstream_from
 
     cfg = load_config()
-    proxy = Proxy(upstream_from(cfg), faces=FacePicker.for_pack(cfg.faces_dir),  # v2.12.2: her local portraits
-                  emoji=emoji_table(cfg.emoji_path))  # LUMI-276: the TUI's emoji map, under each of her replies
+    upstream = upstream_from(cfg)
+    proxy = Proxy(upstream, faces=FacePicker.for_pack(cfg.faces_dir),  # v2.12.2: her local portraits
+                  emoji=emoji_table(cfg.emoji_path),  # LUMI-276: the TUI's emoji map, under each of her replies
+                  dictation=Dictation(upstream, device=cfg.stt_device))  # v4.7: the Mac's mic, the server's words
     url = proxy.start()
     try:
         # text_select: pywebview turns text selection off by default — the owner selects and copies her words

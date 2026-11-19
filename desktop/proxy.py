@@ -73,6 +73,8 @@ UPLOAD_MAX_BODY = 10 * 1024 * 1024 + 64 * 1024  # v4.5: a picture from the Mac (
 LOCAL_BODY_MAX = 64 * 1024  # v4.5: the local routes' small JSON bodies
 DRAIN_MAX = 64 * 1024 * 1024  # v4.5: a refused body is read and dropped up to this, then the connection just closes
 LOCAL_ROUTES = ("/local/save", "/local/reveal", "/local/open")  # v4.5: the Mac's side, behind the window's key
+# v4.7: dictation — the shell's mic (GET the status; POST start = the event stream, stop, cancel), the window's key
+DICTATION_ROUTES = ("/local/dictation", "/local/dictation/start", "/local/dictation/stop", "/local/dictation/cancel")
 CONNECT_S = 5.0
 # Read timeouts towards the server, as tui/remote.py keeps them (code review #1): the push channel hears a heartbeat
 # every 15 s, so 45 s of silence is a dead stream; a turn may think for minutes, but not forever.
@@ -174,8 +176,9 @@ class Proxy:
                  client: httpx.Client | None = None, read_s: float = READ_S,
                  events_read_s: float = EVENTS_READ_S, faces: Any = None,
                  emoji: dict[str, list[str]] | None = None, downloads: Path | None = None,
-                 opener: Any = None, revealer: Any = None) -> None:
+                 opener: Any = None, revealer: Any = None, dictation: Any = None) -> None:
         self.upstream = upstream
+        self.dictation = dictation  # v4.7: a desktop.dictation.Dictation (the Mac's mic), or None
         self.ui_dir = ui_dir
         self.faces = faces  # v2.12.2: a desktop.faces.FacePicker over the client's own pack (None → no portrait)
         self.emoji = emoji or {}  # LUMI-276: the TUI's emotion → emoji map, {emotion: [low, mid, high]}
@@ -217,6 +220,8 @@ class Proxy:
         return self.url
 
     def stop(self) -> None:
+        if self.dictation is not None:  # v4.7: the window is closing — a running dictation ends, the mic closes
+            self.dictation.close()
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
@@ -390,6 +395,54 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             proxy.saved.add(str(saved))
             self._answer(200, {"saved": str(saved), "name": saved.name})
 
+        # --- v4.7: dictation — the shell's mic, the server's words, a stream to the page ----------------------
+        def _dictation(self, method: str, path: str) -> None:
+            from desktop.dictation import Busy
+
+            dictation = proxy.dictation
+            if path == "/local/dictation":
+                if method != "GET":
+                    self._json(405, "not_allowed", "only GET")
+                    return
+                ok, why = dictation.available() if dictation is not None else (False, "this window can't record")
+                self._answer(200, {"available": ok, "reason": why})
+                return
+            if method != "POST":
+                self._json(405, "not_allowed", "only POST")
+                return
+            if self._local_body() is None:
+                return
+            if dictation is None:
+                self._json(503, "unavailable", "this window can't record")
+                return
+            if path == "/local/dictation/stop":
+                self._answer(200, {"stopped": dictation.stop()})
+                return
+            if path == "/local/dictation/cancel":
+                self._answer(200, {"cancelled": dictation.cancel()})
+                return
+            ok, why = dictation.available()
+            if not ok:
+                self._json(503, "unavailable", why)
+                return
+            try:
+                dictation.claim()
+            except Busy:
+                self._json(409, "busy", "a dictation is already running")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+
+            def emit(message: dict) -> None:
+                frame = f"event: {message.get('type')}\ndata: {json.dumps(message, ensure_ascii=False)}\n\n"
+                self.wfile.write(frame.encode("utf-8"))
+                self.wfile.flush()
+
+            dictation.run(emit)
+
         # --- the forwarding --------------------------------------------------------------------------------
         def _forward(self, method: str, path: str, query: str) -> None:
             up = proxy.upstream
@@ -470,6 +523,12 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
                     self._json(405, "not_allowed", "only GET")
                 else:
                     self._face_file(path)
+                return
+            if path in DICTATION_ROUTES:  # v4.7: the shell's mic — the key, never forwarded
+                if not self._key_ok():
+                    self._json(403, "forbidden", "a request without this window's key")
+                else:
+                    self._dictation(method, path)
                 return
             if path in LOCAL_ROUTES:  # v4.5: the Mac's side of the actions — the key, POST only, never forwarded
                 if not self._key_ok():

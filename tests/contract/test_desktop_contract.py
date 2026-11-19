@@ -121,3 +121,31 @@ def test_v46_the_window_reaches_her_voice_through_two_routes_only():
                  f"/v1/voice/{vid[:-1]}", "/v1/voice/..%2Fvoice.json", f"/v1/voice/{vid}\n"):
         assert not px.forwarded("GET", path), path
     assert not px.forwarded("POST", f"/v1/voice/{vid}") and not px.forwarded("GET", "/v1/voice")
+
+
+def test_v47_dictation_is_local_behind_the_key_and_never_forwarded():
+    """v4.7 LUMI-333: the four dictation routes are the shell's own — never forwarded to the server (the shell holds
+    the socket to /v1/dictation itself); each needs this launch's key and its own method."""
+    from desktop.dictation import Dictation
+    from tests._desktop_world import FakeServer, request, start_proxy
+
+    assert px.DICTATION_ROUTES == ("/local/dictation", "/local/dictation/start", "/local/dictation/stop",
+                                   "/local/dictation/cancel")
+    assert not any(p.startswith("/local") or "dictation" in p for _, p in px.FORWARDED)
+    assert not px.forwarded("GET", "/v1/dictation")  # the page never reaches the server's socket
+    server = FakeServer()
+    upstream = px.Upstream(server.url, "T")
+    proxy = start_proxy(upstream, dictation=Dictation(upstream, open_mic=lambda *a: None,
+                                                      connect=lambda *a: None))
+    try:
+        for path in px.DICTATION_ROUTES:
+            method = "GET" if path == "/local/dictation" else "POST"
+            assert request(proxy, method, path, body=None if method == "GET" else {}, key=False)[0] == 403, path
+            assert request(proxy, method, path, body=None if method == "GET" else {},
+                           headers={"Host": "evil.example:80"})[0] == 403, path
+            other = "POST" if method == "GET" else "GET"
+            assert request(proxy, other, path, body={} if other == "POST" else None)[0] == 405, path
+        assert server.requests == []  # nothing of it reached the server
+    finally:
+        proxy.stop()
+        server.close()

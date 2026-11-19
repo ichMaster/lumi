@@ -53,6 +53,8 @@ models = [
 ]
 desktop = [
     "pywebview>=6",  # v2.12 the desktop window (python -m desktop / ./lumi-desktop); imported lazily, macOS WebKit
+    "sounddevice>=0.4",  # v4.7 dictation in the window: the shell records the Mac's mic (lazy)
+    "websockets>=12",  # v4.7: the shell streams it to the server's /v1/dictation (lazy)
 ]
 
 [tool.uv]

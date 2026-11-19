@@ -367,3 +367,129 @@ def test_v46_her_voice_is_relayed_byte_for_byte_and_the_switch_reaches_the_serve
         assert request(proxy, "GET", path)[0] == 404, path
     assert request(proxy, "GET", f"/v1/voice/{vid}", key=False)[0] in (401, 403)  # the window's key, always
     assert len(server.requests) == seen
+
+
+# --- v4.7 LUMI-333: dictation through the proxy, the shell's socket and the real server --------------------------
+
+class _EchoStream:
+    """Deepgram's side on the server: each audio frame → an interim; CloseStream → the phrase, then the end."""
+
+    def __init__(self):
+        import asyncio
+
+        self.queue = asyncio.Queue()
+
+    async def send_pcm(self, data):
+        self.queue.put_nowait({"type": "Results", "is_final": False,
+                               "channel": {"alternatives": [{"transcript": "Привіт"}]}})
+
+    async def finish(self):
+        self.queue.put_nowait({"type": "Results", "is_final": True, "speech_final": True,
+                               "channel": {"alternatives": [{"transcript": "Привіт, світ."}]}})
+        self.queue.put_nowait(None)
+
+    async def close(self):
+        pass
+
+    async def events(self):
+        while (event := await self.queue.get()) is not None:
+            yield event
+
+
+class _Mic:
+    def __init__(self):
+        import threading
+
+        self.opened = threading.Event()
+        self.closed = threading.Event()
+        self.on_block = None
+
+    def __call__(self, device, on_block):
+        self.on_block = on_block
+        self.opened.set()
+        return self
+
+    def close(self):
+        self.closed.set()
+
+
+@pytest.fixture
+def dictating(tmp_path):
+    """The real server app on uvicorn (loopback, an ephemeral port) with a fake streaming recognizer; the proxy with
+    the shell's real Dictation (the websockets client) and a fake mic."""
+    import threading
+    import time
+
+    pytest.importorskip("websockets")
+    from core.agent import Core
+    from core.llm import MockLLMClient
+    from desktop.dictation import Dictation
+    from server.__main__ import make_server
+    from server.app import create_app
+    from server.dictation import DictationSetup
+    from state.local_store import JsonRepository
+    from voice.stt import MockSTT
+
+    async def factory():
+        return _EchoStream()
+
+    core = Core(llm=MockLLMClient(states={"reply": "так", "emotion": "calm", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m")
+    app = create_app(core, token=TOKEN, env="dev", version="4.7.0",
+                     dictation=DictationSetup(stt=MockSTT(""), stream_factory=factory))
+    server = make_server(app, host="127.0.0.1", port=0)
+    serving = threading.Thread(target=server.run, daemon=True)
+    serving.start()
+    for _ in range(200):
+        if server.started:
+            break
+        time.sleep(0.02)
+    port = server.servers[0].sockets[0].getsockname()[1]
+    upstream = Upstream(f"http://127.0.0.1:{port}", TOKEN)
+    mic = _Mic()
+    proxy = start_proxy(upstream, dictation=Dictation(upstream, open_mic=mic))
+    yield proxy, mic
+    proxy.stop()
+    server.should_exit = True
+    serving.join(5)
+
+
+def _listen(proxy, events, done):
+    conn = http.client.HTTPConnection("127.0.0.1", proxy.port, timeout=10)
+    conn.request("POST", "/local/dictation/start", body=b"{}",
+                 headers={KEY_HEADER: KEY, "Content-Type": "application/json"})
+    res = conn.getresponse()
+    events.append(("status", res.status))
+    for raw in res:
+        line = raw.decode().rstrip("\n")
+        if line.startswith("data: "):
+            events.append(json.loads(line[6:]))
+            if events[-1]["type"] in ("done", "error"):
+                break
+    conn.close()
+    done.set()
+
+
+def test_v47_dictation_reaches_the_server_and_the_words_come_back_to_the_page(dictating):
+    import threading
+
+    proxy, mic = dictating
+    assert json.loads(request(proxy, "GET", "/local/dictation")[2]) == {"available": True, "reason": ""}
+    events: list = []
+    done = threading.Event()
+    threading.Thread(target=_listen, args=(proxy, events, done), daemon=True).start()
+    assert mic.opened.wait(10)  # the server said ready → the mic opened
+    assert request(proxy, "POST", "/local/dictation/start", body={})[0] == 409  # one at a time
+    mic.on_block(b"\x10\x00" * 1600)
+    for _ in range(200):
+        if any(isinstance(e, dict) and e["type"] == "interim" for e in events):
+            break
+        threading.Event().wait(0.02)
+    assert json.loads(request(proxy, "POST", "/local/dictation/stop", body={})[2]) == {"stopped": True}
+    assert done.wait(10)
+    assert events[0] == ("status", 200)
+    words = [e for e in events[1:] if e["type"] != "level"]
+    assert words == [{"type": "ready", "mode": "stream"}, {"type": "interim", "text": "Привіт"},
+                     {"type": "final", "text": "Привіт, світ."}, {"type": "done"}]
+    assert any(e["type"] == "level" for e in events[1:])
+    assert mic.closed.is_set()
