@@ -41,24 +41,27 @@ def set_listen_flag(flag_path: str | Path, on: bool) -> None:
     p.write_text("on" if on else "off", encoding="utf-8")
 
 
-def mirror_reply(outbox_path: str | Path, state: EmotionState, speech: str | None = None) -> int:
+def mirror_reply(outbox_path: str | Path, state: EmotionState, speech: str | None = None, **fields: object) -> int:
     """Append Лілі's reply (``kind="lili"`` + her emotion) to the `outbox`; return the new id.
 
     Called once per turn at the point her reply is shown — keyboard, Telegram, or a spoken proactive
     thought alike. v2.7.1: ``speech`` — the reply as written with her voice tags (``Core.last_speech``) —
     rides as the record's ``speech`` field, for the voices only; ``text`` stays her words alone.
+    v4.6: ``fields`` ride along — the server adds ``voice`` (the stored file's name, or ``None``); the in-process
+    writers pass none, so their records are unchanged.
     """
     return fifo.append(
         outbox_path, state.reply, kind="lili",
-        emotion=state.emotion.value, intensity=state.intensity, **({"speech": speech} if speech else {}),
+        emotion=state.emotion.value, intensity=state.intensity, **({"speech": speech} if speech else {}), **fields,
     )
 
 
-def mirror_thought(outbox_path: str | Path, text: str, emotion: str = "calm", intensity: float = 0.5) -> int:
+def mirror_thought(outbox_path: str | Path, text: str, emotion: str = "calm", intensity: float = 0.5,
+                   **fields: object) -> int:
     """Append a **surfaced proactive thought** to the outbox as a Лілі message (v0.42) — so a scheduled
     `show`/`%name!` thought reaches Telegram + the voicer, not just the TUI. ``kind="lili"`` like a reply;
-    the 💭 marker stays TUI-only (the outbox carries the clean text)."""
-    return fifo.append(outbox_path, text, kind="lili", emotion=emotion, intensity=intensity)
+    the 💭 marker stays TUI-only (the outbox carries the clean text). v4.6: ``fields`` as for a reply."""
+    return fifo.append(outbox_path, text, kind="lili", emotion=emotion, intensity=intensity, **fields)
 
 
 def mirror_user(outbox_path: str | Path, text: str) -> int:

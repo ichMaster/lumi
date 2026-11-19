@@ -14,6 +14,7 @@ import ipaddress
 import logging
 import sys
 import threading
+from typing import Any
 
 log = logging.getLogger("lumi.server")
 
@@ -209,11 +210,22 @@ def actions_log_of(cfg):
     return cfg.data_root / "actions.jsonl"
 
 
-def telegram_sink_of(cfg):
-    """The v0.24 ``send_image`` sink — a photo record in the server's outbox (bridge + image on), else None."""
-    from state.bus import make_photo_sink
+def telegram_sink_of(cfg, write=None):
+    """The v0.24 ``send_image`` sink — a photo record in the server's outbox (bridge + image on), else None.
 
-    return make_photo_sink(cfg.outbox_path) if (cfg.bridge and cfg.image) else None
+    v4.6: ``write(fn, *args)`` — the service's ordered outbox writer (``_Service.mirror``): the photo then waits behind
+    a line of hers still being voiced, and only one thread appends to the outbox. Without it, the v0.24 direct sink."""
+    from state.bus import make_photo_sink, mirror_photo
+
+    if not (cfg.bridge and cfg.image):
+        return None
+    if write is None:
+        return make_photo_sink(cfg.outbox_path)
+
+    def sink(abs_path: str, caption: str) -> None:
+        write(mirror_photo, abs_path, caption)
+
+    return sink
 
 
 def agora_problem(cfg) -> str | None:
@@ -369,8 +381,10 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     from core.llm import LLMError
 
     _setup_logging(cfg)
+    writer: dict[str, Any] = {}  # v4.6: the photo sink writes through the service's ordered writer, once it exists
     try:
-        core = build_core(config=cfg, telegram_sink=telegram_sink_of(cfg))
+        core = build_core(config=cfg, telegram_sink=telegram_sink_of(
+            cfg, write=lambda fn, *args: writer["service"].mirror(fn, *args)))
     except LLMError as exc:
         raise SystemExit(f"{exc}\nSet the model key in secrets.yaml (see secrets.example.yaml).") from exc
     session = core.start_session()
@@ -379,7 +393,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
                      on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg),
                      space=space, room_token=cfg.agora_token if space is not None else None,
                      thumbs_dir=thumbs_dir_of(cfg), actions_log=actions_log_of(cfg))
-    service = app.state.service
+    service = writer["service"] = app.state.service
     from server.brain import BrainHost
 
     brain = app.state.brain = BrainHost(service, cfg)  # v2.5: her acts run here, client or not
@@ -397,6 +411,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
         brain.stop()
         stop_housekeeping()
         close_session(app.state.service)  # waits for a turn still in flight — never races it (review #1)
+        app.state.service.voicer.close()  # v4.6: the lines still being voiced reach the outbox (bounded)
         close_space(space)  # v3.1: the room's store, beside his session
 
 

@@ -68,7 +68,8 @@ from core.journal import list_days, read_day
 from core.llm import LLMError
 from core.thoughts import THOUGHT_PAGE_MAX
 from core.user import may_read_journal
-from state.bus import mirror_reply, mirror_user
+from server.voice import LineVoicer, VoiceSetup, VoiceStore, VoiceSwitch
+from state.bus import mirror_reply, mirror_thought, mirror_user
 
 log = logging.getLogger("lumi.server")
 
@@ -411,9 +412,16 @@ class _Service:
 
     def __init__(self, core: Any, session: Any, *, env: str | None, version: str | None,
                  outbox: Outbox | None = None, thumbs_dir: Path | None = None,
-                 actions_log: ActionLog | None = None) -> None:
+                 actions_log: ActionLog | None = None, voice: VoiceSetup | None = None) -> None:
         self.core = core
         self.outbox = outbox  # v2.5: the file bus the server writes (Telegram / the voicer), or None
+        # v4.6: the one ordered outbox writer — and her voice, while the switch is on (no setup → never voiced)
+        self.voice_switch = (VoiceSwitch(voice.switch_path, first=voice.first, available=voice.tts is not None)
+                             if voice is not None else None)
+        self.voice_store = VoiceStore(voice.root) if voice is not None else None
+        self.voicer = LineVoicer(outbox.path if outbox is not None else None, switch=self.voice_switch,
+                                 store=self.voice_store, tts=voice.tts if voice is not None else None,
+                                 user_id=str(getattr(core, "user_id", "owner")))
         self.thumbs_dir = thumbs_dir  # v4.2: the thumbnail cache (per user below it), outside her sandbox; or None
         self.actions_log = actions_log  # v4.5: the owner's action log (<data root>/actions.jsonl), or None
         self.session = session
@@ -470,14 +478,19 @@ class _Service:
             self.publish_state()
 
     def mirror(self, write: Callable[..., Any], *args: Any) -> None:
-        """Write to the outbox (v2.5) — best-effort: a full disk never fails a turn. The caller holds the
-        lock, so the server stays the single, ordered writer."""
-        if self.outbox is None:
-            return
-        try:
-            write(self.outbox.path, *args)
-        except OSError:
-            log.warning("outbox write failed", exc_info=True)
+        """Write to the outbox (v2.5) — best-effort: a full disk never fails a turn. v4.6: through the one ordered
+        writer (``LineVoicer``) — at once, or behind a line of hers still being voiced."""
+        self.voicer.write(write, *args)
+
+    def her_line(self, state: Any, speech: str | None) -> str | None:
+        """v4.6: her reply to the outbox — and, while the switch is on, its voice (made once, after the line is
+        shown). Returns the line's voice id, or ``None`` while the switch is off."""
+        return self.voicer.line(mirror_reply, state, speech, text=speech or state.reply,
+                                emotion=state.emotion.value)
+
+    def her_thought(self, text: str, emotion: str) -> str | None:
+        """v4.6: a shown thought to the outbox (``scheduler.show_to_outbox``), voiced like her lines while on."""
+        return self.voicer.line(mirror_thought, text, emotion, text=text, emotion=emotion)
 
     def publish_message(self, role: str, text: str, source: str, *, state: Any = None,
                         origin: str | None = None, pictures: list[str] | None = None) -> None:
@@ -546,7 +559,7 @@ class _Service:
             if self.outbox is not None and self.outbox.mirror_user:
                 self.mirror(mirror_user, req.text)  # your line → Telegram first, as in-process keyboard turns
             result = self.core.reply(req.text, self.session, images=req.images, **hooks)
-            self.mirror(mirror_reply, result, getattr(self.core, "last_speech", None))
+            self.her_line(result, getattr(self.core, "last_speech", None))
             self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
                                       "theme": self.core.theme, "origin": origin})
             self.publish_message("user", req.text, "client", origin=origin,
@@ -639,7 +652,8 @@ def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
 def create_app(core: Any, *, token: str, session: Any = None, env: str | None = None,
                version: str | None = None, on_new_session: Callable[[], None] | None = None,
                outbox: Outbox | None = None, space: Any = None, room_token: str | None = None,
-               thumbs_dir: Path | None = None, actions_log: Path | None = None) -> FastAPI:
+               thumbs_dir: Path | None = None, actions_log: Path | None = None,
+               voice: VoiceSetup | None = None) -> FastAPI:
     """The v1 app around an injected core (a mock model in tests). ``token`` is required.
 
     ``on_new_session`` runs in the background after ``/v1/session/new`` (the ambient re-snapshot, as the
@@ -658,7 +672,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         raise ValueError("the Agora space needs its own room token (agora.token), never the client token")
     service = _Service(core, session if session is not None else core.start_session(), env=env, version=version,
                        outbox=outbox, thumbs_dir=Path(thumbs_dir) if thumbs_dir is not None else None,
-                       actions_log=ActionLog(actions_log) if actions_log is not None else None)
+                       actions_log=ActionLog(actions_log) if actions_log is not None else None, voice=voice)
     expected = f"Bearer {token}".encode()
     room_expected = f"Bearer {room_token}".encode() if space is not None else None
     # No interactive docs / schema endpoints: the API is private to its own clients.
