@@ -214,13 +214,14 @@ def voice_of(cfg):
     """v4.6: her voice on the server — the ElevenLabs synthesizer when the box has a key and a voice id (else none: the
     switch is unavailable), the files under ``<data root>/voice``, the switch in ``<data root>/voice.json`` whose first
     value is ``telegram.voice``."""
-    from server.voice import VoiceSetup
+    from server.voice import TTS_TIMEOUT_S, VoiceSetup
 
     tts = None
     if cfg.elevenlabs_api_key and cfg.voice_id:
         from voice.tts import ElevenLabsTTS
 
-        tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
+        # bounded (review #1): while a line is voiced, every later outbox write waits behind it
+        tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model, timeout=TTS_TIMEOUT_S)
     return VoiceSetup(tts=tts, root=cfg.data_root / "voice", switch_path=cfg.data_root / "voice.json",
                       first=bool(cfg.telegram_voice))
 

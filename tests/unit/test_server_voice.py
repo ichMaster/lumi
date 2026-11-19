@@ -21,6 +21,7 @@ from server.__main__ import telegram_sink_of
 from server.app import Outbox, create_app
 from server.voice import (
     EXPIRE_MAX,
+    TTS_TIMEOUT_S,
     VOICE_MAX_CHARS,
     VOICE_UNAVAILABLE,
     LineVoicer,
@@ -275,6 +276,40 @@ def test_after_close_a_line_is_written_unvoiced_in_the_caller(tmp_path):
     assert _records(tmp_path)[0]["voice"] is None and vid
 
 
+def test_a_stop_during_a_slow_generation_writes_what_is_left_unvoiced_in_order(tmp_path, caplog):
+    """Review #1: the drain runs out while ElevenLabs is slow — the line in flight and everything queued behind it
+    reach the outbox now, in order, without a voice; the late answer never writes the line a second time."""
+    ready = []
+    tts = SlowTTS()
+    voicer = _voicer(tmp_path, tts=tts, on_ready=lambda vid, ok: ready.append((vid, ok)))
+    first = voicer.line(mirror_reply, _state("Перша."), None, text="Перша.", emotion="calm")
+    assert tts.started.wait(5)
+    voicer.write(mirror_user, "твій рядок")
+    second = voicer.line(mirror_reply, _state("Друга."), None, text="Друга.", emotion="calm")
+    with caplog.at_level("WARNING", logger="lumi.voice"):
+        voicer.close(timeout=0.05)
+    shape = [(r["kind"], r["text"], r.get("voice", "-")) for r in _records(tmp_path)]
+    assert shape == [("lili", "Перша.", None), ("user", "твій рядок", "-"), ("lili", "Друга.", None)]
+    assert ready == [(first, False), (second, False)]
+    assert "3 outbox write(s)" in caplog.text
+    tts.release.set()  # the call comes back after the stop
+    voicer._thread.join(5)
+    assert not voicer._thread.is_alive()
+    assert len(_records(tmp_path)) == 3 and ready == [(first, False), (second, False)]
+    assert len(tts.calls) == 1  # the queued line was never voiced
+
+
+def test_a_stop_after_the_line_is_written_writes_nothing_twice(tmp_path):
+    tts = SlowTTS()
+    voicer = _voicer(tmp_path, tts=tts)
+    vid = voicer.line(mirror_reply, _state("Перша."), None, text="Перша.", emotion="calm")
+    assert tts.started.wait(5)
+    tts.release.set()
+    assert voicer.drain(5)
+    voicer.close(timeout=0.05)
+    assert [r["voice"] for r in _records(tmp_path)] == [f"{vid}.mp3"]
+
+
 # --- the server routes her lines through it -----------------------------------------------------------------
 
 def _core(tmp_path):
@@ -338,6 +373,8 @@ def test_voice_of_builds_the_synthesizer_only_with_a_key_and_a_voice(tmp_path):
     assert setup.root == tmp_path / "voice" and setup.switch_path == tmp_path / "voice.json"
     keyed = voice_of(dataclasses.replace(cfg, elevenlabs_api_key="k", voice_id="v", voice_model="eleven_v3"))
     assert isinstance(keyed.tts, ElevenLabsTTS) and keyed.tts.voice_id == "v" and keyed.tts.model == "eleven_v3"
+    assert keyed.tts.timeout == TTS_TIMEOUT_S  # review #1: bounded on the server — the outbox waits behind it
+    assert ElevenLabsTTS("k", "v").timeout is None  # the local voicer keeps the SDK's own default
     assert voice_of(dataclasses.replace(cfg, elevenlabs_api_key="k", voice_id="")).tts is None
     assert voice_of(dataclasses.replace(cfg, telegram_voice=False)).first is False
 
@@ -353,3 +390,24 @@ def test_the_voice_housekeeping_runs_at_start_and_stops(tmp_path):
     stop()
     assert not old.exists()
     start_voice_housekeeping(None, lambda: NOW)()  # no store: nothing runs
+
+
+def test_the_tts_timeout_reaches_the_sdk_client(monkeypatch):
+    """Review #1: ``ElevenLabsTTS(timeout=)`` is the client's timeout — no network (a fake client)."""
+    client_mod = pytest.importorskip("elevenlabs.client")
+    from voice.tts import ElevenLabsTTS
+
+    made = []
+
+    class FakeClient:
+        def __init__(self, **kw):
+            made.append(kw)
+            self.text_to_speech = self
+
+        def convert(self, **kw):
+            return [b"MP", b"3"]
+
+    monkeypatch.setattr(client_mod, "ElevenLabs", FakeClient)
+    assert ElevenLabsTTS("k", "v", timeout=TTS_TIMEOUT_S).synth("Привіт.") == b"MP3"
+    assert ElevenLabsTTS("k", "v").synth("Привіт.") == b"MP3"
+    assert made == [{"api_key": "k", "timeout": TTS_TIMEOUT_S}, {"api_key": "k"}]

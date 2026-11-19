@@ -38,9 +38,11 @@ class ElevenLabsTTS:
     """Synthesize via ElevenLabs. ``elevenlabs`` is imported lazily inside :meth:`synth`, so the
     adapter constructs (and the module imports) without the optional dep installed."""
 
-    def __init__(self, api_key: str, voice_id: str, model: str = "eleven_multilingual_v2") -> None:
+    def __init__(self, api_key: str, voice_id: str, model: str = "eleven_multilingual_v2", *,
+                 timeout: float | None = None) -> None:
         self.voice_id = voice_id
         self.model = model
+        self.timeout = timeout  # seconds per call; None → the SDK's own default (240 s)
         self._api_key = api_key  # secret — never logged
 
     def synth(self, text: str, *, emotion: str | None = None) -> bytes:  # pragma: no cover - network
@@ -48,7 +50,7 @@ class ElevenLabsTTS:
         from elevenlabs.client import ElevenLabs
 
         stability, style = voice_settings_for(emotion)
-        client = ElevenLabs(api_key=self._api_key)
+        client = ElevenLabs(api_key=self._api_key, **({"timeout": self.timeout} if self.timeout is not None else {}))
         audio = client.text_to_speech.convert(
             voice_id=self.voice_id,
             model_id=self.model,

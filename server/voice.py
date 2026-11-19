@@ -41,6 +41,7 @@ VOICE_KEEP_DAYS = 30  # a voice file lives this long, then the housekeeping remo
 TEMP_KEEP = timedelta(days=1)  # a temp file a crash left behind
 EXPIRE_MAX = 500  # files removed per pass — a large backlog is cleared over several passes
 VOICE_MAX_CHARS = 3000  # a line's text for the voice — the tightest ElevenLabs request limit of her models (v3)
+TTS_TIMEOUT_S = 60.0  # one generation on the server, at most — every later outbox write waits behind it (review #1)
 VOICE_UNAVAILABLE = "voice unavailable: no ElevenLabs key or voice id"
 _SENTENCE_END = ".!?…"
 
@@ -227,6 +228,8 @@ class LineVoicer:
         self._cv = threading.Condition()
         self._busy = False
         self._closed = False
+        self._current: tuple[Any, ...] | None = None  # the job the worker is on, until its record is written
+        self._abandoned: set[str] = set()  # lines close() wrote unvoiced while they were still being voiced
         self._thread: threading.Thread | None = None
 
     @property
@@ -272,13 +275,7 @@ class LineVoicer:
 
     def _enqueue(self, job: tuple[Any, ...]) -> None:  # the caller holds self._cv
         if self._closed:  # stopping: the write still happens, in the caller's thread, unvoiced
-            if job[0] == "line":
-                _, fn, args, voice_id, _, _ = job
-                self._append(fn, args, {"voice": None})
-                self._report(voice_id, False)
-            else:
-                _, fn, args, fields = job
-                self._append(fn, args, fields)
+            self._unvoiced(job)
             return
         self._queue.append(job)
         if self._thread is None:
@@ -295,6 +292,7 @@ class LineVoicer:
                     return
                 job = self._queue.popleft()
                 self._busy = True
+                self._current = job
             try:
                 if job[0] == "line":
                     self._voice(*job[1:])
@@ -305,6 +303,7 @@ class LineVoicer:
             finally:
                 with self._cv:
                     self._busy = False
+                    self._current = None
                     self._cv.notify_all()
 
     def drain(self, timeout: float | None = None) -> bool:
@@ -319,14 +318,39 @@ class LineVoicer:
         return True
 
     def close(self, timeout: float = 30.0) -> None:
-        """Finish what is queued (bounded by ``timeout``), then stop the worker; later writes run in the caller."""
+        """Finish what is queued (bounded by ``timeout``), then stop the worker; later writes run in the caller.
+
+        Review #1: what the drain didn't finish is written now, in the caller — the line still being voiced and
+        everything queued behind it, in order, unvoiced (``voice: null``) — so a stop never loses a line; the worker
+        drops its late record for a line written here."""
         self.drain(timeout)
         with self._cv:
             self._closed = True
+            late: list[tuple[Any, ...]] = []
+            if self._busy and self._current is not None and self._current[0] == "line":
+                late.append(self._current)
+                self._abandoned.add(self._current[3])
+            late += self._queue
+            self._queue.clear()
+            for job in late:
+                self._unvoiced(job)
             self._cv.notify_all()
             thread = self._thread
+        if late:
+            log.warning("voice: stopping — %d outbox write(s) not finished in %.0f s, written now without a voice",
+                        len(late), timeout)
         if thread is not None:
             thread.join(1.0)
+
+    def _unvoiced(self, job: tuple[Any, ...]) -> None:  # the caller holds self._cv
+        """One job written at once, in the caller — a line without its voice (and told so)."""
+        if job[0] == "line":
+            _, fn, args, voice_id, _, _ = job
+            self._append(fn, args, {"voice": None})
+            self._report(voice_id, False)
+        else:
+            _, fn, args, fields = job
+            self._append(fn, args, fields)
 
     # --- the work ---------------------------------------------------------------------------------------------
     def _append(self, fn: _Write, args: tuple[Any, ...], fields: dict[str, Any]) -> None:
@@ -353,7 +377,12 @@ class LineVoicer:
             log.info("voice: made %s (%d chars, %d ms)", voice_id, len(spoken), int((self._timer() - started) * 1000))
         except Exception as exc:  # noqa: BLE001 — a failed generation degrades to text; never the text in the log
             log.warning("voice: failed %s (%s: %s)", voice_id, type(exc).__name__, str(exc)[:200])
-        self._append(fn, args, {"voice": f"{voice_id}.mp3" if ok else None})
+        with self._cv:  # the record and close() never both write this line
+            if voice_id in self._abandoned:  # the server stopped meanwhile: close() wrote it, unvoiced
+                self._abandoned.discard(voice_id)
+                return
+            self._current = None
+            self._append(fn, args, {"voice": f"{voice_id}.mp3" if ok else None})
         self._report(voice_id, ok)
 
     def _report(self, voice_id: str, ok: bool) -> None:
