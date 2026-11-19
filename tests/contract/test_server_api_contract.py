@@ -1043,7 +1043,9 @@ def test_v45_rename_trash_restore_and_download(tmp_path):
     assert dl.headers["x-content-type-options"] == "nosniff"
     assert client.get("/v1/files/download", params={"path": "notes"}, headers=AUTH).status_code == 404
     assert client.get("/v1/files/download", params={"path": "../x"}, headers=AUTH).status_code == 400
-    assert [line["action"] for line in _log_lines(tmp_path)] == ["rename", "trash", "restore"]
+    lines = _log_lines(tmp_path)
+    assert [line["action"] for line in lines] == ["rename", "trash", "restore", "download"]  # a refusal logs nothing
+    assert lines[-1]["path"] == "notes/думки.md" and lines[-1]["size"] == len(dl.content)  # code review #1
 
 
 def test_v45_a_trashed_picture_leaves_the_gallery(tmp_path):
@@ -1131,3 +1133,22 @@ def test_v45_with_vision_off_a_sandbox_picture_is_refused_not_lost(tmp_path):
     res = client.post("/v1/turn", json={"text": "?", "sandbox_images": ["art/p.png"]}, headers=AUTH)
     assert res.status_code == 422 and "image.enabled" in res.json()["detail"]
     assert core._llm.calls == []
+
+
+def test_review_v45_1_a_download_and_a_shown_picture_are_logged_once(tmp_path):
+    """v4.5 code review #1: the DoD's "every action is in actions.jsonl" — a download and each picture shown to her
+    leave a line too (no content), a retried turn_id logs nothing again, and without a log they are still served."""
+    client, _, _ = _actions_client(tmp_path)
+    body = {"text": "що тут?", "sandbox_images": ["art/p.png", "art/q.png"], "turn_id": "t-show"}
+    assert client.post("/v1/turn", json=body, headers={**AUTH, "X-Lumi-Client": "w1"}).status_code == 200
+    assert client.post("/v1/turn", json=body, headers=AUTH).status_code == 200  # the stored outcome, not a rerun
+    streamed = {"text": "а це?", "sandbox_images": ["art/q.png"], "turn_id": "s-show"}
+    assert _events(client.post("/v1/turn/stream", json=streamed, headers=AUTH).text)[-1][0] == "done"
+    lines = _log_lines(tmp_path)
+    assert [(line["action"], line["path"]) for line in lines] == [("show", "art/p.png"), ("show", "art/q.png"),
+                                                                 ("show", "art/q.png")]
+    assert lines[0]["client"] == "w1" and all(set(line) <= {"ts", "action", "path", "to", "size", "client"}
+                                              for line in lines)
+    _gallery_sandbox(tmp_path / "bare" / "files")
+    bare = TestClient(create_app(_files_core(tmp_path / "bare"), token=TOKEN))  # no action log configured
+    assert bare.get("/v1/files/download", params={"path": "art/p.png"}, headers=AUTH).status_code == 200

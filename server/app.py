@@ -821,6 +821,8 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         return root, service.actions_log
 
     def _log(action: str, done: dict[str, Any], client: str | None, size: int | None = None) -> None:
+        if service.actions_log is None:  # the reads (a download, a shown picture) are served without a log
+            return
         try:
             service.actions_log.append({"ts": core.clock().isoformat(timespec="seconds"), "action": action,
                                         "path": done.get("path"), "to": done.get("to"), "size": size,
@@ -869,8 +871,8 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         return JSONResponse(done, headers=FILES_JSON_HEADERS)
 
     @app.get("/v1/files/download", dependencies=guarded)
-    def files_download(path: str = "") -> Response:
-        """Any regular file of her sandbox up to 50 MB, as an attachment (read-only)."""
+    def files_download(path: str = "", x_lumi_client: str | None = Header(default=None)) -> Response:
+        """Any regular file of her sandbox up to 50 MB, as an attachment (read-only; logged as ``download``)."""
         root = _files_root()
 
         def read() -> tuple[bytes, str]:
@@ -883,6 +885,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             return target.read_bytes(), target.name
 
         data, name = _mapped(read)
+        _log("download", {"path": path.strip().strip("/")}, x_lumi_client, size=len(data))  # code review #1
         ascii_name = "".join(ch if 32 < ord(ch) < 127 and ch not in r'"\;' else "_" for ch in name) or "download"
         disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
         return Response(content=data, media_type="application/octet-stream",
@@ -905,6 +908,13 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             data, media_type = _mapped(lambda rel=rel: read_picture(root, rel))
             blocks.append(image_block(data, media_type))
         return req.model_copy(update={"images": [*(req.images or []), *blocks], "sandbox_images": paths})
+
+    def _log_shown(req: TurnRequest, fresh: bool, client: str | None) -> None:
+        """v4.5 code review #1: each picture shown to her is an action — logged once, for the turn that runs (a
+        retried ``turn_id`` returns the stored outcome and logs nothing)."""
+        if fresh:
+            for rel in req.sandbox_images or []:
+                _log("show", {"path": rel.strip().strip("/")}, client)
 
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:
@@ -941,7 +951,8 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         if who == "room":
             raise HTTPException(status_code=403, detail=ROOM_ONLY)
         req = _with_sandbox_images(req)
-        record, _ = service.begin_turn(req, stream=False, origin=origin_of(x_lumi_client))
+        record, fresh = service.begin_turn(req, stream=False, origin=origin_of(x_lumi_client))
+        _log_shown(req, fresh, x_lumi_client)
         record.done.wait()
         if record.error is not None:
             raise HTTPException(status_code=record.error[0], detail=record.error[1])
@@ -1020,6 +1031,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             raise HTTPException(status_code=422, detail="the room's turns are blocking (POST /v1/turn)")
         req = _with_sandbox_images(req)
         record, fresh = service.begin_turn(req, stream=True, origin=origin_of(x_lumi_client))
+        _log_shown(req, fresh, x_lumi_client)
 
         def events() -> Iterator[str]:
             if fresh:
