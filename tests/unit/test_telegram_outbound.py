@@ -250,12 +250,30 @@ def test_the_delivery_of_each_record():
     assert delivery({"kind": "lili", "photo": "/p.png", "voice": None}, voice_mode=True) == "photo"
 
 
-def test_voice_caption_carries_emoji_and_is_capped():
+def test_voice_caption_carries_emoji_and_the_whole_text():
     rec = {"id": 1, "text": "привіт", "emotion": "joy", "intensity": 0.8}
     cap = caption_for(rec)
     assert cap.startswith("привіт ") and len(cap) > len("привіт")  # text + emoji
     long = {"id": 2, "text": "x" * 2000, "emotion": "calm", "intensity": 0.5}
-    assert len(caption_for(long)) <= CAPTION_LIMIT          # truncated to the caption cap
+    assert caption_for(long).startswith("x" * 2000)          # whole — forward decides (review #2)
+
+
+async def test_a_long_reply_goes_as_the_voice_then_its_whole_words(tmp_path):
+    """Review #2: her words past the caption cap are never cut — the voice goes without a caption, then the words in
+    full as text; a short reply keeps its caption."""
+    outbox = tmp_path / "outbox.jsonl"
+    (tmp_path / "voice").mkdir()
+    (tmp_path / "voice" / f"{'a' * 32}.mp3").write_bytes(b"MP3")
+    long = "слово " * 400  # 2400 chars
+    fifo.append(outbox, long, kind="lili", emotion="calm", voice=f"{'a' * 32}.mp3")
+    fifo.append(outbox, "коротко", kind="lili", emotion="calm", voice=f"{'a' * 32}.mp3")
+    fifo.append(outbox, long, kind="lili", emotion="calm")  # an old record, voiced by the daemon
+    sent_log = []
+    assert await _forward(tmp_path, sent_log, tts=MockTTS(), voice_mode=True) == (3, False)
+    assert sent_log == [("voice", b"OGG:MP3", ""), ("text", [long]),
+                        ("voice", b"OGG:MP3", "коротко"),
+                        ("voice", b"OGG:AUDIO:" + long.encode(), ""), ("text", [long])]
+    assert len(long) > CAPTION_LIMIT
 
 
 # --- portrait (graceful) --------------------------------------------------

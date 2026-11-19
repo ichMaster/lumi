@@ -306,7 +306,7 @@ decides per record:
 
 | The record | What Telegram gets |
 |---|---|
-| `voice: "<id>.mp3"` | a voice message made from that file (`ffmpeg` → OGG/Opus), her words as the caption. The daemon **never calls ElevenLabs** for it. |
+| `voice: "<id>.mp3"` | a voice message made from that file (`ffmpeg` → OGG/Opus), her words as the caption. Words longer than a caption (1024 chars) follow the voice as text, whole. The daemon **never calls ElevenLabs** for it. |
 | `voice: null` (the switch off, or the generation failed) | text, N-batched as usual |
 | no `voice` key (written before v4.6, or by the in-process TUI) | the old way: voiced by the daemon itself while `LUMI_TELEGRAM_VOICE` is on, otherwise text |
 

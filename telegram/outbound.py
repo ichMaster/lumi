@@ -131,8 +131,9 @@ def portrait_for(faces_dir: str | Path, emotion: str, intensity: float | None = 
 
 # ── Voice mode (LUMI_TELEGRAM_VOICE) ──────────────────────────────────────────────────────────────
 def caption_for(rec: dict, emoji_map: dict | None = None) -> str:
-    """The caption for a voice message — the reply text + its emoji, truncated to the caption cap."""
-    return render([rec], emoji_map)[:CAPTION_LIMIT]
+    """The words for a voice message — the reply text + its emoji, whole. :func:`forward` sends them as the caption
+    when they fit one, else as text after the voice (review #2: never cut at the caption cap)."""
+    return render([rec], emoji_map)
 
 
 def mp3_to_ogg(mp3: bytes) -> bytes:  # pragma: no cover - ffmpeg subprocess
@@ -207,11 +208,20 @@ async def forward(outbox_path, sent_path, *, batch: int, voice_dir: Path,
 
     Per :func:`plan`: a stored voice file is converted (``to_ogg``) and sent with its caption — **never a TTS call**; a
     missing or unconvertible file degrades to text. An old record is voiced by ``tts`` (its ``speech`` before its
-    ``text``) — only in voice mode, with a ``tts``. A send failure stops the pass **without** moving the pointer past
-    that send (the next pass retries it); every handled send moves it."""
+    ``text``) — only in voice mode, with a ``tts``. ``caption_for`` gives her whole words: past ``CAPTION_LIMIT`` the
+    voice goes without a caption and the words follow as text (``send_text``, chunked there). A send failure stops the
+    pass **without** moving the pointer past that send (the next pass retries it); every handled send moves it."""
     def note(level: str, msg: str, *args: Any) -> None:
         if log is not None:
             getattr(log, level)(msg, *args)
+
+    async def voice_and_words(ogg: bytes, group: list[dict]) -> None:
+        words = caption_for(group[-1])
+        if len(words) <= CAPTION_LIMIT:
+            await send_voice(ogg, words)
+        else:  # review #2: a caption would cut her words — the voice alone, then the words in full
+            await send_voice(ogg, "")
+            await send_text(group)
 
     handled = 0
     records = fifo.read_since(outbox_path, fifo.load_pointer(sent_path))
@@ -233,11 +243,11 @@ async def forward(outbox_path, sent_path, *, batch: int, voice_dir: Path,
                 if ogg is None:
                     await send_text(group)
                 else:
-                    await send_voice(ogg, caption_for(last))
+                    await voice_and_words(ogg, group)
                     note("info", "sent the stored voice id=%s", last["id"])
             elif kind == "old":
                 ogg = to_ogg(tts.synth(last.get("speech") or last["text"], emotion=last.get("emotion")))
-                await send_voice(ogg, caption_for(last))
+                await voice_and_words(ogg, group)
                 note("info", "voiced the old way id=%s", last["id"])
             elif kind == "text":
                 await send_text(group)
@@ -320,7 +330,7 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
 
     async def _send_voice(ogg: bytes, caption: str) -> None:
         for chat in chats:
-            await bot.send_voice(chat, BufferedInputFile(ogg, "voice.ogg"), caption=caption)
+            await bot.send_voice(chat, BufferedInputFile(ogg, "voice.ogg"), caption=caption or None)
 
     async def _send_photo(rec: dict) -> None:  # v0.24: a chosen send_image — always a photo, on its own
         await send_photo_record(bot, chats, rec, emoji_map=emoji_map, fs_input=FSInputFile, log=log)
