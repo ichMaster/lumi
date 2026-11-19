@@ -93,6 +93,12 @@ const ICONS = {
   "chevron-left": [["path", { d: "m15 18-6-6 6-6" }]],
   "message-circle": [["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z" }]],  // v4.3: a spoken thought
   "arrow-down": [["path", { d: "M12 5v14" }], ["path", { d: "m19 12-7 7-7-7" }]],  // v4.5: download
+  play: [["polygon", { points: "6 3 20 12 6 21 6 3" }]],  // v4.6: her voice on a line
+  pause: [["rect", { x: "14", y: "4", width: "4", height: "16" }], ["rect", { x: "6", y: "4", width: "4", height: "16" }]],
+  volume: [["path", { d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" }],
+    ["path", { d: "M16 9a5 5 0 0 1 0 6" }], ["path", { d: "M19.364 18.364a9 9 0 0 0 0-12.728" }]],  // v4.6: the switch, on
+  "volume-off": [["path", { d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" }],
+    ["line", { x1: "22", x2: "16", y1: "9", y2: "15" }], ["line", { x1: "16", x2: "22", y1: "9", y2: "15" }]],  // off
   more: [["circle", { cx: "12", cy: "12", r: "1" }], ["circle", { cx: "19", cy: "12", r: "1" }],
     ["circle", { cx: "5", cy: "12", r: "1" }]],  // v4.5: a row's actions  // v4.2: the picture view's previous
 };
@@ -715,11 +721,12 @@ function renderStatus() {
   const kids = [el("span", { class: `dot ${state}` }), el("span", { text: label })];
   if (state === "offline" && st.countdown > 0) kids.push(el("span", { class: "retry", text: t("status.retryIn", { n: st.countdown }) }));
   if (s.env && s.env !== "prod") kids.push(el("span", { class: "dev", title: t("status.dev.title"), text: "DEV" }));
+  kids.push(voiceSwitch());  // v4.6: her voice on or off, for the window and Telegram both
   const open = el("button", { type: "button", class: "open-details", "aria-expanded": String(st.detailsOpen), "aria-controls": "details",
     onclick: () => { st.detailsOpen = !st.detailsOpen; renderStatus(); } },
   el("span", { class: "label", text: t("status.details", { version: s.version || "—" }) }), icon("chevron-up"));
   kids.push(open);
-  bar.replaceChildren(...kids);
+  bar.replaceChildren(...kids.filter(Boolean));
   renderDetails();
 }
 
@@ -946,6 +953,7 @@ function onPush(event, data) {
   if (event === "state") { absorb(data.state); return; }
   if (event === "turn") { showFace(data.theme ?? st.server.theme, data.emotion, data.intensity); return; } // any client's turn
   if (event === "thought") { if (st.replaying) armReplay(REPLAY_QUIET_MS); onThought(data); return; }
+  if (event === "voice") { if (st.replaying) armReplay(REPLAY_QUIET_MS); onVoice(data); return; }  // v4.6: any line's
   if (event !== "message") return;
   if (data.origin && data.origin === CLIENT_ID) return; // our own line — shown from the response
   if (st.replaying) armReplay(REPLAY_QUIET_MS);
@@ -959,8 +967,134 @@ function onPush(event, data) {
     const mine = addMine(String(data.text || ""), { time, source: data.source, origin: data.origin });
     chatPictures(mine, data.pictures);  // v4.5: a picture another window showed her
   }
-  else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge",
-    emotion: data.emotion, intensity: data.intensity, pictures: data.pictures });
+  else {
+    const hers = addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge",
+      emotion: data.emotion, intensity: data.intensity, pictures: data.pictures });
+    voiceLine(hers, data.voice);  // v4.6: "voicing…" until its voice push
+  }
+}
+
+/* her voice (v4.6 LUMI-330): a line that names a voice id shows "voicing…" until the server's `voice` push — then a
+   ▶ (ready) or nothing (failed). ▶ fetches the audio with the window's key into a blob: URL and plays it; one line plays
+   at a time, ❚❚ pauses, Esc stops. Nothing ever plays without a click. */
+const VOICE_ID = /^[0-9a-f]{32}$/;
+const VOICE_KEEP = 200;  // the lines, readiness and audio the window remembers — the oldest go first
+const voice = { lines: new Map(), ready: new Map(), urls: new Map(), now: null, switching: false };
+
+function voiceKeep(map, key, value, drop) {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > VOICE_KEEP) {
+    const [oldest, gone] = map.entries().next().value;
+    map.delete(oldest);
+    if (drop) drop(gone);
+  }
+}
+
+function voiceLine(r, vid) {
+  if (typeof vid !== "string" || !VOICE_ID.test(vid)) return;
+  const holder = el("div", { class: "voice" }, el("span", { class: "voicing", text: t("voice.voicing") }));
+  r.content.append(holder);
+  voiceKeep(voice.lines, vid, holder);
+  if (voice.ready.has(vid)) voiceReady(vid, voice.ready.get(vid));  // its push came first
+}
+
+function onVoice(data) {
+  const vid = String(data.message || "");
+  if (!VOICE_ID.test(vid)) return;
+  voiceKeep(voice.ready, vid, data.ready === true);
+  voiceReady(vid, data.ready === true);
+}
+
+function voiceReady(vid, ok) {
+  const holder = voice.lines.get(vid);
+  if (!holder) return;
+  if (!ok) { holder.remove(); voice.lines.delete(vid); return; }  // the generation failed: the text stands alone
+  if (holder.querySelector(".vplay")) return;
+  const btn = el("button", { type: "button", class: "vplay", "aria-pressed": "false",
+    onclick: () => voiceToggle(vid, btn) });
+  voiceDraw(btn, null);
+  holder.replaceChildren(btn);
+}
+
+const mmss = (sec) => { const n = Math.floor(Number(sec) || 0); return `${Math.floor(n / 60)}:${pad(n % 60)}`; };
+
+function voiceDraw(btn, audio) {
+  const playing = !!audio && !audio.paused && !audio.ended;
+  btn.replaceChildren(icon(playing ? "pause" : "play"), el("span", { class: "vtime num", text: audio ? mmss(audio.currentTime) : "" }));
+  btn.setAttribute("aria-pressed", String(playing));
+  btn.setAttribute("aria-label", t(playing ? "voice.pause" : "voice.play"));
+  btn.title = t(playing ? "voice.pause" : "voice.play");
+}
+
+async function voiceFetch(vid) {
+  const res = await fetch("/v1/voice/" + vid, { headers: headers() });
+  if (!res.ok) throw new ApiError(res.status, "", "");
+  const url = URL.createObjectURL(await res.blob());
+  voiceKeep(voice.urls, vid, url, (gone) => URL.revokeObjectURL(gone));
+  return url;
+}
+
+async function voiceToggle(vid, btn) {  // a click: the only way her voice ever plays
+  const now = voice.now;
+  if (now && now.vid === vid) {
+    if (now.audio.paused) now.audio.play().catch(() => voiceStop());
+    else now.audio.pause();
+    return;
+  }
+  voiceStop();
+  let url = voice.urls.get(vid);
+  if (!url) {
+    btn.disabled = true;
+    try { url = await voiceFetch(vid); }
+    catch (e) { btn.disabled = false; btn.title = t("voice.failed"); return; }
+    btn.disabled = false;
+    if (voice.now) return;  // another line started meanwhile: this one waits for its next click
+  }
+  const audio = new Audio(url);
+  voice.now = { vid, audio, btn };
+  const draw = () => { if (voice.now && voice.now.audio === audio) voiceDraw(btn, audio); };
+  for (const ev of ["play", "pause", "timeupdate"]) audio.addEventListener(ev, draw);
+  audio.addEventListener("ended", () => { if (voice.now && voice.now.audio === audio) voiceStop(); });
+  audio.addEventListener("error", () => {  // an audio the window can't decode: stop, and say so on the button
+    if (voice.now && voice.now.audio === audio) voiceStop();
+    btn.title = t("voice.failed");
+  });
+  audio.play().catch(() => { voiceStop(); btn.title = t("voice.again"); });  // the click's moment passed: once more
+}
+
+function voiceStop() {
+  const now = voice.now;
+  if (!now) return;
+  voice.now = null;
+  now.audio.pause();
+  voiceDraw(now.btn, null);
+}
+
+function voiceSwitch() {  // the «Voice» toggle in the status line — only on a server that can voice her
+  const v = st.server.voice;
+  if (!v || typeof v !== "object") return null;
+  const on = v.enabled === true, can = v.available === true;
+  const title = !can ? t("voice.switch.unavailable") : t(on ? "voice.switch.on" : "voice.switch.off");
+  return el("button", { type: "button", class: `voice-switch${on ? " on" : ""}`, "aria-pressed": String(on),
+    "aria-label": title, title, disabled: !can || voice.switching, onclick: () => setVoice(!on) },
+  icon(on ? "volume" : "volume-off"), el("span", { text: t("voice.switch.label") }));
+}
+
+async function setVoice(on) {
+  if (voice.switching) return;
+  voice.switching = true;
+  renderStatus();
+  try {
+    const res = await api("/v1/voice", { enabled: on });
+    st.server = { ...st.server, voice: { enabled: res.enabled === true, available: res.available === true } };
+  } catch (e) {
+    if (e.kind === "token_refused" || e.kind === "no_server") { showScreen(e.kind, e.message); return; }
+    addNote(t("voice.switch.failed", { detail: e.message }));
+  } finally {
+    voice.switching = false;
+    renderStatus();
+  }
 }
 
 /* ---------- turns, commands, directives ---------- */
@@ -1032,6 +1166,7 @@ async function turn(text, queuedRow, waited = false, pictures = null) {
   showFace((result.state && result.state.theme) ?? st.server.theme, result.emotion, result.intensity);
   setEmotion(her.node, result.emotion, result.intensity);
   chatPictures(her, result.pictures);  // v4.2: what she made or sent in this turn
+  voiceLine(her, result.voice);  // v4.6: "voicing…" until its voice push (which may already have come)
   // v4.4: the tools of this reply (the server lists them only while files.trace is on — absent, no block)
   st.lastTools = Array.isArray(result.tool_calls) ? result.tool_calls : null;
   if (st.detailsOpen) renderDetails();
@@ -3345,6 +3480,7 @@ async function start() {
   input.addEventListener("input", () => { grow(); updateSlash(); renderInput(); });
   input.addEventListener("blur", () => { st.slash.open = false; renderSlash(); });
   document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && voice.now && !ev.defaultPrevented) { voiceStop(); return; }  // v4.6: Esc stops her voice
     if ((ev.metaKey || ev.ctrlKey) && /^[1-9]$/.test(ev.key)) {  // v4.1: ⌘1…⌘n (Ctrl elsewhere) switch views
       const kind = shownViews()[Number(ev.key) - 1];
       if (kind) { ev.preventDefault(); setView(kind); }

@@ -815,3 +815,63 @@ def test_review_v45_3_a_file_over_the_largest_cap_is_never_sent():
     assert "actions.too_large" in strings and not CYRILLIC.search(strings["actions.too_large"])
     import core.actions as actions
     assert actions.UPLOAD_MAX_PICTURE == 10 * 1024 * 1024 >= actions.UPLOAD_MAX_TEXT  # the page's bound is the largest cap
+
+
+# --- v4.6 LUMI-330: her voice in the window ----------------------------------------------------------------------
+
+def test_v46_her_voice_never_plays_without_a_click():
+    js = _js()
+    assert "autoplay" not in js.lower()
+    toggle = _fn("voiceToggle")
+    assert js.count(".play(") == toggle.count(".play(") == 2  # only in the click's handler: start, or resume
+    assert "onclick: () => voiceToggle(vid, btn)" in _fn("voiceReady")  # and that handler is only a click
+
+
+def test_v46_one_line_plays_at_a_time_and_esc_stops_it():
+    toggle = _fn("voiceToggle")
+    assert toggle.index("voiceStop();") < toggle.index("new Audio(url)")  # the playing line stops first
+    assert "voice.now = { vid, audio, btn };" in toggle
+    assert "if (voice.now) return;" in toggle  # another line started while this one was fetched
+    assert 'audio.addEventListener("error", () => {' in toggle  # an undecodable audio stops, never hangs "playing"
+    js = _js()
+    assert 'if (ev.key === "Escape" && voice.now && !ev.defaultPrevented) { voiceStop(); return; }' in js
+    stop = _fn("voiceStop")
+    assert "now.audio.pause();" in stop and "voice.now = null;" in stop
+
+
+def test_v46_a_line_shows_voicing_then_play_or_nothing():
+    js = _js()
+    assert "voiceLine(her, result.voice);" in _fn("turn")  # your turn's outcome names it
+    assert "voiceLine(hers, data.voice);" in _fn("onPush")  # a line from elsewhere too
+    assert 'if (event === "voice") {' in _fn("onPush")
+    line = _fn("voiceLine")
+    assert "VOICE_ID.test(vid)" in line and 'text: t("voice.voicing")' in line
+    assert "if (voice.ready.has(vid)) voiceReady(vid, voice.ready.get(vid));" in line  # its push came first
+    ready = _fn("voiceReady")
+    assert "if (!ok) { holder.remove();" in ready
+    assert "const VOICE_ID = /^[0-9a-f]{32}$/;" in js
+    fetch = _fn("voiceFetch")
+    assert 'fetch("/v1/voice/" + vid, { headers: headers() })' in fetch and "URL.createObjectURL" in fetch
+    assert "/v1/voice/" in js and px.forwarded("GET", "/v1/voice/" + "a" * 32)
+
+
+def test_v46_the_window_remembers_a_bounded_number_of_lines():
+    got = _node_eval("const VOICE_KEEP = 3;\n" + _fn("voiceKeep") + """
+const m = new Map(), dropped = [];
+for (const k of ["a", "b", "c", "d", "b", "e"]) voiceKeep(m, k, k.toUpperCase(), (v) => dropped.push(v));
+console.log(JSON.stringify([[...m.keys()], dropped]));""")
+    assert got == [["d", "b", "e"], ["A", "C"]]
+
+
+def test_v46_the_voice_switch_reflects_the_state_and_says_why_it_is_disabled():
+    switch = _fn("voiceSwitch")
+    assert 'if (!v || typeof v !== "object") return null;' in switch  # an older server: no toggle at all
+    assert "disabled: !can || voice.switching" in switch
+    assert 't("voice.switch.unavailable")' in switch and '"aria-pressed": String(on)' in switch
+    assert 'api("/v1/voice", { enabled: on })' in _fn("setVoice")
+    assert "kids.push(voiceSwitch());" in _fn("renderStatus")
+    strings = _strings()
+    for key in ("voice.voicing", "voice.play", "voice.pause", "voice.failed", "voice.again", "voice.switch.label",
+                "voice.switch.on", "voice.switch.off", "voice.switch.unavailable", "voice.switch.failed"):
+        assert key in strings and not CYRILLIC.search(strings[key]), key
+    assert strings["voice.switch.unavailable"] == "No ElevenLabs key or voice id on the server"

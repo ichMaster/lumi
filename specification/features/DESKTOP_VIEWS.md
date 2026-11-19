@@ -234,6 +234,27 @@ name}`, `POST /v1/files/trash {path}`, `POST /v1/files/restore {path}`, `GET /v1
 - Each action logged to `<data root>/actions.jsonl` (never a file's content).
 - Contract-tested like the read routes.
 
+## Her voice (v4.6)
+
+The owner asked on 2026-11-19 for her lines to be heard in the window, from the same voice file Telegram gets, made
+once, with one switch for both. ROADMAP §v4.6 holds the Tasks and DoD.
+
+- **The server makes the voice.** While the switch is on, each of her lines is voiced once, after it is shown: a
+  client turn, a Telegram turn, a nudge, a spoken or shown thought. It uses the box's ElevenLabs key and voice. The
+  file is stored in `<data root>/voice/<user_id>/<id>.mp3` and removed after 30 days. The room is never voiced.
+- **Telegram reuses the file.** Her outbox record names the file, and the outbound daemon converts and sends it
+  without a second ElevenLabs call. With the switch off, the record says `voice: null` and Telegram gets text.
+- **The line in the window.** Her line names its voice id (`voice` on the outcome and the `message` push) and shows a
+  quiet "voicing…". The `voice` push `{message, ready}` turns that into a ▶, or removes it when the generation failed.
+  - ▶ fetches `GET /v1/voice/<id>` with the window's key into a `blob:` URL and plays it.
+  - ❚❚ pauses, and the elapsed time sits beside the button.
+  - One line plays at a time, and Esc stops it.
+  - The window never makes a sound by itself.
+- **The «Voice» toggle** sits in the status line, right of the state. It reflects `state.voice.enabled` and turns the
+  switch with `POST /v1/voice`. It is disabled, with the reason as its title, while the server has no key or voice id,
+  and absent on an older server.
+- **The proxy** forwards `POST /v1/voice` and `GET /v1/voice/<32 hex>`, and nothing else below `/v1/voice/`.
+
 ## Contract changes
 
 - **Server API v1, additive.** New routes, and new fields in `features`, `message` and the turn outcome. Each phase
@@ -273,6 +294,7 @@ name}`, `POST /v1/files/trash {path}`, `POST /v1/files/restore {path}`, `GET /v1
 | v4.3 | `/v1/journal`, `/v1/journal/{date}` (owner-only), `/v1/thoughts`; Journal; Thoughts; "Thoughts →" in the strip | core, server, desktop |
 | v4.4 | `/v1/today`, `/v1/schedule`, `tool_calls` on the outcome; State; Schedule; the tool list in details | core, server, desktop |
 | v4.5 | The chosen actions | core, server, desktop |
+| v4.6 | Her voice: the server-side voice of each line (once, while the switch is on), `voice` on the state, the outcome and `message`, the `voice` push, `/v1/voice/<id>` and `POST /v1/voice`; Telegram sends the stored file; ▶ / ❚❚ on her lines and the «Voice» toggle | server, telegram, desktop |
 
 **Tests in every phase:**
 - unit tests for the core logic: listing, magic bytes, the journal parser, paging, the thumbnail cache, next-due;

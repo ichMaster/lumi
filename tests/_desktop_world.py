@@ -19,6 +19,7 @@ KEY = "launch-key-for-the-tests"
 
 PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256))  # every byte value: a relay must not touch one
 JPEG = b"\xff\xd8\xff\xe0" + bytes(range(255, -1, -1))  # v4.2: a thumbnail's bytes, every value again
+MP3 = b"ID3\x04\x00" + bytes(range(256)) * 2  # v4.6: a line's audio, every byte value
 
 
 class FakeServer:
@@ -119,6 +120,16 @@ class FakeServer:
                 elif method == "GET" and path.startswith("/v1/journal/"):  # v4.3: one day
                     self._send(200, {"date": path.rsplit("/", 1)[1], "stamp": None,
                                      "sections": [{"time": "00:30", "text": "Тихо."}], "markdown": "# день\n"})
+                elif method == "GET" and path.startswith("/v1/voice/"):  # v4.6: a line's audio and its headers
+                    self.send_response(200)
+                    self.send_header("Content-Type", "audio/mpeg")
+                    self.send_header("Content-Length", str(len(MP3)))
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.send_header("Cache-Control", "private, max-age=86400")
+                    self.end_headers()
+                    self.wfile.write(MP3)
+                elif method == "POST" and path == "/v1/voice":  # v4.6: the switch
+                    self._send(200, {"enabled": json.loads(body or "{}").get("enabled") is True, "available": True})
                 elif method == "POST" and path == "/v1/command":
                     self._send(200, {"handled": True, "echo": json.loads(body or "{}")})
                 else:

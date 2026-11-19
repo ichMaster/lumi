@@ -22,8 +22,10 @@ PAGE_ROUTES = {
     ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable
     ("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),  # v4.5: the owner's
     ("POST", "/v1/files/restore"), ("GET", "/v1/files/download"),  # actions
+    ("POST", "/v1/voice"),  # v4.6: her voice's switch
 }
-PAGE_PATTERN_ROUTES = {("GET", "/v1/journal/{date}")}  # v4.3: a day of her journal — the date in the path
+PAGE_PATTERN_ROUTES = {("GET", "/v1/journal/{date}"),  # v4.3: a day of her journal — the date in the path
+                       ("GET", "/v1/voice/{voice_id}")}  # v4.6: a line's audio — its voice id in the path
 
 
 def _server_routes() -> set[tuple[str, str]]:
@@ -109,3 +111,13 @@ def test_v45_the_actions_are_forwarded_and_the_local_routes_stay_local():
     for url in ("file:///etc/passwd", "javascript:alert(1)", "notes/x.md", "//evil.com", "https://", "ftp://x.y",
                 "https://a.b/\nx", ""):
         assert not px.is_web_url(url), url
+
+
+def test_v46_the_window_reaches_her_voice_through_two_routes_only():
+    """v4.6 LUMI-330: a line's audio by a 32-hex id (GET) and the switch (POST); nothing else below /v1/voice/."""
+    vid = "0123456789abcdef0123456789abcdef"
+    assert px.forwarded("GET", f"/v1/voice/{vid}") and px.forwarded("POST", "/v1/voice")
+    for path in ("/v1/voice/", f"/v1/voice/{vid}/x", f"/v1/voice/{vid}.mp3", f"/v1/voice/{vid.upper()}",
+                 f"/v1/voice/{vid[:-1]}", "/v1/voice/..%2Fvoice.json", f"/v1/voice/{vid}\n"):
+        assert not px.forwarded("GET", path), path
+    assert not px.forwarded("POST", f"/v1/voice/{vid}") and not px.forwarded("GET", "/v1/voice")

@@ -50,11 +50,13 @@ FORWARDED: frozenset[tuple[str, str]] = frozenset({
     # v4.5: the owner's actions on her sandbox (create-only, nothing deleted — the server enforces it) and a download
     ("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),
     ("POST", "/v1/files/restore"), ("GET", "/v1/files/download"),
+    ("POST", "/v1/voice"),  # v4.6: her voice's switch (the window and Telegram both)
 })
 # v4.3: a route with a value in its path — (method, the server's route, the one pattern its paths must match whole).
 # Nothing else under that prefix is forwarded: /v1/journal/<YYYY-MM-DD> and no other path below /v1/journal/.
 FORWARDED_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     ("GET", "/v1/journal/{date}", re.compile(r"/v1/journal/\d{4}-\d{2}-\d{2}")),
+    ("GET", "/v1/voice/{voice_id}", re.compile(r"/v1/voice/[0-9a-f]{32}")),  # v4.6: a line's audio, by its voice id
 )
 
 

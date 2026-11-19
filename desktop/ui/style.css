@@ -215,6 +215,13 @@ svg.icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-
 .status .retry { color: var(--l-faint); }
 .dev { font-size: 10px; font-weight: 800; letter-spacing: .1em; padding: 1px 6px; background: var(--color-accent); color: var(--color-bg); }
 .status .open-details { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px; }
+/* v4.6: the «Voice» switch, right of the state, left of the details */
+.status .voice-switch { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; color: var(--l-faint); }
+.status .voice-switch + .open-details { margin-left: 0; }
+.status .voice-switch.on { color: var(--color-text); }
+.status .voice-switch:hover:not([disabled]) { color: var(--color-text); }
+.status .voice-switch[disabled] { opacity: .5; cursor: default; }
+.status .voice-switch svg.icon { width: 13px; height: 13px; }
 .status .open-details:hover { color: var(--color-text); }
 .status .open-details svg.icon { width: 12px; height: 12px; transition: transform var(--t-chevron); }
 .status .open-details[aria-expanded="true"] svg.icon { transform: rotate(180deg); }
@@ -740,3 +747,13 @@ button.crumb:hover:not([aria-current]) { color: var(--color-text); text-decorati
   .send, .status .open-details { min-height: 44px; }
 }
 @media (max-width: 599px) { .hints { display: none; } }
+
+/* v4.6: her voice on a line — "voicing…", then ▶ / ❚❚ with the elapsed time */
+.voice { margin-top: 6px; font-size: 12px; color: var(--l-faint); }
+.voice .voicing { font-style: italic; }
+.voice .vplay { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; border: 1px solid var(--l-hair); color: var(--l-muted); }
+.voice .vplay:hover:not([disabled]) { color: var(--color-text); border-color: var(--color-divider); }
+.voice .vplay[aria-pressed="true"] { color: var(--color-accent); border-color: var(--color-accent); }
+.voice .vplay[disabled] { opacity: .5; }
+.voice .vplay svg.icon { width: 12px; height: 12px; }
+.voice .vtime:empty { display: none; }

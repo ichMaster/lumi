@@ -345,3 +345,25 @@ def test_v45_the_local_routes_need_the_key_and_a_post(mac):
         assert request(proxy, "POST", path, body=body, key=False)[0] == 403
         assert request(proxy, "GET", path)[0] == 405
     assert len(server.requests) == seen and opened == [] and not downloads.exists()
+
+
+def test_v46_her_voice_is_relayed_byte_for_byte_and_the_switch_reaches_the_server(world):
+    """v4.6 LUMI-330: a line's audio as audio/mpeg with its headers, the token added by the proxy; the switch's body as
+    the page wrote it; nothing else below /v1/voice/ reaches the server."""
+    from tests._desktop_world import MP3
+
+    server, proxy = world
+    vid = "0123456789abcdef0123456789abcdef"
+    status, headers, body = request(proxy, "GET", f"/v1/voice/{vid}")
+    assert status == 200 and body == MP3 and headers["content-type"] == "audio/mpeg"
+    assert headers["x-content-type-options"] == "nosniff"
+    assert server.requests[-1]["path"] == f"/v1/voice/{vid}"
+    assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    status, _, body = request(proxy, "POST", "/v1/voice", body={"enabled": False})
+    assert status == 200 and json.loads(body) == {"enabled": False, "available": True}
+    assert json.loads(server.requests[-1]["body"]) == {"enabled": False}
+    seen = len(server.requests)
+    for path in (f"/v1/voice/{vid}.mp3", "/v1/voice/latest", f"/v1/voice/{vid}/x"):
+        assert request(proxy, "GET", path)[0] == 404, path
+    assert request(proxy, "GET", f"/v1/voice/{vid}", key=False)[0] in (401, 403)  # the window's key, always
+    assert len(server.requests) == seen
