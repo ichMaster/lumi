@@ -25,7 +25,8 @@ def _client(tmp_path):
 
 
 def test_the_route_set_is_pinned(tmp_path):
-    routes = {(m, r.path) for r in _client(tmp_path).app.routes if r.path.startswith("/v1/") for m in r.methods}
+    routes = {(m, r.path) for r in _client(tmp_path).app.routes if r.path.startswith("/v1/")
+              for m in (getattr(r, "methods", None) or {"WS"})}
     assert routes == {
         ("GET", "/v1/health"), ("GET", "/v1/state"), ("POST", "/v1/turn"),
         ("POST", "/v1/command"), ("POST", "/v1/session/new"),
@@ -40,6 +41,7 @@ def test_the_route_set_is_pinned(tmp_path):
         ("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),  # v4.5: the owner's
         ("POST", "/v1/files/restore"), ("GET", "/v1/files/download"),  # actions on her sandbox
         ("GET", "/v1/voice/{voice_id}"), ("POST", "/v1/voice"),  # v4.6: her voice — a line's audio, the switch
+        ("WS", "/v1/dictation"),  # v4.7: dictation — the owner's audio in, the words out
     }
 
 
@@ -85,7 +87,8 @@ def test_state_shape_is_pinned(tmp_path):
                                  "journal": True, "thoughts": True,
                                  # v4.4: her day is always served; the schedule only while a scheduler runs
                                  "today": True, "schedule": False,
-                                 "actions": False}  # v4.5: no sandbox and no action log on a bare core
+                                 "actions": False,  # v4.5: no sandbox and no action log on a bare core
+                                 "dictation": False}  # v4.7: no recognizer on a bare core
     assert set(state["totals"]) == {
         "turns", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "latency_ms",
     }
@@ -264,8 +267,10 @@ def test_the_agora_space_adds_its_routes_only(tmp_path):
     # v3.4: and her initiative's two (the agora space API v2). Off, it is the set above.
     from tests._agora_world import agora_client
 
-    on = {(m, r.path) for r in agora_client(tmp_path).app.routes if r.path.startswith("/v1/") for m in r.methods}
-    off = {(m, r.path) for r in _client(tmp_path / "off").app.routes if r.path.startswith("/v1/") for m in r.methods}
+    on = {(m, r.path) for r in agora_client(tmp_path).app.routes if r.path.startswith("/v1/")
+          for m in (getattr(r, "methods", None) or {"WS"})}
+    off = {(m, r.path) for r in _client(tmp_path / "off").app.routes if r.path.startswith("/v1/")
+           for m in (getattr(r, "methods", None) or {"WS"})}
     assert on - off == {("POST", "/v1/observe"), ("POST", "/v1/turn/{turn_id}/retract"),
                         ("GET", "/v1/initiative"), ("POST", "/v1/initiative/{initiative_id}/posted")} and off <= on
 
@@ -1338,3 +1343,118 @@ def test_v46_the_room_never_reaches_her_voice(tmp_path):
                        headers=ROOM_AUTH)
     assert res.status_code == 200
     assert client.app.state.service.voicer.drain(5) and tts.calls == []  # the room's lines are never voiced
+
+
+# --- v4.7 LUMI-332: /v1/dictation ---------------------------------------------------------------------------------
+
+DICT_PCM = b"\x01\x00" * 160
+DICT_STOP = json.dumps({"type": "stop"})
+
+
+class _EchoStream:
+    """Deepgram's side for the contract: each audio frame → an interim; CloseStream → the phrase, then the end."""
+
+    def __init__(self):
+        import asyncio
+
+        self.queue = asyncio.Queue()
+
+    async def send_pcm(self, data):
+        self.queue.put_nowait({"type": "Results", "is_final": False,
+                               "channel": {"alternatives": [{"transcript": "Привіт"}]}})
+
+    async def finish(self):
+        self.queue.put_nowait({"type": "Results", "is_final": True, "speech_final": True,
+                               "channel": {"alternatives": [{"transcript": "Привіт, світ."}]}})
+        self.queue.put_nowait(None)
+
+    async def close(self):
+        pass
+
+    async def events(self):
+        while (event := await self.queue.get()) is not None:
+            yield event
+
+
+def _dictation(*, stream=True, text="Так."):
+    from server.dictation import DictationSetup
+    from voice.stt import MockSTT
+
+    async def factory():
+        return _EchoStream()
+
+    return DictationSetup(stt=MockSTT(text), stream_factory=factory if stream else None, lang="uk")
+
+
+def _dictation_client(tmp_path, **kw):
+    core = Core(llm=MockLLMClient(states={"reply": "так", "emotion": "calm", "intensity": 0.5}),
+                repository=JsonRepository(tmp_path / "s.json"), canon="C", model="m")
+    return TestClient(create_app(core, token=TOKEN, env="dev", version="4.7.0", **kw))
+
+
+def _refused(client, headers=None):
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect("/v1/dictation", headers=headers or {}) as ws:
+            ws.receive_json()
+    return caught.value.code
+
+
+def test_v47_dictation_streams_the_words_back_in_the_pinned_shapes(tmp_path):
+    client = _dictation_client(tmp_path, dictation=_dictation())
+    with client.websocket_connect("/v1/dictation", headers=AUTH) as ws:
+        assert ws.receive_json() == {"type": "ready", "mode": "stream"}
+        ws.send_bytes(DICT_PCM)
+        assert ws.receive_json() == {"type": "interim", "text": "Привіт"}
+        ws.send_text(DICT_STOP)
+        assert ws.receive_json() == {"type": "final", "text": "Привіт, світ."}
+        assert ws.receive_json() == {"type": "done"}
+
+
+def test_v47_dictation_without_streaming_recognizes_the_whole_recording_on_the_stop(tmp_path):
+    client = _dictation_client(tmp_path, dictation=_dictation(stream=False, text="Так, саме так."))
+    with client.websocket_connect("/v1/dictation", headers=AUTH) as ws:
+        assert ws.receive_json() == {"type": "ready", "mode": "batch"}
+        ws.send_bytes(DICT_PCM)
+        ws.send_text(DICT_STOP)
+        assert ws.receive_json() == {"type": "final", "text": "Так, саме так."}
+        assert ws.receive_json() == {"type": "done"}
+
+
+def test_v47_dictation_is_the_owners_token_only(tmp_path):
+    from tests._agora_world import OWNER_AUTH, ROOM_AUTH, agora_client
+
+    client = agora_client(tmp_path, dictation=_dictation())
+    assert _refused(client) == 1008  # no token: the handshake is refused
+    assert _refused(client, {"Authorization": "Bearer wrong"}) == 1008
+    assert _refused(client, ROOM_AUTH) == 1008  # the room never dictates
+    with client.websocket_connect("/v1/dictation", headers=OWNER_AUTH) as ws:
+        assert ws.receive_json()["type"] == "ready"
+
+
+def test_v47_a_server_without_a_recognizer_refuses_dictation(tmp_path):
+    client = _dictation_client(tmp_path)
+    assert _refused(client, AUTH) == 1008
+    assert client.get("/v1/state", headers=AUTH).json()["features"]["dictation"] is False
+
+
+def test_v47_features_dictation_follows_the_recognizer(tmp_path):
+    client = _dictation_client(tmp_path, dictation=_dictation())
+    assert client.get("/v1/state", headers=AUTH).json()["features"]["dictation"] is True
+
+
+def test_v47_one_dictation_at_a_time_and_never_the_turn_lock(tmp_path):
+    client = _dictation_client(tmp_path, dictation=_dictation())
+    with client.websocket_connect("/v1/dictation", headers=AUTH) as first:
+        assert first.receive_json()["type"] == "ready"
+        with client.websocket_connect("/v1/dictation", headers=AUTH) as second:
+            assert second.receive_json() == {"type": "error", "detail": "busy"}
+        assert client.post("/v1/turn", json={"text": "привіт"}, headers=AUTH).status_code == 200  # she still answers
+        first.send_bytes(DICT_PCM)
+        assert first.receive_json()["type"] == "interim"
+        first.send_text(DICT_STOP)
+        assert [first.receive_json()["type"] for _ in range(2)] == ["final", "done"]
+    with client.websocket_connect("/v1/dictation", headers=AUTH) as again:  # the first one ended: free again
+        assert again.receive_json()["type"] == "ready"

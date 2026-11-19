@@ -293,6 +293,20 @@ emotion's voice settings.
 - The server log has one line per generation: `voice: made <id> (<n> chars, <ms> ms)` or `voice: failed <id>`, never
   the text.
 
+**v4.7 (dictation — the server's side).** The window's shell streams the Mac's mic to `/v1/dictation`, a WebSocket
+on the server, and reads the words back while you speak. The server recognizes with the box's own settings and key
+(`dictation.stt_provider`, `stt_model`, `stt_lang`, and `deepgram_api_key` in `secrets.yaml`), so the Mac needs no
+STT key.
+- With Deepgram and `websockets` (both in the image) the words come **live**: the phrase being spoken, then each
+  settled phrase. Otherwise (ElevenLabs Scribe, a local Whisper, or Deepgram's stream down) the recording is
+  recognized whole when it stops.
+- The owner's token only; the room's token is refused at the handshake. One dictation at a time; it never waits for
+  her turn.
+- A recording is at most 5 minutes, and 10 s without audio ends it with an error.
+- No audio is stored, on the box or in the log. The server log has one line per dictation: `dictation: stream|batch,
+  <seconds> s of audio, <n> chars, done|cancel|error|gone`.
+- `GET /v1/state.features.dictation` is true when a recognizer is configured; without one the route refuses.
+
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another
 checkout, `--portrait` for another picture). It opens from Launchpad, Spotlight or the Dock, as one "Lili" tile. The

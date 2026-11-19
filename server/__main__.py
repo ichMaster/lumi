@@ -226,6 +226,32 @@ def voice_of(cfg):
                       first=bool(cfg.telegram_voice))
 
 
+def dictation_of(cfg):
+    """v4.7: the recognizer behind ``/v1/dictation`` — the box's batch STT (``dictation.stt_provider`` with its key:
+    Deepgram, ElevenLabs Scribe or a local Whisper) and, for Deepgram with ``websockets`` installed, the streaming one;
+    ``None`` (``features.dictation`` off) when no recognizer is configured."""
+    import importlib.util
+
+    from server.dictation import DictationSetup
+    from voice.stt import build_stt
+
+    provider = (cfg.stt_provider or "").strip().lower()
+    key = {"deepgram": cfg.deepgram_api_key, "elevenlabs": cfg.elevenlabs_api_key}.get(provider, "")
+    if provider not in ("deepgram", "elevenlabs", "whisper") or (provider != "whisper" and not key):
+        return None
+    stt = build_stt(provider, api_key=key, model=cfg.stt_model)
+    factory = None
+    if provider == "deepgram" and importlib.util.find_spec("websockets") is not None:
+        from voice.stream_stt import DeepgramStream, build_deepgram_url
+
+        url = build_deepgram_url(model=cfg.stt_model or "nova-3", lang=cfg.stt_lang)
+
+        async def factory():
+            return await DeepgramStream(key, url=url).open()
+
+    return DictationSetup(stt=stt, stream_factory=factory, lang=cfg.stt_lang)
+
+
 VOICE_HOUSEKEEPING_S = 24 * 3600  # v4.6: the voice files' expiry — once at start, then daily
 
 
@@ -439,7 +465,8 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
                      on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg),
                      space=space, room_token=cfg.agora_token if space is not None else None,
-                     thumbs_dir=thumbs_dir_of(cfg), actions_log=actions_log_of(cfg), voice=voice_of(cfg))
+                     thumbs_dir=thumbs_dir_of(cfg), actions_log=actions_log_of(cfg), voice=voice_of(cfg),
+                     dictation=dictation_of(cfg))
     service = writer["service"] = app.state.service
     from server.brain import BrainHost
 

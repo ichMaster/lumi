@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -68,6 +68,7 @@ from core.journal import list_days, read_day
 from core.llm import LLMError
 from core.thoughts import THOUGHT_PAGE_MAX
 from core.user import may_read_journal
+from server.dictation import DictationSetup, relay
 from server.voice import (
     AUTO,
     VOICE_ID_RE,
@@ -351,7 +352,7 @@ def totals_dict(totals: Any) -> dict[str, int]:
 
 def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | None,
                    thumbs_dir: Path | None = None, schedule: bool = False, actions: bool = False,
-                   voice: dict[str, bool] | None = None) -> dict[str, Any]:
+                   voice: dict[str, bool] | None = None, dictation: bool = False) -> dict[str, Any]:
     """Everything a client's status/stats lines read — one fetch per turn/command, not one per render. v4.6: ``voice``
     ``{enabled, available}`` — her voice's switch — only on a server that can voice her (absent otherwise)."""
     files_served = isinstance(getattr(core, "files_root", None), Path)
@@ -386,7 +387,9 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
                      "today": callable(getattr(core, "today_view", None)),
                      "schedule": schedule,
                      # v4.5: the owner's actions on her sandbox (the sandbox and the action log both configured)
-                     "actions": files_served and actions},
+                     "actions": files_served and actions,
+                     # v4.7: the window's dictation — the server has a recognizer for /v1/dictation
+                     "dictation": dictation},
     } | ({"voice": voice} if voice is not None else {})
 
 
@@ -431,8 +434,11 @@ class _Service:
 
     def __init__(self, core: Any, session: Any, *, env: str | None, version: str | None,
                  outbox: Outbox | None = None, thumbs_dir: Path | None = None,
-                 actions_log: ActionLog | None = None, voice: VoiceSetup | None = None) -> None:
+                 actions_log: ActionLog | None = None, voice: VoiceSetup | None = None,
+                 dictation: DictationSetup | None = None) -> None:
         self.core = core
+        self.dictation = dictation  # v4.7: the recognizer behind /v1/dictation, or None
+        self.dictating = False  # v4.7: one dictation at a time (set and cleared on the event loop)
         self.outbox = outbox  # v2.5: the file bus the server writes (Telegram / the voicer), or None
         # v4.6: the one ordered outbox writer — and her voice, while the switch is on (no setup → never voiced)
         self.voice_switch = (VoiceSwitch(voice.switch_path, first=voice.first, available=voice.tts is not None)
@@ -459,7 +465,8 @@ class _Service:
     def state(self) -> dict[str, Any]:
         return state_snapshot(self.core, self.session, env=self.env, version=self.version, thumbs_dir=self.thumbs_dir,
                               schedule=self.schedule_view is not None, actions=self.actions_log is not None,
-                              voice=self.voice_switch.view() if self.voice_switch is not None else None)
+                              voice=self.voice_switch.view() if self.voice_switch is not None else None,
+                              dictation=self.dictation is not None)
 
     def _voice_ready(self, voice_id: str, ok: bool) -> None:
         """v4.6: a line's audio is ready (or failed) — the ``voice`` push, after that line's ``message``."""
@@ -685,7 +692,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
                version: str | None = None, on_new_session: Callable[[], None] | None = None,
                outbox: Outbox | None = None, space: Any = None, room_token: str | None = None,
                thumbs_dir: Path | None = None, actions_log: Path | None = None,
-               voice: VoiceSetup | None = None) -> FastAPI:
+               voice: VoiceSetup | None = None, dictation: DictationSetup | None = None) -> FastAPI:
     """The v1 app around an injected core (a mock model in tests). ``token`` is required.
 
     ``on_new_session`` runs in the background after ``/v1/session/new`` (the ambient re-snapshot, as the
@@ -704,7 +711,8 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         raise ValueError("the Agora space needs its own room token (agora.token), never the client token")
     service = _Service(core, session if session is not None else core.start_session(), env=env, version=version,
                        outbox=outbox, thumbs_dir=Path(thumbs_dir) if thumbs_dir is not None else None,
-                       actions_log=ActionLog(actions_log) if actions_log is not None else None, voice=voice)
+                       actions_log=ActionLog(actions_log) if actions_log is not None else None, voice=voice,
+                       dictation=dictation)
     expected = f"Bearer {token}".encode()
     room_expected = f"Bearer {room_token}".encode() if space is not None else None
     # No interactive docs / schema endpoints: the API is private to its own clients.
@@ -989,6 +997,40 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             finally:
                 service.lock.release()
         return view
+
+    # --- v4.7 LUMI-332: dictation — the owner's audio in, the words out; owner-only, one at a time, never the lock ---
+    @app.websocket("/v1/dictation")
+    async def dictation_socket(websocket: WebSocket) -> None:
+        """The window's shell streams the Mac's mic here (PCM 16 kHz mono int16 as binary frames, ``stop`` / ``cancel``
+        as text) and reads ``ready`` / ``interim`` / ``final`` / ``error`` / ``done`` back (``server/dictation.py``).
+        The owner's token only — anything else, or a server without a recognizer, is refused at the handshake (403)."""
+        if not _is(websocket.headers.get("authorization"), expected) or service.dictation is None:
+            await websocket.close(code=1008)  # before accepting: the handshake is answered 403
+            return
+        await websocket.accept()
+        if service.dictating:  # one at a time — checked and set on the loop, no await between
+            try:
+                await websocket.send_json({"type": "error", "detail": "busy"})
+                await websocket.close()
+            except Exception:  # noqa: BLE001 — the client already left
+                pass
+            return
+        service.dictating = True
+
+        async def receive() -> bytes | str | None:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return None
+            return message["bytes"] if message.get("bytes") is not None else message.get("text")
+
+        try:
+            await relay(receive, websocket.send_json, service.dictation)
+        finally:
+            service.dictating = False
+            try:
+                await websocket.close()
+            except Exception:  # noqa: BLE001 — already closed by the client
+                pass
 
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:

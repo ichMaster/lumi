@@ -259,3 +259,27 @@ async def test_nothing_is_written_and_the_log_holds_no_words(tmp_path, monkeypat
     assert list(tmp_path.iterdir()) == []
     line = [r.getMessage() for r in caplog.records if r.getMessage().startswith("dictation:")]
     assert line and "batch" in line[0] and "done" in line[0] and "Таємний" not in caplog.text
+
+
+# --- the server's wiring (LUMI-332) -------------------------------------------------------------------------------
+
+def test_dictation_of_builds_the_box_recognizer_only_when_one_is_configured():
+    import dataclasses
+    import importlib.util
+
+    from core.config import load_config
+    from server.__main__ import dictation_of
+    from voice.stt import DeepgramSTT, ElevenLabsScribeSTT, WhisperSTT
+
+    cfg = dataclasses.replace(load_config(load_env=False), stt_provider="deepgram", stt_model="nova-2", stt_lang="uk",
+                              deepgram_api_key="dg", elevenlabs_api_key="")
+    setup = dictation_of(cfg)
+    assert isinstance(setup.stt, DeepgramSTT) and setup.stt.model == "nova-2" and setup.lang == "uk"
+    assert (setup.stream_factory is not None) == (importlib.util.find_spec("websockets") is not None)
+    assert dictation_of(dataclasses.replace(cfg, deepgram_api_key="")) is None  # no key → features.dictation off
+    scribe = dictation_of(dataclasses.replace(cfg, stt_provider="elevenlabs", elevenlabs_api_key="el"))
+    assert isinstance(scribe.stt, ElevenLabsScribeSTT) and scribe.stream_factory is None  # batch only
+    assert dictation_of(dataclasses.replace(cfg, stt_provider="elevenlabs")) is None
+    local = dictation_of(dataclasses.replace(cfg, stt_provider="whisper", deepgram_api_key=""))
+    assert isinstance(local.stt, WhisperSTT) and local.stream_factory is None
+    assert dictation_of(dataclasses.replace(cfg, stt_provider="mock")) is None
