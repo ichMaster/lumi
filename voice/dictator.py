@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from state import fifo
-from voice.stt import STT
+from voice.stt import STT, wav_bytes
 
 # A recognition shorter than this (after stripping) is treated as empty / low-confidence → dropped,
 # never written to the inbox ("better silent than garbage"). 1 = drop only the truly empty result.
@@ -153,7 +153,7 @@ def run() -> None:  # pragma: no cover - mic capture + STT glue (no audio/paid C
                     stream.stop()
                     stream.close()
                     stream = None
-                audio = _wav(b"".join(recording), samplerate)
+                audio = wav_bytes(b"".join(recording), samplerate)
                 rid = recognize_and_append(audio, cfg.inbox_path, stt, lang=cfg.stt_lang, log=log)
                 if rid:
                     log.info("recognized → inbox id=%s", rid)
@@ -163,20 +163,6 @@ def run() -> None:  # pragma: no cover - mic capture + STT glue (no audio/paid C
         except Exception as exc:  # noqa: BLE001 — a transient error must not kill the dictator
             log.error("dictator loop error (retrying): %s", exc)
         time.sleep(0.2)
-
-
-def _wav(pcm: bytes, samplerate: int) -> bytes:  # pragma: no cover - audio glue
-    """Wrap raw 16-bit mono PCM in a WAV container (what the STT adapters expect)."""
-    import io
-    import wave
-
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(samplerate)
-        w.writeframes(pcm)
-    return buf.getvalue()
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -113,3 +113,32 @@ def test_probe_imports_the_promoted_tracker():
 
     assert chain_ws_probe.UtteranceTracker is UtteranceTracker
     assert chain_ws_probe.build_deepgram_url is build_deepgram_url
+
+
+# --- v4.7 LUMI-331: what the window's dictation adds -------------------------------------------------------------
+
+def test_the_tracker_shows_what_it_holds_and_flushes_it_at_the_end():
+    t = UtteranceTracker()
+    assert t.pending() == "" and t.flush() is None
+    assert t.feed(_final("Я його спробував", speech_final=True)) is None
+    assert t.pending() == "Я його спробував"
+    assert t.feed(_final("ще раз")) is None
+    assert t.pending() == "Я його спробував ще раз"
+    assert t.flush() == "Я його спробував ще раз"   # the speaker stopped: the held phrase is the last one
+    assert t.pending() == "" and t.flush() is None
+
+
+async def test_finish_tells_deepgram_the_audio_ended():
+    fake = _FakeWS([])
+
+    async def connect(url, headers):
+        return fake
+
+    s = DeepgramStream("k", url=build_deepgram_url(model="nova-3"), _connect=connect)
+    await s.finish()                                   # not open yet: nothing to tell
+    await s.open()
+    await s.finish()
+    assert fake.sent == [json.dumps({"type": "CloseStream"})]
+    await s.close()
+    await s.finish()                                   # closed: ignored
+    assert fake.sent == [json.dumps({"type": "CloseStream"})]

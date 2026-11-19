@@ -15,6 +15,21 @@ from __future__ import annotations
 from typing import Protocol
 
 
+def wav_bytes(pcm: bytes, rate: int = 16_000) -> bytes:
+    """Raw 16-bit mono PCM wrapped in a WAV container — what the batch adapters expect (the dictator's recording,
+    v4.7 the window's dictation recognized whole)."""
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
 class STT(Protocol):
     """The voice-in seam: recorded audio (+ language, + container ``content_type``) → recognized text.
 

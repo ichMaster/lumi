@@ -77,6 +77,14 @@ class UtteranceTracker:
             return self._flush()
         return None
 
+    def pending(self) -> str:
+        """The finalized segments still held (not yet an utterance), joined — v4.7: the dictation's interim line."""
+        return " ".join(self._parts)
+
+    def flush(self) -> str | None:
+        """The held segments as one utterance, or ``None`` — v4.7: the end of a dictation (the speaker stopped)."""
+        return self._flush() if self._parts else None
+
     def _flush(self) -> str:
         out = " ".join(self._parts)
         self._parts = []
@@ -123,6 +131,17 @@ class DeepgramStream:
         except Exception:  # noqa: BLE001 — a half-dead socket must not block the reconnect
             self._ws = None
         return await self.open()
+
+    async def finish(self) -> None:
+        """Tell Deepgram the audio ended (``CloseStream``): it sends the last results, then closes — v4.7, so a
+        dictation's last phrase isn't lost on a stop. A dead socket is ignored, like :meth:`send_pcm`."""
+        ws = self._ws
+        if ws is None:
+            return
+        try:
+            await ws.send(json.dumps({"type": "CloseStream"}))
+        except Exception:  # noqa: BLE001 — the stream is ending anyway
+            return
 
     async def send_pcm(self, pcm: bytes) -> None:
         """One raw linear16 mic frame → Deepgram (binary WS message).
