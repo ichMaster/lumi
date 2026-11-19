@@ -1,6 +1,17 @@
 Lumi — Release notes
 ====================
 
+Version 4.5.0 (2026-11-19)
+---------------------------
+- v4.5 — actions from the window, the fifth phase of v4: the owner acts on her sandbox from Lili.app (the five actions chosen on 2026-11-19).
+- The write side in core (core/actions.py): upload writes a new file under a free name (opened "xb", never an overwrite; pictures by magic bytes up to 10 MB, NUL-free UTF-8 text up to 1 MB, anything else refused); rename within its folder never over a taken name; trash moves into .trash/<YYYY-MM-DD>/ and restore brings an item back to where the log says it came from — nothing is ever deleted; every path through safe_path, a link never moved or followed out; ActionLog writes <data root>/actions.jsonl, never any content (LUMI-321).
+- Five owner-only routes: POST /v1/files/upload (refused while the body streams past 10 MB), /rename, /trash, /restore and GET /v1/files/download (any file up to 50 MB as an attachment); the room's token gets 403, none takes the turn lock; sandbox_images (up to 4) on both turn routes — the server reads each picture of her sandbox into an image block, refused before the turn on a bad path or while image.enabled is off (422); features.actions; the Gallery skips .trash/. The Server API v1 grows additively (LUMI-322).
+- The proxy forwards the five routes (the upload capped at 10 MB, a refused body drained so the page gets the 413) and adds three local routes behind the window's key: save a download to ~/Downloads under a free name, show a saved file in Finder, open an http/https address in the default browser (LUMI-323).
+- Files and the reader: Upload (button or drop), the ⋯ menu (Download, Rename…, Move to trash…, Restore… in the trash), each write confirmed first, a notice line with what happened; the reader's Download and «Open in browser» (LUMI-324).
+- The full picture view's actions: Show to Lili (your line sent with the picture, your line in the chat shows it), Download, Rename…, Move to trash… (LUMI-325).
+- At the owner's request during the dev check: an http/https address in the chat (her reply or your line, bare or a markdown link) is a link that opens in the default browser through the proxy, never in the window; a bare address in the reader gets «Open in browser» (LUMI-326).
+- Code review: three LOW findings fixed — a download and each picture shown to her are now logged too (once per turn that runs); Restore is offered only on the items the log knows (no empty menu in the trash); a file over 10 MB is refused by the window before it is sent. Two LOW findings deferred (a chat link's label hiding its address — backlog; a check-then-move race in rename/restore — cleanup).
+
 Version 4.4.1 (2026-11-19)
 ---------------------------
 - Fix: text in the desktop window can be selected and copied again. pywebview's create_window turns text selection off unless text_select=True, so nothing in Lili.app could be selected or copied; the window now asks for it (the Edit menu's Copy already existed). A regression test checks the shell's call.

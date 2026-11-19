@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.4.1 — Text in the window can be selected and copied** (version 4; version 3 complete, last 3.4.1).
+**4.5.0 — The window: actions on her files** (version 4; version 3 complete, last 3.4.1).
+- **Upload** a picture or a text file from the Mac into Files, by the button or by dropping it. A taken name gets a
+  new one (`rain (2).png`); nothing is overwritten. A picture is accepted up to 10 MB, text up to 1 MB.
+- **Download** any file to `~/Downloads`, from Files, the reader or the picture view.
+- **Rename**, **Move to trash** and **Restore**. Each one asks first. The trash is `.trash/<date>/` in her sandbox,
+  and nothing is ever deleted.
+- **Show to Lili**: from a picture, send it to her with your line, and she answers about it in the chat.
+- **Links** open in the default browser: «Open in browser» in the reader, and every address in the chat.
+- Every action is owner-only, goes through the sandbox guard, and is logged to `actions.jsonl`. The log holds writes,
+  downloads and shown pictures, never any content.
+
+**4.4.1 — Text in the window can be selected and copied** (version 4).
 A fix on 4.4.0: pywebview turns text selection off unless asked, so nothing in `Lili.app` could be selected or copied;
 the window now asks for it. The ROADMAP describes the next three phases: v4.5 actions from the window (all five
 chosen), v4.6 her voice in the window (one generation shared with Telegram, one switch for both), v4.7 dictation in
