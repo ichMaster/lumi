@@ -11,9 +11,9 @@ from state import fifo
 from telegram.outbound import (
     CAPTION_LIMIT,
     batches,
+    forward,
     is_photo_record,
     send_photo_record,
-    voice_to_telegram,
 )
 from voice.tts import MockTTS
 
@@ -123,28 +123,15 @@ async def test_voice_mode_sends_photo_not_voiced(tmp_path):
     async def fake_send_photo(rec):
         photos.append(rec["text"])
 
-    n = await voice_to_telegram(
-        outbox, sent, tts=MockTTS(), to_ogg=lambda b: b,
-        send_voice=fake_send_voice, caption_for=lambda r: r["text"],
-        send_photo=fake_send_photo,
+    async def no_text(group):
+        raise AssertionError("nothing goes as text here")
+
+    n = await forward(
+        outbox, sent, batch=5, voice_dir=tmp_path / "voice", send_text=no_text, send_photo=fake_send_photo,
+        send_voice=fake_send_voice, to_ogg=lambda b: b, caption_for=lambda r: r["text"], tts=MockTTS(),
+        voice_mode=True,
     )
-    assert n == 2                          # the reply (voiced) + the image (photo); the user line skipped
+    assert n == (3, False)                 # the reply (voiced) + the image (photo) + the user line (skipped)
     assert voiced == ["привіт"]            # only the spoken reply was voiced (not the image's caption)
     assert photos == ["ось малюнок"]       # the chosen image went out as a PHOTO, not voiced
     assert fifo.load_pointer(sent) == 3    # advanced past all three
-
-
-async def test_voice_mode_without_send_photo_falls_back_to_voicing(tmp_path):
-    """Legacy callers (no send_photo injected) still advance — the photo record is voiced as before."""
-    outbox, sent = tmp_path / "outbox.jsonl", tmp_path / "outbox.sent"
-    fifo.append(outbox, "ось", kind="lili", emotion="calm", photo="/x/cat.png")
-    voiced = []
-
-    async def fake_send_voice(ogg, caption):
-        voiced.append(caption)
-
-    n = await voice_to_telegram(
-        outbox, sent, tts=MockTTS(), to_ogg=lambda b: b,
-        send_voice=fake_send_voice, caption_for=lambda r: r["text"],  # no send_photo
-    )
-    assert n == 1 and voiced == ["ось"] and fifo.load_pointer(sent) == 1  # back-compat: voiced, advanced

@@ -6,6 +6,12 @@ Forward Лілі's ``outbox`` records to Telegram, **FIFO from the pointer**, co
 ``LUMI_TELEGRAM_CATCHUP_H`` on restart (so a long downtime doesn't flood). Each reply carries its
 **emoji**; optionally the flat **face portrait** rides as a photo.
 
+v4.6: her voice is made **on the server**, once per line. A record that names a stored file
+(``voice: "<id>.mp3"`` under ``<data root>/voice/<user_id>/``) goes as a voice message from that file — the daemon
+never calls ElevenLabs for it; ``voice: null`` goes as text; a record without the key (written before v4.6, or by the
+in-process TUI) goes the old way — voiced by the daemon's own TTS in its voice mode (``telegram.voice``), else text.
+:func:`forward` is one pass over the outbox, decided per record (:func:`delivery`, :func:`plan`).
+
 The planning + rendering are pure and unit-tested; ``run()`` is the ``aiogram`` glue (lazy import;
 not covered).
 """
@@ -13,8 +19,11 @@ not covered).
 from __future__ import annotations
 
 import random
+import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from core.emoji import BUILTIN, emoji_for
 from core.emotion import DEFAULT_EMOTION, Emotion, EmotionState
@@ -26,6 +35,7 @@ from viewer.face import face_for
 CAPTION_LIMIT = 1024
 MESSAGE_LIMIT = 4096
 USER_PREFIX = "💻"  # marks a line you typed in the TUI (mirrored to Telegram), vs Лілі's own reply
+VOICE_NAME_RE = re.compile(r"[0-9a-f]{32}\.mp3")  # v4.6: a stored voice file's name on an outbox record
 
 
 def split_catchup(records: list[dict], now: datetime, catchup_h: int) -> tuple[list[dict], list[dict]]:
@@ -55,22 +65,10 @@ def batches(records: list[dict], n: int) -> list[list[dict]]:
     """Group consecutive records into chunks of at most ``n`` (bounds a backlog → ⌈M/n⌉ messages).
 
     A v0.24 **photo** record (a chosen `send_image`) is always its **own** group — a picture she chose to
-    send goes out on its own, never N-batched with replies. Text records around it batch as before.
+    send goes out on its own, never N-batched with replies; so is a v4.6 record with a stored voice file. Text records
+    around them batch as before. (The groups of :func:`plan`, outside voice mode.)
     """
-    n = max(1, n)
-    groups: list[list[dict]] = []
-    run: list[dict] = []
-    for r in records:
-        if is_photo_record(r):
-            if run:
-                groups += [run[i : i + n] for i in range(0, len(run), n)]
-                run = []
-            groups.append([r])  # the chosen photo, on its own
-        else:
-            run.append(r)
-    if run:
-        groups += [run[i : i + n] for i in range(0, len(run), n)]
-    return groups
+    return [group for _, group in plan(records, n)]
 
 
 def _glyph(record: dict, emoji_map: dict) -> str:
@@ -149,36 +147,107 @@ def mp3_to_ogg(mp3: bytes) -> bytes:  # pragma: no cover - ffmpeg subprocess
     return out.stdout
 
 
-async def voice_to_telegram(outbox_path, sent_path, *, tts, to_ogg, send_voice, caption_for,
-                            send_photo=None, log=None) -> int:
-    """Send each new ``kind="lili"`` reply as a Telegram **voice message** (one per reply); return count.
+def delivery(record: dict, *, voice_mode: bool = False) -> str:
+    """How one outbox record goes (v4.6): ``"photo"`` (a chosen ``send_image``), ``"stored"`` (her line with the
+    server's voice file — a well-formed name only), ``"old"`` (her line from before v4.6 or the in-process TUI, voiced
+    by the daemon in its voice mode), ``"skip"`` (your mirrored line in voice mode — never sent, as before v4.6) or
+    ``"text"``."""
+    if is_photo_record(record):
+        return "photo"
+    if record.get("kind") == "user":
+        return "skip" if voice_mode else "text"
+    if "voice" in record:
+        name = record.get("voice")
+        return "stored" if isinstance(name, str) and VOICE_NAME_RE.fullmatch(name) else "text"
+    return "old" if voice_mode else "text"
 
-    Skips ``kind="user"`` (advances the pointer past them). ``synth → to_ogg → send_voice(ogg, caption)``
-    per reply; on a synth/convert/send **failure**, stop **without** advancing (retry next loop) — the
-    same resilience as the text path. ``send_voice`` is awaited; ``tts`` / ``to_ogg`` / ``caption_for``
-    are injected so this is testable with a mock TTS + a fake bot (no network).
 
-    A **v0.24 chosen `send_image`** record (it carries a ``photo``) is **always sent as a photo**, even in
-    voice mode — voice mode governs how her *spoken replies* are delivered, not whether a deliberately-sent
-    picture goes. When ``send_photo`` (an injected ``async (record) -> None``) is given, such a record is
-    routed there instead of being voiced; without it (legacy callers) the record is voiced as before.
-    """
-    count = 0
-    for rec in fifo.read_since(outbox_path, fifo.load_pointer(sent_path)):
+def plan(records: list[dict], n: int, *, voice_mode: bool = False) -> list[tuple[str, list[dict]]]:
+    """The pass's sends in FIFO order: a photo, a voice message or a skipped line stands alone; the text records
+    between them are grouped by at most ``n`` (bounds a backlog → ⌈M/n⌉ messages)."""
+    n = max(1, n)
+    out: list[tuple[str, list[dict]]] = []
+    run: list[dict] = []
+    for record in records:
+        kind = delivery(record, voice_mode=voice_mode)
+        if kind == "text":
+            run.append(record)
+            continue
+        if run:
+            out += [("text", run[i : i + n]) for i in range(0, len(run), n)]
+            run = []
+        out.append((kind, [record]))
+    if run:
+        out += [("text", run[i : i + n]) for i in range(0, len(run), n)]
+    return out
+
+
+def stored_voice(record: dict, voice_dir: Path) -> bytes | None:
+    """The MP3 the server stored for a record (``voice_dir / record["voice"]``), or ``None`` — a bad name, a link,
+    missing (expired) or unreadable."""
+    name = record.get("voice")
+    if not isinstance(name, str) or not VOICE_NAME_RE.fullmatch(name):
+        return None
+    path = Path(voice_dir) / name
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+async def forward(outbox_path, sent_path, *, batch: int, voice_dir: Path,
+                  send_text: Callable[[list[dict]], Awaitable[None]],
+                  send_photo: Callable[[dict], Awaitable[None]],
+                  send_voice: Callable[[bytes, str], Awaitable[None]],
+                  to_ogg: Callable[[bytes], bytes], caption_for: Callable[[dict], str],
+                  tts: Any = None, voice_mode: bool = False, log: Any = None) -> tuple[int, bool]:
+    """One pass over the new outbox records (v4.6) → ``(records handled, whether a send failed)``.
+
+    Per :func:`plan`: a stored voice file is converted (``to_ogg``) and sent with its caption — **never a TTS call**; a
+    missing or unconvertible file degrades to text. An old record is voiced by ``tts`` (its ``speech`` before its
+    ``text``) — only in voice mode, with a ``tts``. A send failure stops the pass **without** moving the pointer past
+    that send (the next pass retries it); every handled send moves it."""
+    def note(level: str, msg: str, *args: Any) -> None:
+        if log is not None:
+            getattr(log, level)(msg, *args)
+
+    handled = 0
+    records = fifo.read_since(outbox_path, fifo.load_pointer(sent_path))
+    for kind, group in plan(records, batch, voice_mode=voice_mode and tts is not None):
+        last = group[-1]
         try:
-            if send_photo is not None and is_photo_record(rec):  # a chosen image → always a photo
-                await send_photo(rec)
-                count += 1
-            elif rec.get("kind") != "user":  # voice her lines; never your mirrored keyboard lines
-                ogg = to_ogg(tts.synth(rec.get("speech") or rec["text"], emotion=rec.get("emotion")))
-                await send_voice(ogg, caption_for(rec))
-                count += 1
-        except Exception as exc:  # noqa: BLE001 — leave the pointer before this id → retry next loop
-            if log is not None:
-                log.error("voice/photo send failed for id=%s (retrying): %s", rec.get("id"), exc)
-            break
-        fifo.save_pointer(sent_path, rec["id"])
-    return count
+            if kind == "photo":
+                await send_photo(last)
+            elif kind == "stored":
+                mp3 = stored_voice(last, voice_dir)
+                ogg = None
+                if mp3 is not None:
+                    try:
+                        ogg = to_ogg(mp3)
+                    except Exception as exc:  # noqa: BLE001 — a file that won't convert never will: send the words
+                        note("warning", "stored voice id=%s can't be converted (%s) — sent as text", last["id"], exc)
+                else:
+                    note("warning", "stored voice id=%s is missing — sent as text", last["id"])
+                if ogg is None:
+                    await send_text(group)
+                else:
+                    await send_voice(ogg, caption_for(last))
+                    note("info", "sent the stored voice id=%s", last["id"])
+            elif kind == "old":
+                ogg = to_ogg(tts.synth(last.get("speech") or last["text"], emotion=last.get("emotion")))
+                await send_voice(ogg, caption_for(last))
+                note("info", "voiced the old way id=%s", last["id"])
+            elif kind == "text":
+                await send_text(group)
+            # "skip": your mirrored line in voice mode — never sent; the pointer moves past it
+        except Exception as exc:  # noqa: BLE001 — leave the pointer before this send → retry next pass
+            note("error", "send failed (ids %s..%s, retrying): %s", group[0]["id"], last["id"], exc)
+            return handled, True
+        fifo.save_pointer(sent_path, last["id"])
+        handled += len(group)
+    return handled, False
 
 
 async def send_photo_record(bot, chats, record, *, emoji_map=None, fs_input=None, log=None) -> None:
@@ -235,26 +304,47 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
     bot = Bot(cfg.telegram_token)
     chats = cfg.telegram_allowlist
 
+    from aiogram.types import BufferedInputFile
+
+    from core.user import DEFAULT_USER_ID
+
+    voice_dir = cfg.data_root / "voice" / DEFAULT_USER_ID  # v4.6: the server's voice files (single-owner)
     tts = None
-    send_voice = None
-    if cfg.telegram_voice:  # voice mode reuses the v0.14 TTS adapter + key/voice
-        from aiogram.types import BufferedInputFile
+    if cfg.telegram_voice:  # the v0.13 voice mode: only for records written before v4.6 (or by the in-process TUI)
+        if cfg.elevenlabs_api_key and cfg.voice_id:
+            from voice.tts import ElevenLabsTTS
 
-        from voice.tts import ElevenLabsTTS
+            tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
+        else:
+            log.warning("telegram.voice is on without an ElevenLabs key + voice id — old records go as text")
 
-        if not (cfg.elevenlabs_api_key and cfg.voice_id):
-            raise SystemExit("LUMI_TELEGRAM_VOICE needs ELEVENLABS_API_KEY + LUMI_VOICE_ID")
-        tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model)
+    async def _send_voice(ogg: bytes, caption: str) -> None:
+        for chat in chats:
+            await bot.send_voice(chat, BufferedInputFile(ogg, "voice.ogg"), caption=caption)
 
-        async def send_voice(ogg: bytes, caption: str) -> None:
-            for chat in chats:
-                await bot.send_voice(chat, BufferedInputFile(ogg, "voice.ogg"), caption=caption)
-
-    async def _send_photo(rec: dict) -> None:  # v0.24: a chosen send_image — a photo even in voice mode
+    async def _send_photo(rec: dict) -> None:  # v0.24: a chosen send_image — always a photo, on its own
         await send_photo_record(bot, chats, rec, emoji_map=emoji_map, fs_input=FSInputFile, log=log)
+        log.info("sent a chosen image (id %d) → %d chat(s)", rec["id"], len(chats))
+
+    async def _send_text(group: list[dict]) -> None:
+        last = group[-1]
+        text = render(group, emoji_map)
+        # send the face photo with probability LUMI_TELEGRAM_PHOTO (0=never, 0.2≈1/5, 1=always)
+        photo = portrait_for(cfg.faces_dir, last.get("emotion", ""), last.get("intensity")) \
+            if random.random() < cfg.telegram_photo else None
+        for chat in chats:
+            # photo+caption only when the text fits a caption; otherwise chunked text
+            # (the photo is decoration — a long reply must never wedge the send).
+            if photo and len(text) <= CAPTION_LIMIT:
+                await bot.send_photo(chat, FSInputFile(photo), caption=text)
+            else:
+                for piece in chunk(text, MESSAGE_LIMIT):
+                    await bot.send_message(chat, piece)
+        log.info("sent %d record(s) as text (ids %d..%d) → %d chat(s)", len(group), group[0]["id"], last["id"],
+                 len(chats))
 
     log.info(
-        "outbound up: voice=%s, batch=%d, catchup=%dh, photo=%s, chats=%s",
+        "outbound up: voice mode=%s (old records), batch=%d, catchup=%dh, photo=%s, chats=%s",
         cfg.telegram_voice, cfg.telegram_batch, cfg.telegram_catchup_h, cfg.telegram_photo, sorted(chats),
     )
     if cfg.env:  # v2.1: which instance this daemon serves (prod/dev) — no secrets, no text
@@ -277,51 +367,12 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
                 fifo.save_pointer(sent_path, stale[-1]["id"])
                 log.info("catch-up: skipped %d stale record(s) (older than %dh)", len(stale), cfg.telegram_catchup_h)
         while True:
-            if cfg.telegram_voice:  # VOICE mode: one voice message per reply (no batching)
-                n = await voice_to_telegram(
-                    cfg.outbox_path, sent_path, tts=tts, to_ogg=mp3_to_ogg,
-                    send_voice=send_voice, caption_for=lambda r: caption_for(r, emoji_map),
-                    send_photo=_send_photo, log=log,
-                )
-                if n:
-                    log.info("voiced/sent %d reply(ies) → %d chat(s)", n, len(chats))
-                await asyncio.sleep(1)
-                continue
-            new = fifo.read_since(cfg.outbox_path, fifo.load_pointer(sent_path))
-            for group in batches(new, cfg.telegram_batch):
-                last = group[-1]
-                if len(group) == 1 and is_photo_record(group[0]):  # v0.24: a chosen send_image — on its own
-                    try:
-                        await send_photo_record(
-                            bot, chats, group[0], emoji_map=emoji_map, fs_input=FSInputFile, log=log,
-                        )
-                    except Exception as exc:  # noqa: BLE001 — don't advance the pointer; retry next loop
-                        log.error("photo send failed (id %d, retrying): %s", last["id"], exc)
-                        await asyncio.sleep(3)
-                        break
-                    fifo.save_pointer(sent_path, last["id"])
-                    log.info("sent a chosen image (id %d) → %d chat(s)", last["id"], len(chats))
-                    continue
-                text = render(group, emoji_map)
-                # send the face photo with probability LUMI_TELEGRAM_PHOTO (0=never, 0.2≈1/5, 1=always)
-                photo = portrait_for(cfg.faces_dir, last.get("emotion", ""), last.get("intensity")) \
-                    if random.random() < cfg.telegram_photo else None
-                try:
-                    for chat in chats:
-                        # photo+caption only when the text fits a caption; otherwise chunked text
-                        # (the photo is decoration — a long reply must never wedge the send).
-                        if photo and len(text) <= CAPTION_LIMIT:
-                            await bot.send_photo(chat, FSInputFile(photo), caption=text)
-                        else:
-                            for piece in chunk(text, MESSAGE_LIMIT):
-                                await bot.send_message(chat, piece)
-                except Exception as exc:  # noqa: BLE001 — don't advance the pointer; retry next loop
-                    log.error("send failed (ids %d..%d, retrying): %s", group[0]["id"], last["id"], exc)
-                    await asyncio.sleep(3)
-                    break
-                fifo.save_pointer(sent_path, last["id"])
-                log.info("sent %d reply(ies) (ids %d..%d) → %d chat(s)", len(group), group[0]["id"], last["id"], len(chats))
-            await asyncio.sleep(1)
+            _, failed = await forward(
+                cfg.outbox_path, sent_path, batch=cfg.telegram_batch, voice_dir=voice_dir,
+                send_text=_send_text, send_photo=_send_photo, send_voice=_send_voice, to_ogg=mp3_to_ogg,
+                caption_for=lambda r: caption_for(r, emoji_map), tts=tts, voice_mode=cfg.telegram_voice, log=log,
+            )
+            await asyncio.sleep(3 if failed else 1)
 
     sigterm_as_interrupt()  # v2.6: `systemctl stop` stops it like Ctrl+C — "stopped", the session closed, exit 0
     try:

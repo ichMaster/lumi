@@ -18,7 +18,7 @@ from server.app import Outbox, create_app
 from state import fifo
 from state.bus import mirror_reply
 from state.local_store import JsonRepository
-from telegram.outbound import voice_to_telegram
+from telegram.outbound import forward
 from voice.tts import ElevenLabsTTS, MockTTS
 from voice.voicer import voice_pending
 
@@ -121,8 +121,11 @@ async def test_the_telegram_voice_note_speaks_the_tags_and_its_caption_has_none(
     async def send_voice(ogg, caption):
         sent_msgs.append(caption)
 
-    await voice_to_telegram(outbox, sent, tts=tts, to_ogg=lambda b: b, send_voice=send_voice,
-                            caption_for=lambda r: r["text"])
+    async def unused(_):
+        raise AssertionError("never text or a photo here")
+
+    await forward(outbox, sent, batch=5, voice_dir=tmp_path / "voice", send_text=unused, send_photo=unused,
+                  send_voice=send_voice, to_ogg=lambda b: b, caption_for=lambda r: r["text"], tts=tts, voice_mode=True)
     assert [t for t, _ in tts.calls] == [SPEECH, "Без позначок."]  # the voice gets the tags
     assert sent_msgs == [TEXT, "Без позначок."]                      # the caption never does
 

@@ -269,7 +269,7 @@ rm -f .lumi/inbox.jsonl .lumi/inbox.pos .lumi/outbox.jsonl .lumi/outbox.sent
 | `LUMI_TELEGRAM_BATCH` | `5` | daemon 2: max replies merged per message (bounds a backlog → ⌈M/N⌉, never one blob) |
 | `LUMI_TELEGRAM_CATCHUP_H` | `24` | daemon 2: skip replies older than this on restart (no flood) |
 | `LUMI_TELEGRAM_PHOTO` | `0` | daemon 2: probability 0..1 of attaching the face photo (`0`=never, `0.2`≈1/5, `1`=always) |
-| `LUMI_TELEGRAM_VOICE` | `off` | daemon 2: send replies as **voice messages** (reuses the `LUMI_VOICE_*` key/id + `ffmpeg`) |
+| `LUMI_TELEGRAM_VOICE` | `off` | the **first value** of the server's «Voice» switch (v4.6); daemon 2 voices records from before v4.6 with it (reuses the `LUMI_VOICE_*` key/id + `ffmpeg`) and leaves your mirrored lines out |
 | `LUMI_TELEGRAM_STT` | `off` | daemon 1: **transcribe** inbound Telegram **voice messages** (reuses the `LUMI_STT_*` adapter) |
 | `LUMI_INBOX_PATH` | `.lumi/inbox.jsonl` | inbound queue file |
 | `LUMI_OUTBOX_PATH` | `.lumi/outbox.jsonl` | outbound queue file |
@@ -296,6 +296,28 @@ the decorative face) and **on its own** — a chosen picture is never merged int
 as the caption (caption-capped, with the same long-text fallback). If the file has vanished by send time,
 the daemon sends just her words rather than crash. This holds **in voice mode too** (`LUMI_TELEGRAM_VOICE`):
 her spoken replies are voiced, but a picture she chose to send still arrives as a **photo**, not voiced.
+
+## Her voice from the server (v4.6)
+
+Since v4.6 the **server** makes her voice, **once per line**, and Telegram reuses it. The server voices each of her
+lines while the «Voice» switch is on; the switch is in the window's status line, or `POST /v1/voice`. It stores the
+MP3 under `<data root>/voice/owner/` and writes her outbox record naming it (`voice: "<id>.mp3"`). Daemon 2 then
+decides per record:
+
+| The record | What Telegram gets |
+|---|---|
+| `voice: "<id>.mp3"` | a voice message made from that file (`ffmpeg` → OGG/Opus), her words as the caption. The daemon **never calls ElevenLabs** for it. |
+| `voice: null` (the switch off, or the generation failed) | text, N-batched as usual |
+| no `voice` key (written before v4.6, or by the in-process TUI) | the old way: voiced by the daemon itself while `LUMI_TELEGRAM_VOICE` is on, otherwise text |
+
+- **A missing file degrades to text.** An expired file (after 30 days), a link or a file that won't convert goes as
+  text, so the loop never wedges.
+- **What the switch does and doesn't change.** `LUMI_TELEGRAM_VOICE` is now only the switch's first value, plus the
+  old-record path. In that mode your mirrored window lines still stay out of Telegram, as before. Turning the switch
+  off in the window sends her lines as text without editing any setting.
+- **One request per line.** The server's log has one `voice: made <id> (…)` line per generation, and the daemon's log
+  says `sent the stored voice id=<n>` for each, with no generation of its own. The ElevenLabs history shows one
+  request per line.
 
 ## Voice messages *in* (`LUMI_TELEGRAM_STT`)
 
