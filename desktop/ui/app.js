@@ -1878,20 +1878,26 @@ async function uploadFiles(ctx, folder, files) {  // one at a time, each its own
 }
 
 function rowMenuButton(ctx, item) {
+  if (!rowEntries(ctx, item).length) return null;  // the trash, a day in it: nothing to do there
   return el("button", { type: "button", class: "ib fmenu", "aria-haspopup": "menu", "aria-expanded": "false",
     "aria-label": t("actions.menu", { name: item.name }),
     onclick: (ev) => { ev.stopPropagation(); openRowMenu(ctx, ev.currentTarget, item); } }, icon("more"));
 }
 
-function openRowMenu(ctx, button, item) {
-  closeRowMenu();
-  const inTrash = item.path.split("/")[0] === ".trash" && item.path.split("/").length >= 3;
+function rowEntries(ctx, item) {  // what a row's menu offers; nothing → no menu button
+  const parts = item.path.split("/");
   const entries = [];
   if (!item.isDir) entries.push(["actions.download", () => downloadFile(ctx, item.path)]);
-  if (inTrash) entries.push(["actions.restore", () => restoreItem(ctx, item)]);
-  else if (item.path.split("/")[0] !== ".trash") {
+  if (parts[0] === ".trash" && parts.length === 3) entries.push(["actions.restore", () => restoreItem(ctx, item)]);  // the log knows these (code review #2)
+  else if (parts[0] !== ".trash") {
     entries.push(["actions.rename", () => renameItem(ctx, item)], ["actions.trash", () => trashItem(ctx, item)]);
   }
+  return entries;
+}
+
+function openRowMenu(ctx, button, item) {
+  closeRowMenu();
+  const entries = rowEntries(ctx, item);
   const menu = el("div", { class: "amenu", role: "menu" }, entries.map(([key, act]) =>
     el("button", { type: "button", role: "menuitem", onclick: () => { closeRowMenu(); act(); } }, t(key))));
   button.setAttribute("aria-expanded", "true");

@@ -794,3 +794,13 @@ def test_v45_a_bare_address_in_the_reader_gets_open_in_browser():
     assert "if (url) out.push(readerLink(ctx, null, url, base));" in body
     link = _fn("readerLink")
     assert 'if (label === null) return el("span", { class: "xlink" }, el("span", { class: "xaddr", text: href }), " ", open);' in link
+
+
+def test_review_v45_2_restore_is_offered_only_where_the_log_knows_the_origin():
+    """v4.5 code review #2: Restore on an item inside a trashed folder always got 409 (the log names the folder)."""
+    menu = _fn("rowEntries")
+    assert 'if (parts[0] === ".trash" && parts.length === 3) entries.push(["actions.restore"' in menu
+    assert 'else if (parts[0] !== ".trash")' in menu  # nothing to rename or trash inside the trash
+    assert "const entries = rowEntries(ctx, item);" in _fn("openRowMenu")
+    assert "if (!rowEntries(ctx, item).length) return null;" in _fn("rowMenuButton")  # no empty menu
+
