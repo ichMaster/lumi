@@ -52,7 +52,8 @@ class FakeServer:
 
             def _record(self, method: str) -> None:
                 length = int(self.headers.get("Content-Length") or 0)
-                body = self.rfile.read(length).decode() if length else ""
+                raw = self.rfile.read(length) if length else b""
+                body = raw.decode("latin-1") if self.path.startswith("/v1/files/upload") else raw.decode()
                 world.requests.append({"method": method, "path": self.path, "headers": dict(self.headers),
                                        "body": body})
                 if self.headers.get("Authorization") != f"Bearer {TOKEN}":
@@ -92,6 +93,21 @@ class FakeServer:
                     self.send_header("Cache-Control", "private, max-age=300")
                     self.end_headers()
                     self.wfile.write(JPEG)
+                elif method == "POST" and path == "/v1/files/upload":  # v4.5: the raw body arrives whole
+                    self._send(200, {"path": "art/new.png", "size": len(body.encode("latin-1", "replace"))
+                                     if isinstance(body, str) else 0})
+                elif method == "POST" and path in ("/v1/files/rename", "/v1/files/trash", "/v1/files/restore"):
+                    self._send(200, {"path": "a", "to": "b", "echo": json.loads(body or "{}")})
+                elif method == "GET" and path == "/v1/files/download":  # v4.5: an attachment's bytes
+                    if "missing" in self.path:
+                        self._send(404, {"detail": "no such file: 'missing.md'"})
+                        return
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(PNG)))
+                    self.send_header("Content-Disposition", "attachment; filename=\"p.png\"")
+                    self.end_headers()
+                    self.wfile.write(PNG)
                 elif method == "GET" and path == "/v1/thoughts":  # v4.3: a page of her thought stream
                     self._send(200, {"items": [{"when": "2026-11-18T10:00", "kind": "wonder", "text": "Тиха думка.",
                                                 "emotion": "calm", "spoken": False}], "next": None,
@@ -127,20 +143,20 @@ class FakeServer:
         self.server.server_close()
 
 
-def start_proxy(upstream: Upstream, ui_dir=None) -> Proxy:
-    proxy = Proxy(upstream, key=KEY, **({"ui_dir": ui_dir} if ui_dir is not None else {}))
+def start_proxy(upstream: Upstream, ui_dir=None, **kw) -> Proxy:
+    proxy = Proxy(upstream, key=KEY, **({"ui_dir": ui_dir} if ui_dir is not None else {}), **kw)
     proxy.start()
     return proxy
 
 
 def request(proxy: Proxy, method: str, path: str, *, body: Any = None, headers: dict[str, str] | None = None,
-            key: bool = True) -> tuple[int, dict[str, str], bytes]:
+            key: bool = True, raw: bytes | None = None) -> tuple[int, dict[str, str], bytes]:
     """One request to the proxy → ``(status, headers, body)``."""
     conn = http.client.HTTPConnection("127.0.0.1", proxy.port, timeout=10)
     hdrs = dict(headers or {})
     if key:
         hdrs.setdefault(KEY_HEADER, KEY)
-    data = None
+    data = raw
     if body is not None:
         data = json.dumps(body).encode()
         hdrs.setdefault("Content-Type", "application/json")

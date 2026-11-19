@@ -283,3 +283,65 @@ def test_v43_a_page_of_thoughts_is_relayed_with_its_repeated_kinds(world):
     assert server.requests[-1]["path"] == "/v1/thoughts?limit=100&kind=wonder&kind=learn&spoken=true&before=dDE"
     assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
     assert request(proxy, "POST", "/v1/thoughts", body={})[0] == 404  # GET only
+
+
+# --- v4.5 LUMI-323: the actions through the proxy, and the Mac's side ------------------------------------------------
+
+@pytest.fixture
+def mac(tmp_path):
+    server = FakeServer()
+    opened, revealed = [], []
+    proxy = start_proxy(Upstream(server.url, TOKEN), downloads=tmp_path / "Downloads",
+                        opener=opened.append, revealer=revealed.append)
+    yield server, proxy, tmp_path / "Downloads", opened, revealed
+    server.release.set()
+    proxy.stop()
+    server.close()
+
+
+def test_v45_an_upload_passes_up_to_its_own_cap_and_other_routes_keep_theirs(mac):
+    server, proxy, *_ = mac
+    nine = b"\x89PNG\r\n\x1a\n" + b"x" * (9 * 1024 * 1024)
+    status, _, body = request(proxy, "POST", "/v1/files/upload?name=p.png", raw=nine,
+                              headers={"Content-Type": "application/octet-stream"})
+    assert status == 200 and json.loads(body)["size"] == len(nine)
+    assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    eleven = b"x" * (11 * 1024 * 1024)
+    assert request(proxy, "POST", "/v1/files/upload?name=big.png", raw=eleven)[0] == 413
+    assert request(proxy, "POST", "/v1/files/rename", raw=b"{" + b" " * (2 * 1024 * 1024) + b"}")[0] == 413
+    status, _, body = request(proxy, "POST", "/v1/files/trash", body={"path": "notes/x.md"})
+    assert status == 200 and json.loads(body)["echo"] == {"path": "notes/x.md"}
+
+
+def test_v45_a_download_is_saved_into_downloads_never_over_a_file(mac):
+    server, proxy, downloads, _, revealed = mac
+    status, _, body = request(proxy, "POST", "/local/save", body={"path": "art/p.png"})
+    first = json.loads(body)
+    assert status == 200 and first["name"] == "p.png" and (downloads / "p.png").read_bytes() == PNG
+    assert server.requests[-1]["path"] == "/v1/files/download?path=art%2Fp.png"
+    assert server.requests[-1]["headers"]["Authorization"] == f"Bearer {TOKEN}"
+    second = json.loads(request(proxy, "POST", "/local/save", body={"path": "art/p.png"})[2])
+    assert second["name"] == "p (2).png" and (downloads / "p.png").read_bytes() == PNG
+    assert request(proxy, "POST", "/local/reveal", body={"saved": second["saved"]})[0] == 200
+    assert revealed == [second["saved"]]
+    assert request(proxy, "POST", "/local/reveal", body={"saved": "/etc/passwd"})[0] == 400  # only what it saved
+    status, _, body = request(proxy, "POST", "/local/save", body={"path": "missing.md"})
+    assert status == 404 and "missing.md" in json.loads(body)["detail"]
+
+
+def test_v45_only_a_web_address_opens_in_the_browser(mac):
+    _, proxy, _, opened, _ = mac
+    assert request(proxy, "POST", "/local/open", body={"url": "https://uk.wikipedia.org/wiki/Дощ"})[0] == 200
+    for url in ("file:///etc/passwd", "javascript:alert(1)", "notes/x.md"):
+        assert request(proxy, "POST", "/local/open", body={"url": url})[0] == 400
+    assert opened == ["https://uk.wikipedia.org/wiki/Дощ"]
+
+
+def test_v45_the_local_routes_need_the_key_and_a_post(mac):
+    server, proxy, downloads, opened, _ = mac
+    seen = len(server.requests)
+    for path, body in (("/local/save", {"path": "art/p.png"}), ("/local/open", {"url": "https://a.b"}),
+                       ("/local/reveal", {"saved": "x"})):
+        assert request(proxy, "POST", path, body=body, key=False)[0] == 403
+        assert request(proxy, "GET", path)[0] == 405
+    assert len(server.requests) == seen and opened == [] and not downloads.exists()

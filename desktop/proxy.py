@@ -47,6 +47,9 @@ FORWARDED: frozenset[tuple[str, str]] = frozenset({
     ("GET", "/v1/journal"),  # v4.3: her journal's days (the owner's only — the server checks)
     ("GET", "/v1/thoughts"),  # v4.3: her thought stream, through the server's surfacing filter
     ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable, read-only
+    # v4.5: the owner's actions on her sandbox (create-only, nothing deleted — the server enforces it) and a download
+    ("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),
+    ("POST", "/v1/files/restore"), ("GET", "/v1/files/download"),
 })
 # v4.3: a route with a value in its path — (method, the server's route, the one pattern its paths must match whole).
 # Nothing else under that prefix is forwarded: /v1/journal/<YYYY-MM-DD> and no other path below /v1/journal/.
@@ -63,6 +66,11 @@ PASS_REQUEST = ("Content-Type", "X-Lumi-Client", "Last-Event-ID")  # the page's 
 PASS_RESPONSE = ("Content-Type", "Cache-Control", "X-Content-Type-Options", "Content-Disposition")
 NO_FRAMING = (("X-Frame-Options", "DENY"), ("Content-Security-Policy", "frame-ancestors 'none'"))
 MAX_BODY = 1_000_000  # a request body larger than this is refused (a typed line is a few KB)
+UPLOAD_PATH = "/v1/files/upload"
+UPLOAD_MAX_BODY = 10 * 1024 * 1024 + 64 * 1024  # v4.5: a picture from the Mac (10 MB, the server's own cap) and a margin
+LOCAL_BODY_MAX = 64 * 1024  # v4.5: the local routes' small JSON bodies
+DRAIN_MAX = 64 * 1024 * 1024  # v4.5: a refused body is read and dropped up to this, then the connection just closes
+LOCAL_ROUTES = ("/local/save", "/local/reveal", "/local/open")  # v4.5: the Mac's side, behind the window's key
 CONNECT_S = 5.0
 # Read timeouts towards the server, as tui/remote.py keeps them (code review #1): the push channel hears a heartbeat
 # every 15 s, so 45 s of silence is a dead stream; a turn may think for minutes, but not forever.
@@ -102,6 +110,47 @@ def with_key(html: str, key: str) -> str:
     return html[:at] + meta + html[at:]
 
 
+def is_web_url(url: str) -> bool:
+    """v4.5: an ``http`` / ``https`` address with a host — the only kind the window opens in the browser."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.netloc) and not any(ch in url for ch in "\r\n\t ")
+
+
+def save_new(folder: Path, name: str, data: bytes) -> Path:
+    """v4.5: ``data`` written into ``folder`` as a new file — ``name``, else ``name (2)``… — never over another one."""
+    from core.actions import clean_name, free_name
+
+    try:
+        clean = clean_name(name)
+    except Exception:  # noqa: BLE001 — a name the Mac can't take falls back to a plain one
+        clean = "download"
+    folder.mkdir(parents=True, exist_ok=True)
+    for _ in range(3):
+        target = folder / free_name(folder, clean)
+        try:
+            with target.open("xb") as fh:
+                fh.write(data)
+        except FileExistsError:
+            continue
+        return target
+    raise FileExistsError(clean)
+
+
+def _open_in_browser(url: str) -> None:  # pragma: no cover - the system browser
+    import webbrowser
+
+    webbrowser.open(url)
+
+
+def _reveal_in_finder(path: str) -> None:  # pragma: no cover - Finder
+    import subprocess
+
+    subprocess.run(["open", "-R", path], check=False)
+
+
 def ui_file(path: str, root: Path = UI_DIR) -> Path | None:
     """The file under ``root`` a URL path names (``/`` → ``index.html``); ``None`` outside it or missing."""
     rel = unquote(path).lstrip("/") or "index.html"
@@ -122,11 +171,17 @@ class Proxy:
     def __init__(self, upstream: Upstream, *, ui_dir: Path = UI_DIR, key: str | None = None,
                  client: httpx.Client | None = None, read_s: float = READ_S,
                  events_read_s: float = EVENTS_READ_S, faces: Any = None,
-                 emoji: dict[str, list[str]] | None = None) -> None:
+                 emoji: dict[str, list[str]] | None = None, downloads: Path | None = None,
+                 opener: Any = None, revealer: Any = None) -> None:
         self.upstream = upstream
         self.ui_dir = ui_dir
         self.faces = faces  # v2.12.2: a desktop.faces.FacePicker over the client's own pack (None → no portrait)
         self.emoji = emoji or {}  # LUMI-276: the TUI's emotion → emoji map, {emotion: [low, mid, high]}
+        # v4.5: where a download lands on the Mac, how a link opens, how a saved file is shown (injectable for tests)
+        self.downloads = downloads or Path.home() / "Downloads"
+        self.opener = opener or _open_in_browser
+        self.revealer = revealer or _reveal_in_finder
+        self.saved: set[str] = set()  # the files this proxy saved — the only ones it will reveal
         self.key = key or secrets.token_urlsafe(24)
         self.read_s = read_s
         self.events_read_s = events_read_s
@@ -250,6 +305,89 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(data)
 
+        def _drain(self, length: int) -> None:
+            """v4.5: discard a refused body (at most :data:`DRAIN_MAX`), so the answer reaches the page."""
+            left = min(length, DRAIN_MAX)
+            while left > 0:
+                chunk = self.rfile.read(min(left, 1 << 16))
+                if not chunk:
+                    break
+                left -= len(chunk)
+
+        # --- v4.5: the Mac's side of the actions --------------------------------------------------------------
+        def _local_body(self) -> dict | None:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0 or length > LOCAL_BODY_MAX:
+                self._json(400, "bad_request", "a malformed or too large body")
+                return None
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except ValueError:
+                self._json(400, "bad_request", "the body is not JSON")
+                return None
+            if not isinstance(body, dict):
+                self._json(400, "bad_request", "the body is not a JSON object")
+                return None
+            return body
+
+        def _answer(self, status: int, payload: dict) -> None:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _local(self, path: str) -> None:
+            body = self._local_body()
+            if body is None:
+                return
+            if path == "/local/open":  # an external link, in the default browser — http / https only
+                url = str(body.get("url") or "")
+                if not is_web_url(url):
+                    self._json(400, "bad_url", "only an http or https address opens")
+                    return
+                proxy.opener(url)
+                self._answer(200, {"opened": url})
+            elif path == "/local/reveal":  # a file this proxy saved, shown in Finder
+                saved = str(body.get("saved") or "")
+                if saved not in proxy.saved:
+                    self._json(400, "unknown", "not a file this window saved")
+                    return
+                proxy.revealer(saved)
+                self._answer(200, {"revealed": saved})
+            else:
+                self._save(str(body.get("path") or ""))
+
+        def _save(self, rel: str) -> None:
+            """A file of her sandbox → ``~/Downloads`` under a free name (create-only); the server's refusal passes."""
+            up = proxy.upstream
+            if not up.configured:
+                self._json(503, "no_server", "no server is set")
+                return
+            url = f"{up.url}/v1/files/download?path={quote(rel, safe='')}"
+            try:
+                res = proxy.http.get(url, headers={"Authorization": f"Bearer {up.token}"},
+                                     timeout=proxy.timeout_for("/v1/files/download"))
+            except httpx.TransportError as exc:
+                self._json(502, "unreachable", f"the server at {up.url} can't be reached ({type(exc).__name__})")
+                return
+            if res.status_code != 200:
+                self._json(res.status_code, "refused", _detail(res) or "the server refused the download")
+                return
+            name = rel.rstrip("/").rsplit("/", 1)[-1] or "download"
+            try:
+                saved = save_new(proxy.downloads, name, res.content)
+            except OSError as exc:
+                self._json(500, "not_saved", f"the file couldn't be saved ({type(exc).__name__})")
+                return
+            proxy.saved.add(str(saved))
+            self._answer(200, {"saved": str(saved), "name": saved.name})
+
         # --- the forwarding --------------------------------------------------------------------------------
         def _forward(self, method: str, path: str, query: str) -> None:
             up = proxy.upstream
@@ -266,7 +404,8 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
                 if length < 0:  # a malformed length gets an answer, not a traceback (code review #4)
                     self._json(400, "bad_request", "a malformed Content-Length")
                     return
-                if length > MAX_BODY:
+                if length > (UPLOAD_MAX_BODY if path == UPLOAD_PATH else MAX_BODY):  # v4.5: a file from the Mac
+                    self._drain(length)  # read what was sent, so the page gets the 413 and not a reset connection
                     self._json(413, "too_large", "the request is too large")
                     return
                 body = self.rfile.read(length) if length > 0 else b""
@@ -329,6 +468,14 @@ def _handler_for(proxy: Proxy) -> type[BaseHTTPRequestHandler]:
                     self._json(405, "not_allowed", "only GET")
                 else:
                     self._face_file(path)
+                return
+            if path in LOCAL_ROUTES:  # v4.5: the Mac's side of the actions — the key, POST only, never forwarded
+                if not self._key_ok():
+                    self._json(403, "forbidden", "a request without this window's key")
+                elif method != "POST":
+                    self._json(405, "not_allowed", "only POST")
+                else:
+                    self._local(path)
                 return
             if path.startswith("/v1/") or path == "/v1":
                 if not self._key_ok():

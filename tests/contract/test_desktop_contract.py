@@ -20,6 +20,8 @@ PAGE_ROUTES = {
     ("GET", "/v1/journal"),  # v4.3: her journal's days
     ("GET", "/v1/thoughts"),  # v4.3: her thought stream
     ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable
+    ("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),  # v4.5: the owner's
+    ("POST", "/v1/files/restore"), ("GET", "/v1/files/download"),  # actions
 }
 PAGE_PATTERN_ROUTES = {("GET", "/v1/journal/{date}")}  # v4.3: a day of her journal — the date in the path
 
@@ -59,8 +61,9 @@ def test_face_files_never_ride_the_server_api():
 
 def test_v41_the_window_reads_her_files_through_get_routes_only():
     """v4.1 LUMI-303: the three read routes are forwarded as GET only — the page has no way to write her sandbox."""
-    files = {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/files")}
-    assert files == {("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw")}
+    files = {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/files") and m == "GET"}
+    assert files == {("GET", "/v1/files"), ("GET", "/v1/files/text"), ("GET", "/v1/files/raw"),
+                     ("GET", "/v1/files/download")}  # v4.5: + the download (the writes are v4.5's POST routes)
 
 
 def test_v42_the_window_reads_her_pictures_through_get_routes_only():
@@ -91,3 +94,18 @@ def test_v44_the_window_reads_her_day_and_timetable_through_get_routes_only():
     assert {(m, p) for m, p in px.FORWARDED if p in ("/v1/today", "/v1/schedule")} == {
         ("GET", "/v1/today"), ("GET", "/v1/schedule")}
     assert not px.forwarded("POST", "/v1/schedule") and not px.forwarded("GET", "/v1/schedule/next")
+
+
+def test_v45_the_actions_are_forwarded_and_the_local_routes_stay_local():
+    """v4.5 LUMI-323: the five routes forwarded with their methods; the save / reveal / open routes never forwarded."""
+    writes = {(m, p) for m, p in px.FORWARDED if p.startswith("/v1/files/") and m == "POST"}
+    assert writes == {("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),
+                      ("POST", "/v1/files/restore")}
+    assert not any(p.startswith("/local") for _, p in px.FORWARDED)
+    assert px.LOCAL_ROUTES == ("/local/save", "/local/reveal", "/local/open")
+    assert px.UPLOAD_MAX_BODY > 10 * 1024 * 1024 > px.MAX_BODY
+    for url in ("https://uk.wikipedia.org/wiki/Пам’ять", "http://example.com/a?b=c"):
+        assert px.is_web_url(url), url
+    for url in ("file:///etc/passwd", "javascript:alert(1)", "notes/x.md", "//evil.com", "https://", "ftp://x.y",
+                "https://a.b/\nx", ""):
+        assert not px.is_web_url(url), url
