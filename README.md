@@ -12,7 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.5.0 — The window: actions on her files** (version 4; version 3 complete, last 3.4.1).
+**4.6.0 — Her voice in the window** (version 4; version 3 complete, last 3.4.1).
+- While the **«Voice»** switch is on, the server voices each of her lines **once**, after the line is shown
+  (ElevenLabs). The file is kept for 30 days under `<data root>/voice/`.
+- In the chat her line shows «voicing…», then **▶**. ❚❚ pauses, and the time is shown beside it. One line plays at a
+  time, Esc stops it, and nothing ever plays on its own.
+- **Telegram** sends the same file as a voice message and never calls ElevenLabs again. With the switch off, her
+  lines go as text. Words longer than a caption follow the voice as text, whole.
+- The switch sits in the window's status line. It is one switch for the window and Telegram, it survives a restart,
+  and its first value is `telegram.voice`.
+
+**4.5.0 — The window: actions on her files** (version 4).
 - **Upload** a picture or a text file from the Mac into Files, by the button or by dropping it. A taken name gets a
   new one (`rain (2).png`); nothing is overwritten. A picture is accepted up to 10 MB, text up to 1 MB.
 - **Download** any file to `~/Downloads`, from Files, the reader or the picture view.

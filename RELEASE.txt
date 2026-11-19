@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 4.6.0 (2026-11-19)
+---------------------------
+- v4.6 — her voice in the window, the sixth phase of v4: each of her lines voiced once on the server, played in the chat and reused by Telegram, with one «Voice» switch for both (the owner, 2026-11-19).
+- The voice on the server (server/voice.py): VoiceSwitch persists the switch in <data root>/voice.json (its first value telegram.voice; available only with an ElevenLabs key and a voice id); VoiceStore keeps <data root>/voice/<user_id>/<32 hex>.mp3, written through a temp file and a rename, expired after 30 days (at most 500 per pass, daily, never a link); LineVoicer is the server's one ordered outbox writer — while the switch is on her line is voiced after it is shown and its outbox record names the file (voice: "<id>.mp3", or null when off or failed), and every later write waits behind it so the outbox keeps the order of the lines; the log has the id, the length and the time, never the text or the key (LUMI-327).
+- The routes and pushes: GET /v1/voice/<id> (audio/mpeg, owner-only, 404 for anything else), POST /v1/voice {enabled} → {enabled, available} (409 without a key or a voice id); voice {enabled, available} on the state; while the switch is on her line's outcome and message push carry voice: <id>, and a replayable voice push {message, ready} always follows the message. The Server API v1 grows additively (LUMI-328).
+- Telegram sends the stored file: a record with voice: "<id>.mp3" goes as a voice message from that file (never a TTS call), voice: null as text, a record without the key (pre-v4.6, the in-process TUI) the old way; a missing, linked or unconvertible file degrades to text; in voice mode your mirrored lines stay out of Telegram, as before (LUMI-329).
+- The window: the proxy forwards the two routes; under her line «voicing…», then ▶ / ❚❚ with mm:ss, the audio fetched with the window's key, one line at a time, Esc stops, never autoplay; a failed voicing removes the mark; the «Voice» toggle in the status line, disabled with its reason on a server without a voice (LUMI-330).
+- Code review: two MEDIUM findings fixed — the server's ElevenLabs call is bounded at 60 s (the SDK's default was 240 s, and the outbox waits behind a line being voiced), and a stop whose drain runs out writes the lines still queued, unvoiced, instead of dropping them; in Telegram a reply longer than a caption (1024 chars) is no longer cut — the voice goes alone and the whole words follow as text. Four LOW findings deferred (a lost voice push leaves «voicing…», history lines without ▶, voice pushes in the replay buffer, the daemon's voice mode following telegram.voice rather than the switch).
+
 Version 4.5.0 (2026-11-19)
 ---------------------------
 - v4.5 — actions from the window, the fifth phase of v4: the owner acts on her sandbox from Lili.app (the five actions chosen on 2026-11-19).
