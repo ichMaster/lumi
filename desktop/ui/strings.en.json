@@ -480,5 +480,11 @@
   "actions.cancel": "Cancel",
   "actions.dismiss": "Dismiss",
   "actions.open": "Open in browser",
-  "actions.failed": "{name}: {reason}"
+  "actions.failed": "{name}: {reason}",
+  "actions.title": "Actions",
+  "actions.show": "Show to Lili",
+  "actions.show_placeholder": "What do you see?",
+  "actions.show_label": "A line to send with the picture",
+  "actions.show_empty": "Write a line to send with the picture.",
+  "actions.show_busy": "She's answering — try again in a moment."
 }

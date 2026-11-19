@@ -92,8 +92,8 @@ def test_the_page_loads_only_local_files():
 def test_review_2_a_busy_retry_notes_once_per_line():
     js = _js()
     body = js[js.index("async function turn("):js.index("async function streamTurn(")]
-    assert "async function turn(text, queuedRow, waited = false)" in body
-    assert 'if (!waited) addNote(t("note.busy"))' in body and "return turn(text, null, true)" in body
+    assert "async function turn(text, queuedRow, waited = false, pictures = null)" in body  # v4.5: + the pictures
+    assert 'if (!waited) addNote(t("note.busy"))' in body and "return turn(text, null, true, pictures)" in body
     assert body.count('addNote(t("note.busy"))') == 1
 
 
@@ -732,3 +732,21 @@ def test_v45_the_reader_can_open_a_link_in_the_browser_and_download():
     assert 'onclick: () => openExternal(href)' in link and 't("actions.open")' in link
     reader = js[js.index("async function renderReader("):js.index("/* ---------- the full picture view")]
     assert "downloadFile(ctx, cur.path)" in reader and "actionsOn() ?" in reader
+
+
+# --- v4.5 LUMI-325: "Show to Lili" and the picture view's actions --------------------------------------------------
+
+def test_v45_show_to_lili_sends_the_line_with_the_pictures_sandbox_path():
+    js, strings = _js(), _strings()
+    section = js[js.index("/* ---------- the picture view's actions (v4.5"):js.index("/* ---------- Gallery (v4.2")]
+    assert "st.server.features.image === true" in section  # offered only while she can see pictures
+    assert "sendLine(text, null, [item.path]);" in section and "innerHTML" not in section
+    assert "await actionDialog(ctx" in section  # rename and trash ask first here too
+    turn = js[js.index("async function turn("):js.index("async function streamTurn(")]
+    assert "...(pictures ? { sandbox_images: pictures } : {})" in turn and "chatPictures(mine, pictures)" in turn
+    assert "return turn(text, null, true, pictures);" in turn  # a busy retry keeps them
+    view = js[js.index("function openPicture("):js.index("function closePicture(")]
+    assert "!typing(ev.target)" in view  # arrows in the line's field type, they don't step pictures
+    assert "chatPictures(mine, data.pictures)" in js  # another window's line shows what it showed her
+    for key in ("actions.show", "actions.show_placeholder", "actions.show_busy", "actions.title"):
+        assert key in strings and not CYRILLIC.search(strings[key])

@@ -919,7 +919,10 @@ function onPush(event, data) {
     st.missedDivider.querySelector(".kicker").textContent = t("divider.missed", { n: st.missed.length });
   }
   const time = data.replay ? undefined : clock();  // a replayed line's moment isn't known
-  if (data.role === "user") addMine(String(data.text || ""), { time, source: data.source, origin: data.origin });
+  if (data.role === "user") {
+    const mine = addMine(String(data.text || ""), { time, source: data.source, origin: data.origin });
+    chatPictures(mine, data.pictures);  // v4.5: a picture another window showed her
+  }
   else addHers(String(data.text || ""), { time, source: data.source, origin: data.origin, first: data.source === "thought" || data.source === "nudge",
     emotion: data.emotion, intensity: data.intensity, pictures: data.pictures });
 }
@@ -931,12 +934,12 @@ function setAnswering(on) {
   renderStatus();
 }
 
-async function sendLine(text, queuedRow) {
+async function sendLine(text, queuedRow, pictures = null) {
   setAnswering(true);
   try {
     if (text.startsWith("/")) await slashCommand(text, queuedRow);
     else if (text.startsWith("%")) await directive(text, queuedRow);
-    else await turn(text, queuedRow);
+    else await turn(text, queuedRow, false, pictures);
   } finally {
     setAnswering(false);
     drainQueue();
@@ -953,20 +956,21 @@ function settleMine(text, queuedRow) {
   return addMine(text, { time: clock() });
 }
 
-async function turn(text, queuedRow, waited = false) {
+async function turn(text, queuedRow, waited = false, pictures = null) {
   const mine = settleMine(text, queuedRow);
+  if (pictures) chatPictures(mine, pictures);  // v4.5: the pictures you show her, under your line
   const busy = async () => { // another client holds her: both rows go, the line is asked again in a moment —
     mine.node.remove(); her.node.remove(); // the note once per line, however long she stays busy (review #2)
     if (!waited) addNote(t("note.busy"));
     await sleep(3000);
-    return turn(text, null, true);
+    return turn(text, null, true, pictures);
   };
   const her = addHers(null, { time: clock() });
   her.think = thinkBlock(her);  // v2.12.2: her inner voice fills the wait
   const waiting = el("div", { class: "thinking" }, el("i"), el("i"), el("i"), el("span", { text: t("thinking") }));
   her.body.append(waiting);
   stick(true);
-  const body = { text, turn_id: uid() };
+  const body = { text, turn_id: uid(), ...(pictures ? { sandbox_images: pictures } : {}) };  // v4.5: read by path
   let result = null;
   try {
     if (st.server.stream_enabled) result = await streamTurn(body, her, waiting);
@@ -2184,7 +2188,9 @@ function openPicture(ctx, opts) {  // opts: {items:[{path, size?, modified?, wid
   ctx.state.picture = view;
   node.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closePicture(ctx, true); }
-    else if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") { ev.preventDefault(); stepPicture(ctx, ev.key === "ArrowLeft" ? -1 : 1); }
+    else if ((ev.key === "ArrowLeft" || ev.key === "ArrowRight") && !typing(ev.target)) {  // v4.5: not while typing a line
+      ev.preventDefault(); stepPicture(ctx, ev.key === "ArrowLeft" ? -1 : 1);
+    }
   });
   ctx.host.append(node);
   renderPictureView(ctx);
@@ -2259,7 +2265,7 @@ function renderPictureView(ctx) {
       row("picture.dimensions", dims)),
     view.opts.toFiles ? el("button", { type: "button", class: "btn btn-secondary", onclick: () => view.opts.toFiles(item) },
       icon("folder"), t("picture.open_in_files")) : null,
-    el("div", { class: "pvlater" }, el("span", { class: "kicker", text: t("picture.actions_later") })),
+    pictureActions(ctx, view, item),  // v4.5: the reserved area holds the actions while the server serves them
     el("span", { class: "pvkeys", text: t("picture.keys") }));
   view.node.setAttribute("aria-label", name);
   view.node.replaceChildren(bar, el("div", { class: "pvbody" }, el("div", { class: "pvarea" }, el("div", { class: "pvcq" }, frame)), meta));
@@ -2267,6 +2273,99 @@ function renderPictureView(ctx) {
   (again || view.node).focus();  // a step rebuilt the buttons: the focus stays in the dialog, its keys keep working
   pictureURL(view.node, item.path).then((url) => { if (ticket === view.ticket) img.src = url; })
     .catch(() => { if (ticket === view.ticket) frame.classList.add("broken"); });
+}
+
+/* ---------- the picture view's actions (v4.5 LUMI-325) — show it to her with a line, download, rename, trash ------
+   In the view's reserved area (wide only, as the design keeps it). "Show to Lili" sends your line with the picture's
+   sandbox path as a turn (the server reads the picture), offered while she can see pictures (features.image). */
+function pictureActions(ctx, view, item) {
+  if (!actionsOn()) return el("div", { class: "pvlater" }, el("span", { class: "kicker", text: t("picture.actions_later") }));
+  const canShow = !!(st.server.features && st.server.features.image === true);
+  const input = canShow ? el("input", { class: "input pvline", placeholder: t("actions.show_placeholder"),
+    "aria-label": t("actions.show_label"), value: view.line || "" }) : null;
+  const send = () => showToLili(ctx, view, item, input ? input.value : "");
+  if (input) {
+    input.addEventListener("input", () => { view.line = input.value; });
+    input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); send(); } });
+  }
+  const status = view.status;
+  return el("div", { class: "pvlater pvactions" }, el("span", { class: "kicker", text: t("actions.title") }),
+    canShow ? el("div", { class: "pvshow" }, input,
+      el("button", { type: "button", class: "btn btn-primary abtn", onclick: send }, t("actions.show"))) : null,
+    el("div", { class: "pvbtns" },
+      el("button", { type: "button", class: "btn btn-secondary abtn", onclick: () => pictureDownload(ctx, view, item) },
+        icon("arrow-down"), t("actions.download")),
+      el("button", { type: "button", class: "btn btn-secondary abtn", onclick: () => pictureRename(ctx, view, item) },
+        t("actions.rename")),
+      el("button", { type: "button", class: "btn btn-secondary abtn", onclick: () => pictureTrash(ctx, view, item) },
+        t("actions.trash"))),
+    status ? el("div", { class: "pvstatus" + (status.kind === "error" ? " error" : ""), role: "status" },
+      el("span", { text: status.text }),
+      status.saved ? el("button", { type: "button", class: "tlink", onclick: () => api("/local/reveal", { saved: status.saved })
+        .catch(() => {}) }, t("actions.reveal")) : null) : null);
+}
+
+function setPictureStatus(ctx, view, status) {
+  if (ctx.state.picture !== view) return;
+  view.status = status;
+  renderPictureView(ctx);
+}
+
+function showToLili(ctx, view, item, line) {
+  const text = String(line || "").trim();
+  if (!text) { setPictureStatus(ctx, view, { kind: "error", text: t("actions.show_empty") }); return; }
+  if (st.answering || st.conn !== "online") { setPictureStatus(ctx, view, { kind: "error", text: t("actions.show_busy") }); return; }
+  view.line = "";
+  closePicture(ctx, false);
+  setView("chat");
+  sendLine(text, null, [item.path]);
+}
+
+async function pictureDownload(ctx, view, item) {
+  const name = item.path.slice(item.path.lastIndexOf("/") + 1);
+  setPictureStatus(ctx, view, { text: t("actions.saving", { name }) });
+  try {
+    const res = await api("/local/save", { path: item.path });
+    setPictureStatus(ctx, view, { text: t("actions.saved", { name: res.name }), saved: res.saved });
+  } catch (err) {
+    setPictureStatus(ctx, view, { kind: "error", text: t("actions.failed", { name, reason: err.message }) });
+  }
+}
+
+async function pictureRename(ctx, view, item) {
+  const name = item.path.slice(item.path.lastIndexOf("/") + 1);
+  const next = await actionDialog(ctx, { title: t("actions.rename_title", { name }), value: name,
+    label: t("actions.rename_label"), go: t("actions.rename_go") });
+  if (!next || next === name) return;
+  await pictureWrite(ctx, view, "/v1/files/rename", { path: item.path, name: next }, (res) => t("actions.renamed", { name: res.to }));
+}
+
+async function pictureTrash(ctx, view, item) {
+  const ok = await actionDialog(ctx, { title: t("actions.trash_title", { path: item.path }), note: t("actions.trash_note"),
+    go: t("actions.trash_go") });
+  if (!ok) return;
+  const name = item.path.slice(item.path.lastIndexOf("/") + 1);
+  await pictureWrite(ctx, view, "/v1/files/trash", { path: item.path }, () => t("actions.trashed", { name }));
+}
+
+async function pictureWrite(ctx, view, route, body, said) {  // done → the view closes and its place reads again
+  try {
+    const res = await api(route, body);
+    closePicture(ctx, false);
+    refreshPlace(ctx, said(res));
+  } catch (err) {
+    setPictureStatus(ctx, view, { kind: "error", text: t("actions.failed", { name: body.path, reason: err.message }) });
+  }
+}
+
+function refreshPlace(ctx, text) {  // the place under a closed picture view, read again after a rename or a trash
+  if (ctx.kind === "files") {
+    ctx.state.cache.clear();
+    ctx.state.notice = { text };
+    renderFilesPlace(ctx);
+  } else if (ctx.kind === "gallery") {
+    galleryReload(ctx);
+  }
 }
 
 /* ---------- Gallery (v4.2 LUMI-307, design/v4/handoff §6) ----------

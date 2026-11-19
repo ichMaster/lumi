@@ -166,7 +166,7 @@ at once and show the same conversation (a line typed in one appears in the other
 
 **Why a local proxy.** The page in the window can't call the server directly: the server sends no CORS headers. So
 the window's Python shell starts a small server on `127.0.0.1` (a free port, `desktop/proxy.py`) that serves the page
-(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1, thirteen since v4.2, sixteen since v4.3, eighteen since v4.4), adding the token itself — the token never enters the
+(`desktop/ui/`) and forwards the `/v1` routes it uses (eleven since v4.1, thirteen since v4.2, sixteen since v4.3, eighteen since v4.4, twenty-three since v4.5), adding the token itself — the token never enters the
 page. Every `/v1` request must carry this launch's random key (templated into the page), and the `Host` must be the
 proxy's own, so another app or a web page on the Mac can't borrow the token. No server change.
 
@@ -256,6 +256,25 @@ she called in the window's last reply (name, a short input, a short result).
 
 While `files.trace` is on, a turn's outcome carries `tool_calls` (at most 20, each input and result one short line); with
 it off the outcome is unchanged. `GET /v1/state.features` says `today` and `schedule`.
+
+**v4.5 (the window: actions on her files).** Files gets **Upload** (a file picker, or drop files on the folder) and a
+**⋯** menu on each row: **Download** (saved into `~/Downloads`, with «Show in Finder»), **Rename…** and **Move to
+trash…**; inside `.trash/` a row offers **Restore…**. Rename, trash and restore ask first. The reader gets Download, and
+its external links «Open in browser». The full picture view (from the Gallery, Files or the chat) gets the same
+actions and **Show to Lili**: type a line and the picture goes to her with it as your turn; she answers about it, and
+your line shows the picture.
+
+**v4.5 (her files — the server's side).** Five owner-only routes over her sandbox, all through the sandbox guard:
+- `POST /v1/files/upload?path=&name=` writes a **new** file: a name already taken gets `(2)`, nothing is overwritten.
+  Pictures (by their bytes) up to 10 MB, text up to 1 MB, anything else refused.
+- `POST /v1/files/rename`, `POST /v1/files/trash` (into `.trash/<date>/` inside her sandbox) and
+  `POST /v1/files/restore` (back to where it came from). **Nothing is ever deleted.**
+- `GET /v1/files/download?path=` gives any file up to 50 MB.
+
+Every action is one line in `actions.jsonl` in the data root (what happened to which path — never the content). A turn
+may carry `sandbox_images` (pictures of her sandbox by path, read by the server; refused while `image.enabled` is off).
+The Gallery leaves out what is in the trash. `GET /v1/state.features` says `actions`. The window's proxy saves a
+download into `~/Downloads` and opens an http(s) link in the default browser itself, behind its key.
 
 **As a Mac app (LUMI-270).** `uv run python scripts/make_mac_app.py` builds `~/Applications/Lili.app`, with her
 portrait as the icon, which opens the window of the Mac prod client (`~/lumi/prod/app`; `--app-dir` for another
