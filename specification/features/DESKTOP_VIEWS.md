@@ -220,6 +220,11 @@ DoD:
 5. **Rename**, and **move to trash** with **restore**. Each is confirmed in the window. The trash is `.trash/` inside
    the sandbox, and nothing is ever deleted.
 
+**The routes (as built in v4.5):** `POST /v1/files/upload?path=&name=` (the raw body), `POST /v1/files/rename {path,
+name}`, `POST /v1/files/trash {path}`, `POST /v1/files/restore {path}`, `GET /v1/files/download?path=`, and
+`sandbox_images: [path]` on the turn routes (refused while `image.enabled` is off); `features.actions`. The Gallery skips
+`.trash/`.
+
 **Rules for every action:**
 - The owner's token only.
 - Every write through `safe_path`, into `files/<user_id>/` only.

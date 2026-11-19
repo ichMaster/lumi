@@ -203,6 +203,12 @@ def thumbs_dir_of(cfg):
     return cfg.data_root / "cache" / "thumbs"
 
 
+def actions_log_of(cfg):
+    """v4.5: the owner's action log — ``<data root>/actions.jsonl``, outside her sandbox (one line per action, never
+    any content)."""
+    return cfg.data_root / "actions.jsonl"
+
+
 def telegram_sink_of(cfg):
     """The v0.24 ``send_image`` sink — a photo record in the server's outbox (bridge + image on), else None."""
     from state.bus import make_photo_sink
@@ -372,7 +378,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real model)
     app = create_app(core, token=cfg.server_token, session=session, env=cfg.env, version=cfg.app_version,
                      on_new_session=lambda: _refresh_world(core, cfg), outbox=outbox_of(cfg),
                      space=space, room_token=cfg.agora_token if space is not None else None,
-                     thumbs_dir=thumbs_dir_of(cfg))
+                     thumbs_dir=thumbs_dir_of(cfg), actions_log=actions_log_of(cfg))
     service = app.state.service
     from server.brain import BrainHost
 

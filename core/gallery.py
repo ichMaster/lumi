@@ -99,6 +99,8 @@ def _walk(base: Path) -> tuple[list[_Picture], bool]:
     found: list[_Picture] = []
     scanned = 0
     for dirpath, dirnames, filenames in os.walk(base):  # never descends into a symlinked folder
+        if Path(dirpath) == base:
+            dirnames[:] = [d for d in dirnames if d != ".trash"]  # v4.5: a trashed picture leaves the Gallery
         dirnames.sort()
         folder = Path(dirpath)
         for name in sorted(filenames):

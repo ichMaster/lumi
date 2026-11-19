@@ -34,11 +34,21 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.actions import (
+    UPLOAD_MAX_PICTURE,
+    ActionLog,
+    Conflict,
+    rename,
+    restore,
+    trash,
+    upload,
+)
 from core.agent import tool_calls_view
 from core.browse import (
     BadPath,
@@ -50,8 +60,10 @@ from core.browse import (
     read_picture,
     read_text,
 )
+from core.browse import _resolve as browse_resolve
 from core.commands import run_command
 from core.gallery import GALLERY_MAX_LIMIT, list_pictures, thumbnail
+from core.images import image_block
 from core.journal import list_days, read_day
 from core.llm import LLMError
 from core.thoughts import THOUGHT_PAGE_MAX
@@ -64,6 +76,7 @@ log = logging.getLogger("lumi.server")
 class TurnRequest(BaseModel):
     text: str
     images: list[dict[str, Any]] | None = None  # v0.22 image blocks (base64) — /image over the API
+    sandbox_images: list[str] | None = None  # v4.5: pictures of her sandbox by path — the server reads them
     turn_id: str | None = None  # v2.3: idempotency key — a known id returns the stored result, never reruns
     # v3.1: whose conversation — "owner" (default: today's path, byte for byte) or "agora" (the room's own path)
     channel: Literal["owner", "agora"] = "owner"
@@ -73,6 +86,17 @@ class TurnRequest(BaseModel):
     register_: str | None = Field(default=None, alias="register")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class PathRequest(BaseModel):
+    """v4.5: one sandbox path (trash, restore)."""
+    path: str
+
+
+class RenameRequest(BaseModel):
+    """v4.5: a sandbox path and its new name (rename)."""
+    path: str
+    name: str
 
 
 class ObservedLineIn(BaseModel):
@@ -101,8 +125,10 @@ ROOM_GRACE_S = 2.0  # the server's backstop waits this much past the room's own 
 ROOM_ONLY = "the room's token reaches only the agora space"
 # v4.1 LUMI-302: the window's read routes over her sandbox — a refusal's status, and the headers each answer carries
 BROWSE_STATUS: tuple[tuple[type[BrowseError], int], ...] = ((BadPath, 400), (NotFound, 404), (TooLarge, 413),
-                                                           (NotServed, 415))
+                                                           (NotServed, 415), (Conflict, 409))  # v4.5: + 409
 FILES_JSON_HEADERS = {"Cache-Control": "no-store"}
+SANDBOX_IMAGES_MAX = 4  # v4.5: pictures a turn may show her by path
+DOWNLOAD_MAX = 50 * 1024 * 1024  # v4.5: a file the window may save to the Mac
 FILES_RAW_HEADERS = {"X-Content-Type-Options": "nosniff", "Content-Disposition": "inline",
                      "Cache-Control": "private, max-age=300"}
 ROOM_BUSY = "Лілі is answering the room — try again"
@@ -306,7 +332,7 @@ def totals_dict(totals: Any) -> dict[str, int]:
 
 
 def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | None,
-                   thumbs_dir: Path | None = None, schedule: bool = False) -> dict[str, Any]:
+                   thumbs_dir: Path | None = None, schedule: bool = False, actions: bool = False) -> dict[str, Any]:
     """Everything a client's status/stats lines read — one fetch per turn/command, not one per render."""
     files_served = isinstance(getattr(core, "files_root", None), Path)
     emo = getattr(core, "last_emotion", None)
@@ -338,7 +364,9 @@ def state_snapshot(core: Any, session: Any, *, env: str | None, version: str | N
                      "thoughts": thoughts_served(core),
                      # v4.4: her day (mood, biorhythms, closeness) and her timetable (while a scheduler runs)
                      "today": callable(getattr(core, "today_view", None)),
-                     "schedule": schedule},
+                     "schedule": schedule,
+                     # v4.5: the owner's actions on her sandbox (the sandbox and the action log both configured)
+                     "actions": files_served and actions},
     }
 
 
@@ -382,10 +410,12 @@ class _Service:
     """The one core + its current session, behind one lock."""
 
     def __init__(self, core: Any, session: Any, *, env: str | None, version: str | None,
-                 outbox: Outbox | None = None, thumbs_dir: Path | None = None) -> None:
+                 outbox: Outbox | None = None, thumbs_dir: Path | None = None,
+                 actions_log: ActionLog | None = None) -> None:
         self.core = core
         self.outbox = outbox  # v2.5: the file bus the server writes (Telegram / the voicer), or None
         self.thumbs_dir = thumbs_dir  # v4.2: the thumbnail cache (per user below it), outside her sandbox; or None
+        self.actions_log = actions_log  # v4.5: the owner's action log (<data root>/actions.jsonl), or None
         self.session = session
         self.env = env
         self.version = version
@@ -401,7 +431,7 @@ class _Service:
 
     def state(self) -> dict[str, Any]:
         return state_snapshot(self.core, self.session, env=self.env, version=self.version, thumbs_dir=self.thumbs_dir,
-                              schedule=self.schedule_view is not None)
+                              schedule=self.schedule_view is not None, actions=self.actions_log is not None)
 
     def acquire(self) -> None:
         """A client request's turn at the lock: at once; or — while the server's own act holds it (v2.5) —
@@ -519,7 +549,8 @@ class _Service:
             self.mirror(mirror_reply, result, getattr(self.core, "last_speech", None))
             self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
                                       "theme": self.core.theme, "origin": origin})
-            self.publish_message("user", req.text, "client", origin=origin)
+            self.publish_message("user", req.text, "client", origin=origin,
+                                 pictures=req.sandbox_images)  # v4.5: the pictures you showed her
             self.publish_message("lili", result.reply, "client", state=result, origin=origin,
                                  pictures=turn_pictures(self.core))
             record.result = self.turn_payload(result, origin, received=record.received)
@@ -564,7 +595,7 @@ def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=problem)
     if not req.turn_id or not req.turn_id.strip():
         raise HTTPException(status_code=422, detail="a room turn needs its turn_id (the trigger's event id)")
-    if req.images:
+    if req.images or req.sandbox_images:
         raise HTTPException(status_code=422, detail="a room turn carries no images")
     from core.space import REGISTERS
 
@@ -608,7 +639,7 @@ def _room_turn(space: Any, req: TurnRequest) -> dict[str, Any]:
 def create_app(core: Any, *, token: str, session: Any = None, env: str | None = None,
                version: str | None = None, on_new_session: Callable[[], None] | None = None,
                outbox: Outbox | None = None, space: Any = None, room_token: str | None = None,
-               thumbs_dir: Path | None = None) -> FastAPI:
+               thumbs_dir: Path | None = None, actions_log: Path | None = None) -> FastAPI:
     """The v1 app around an injected core (a mock model in tests). ``token`` is required.
 
     ``on_new_session`` runs in the background after ``/v1/session/new`` (the ambient re-snapshot, as the
@@ -626,7 +657,8 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
     if space is not None and (not room_token or room_token == token):
         raise ValueError("the Agora space needs its own room token (agora.token), never the client token")
     service = _Service(core, session if session is not None else core.start_session(), env=env, version=version,
-                       outbox=outbox, thumbs_dir=Path(thumbs_dir) if thumbs_dir is not None else None)
+                       outbox=outbox, thumbs_dir=Path(thumbs_dir) if thumbs_dir is not None else None,
+                       actions_log=ActionLog(actions_log) if actions_log is not None else None)
     expected = f"Bearer {token}".encode()
     room_expected = f"Bearer {room_token}".encode() if space is not None else None
     # No interactive docs / schema endpoints: the API is private to its own clients.
@@ -781,6 +813,99 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             raise HTTPException(status_code=404, detail="the schedule is not served")
         return JSONResponse(view(core.clock()), headers=FILES_JSON_HEADERS)
 
+    # --- v4.5 LUMI-322: the owner's actions on her sandbox — create-only, nothing deleted, every action logged ---
+    def _actions() -> tuple[Path, ActionLog]:
+        root = _files_root()
+        if service.actions_log is None:
+            raise HTTPException(status_code=404, detail="actions are not served")
+        return root, service.actions_log
+
+    def _log(action: str, done: dict[str, Any], client: str | None, size: int | None = None) -> None:
+        try:
+            service.actions_log.append({"ts": core.clock().isoformat(timespec="seconds"), "action": action,
+                                        "path": done.get("path"), "to": done.get("to"), "size": size,
+                                        "client": origin_of(client)})
+        except OSError:
+            log.warning("the action log could not be written", exc_info=True)
+
+    @app.post("/v1/files/upload", dependencies=guarded)
+    async def files_upload(request: Request, path: str = "", name: str = "",
+                           x_lumi_client: str | None = Header(default=None)) -> JSONResponse:
+        """A file from the owner's Mac into her sandbox: the raw body → ``{path, size}`` (``core.actions.upload``:
+        create-only under a free name, pictures ≤ 10 MB by magic bytes, UTF-8 text ≤ 1 MB). An oversized body is
+        refused while it streams in, never held whole."""
+        root, _ = _actions()
+        data = bytearray()
+        async for chunk in request.stream():
+            data.extend(chunk)
+            if len(data) > UPLOAD_MAX_PICTURE:
+                raise HTTPException(status_code=413, detail="the file is larger than 10 MB")
+        done = _mapped(lambda: upload(root, path, name, bytes(data)))
+        _log("upload", done, x_lumi_client, size=done.get("size"))
+        return JSONResponse(done, headers=FILES_JSON_HEADERS)
+
+    @app.post("/v1/files/rename", dependencies=guarded)
+    def files_rename(req: RenameRequest, x_lumi_client: str | None = Header(default=None)) -> JSONResponse:
+        """Rename a file or a folder within its folder: ``{path, to}`` — never over a taken name (409)."""
+        root, _ = _actions()
+        done = _mapped(lambda: rename(root, req.path, req.name))
+        _log("rename", done, x_lumi_client)
+        return JSONResponse(done, headers=FILES_JSON_HEADERS)
+
+    @app.post("/v1/files/trash", dependencies=guarded)
+    def files_trash(req: PathRequest, x_lumi_client: str | None = Header(default=None)) -> JSONResponse:
+        """Move a file or a folder into ``.trash/<today>/``: ``{path, to}``. Nothing is deleted."""
+        root, _ = _actions()
+        done = _mapped(lambda: trash(root, req.path, core.clock().date().isoformat()))
+        _log("trash", done, x_lumi_client)
+        return JSONResponse(done, headers=FILES_JSON_HEADERS)
+
+    @app.post("/v1/files/restore", dependencies=guarded)
+    def files_restore(req: PathRequest, x_lumi_client: str | None = Header(default=None)) -> JSONResponse:
+        """Move an item from ``.trash/`` back to where the action log says it came from: ``{path, to}``."""
+        root, actions_log = _actions()
+        done = _mapped(lambda: restore(root, req.path, actions_log.original_of(req.path)))
+        _log("restore", done, x_lumi_client)
+        return JSONResponse(done, headers=FILES_JSON_HEADERS)
+
+    @app.get("/v1/files/download", dependencies=guarded)
+    def files_download(path: str = "") -> Response:
+        """Any regular file of her sandbox up to 50 MB, as an attachment (read-only)."""
+        root = _files_root()
+
+        def read() -> tuple[bytes, str]:
+            target = browse_resolve(root, path)
+            shown = path.strip().strip("/")
+            if not target.is_file():
+                raise NotFound(f"no such file: {shown!r}")
+            if target.stat().st_size > DOWNLOAD_MAX:
+                raise TooLarge(f"{shown!r} is larger than {DOWNLOAD_MAX // (1024 * 1024)} MB")
+            return target.read_bytes(), target.name
+
+        data, name = _mapped(read)
+        ascii_name = "".join(ch if 32 < ord(ch) < 127 and ch not in r'"\;' else "_" for ch in name) or "download"
+        disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
+        return Response(content=data, media_type="application/octet-stream",
+                        headers={"Content-Disposition": disposition, "X-Content-Type-Options": "nosniff",
+                                 "Cache-Control": "private, no-store"})
+
+    def _with_sandbox_images(req: TurnRequest) -> TurnRequest:
+        """v4.5: a turn that shows her pictures of her sandbox — each read by path (``read_picture``: ≤ 10 MB, by
+        magic bytes) into an image block beside ``images``; a bad path is refused before the turn runs."""
+        paths = [p for p in (req.sandbox_images or []) if isinstance(p, str)]
+        if not paths:
+            return req
+        if len(paths) > SANDBOX_IMAGES_MAX:
+            raise HTTPException(status_code=400, detail=f"at most {SANDBOX_IMAGES_MAX} pictures a turn")
+        if not getattr(core, "image_enabled", False):  # she only sees a turn's pictures while image.enabled is on
+            raise HTTPException(status_code=422, detail="she can't see pictures on this server (image.enabled is off)")
+        root = _files_root()
+        blocks = []
+        for rel in paths:
+            data, media_type = _mapped(lambda rel=rel: read_picture(root, rel))
+            blocks.append(image_block(data, media_type))
+        return req.model_copy(update={"images": [*(req.images or []), *blocks], "sandbox_images": paths})
+
     @app.get("/v1/events", dependencies=guarded)
     def events(last_event_id: str | None = Header(default=None, alias="Last-Event-ID")) -> StreamingResponse:
         """v2.4: the push channel (SSE) — the current ``state`` first, then events as they happen, ``:``
@@ -815,6 +940,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             return _room_turn(space, req)
         if who == "room":
             raise HTTPException(status_code=403, detail=ROOM_ONLY)
+        req = _with_sandbox_images(req)
         record, _ = service.begin_turn(req, stream=False, origin=origin_of(x_lumi_client))
         record.done.wait()
         if record.error is not None:
@@ -892,6 +1018,7 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         ``done`` (the blocking payload) or ``error``. A known ``turn_id`` skips straight to its outcome."""
         if req.channel != "owner":
             raise HTTPException(status_code=422, detail="the room's turns are blocking (POST /v1/turn)")
+        req = _with_sandbox_images(req)
         record, fresh = service.begin_turn(req, stream=True, origin=origin_of(x_lumi_client))
 
         def events() -> Iterator[str]:

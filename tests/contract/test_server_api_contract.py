@@ -37,6 +37,8 @@ def test_the_route_set_is_pinned(tmp_path):
         ("GET", "/v1/journal"), ("GET", "/v1/journal/{date}"),  # v4.3: her journal, the owner's only
         ("GET", "/v1/thoughts"),  # v4.3: her thought stream through the surfacing filter
         ("GET", "/v1/today"), ("GET", "/v1/schedule"),  # v4.4: her day and her timetable
+        ("POST", "/v1/files/upload"), ("POST", "/v1/files/rename"), ("POST", "/v1/files/trash"),  # v4.5: the owner's
+        ("POST", "/v1/files/restore"), ("GET", "/v1/files/download"),  # actions on her sandbox
     }
 
 
@@ -81,7 +83,8 @@ def test_state_shape_is_pinned(tmp_path):
                                  # owner reads it), and the thought stream is served unless /thoughts is off
                                  "journal": True, "thoughts": True,
                                  # v4.4: her day is always served; the schedule only while a scheduler runs
-                                 "today": True, "schedule": False}
+                                 "today": True, "schedule": False,
+                                 "actions": False}  # v4.5: no sandbox and no action log on a bare core
     assert set(state["totals"]) == {
         "turns", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "latency_ms",
     }
@@ -962,3 +965,169 @@ def test_v44_the_hormonal_cycle_on_today_and_on_the_state(tmp_path):
     off = TestClient(create_app(_day_core(tmp_path / "off"), token=TOKEN))  # no «Цикл:» anchor
     assert off.get("/v1/today", headers=AUTH).json()["cycle"] is None
     assert off.get("/v1/state", headers=AUTH).json()["cycle"] is None
+
+
+# --- v4.5 LUMI-322: the owner's actions — create-only, nothing deleted, every action logged -------------------------
+
+def _actions_client(tmp_path, *, script=None, image=True):
+    root = _gallery_sandbox(tmp_path / "files")
+    core = Core(llm=MockLLMClient(states={"reply": "бачу", "emotion": "calm", "intensity": 0.5},
+                                  tool_script=script),
+                repository=JsonRepository(tmp_path / "a.json"), canon="C", model="m", files_dir=tmp_path / "files",
+                user_id="owner", mood_enabled=False, closeness_enabled=False, thoughts_enabled=False,
+                image_enabled=image)
+    client = TestClient(create_app(core, token=TOKEN, env="dev", version="4.5.0", actions_log=tmp_path / "actions.jsonl"))
+    return client, root, core
+
+
+def _log_lines(tmp_path):
+    path = tmp_path / "actions.jsonl"
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
+
+
+def test_v45_upload_is_create_only_and_logged(tmp_path):
+    client, root, _ = _actions_client(tmp_path)
+    before = _fingerprint(root)
+    png = _real_png((20, 20))
+    res = client.post("/v1/files/upload", params={"path": "art", "name": "p.png"}, content=png,
+                      headers={**AUTH, "X-Lumi-Client": "w1"})
+    assert res.status_code == 200 and res.headers["cache-control"] == "no-store"
+    assert res.json() == {"path": "art/p (2).png", "size": len(png)}
+    assert [row for row in _fingerprint(root) if not row[0].endswith("p (2).png")] == before  # nothing overwritten
+    text = client.post("/v1/files/upload", params={"name": "лист.md"}, content="# Привіт\n".encode(), headers=AUTH)
+    assert text.json()["path"] == "лист.md"
+    lines = _log_lines(tmp_path)
+    assert [line["action"] for line in lines] == ["upload", "upload"] and lines[0]["client"] == "w1"
+    assert "Привіт" not in (tmp_path / "actions.jsonl").read_text(encoding="utf-8")  # no content in the log
+    assert client.get("/v1/state", headers=AUTH).json()["features"]["actions"] is True
+
+
+def test_v45_upload_refusals(tmp_path, monkeypatch):
+    import core.actions as actions
+    client, root, _ = _actions_client(tmp_path)
+    cases = [({"name": "x.svg"}, b"<svg onload=x>\x00", 415), ({"name": "x.bin"}, bytes(range(256)), 415),
+             ({"path": "nope", "name": "a.txt"}, b"a", 404), ({"path": "../out", "name": "a.txt"}, b"a", 400),
+             ({"name": "../a.txt"}, b"a", 400), ({"name": ".hidden"}, b"a", 400)]
+    for params, body, status in cases:
+        res = client.post("/v1/files/upload", params=params, content=body, headers=AUTH)
+        assert res.status_code == status, (params, res.status_code)
+        assert str(tmp_path) not in res.text
+    monkeypatch.setattr(actions, "UPLOAD_MAX_TEXT", 4)
+    assert client.post("/v1/files/upload", params={"name": "a.txt"}, content=b"12345", headers=AUTH).status_code == 413
+    import server.app as app_module
+    monkeypatch.setattr(app_module, "UPLOAD_MAX_PICTURE", 64)  # the streaming cap
+    big = client.post("/v1/files/upload", params={"name": "b.png"}, content=_real_png((40, 40)), headers=AUTH)
+    assert big.status_code == 413 and not (root / "b.png").exists()
+    assert _log_lines(tmp_path) == []  # a refusal logs nothing
+
+
+def test_v45_rename_trash_restore_and_download(tmp_path):
+    client, root, _ = _actions_client(tmp_path)
+    assert client.post("/v1/files/rename", json={"path": "notes/ideas.md", "name": "думки.md"},
+                       headers=AUTH).json() == {"path": "notes/ideas.md", "to": "notes/думки.md"}
+    (root / "notes" / "b.md").write_text("b", encoding="utf-8")
+    clash = client.post("/v1/files/rename", json={"path": "notes/b.md", "name": "думки.md"}, headers=AUTH)
+    assert clash.status_code == 409
+    moved = client.post("/v1/files/trash", json={"path": "notes/думки.md"}, headers=AUTH).json()
+    assert moved["to"].startswith(".trash/") and moved["to"].endswith("/думки.md")
+    assert not (root / "notes" / "думки.md").exists()
+    back = client.post("/v1/files/restore", json={"path": moved["to"]}, headers=AUTH).json()
+    assert back == {"path": moved["to"], "to": "notes/думки.md"}
+    assert (root / "notes" / "думки.md").read_text(encoding="utf-8").startswith("# Ідеї")
+    unknown = client.post("/v1/files/restore", json={"path": ".trash/2026-01-01/x.md"}, headers=AUTH)
+    assert unknown.status_code in (404, 409)
+    dl = client.get("/v1/files/download", params={"path": "notes/думки.md"}, headers=AUTH)
+    assert dl.status_code == 200 and dl.content == (root / "notes" / "думки.md").read_bytes()
+    assert dl.headers["content-type"] == "application/octet-stream"
+    assert dl.headers["content-disposition"].startswith("attachment;") and "UTF-8''" in dl.headers["content-disposition"]
+    assert dl.headers["x-content-type-options"] == "nosniff"
+    assert client.get("/v1/files/download", params={"path": "notes"}, headers=AUTH).status_code == 404
+    assert client.get("/v1/files/download", params={"path": "../x"}, headers=AUTH).status_code == 400
+    assert [line["action"] for line in _log_lines(tmp_path)] == ["rename", "trash", "restore"]
+
+
+def test_v45_a_trashed_picture_leaves_the_gallery(tmp_path):
+    client, root, _ = _actions_client(tmp_path)
+    client.app.state.service.thumbs_dir = tmp_path / "cache"
+    client.post("/v1/files/trash", json={"path": "art/p.png"}, headers=AUTH)
+    paths = [i["path"] for i in client.get("/v1/images", headers=AUTH).json()["items"]]
+    assert paths == ["art/q.png"]
+
+
+def test_v45_the_writes_are_the_owners_token_only(tmp_path):
+    from tests._agora_world import OWNER_AUTH, ROOM_AUTH, agora_client
+    root = _gallery_sandbox(tmp_path / "files")
+    client = agora_client(tmp_path, core=_files_core(tmp_path), actions_log=tmp_path / "actions.jsonl")
+    calls = [("post", "/v1/files/upload", {"params": {"name": "a.txt"}, "content": b"a"}),
+             ("post", "/v1/files/rename", {"json": {"path": "art/p.png", "name": "z.png"}}),
+             ("post", "/v1/files/trash", {"json": {"path": "art/q.png"}}),
+             ("post", "/v1/files/restore", {"json": {"path": ".trash/x/y.png"}}),
+             ("get", "/v1/files/download", {"params": {"path": "art/p.png"}})]
+    before = _fingerprint(root)
+    for method, path, kw in calls:
+        assert getattr(client, method)(path, **kw).status_code == 401
+        assert getattr(client, method)(path, headers={"Authorization": "Bearer wrong"}, **kw).status_code == 401
+        assert getattr(client, method)(path, headers=ROOM_AUTH, **kw).status_code == 403  # the room never writes
+    assert _fingerprint(root) == before and not (tmp_path / "actions.jsonl").exists()
+    assert client.get("/v1/files/download", params={"path": "art/p.png"}, headers=OWNER_AUTH).status_code == 200
+
+
+def test_v45_a_write_never_waits_for_the_turn_lock(tmp_path):
+    client, _, _ = _actions_client(tmp_path)
+    service = client.app.state.service
+    assert service.lock.acquire(timeout=1)
+    try:
+        assert client.post("/v1/files/upload", params={"name": "a.txt"}, content=b"a", headers=AUTH).status_code == 200
+    finally:
+        service.lock.release()
+
+
+def test_v45_no_action_log_no_actions(tmp_path):
+    _gallery_sandbox(tmp_path / "files")
+    client = TestClient(create_app(_files_core(tmp_path), token=TOKEN))
+    assert client.get("/v1/state", headers=AUTH).json()["features"]["actions"] is False
+    assert client.post("/v1/files/upload", params={"name": "a.txt"}, content=b"a", headers=AUTH).status_code == 404
+
+
+def test_v45_a_turn_shows_her_a_picture_of_her_sandbox(tmp_path):
+    client, root, core = _actions_client(tmp_path)
+    holder: dict = {}
+    heard = _heard(client, lambda: holder.update(res=client.post(
+        "/v1/turn", json={"text": "що тут?", "sandbox_images": ["art/p.png"]}, headers=AUTH)))
+    assert holder["res"].status_code == 200
+    seen = core._llm.images_seen
+    assert len(seen) == 1 and seen[0]["media_type"] == "image/png"
+    import base64
+    assert base64.b64decode(seen[0]["data"]) == (root / "art" / "p.png").read_bytes()
+    mine = [d for e, d in heard if e == "message" and d["role"] == "user"]
+    assert mine[-1]["pictures"] == ["art/p.png"]  # your line carries the picture you showed her
+    streamed = client.post("/v1/turn/stream", json={"text": "а тут?", "sandbox_images": ["art/q.png"], "turn_id": "s1"},
+                           headers=AUTH)
+    assert _events(streamed.text)[-1][0] == "done" and len(core._llm.images_seen) == 2
+
+
+def test_v45_sandbox_images_refusals(tmp_path):
+    client, _, core = _actions_client(tmp_path)
+    for body, status in (({"text": "?", "sandbox_images": ["../x.png"]}, 400),
+                         ({"text": "?", "sandbox_images": ["art/none.png"]}, 404),
+                         ({"text": "?", "sandbox_images": ["notes/ideas.md"]}, 415),
+                         ({"text": "?", "sandbox_images": ["art/p.png"] * 5}, 400)):
+        res = client.post("/v1/turn", json=body, headers=AUTH)
+        assert res.status_code == status, (body, res.status_code)
+    assert core._llm.calls == []  # refused before any turn ran
+
+
+def test_v45_the_room_never_shows_her_a_sandbox_picture(tmp_path):
+    from tests._agora_world import ROOM_AUTH, agora_client
+    _gallery_sandbox(tmp_path / "files")
+    client = agora_client(tmp_path, core=_files_core(tmp_path))
+    res = client.post("/v1/turn", json={"text": "?", "channel": "agora", "turn_id": "r1", "speaker": "Ада",
+                                        "sandbox_images": ["art/p.png"]}, headers=ROOM_AUTH)
+    assert res.status_code == 422
+
+
+def test_v45_with_vision_off_a_sandbox_picture_is_refused_not_lost(tmp_path):
+    client, _, core = _actions_client(tmp_path, image=False)
+    res = client.post("/v1/turn", json={"text": "?", "sandbox_images": ["art/p.png"]}, headers=AUTH)
+    assert res.status_code == 422 and "image.enabled" in res.json()["detail"]
+    assert core._llm.calls == []
