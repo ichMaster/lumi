@@ -1,6 +1,16 @@
 Lumi — Release notes
 ====================
 
+Version 4.8.0 (2026-11-20)
+---------------------------
+- v4.8 — English everywhere, the eighth and last phase of v4: the documentation, the interface and the code comments are English; her words and her prompt stay as they are (the owner, 2026-11-20).
+- Her prompt pinned before anything changed: the system prompt of a fixture turn (a real Core, the mock model, a fixed clock, frozen copies of the authored inputs), every tool definition and every module-level model-facing text in core/ as golden files; a one-character change to any of them fails a contract test (LUMI-335).
+- The command layer in English: /mood, /biorhythm (its own English cycle line; her mood call and journal keep theirs), /closeness by level name (Polite … Dearest), /style, /model, /model-set, /thoughts, /recall, /theme, the "not yet" and "off" lines; Core.style reads auto / auto · you suggest / (Lili) / (you); the request /journal write hands her stays hers; the room's 409 detail stays as the agora contract with matrix-agora writes it (LUMI-336).
+- The clients in English: the terminal client calls her Lili ("🎤 you", "✦ Lili is reading the news…", "✦ saved →", "🎙 listening…", the /mode-set and voice-mode lines), the CLI asks in English and still takes «т» / «так», the viewer's window is titled Lili, the window's style row maps her palette's key to its English name (LUMI-337).
+- The code comments and docstrings in English (her prompt's section names and the patterns the code matches quoted in backticks); a guard walks the code's AST: no Cyrillic in the interface modules' literals outside an allowlist, none in the window's and the panel's pages, none in a comment or docstring outside a quote or her name (LUMI-338).
+- The documentation in English: thirteen Ukrainian documents with an English twin removed after a coverage check (NEEDS_full.md and the conversation concept gained what only the Ukrainian had); thirteen translated into specification/features/personality/, specification/features/games/ and docs/; specification/features/ukrainian/ gone; every link resolves; the guard checks no Ukrainian document comes back (LUMI-339).
+- Code review: one MEDIUM finding fixed — the guard read the text between two English apostrophes ("turn's … doesn't") as a quote, so Ukrainian prose there passed; a quote now opens only outside a word and never spans a line. Six LOW findings deferred (her meta-style keys raw in both clients, the pin's in-method gaps, Ukrainian prose quoted in other markup inside English documents, voice/ outside the guard, superseded text in the conversation concept, two weight sets for the drives — the owner's call before v6.5).
+
 Version 4.7.0 (2026-11-20)
 ---------------------------
 - v4.7 — dictation in the window, the seventh and last phase of v4: you speak, the words appear live in the input, you edit and send (the owner, 2026-11-19).

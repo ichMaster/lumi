@@ -12,7 +12,18 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.7.0 — Dictation in the window** (version 4 complete; version 3 complete, last 3.4.1).
+**4.8.0 — English everywhere** (version 4 complete; version 3 complete, last 3.4.1).
+- Every **slash command** answers in English in the window, the terminal client and Telegram; her own words inside
+  an answer (the mood of the day, her thoughts, recalled lines, facts) stay Ukrainian.
+- The **terminal client**, the CLI and the viewer speak English and call her **Lili** ("✦ Lili is reading the
+  news…"); the CLI still takes «т» / «так» as yes. The window's style row reads "short (Lili)".
+- **Her prompt is untouched:** the canon, the authored files, the directive and tool texts stay as written, and golden
+  files pin the prompt of a fixture turn byte-identical.
+- The **code comments** and the **documentation** are English: the Ukrainian documents with an English twin are gone,
+  the rest are translated (`specification/features/personality/`, `specification/features/games/`, `docs/`).
+- A guard test keeps the interface, the comments and the documents English.
+
+**4.7.0 — Dictation in the window** (version 4).
 - A **mic button** sits in the composer beside Send. A click starts and a second click stops; a hold talks while held;
   **⌥Space** does both. **Esc** cancels and leaves the input as it was.
 - The words appear **live** under the input while you speak, and each settled phrase lands in the input, where you
