@@ -12,7 +12,17 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.6.0 — Her voice in the window** (version 4; version 3 complete, last 3.4.1).
+**4.7.0 — Dictation in the window** (version 4 complete; version 3 complete, last 3.4.1).
+- A **mic button** sits in the composer beside Send. A click starts and a second click stops; a hold talks while held;
+  **⌥Space** does both. **Esc** cancels and leaves the input as it was.
+- The words appear **live** under the input while you speak, and each settled phrase lands in the input, where you
+  can edit it before Enter. An error puts the input back as it was, with one line saying why.
+- **«Send when I stop»** (in the hints) sends the text as soon as the recording ends; the window remembers it.
+- The window's shell records the Mac's mic and streams it to the server's owner-only `WS /v1/dictation`; the box
+  recognizes it with its own Deepgram key (live, with the v1.6 phrase hold; whole on the stop as the fallback), so
+  the Mac needs no key. No audio is stored anywhere.
+
+**4.6.0 — Her voice in the window** (version 4).
 - While the **«Voice»** switch is on, the server voices each of her lines **once**, after the line is shown
   (ElevenLabs). The file is kept for 30 days under `<data root>/voice/`.
 - In the chat her line shows «voicing…», then **▶**. ❚❚ pauses, and the time is shown beside it. One line plays at a

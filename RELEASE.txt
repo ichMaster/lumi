@@ -1,6 +1,15 @@
 Lumi — Release notes
 ====================
 
+Version 4.7.0 (2026-11-20)
+---------------------------
+- v4.7 — dictation in the window, the seventh and last phase of v4: you speak, the words appear live in the input, you edit and send (the owner, 2026-11-19).
+- The relay (server/dictation.py): the client streams PCM 16 kHz mono int16 and stop / cancel; the server answers ready {mode}, interim {text}, final {text}, then done or one error {detail}. Stream mode relays to the v1.6 DeepgramStream with its phrase hold (the held part shown in the interim; CloseStream on the stop, the last results awaited up to 3 s, the held phrase flushed); batch mode (no streaming recognizer, or it can't open) keeps the audio in memory and recognizes it whole on the stop. 5 minutes is a stop, 10 s without audio an error; an error carries the exception's type only; nothing is written to disk and the log never holds the words (LUMI-331).
+- WS /v1/dictation: the owner's token only, checked at the handshake (anything else, or a server without a recognizer, 403); one dictation at a time (busy); never the turn lock; the recognizer is the box's (dictation.stt_provider with its own key); features.dictation on the state. The Server API v1 grows additively (LUMI-332).
+- The shell (desktop/dictation.py): it connects first and opens the Mac's mic (sounddevice, dictation.stt_device) only after the server's ready; the blocks go in order with a level meter; a stop, a cancel, an error, the cap, a page that reloads and the window closing all close the mic; four local routes behind the window's key (/local/dictation, start as an event stream, stop, cancel), never forwarded; the desktop extra adds sounddevice and websockets (LUMI-333).
+- The window: the mic button (a click toggles, a hold talks while held, ⌥Space does both), a live line with the level, the status, an mm:ss timer and the phrase being spoken; each settled phrase appended to the input, editable before sending; Esc cancels and an error restores the input; «Send when I stop» in the hints, remembered (LUMI-334).
+- Code review: one MEDIUM finding fixed — holding ⌥Space to talk let the key's auto-repeat through, so macOS typed non-breaking spaces into the input; the repeats are now swallowed. Four LOW findings deferred to the backlog (a late error also takes away the phrases already settled — the owner's call; the live line's aria-live chatter; a stop racing the start's claim; the Whisper fallback's temp file).
+
 Version 4.6.0 (2026-11-19)
 ---------------------------
 - v4.6 — her voice in the window, the sixth phase of v4: each of her lines voiced once on the server, played in the chat and reused by Telegram, with one «Voice» switch for both (the owner, 2026-11-19).
