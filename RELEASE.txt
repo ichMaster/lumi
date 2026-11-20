@@ -1,6 +1,12 @@
 Lumi — Release notes
 ====================
 
+Version 4.8.1 (2026-11-20)
+---------------------------
+- Fix: her voice in the desktop window no longer stops by itself in the middle of a line. WebKit (and macOS App Nap, mostly when the window is in the background) paused the audio without being asked, and the play button showed ▶ with the time where it stopped. The window now remembers whether the owner wants the line to play: a pause the owner did not ask for is resumed (up to five times per play), and again when the window regains focus or becomes visible; ❚❚, Esc and the Mac's media keys stay a real pause.
+- The window's shell turns App Nap off for its own process while it is open (an NSProcessInfo activity, user-initiated, idle system sleep still allowed); off macOS, or if the call fails, nothing changes.
+- Tests: the resume rules run in node against a fake audio element (an unasked pause resumes; the owner's pause, the end of the line and another line do not; the cap of five; the resume on focus; the media keys), and the App Nap call against a fake NSProcessInfo.
+
 Version 4.8.0 (2026-11-20)
 ---------------------------
 - v4.8 — English everywhere, the eighth and last phase of v4: the documentation, the interface and the code comments are English; her words and her prompt stay as they are (the owner, 2026-11-20).

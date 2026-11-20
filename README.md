@@ -12,7 +12,13 @@ ROADMAP, EMOTION) and [docs/](docs/) for implementation references
 
 ## Current version
 
-**4.8.0 — English everywhere** (version 4 complete; version 3 complete, last 3.4.1).
+**4.8.1 — Her voice plays to the end** (version 4 complete; version 3 complete, last 3.4.1).
+A fix on 4.8.0: WebKit sometimes paused her voice in `Lili.app` by itself, mostly when the window was in the
+background, and the play button showed ▶ with the time where it stopped. The window now plays on after a pause
+the owner did not ask for, and macOS App Nap is off while the window is open. ❚❚, Esc and the Mac's media keys
+still pause.
+
+**4.8.0 — English everywhere** (version 4).
 - Every **slash command** answers in English in the window, the terminal client and Telegram; her own words inside
   an answer (the mood of the day, her thoughts, recalled lines, facts) stay Ukrainian.
 - The **terminal client**, the CLI and the viewer speak English and call her **Lili** ("✦ Lili is reading the

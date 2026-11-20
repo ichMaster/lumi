@@ -16,7 +16,7 @@ started. Each version and each phase carries its own **Status:** line under its 
 | v1 — Voice interface | ✅ Closed | `1.1.0`–`1.6.3` (the rest of v1.6 moved to v6.14) |
 | v2 — Client/server split | ✅ Closed | `2.1.0`–`2.12.3` |
 | v3 — Agora | ✅ Closed | `3.1.0`–`3.4.1` |
-| v4 — The window | ✅ Closed | `4.1.0`–`4.8.0` |
+| v4 — The window | ✅ Closed | `4.1.0`–`4.8.1` |
 | v5 — The admin panel II | 🔲 Planned | the design brief written; v5.1 waits for the design |
 | v6 — Personality | 🔲 Planned | — |
 | v7 — Server platform | 🔲 Planned | — |
@@ -1547,7 +1547,7 @@ contract — every v2 example served as written. **No paid calls.**
 
 ## v4 — The window: her files, pictures, journal and thoughts in Lili.app
 
-**Status:** ✅ Closed — `4.1.0`–`4.8.0`.
+**Status:** ✅ Closed — `4.1.0`–`4.8.1`.
 
 Since v2.5 her tools and her thoughts run in the server on the box. What they leave stays in her data root there: her
 sandbox (the v0.19–v0.32 files, the v0.23 pictures), the v0.28 journal and the v0.12 thought stream. The desktop
@@ -2037,7 +2037,7 @@ No paid calls.
 
 ### v4.8 — English everywhere: the interface, the code comments and the documents
 
-**Status:** ✅ Closed — released `4.8.0`.
+**Status:** ✅ Closed — released `4.8.0`–`4.8.1`.
 
 **Goal:** everything a person reads that is not her own words is English — the commands' answers, the terminal
 client, the notices and errors, the CLI, the Telegram daemons' own lines, the code comments and docstrings, and the
