@@ -350,3 +350,15 @@ def test_review_2_an_uneditable_layout_is_refused_and_nothing_written(tmp_path):
     code, out, err = _cfg(["set", "memory.window", "50"], tmp_path)
     assert code == 1 and "edit it by hand" in err and "nothing was written" in err
     assert (tmp_path / "settings.yaml").read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize("answer", ["y", "yes", "т", "так"])
+def test_v48_the_clear_question_is_english_and_both_yeses_confirm(tmp_path, answer):
+    # v4.8 LUMI-337: the CLI asks in English; the Ukrainian yes is still accepted.
+    api, core = _api(tmp_path)
+    cleared: list = []
+    core.clear_memory = lambda *a, **k: cleared.append(1)
+    asked: list = []
+    code, out, _ = _run(["memory", "clear"], api, ask=lambda q: asked.append(q) or answer)
+    assert code == 0 and cleared == [1]
+    assert asked == ["Clear Lili's memory about you? This can't be undone. [y/N] "]

@@ -982,3 +982,22 @@ def test_v47_the_strings_are_english():
     for key in keys:
         assert key in strings and not CYRILLIC.search(strings[key]), key
     assert strings["dictation.send_when_stop"] == "Send when I stop"
+
+
+def test_v48_the_style_row_reads_in_english():
+    # v4.8 LUMI-337: the server's style status carries her palette's key + who chose it; the row shows the key's
+    # English name and the English words around it.
+    import json
+
+    strings = json.loads((Path(__file__).resolve().parents[2] / "desktop/ui/strings.en.json").read_text("utf-8"))
+    got = _node_eval(f"""
+const STR = {json.dumps(strings, ensure_ascii=False)};
+function t(key, vars) {{ const v = STR[key]; if (typeof v !== "string") return key;
+  return v.replace(/\\{{(\\w+)\\}}/g, (m, n) => (vars && n in vars ? String(vars[n]) : m)); }}
+const S = {{ styles: STR.styles || {{ "коротко": "short", "докладно": "detailed" }} }};
+""" + _fn("styleLabel") + """
+console.log(JSON.stringify(["коротко (Lili)", "докладно (you)", "auto", "auto · you suggest: коротко+докладно",
+  "normal", "", "combo (Lili)"].map(styleLabel)));
+""")
+    assert got == ["short (Lili)", "detailed (you)", "auto", "auto · you suggest short + detailed", "normal", "—",
+                   "combo (Lili)"]

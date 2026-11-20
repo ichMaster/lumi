@@ -53,7 +53,7 @@ def run(
     default_theme = load_themes(faces).default  # v0.11: the fallback wardrobe pack (None → flat)
     pygame.init()
     screen = pygame.display.set_mode(size)
-    pygame.display.set_caption("Лілі")
+    pygame.display.set_caption("Lili")
     switcher = FaceSwitcher(
         signal_path, faces, default_theme=default_theme, idle_timeout=idle_timeout
     )

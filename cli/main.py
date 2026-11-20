@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None, *, client: Any = None,
                 answer = ask(f"{asked.confirm} [y/N] ").strip().lower()
             except (EOFError, KeyboardInterrupt):  # no terminal / Ctrl+C at the prompt = "no"
                 answer = ""
-            if answer not in ("y", "yes", "т", "так"):
+            if answer not in ("y", "yes", "т", "так"):  # the Ukrainian yes stays accepted
                 print("Cancelled.", file=out)
                 return 0
             _print_result(api.command("/forget", confirmed=True), out)

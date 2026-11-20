@@ -49,7 +49,7 @@ async def test_tui_drives_a_turn_against_mock_model(tmp_path):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
         assert any("You: привіт" in line for line in app.transcript)
-        assert any("Лілі 🙂: Привіт. Я Лілі." in line for line in app.transcript)
+        assert any("Lili 🙂: Привіт. Я Лілі." in line for line in app.transcript)
 
 
 def test_lili_reply_is_rendered_as_markdown():
@@ -100,7 +100,7 @@ async def test_no_thinking_keeps_the_box_empty(tmp_path):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
         assert app._thinking_shown is None  # the Thinking box stays empty
-        assert "Лілі 🙂: Привіт!" in "\n".join(app.transcript)
+        assert "Lili 🙂: Привіт!" in "\n".join(app.transcript)
 
 
 async def test_status_and_stats_are_separate_lines(tmp_path):
@@ -155,7 +155,7 @@ async def test_copy_all_copies_full_conversation(tmp_path):
         app._copy = copied.append
         await _submit(pilot, app, "привіт")
         app.action_copy_all()
-        assert copied and "You: привіт" in copied[0] and "Лілі 🙂: вітаю" in copied[0]
+        assert copied and "You: привіт" in copied[0] and "Lili 🙂: вітаю" in copied[0]
 
 
 async def test_copy_reply_with_nothing_yet_does_not_copy(tmp_path):
@@ -292,7 +292,7 @@ async def test_send_works_again_once_free(tmp_path):
         # A normal turn flips busy True during the call, then back to False.
         await _submit(pilot, app, "привіт")
         assert app._busy is False
-        assert any("Лілі 🙂: вітаю" in line for line in app.transcript)
+        assert any("Lili 🙂: вітаю" in line for line in app.transcript)
 
 
 async def test_multiline_input_enter_submits_shift_enter_newlines(tmp_path):
@@ -429,7 +429,7 @@ async def test_idle_nudge_runs_a_hidden_turn(tmp_path):
             if app.transcript:
                 break
         # Лілі's reply is shown…
-        assert any("Лілі 🙂: Привіт, я сама почала." in line for line in app.transcript)
+        assert any("Lili 🙂: Привіт, я сама почала." in line for line in app.transcript)
         # …but the hidden nudge line is NOT in the displayed transcript.
         assert not any("ти тут?" in line for line in app.transcript)
         assert not any(line.startswith("You:") for line in app.transcript)
@@ -467,7 +467,7 @@ async def test_emoji_shows_next_to_lili_reply(tmp_path):
     async with app.run_test() as pilot:
         await _submit(pilot, app, "вітаю")
         line = next(ln for ln in app.transcript if "Ура!" in ln)
-        assert line.startswith("Лілі 😄✨✨:")  # emoji + high-intensity emphasis
+        assert line.startswith("Lili 😄✨✨:")  # emoji + high-intensity emphasis
 
 
 async def test_emoji_low_intensity_is_the_plain_face(tmp_path):
@@ -477,7 +477,7 @@ async def test_emoji_low_intensity_is_the_plain_face(tmp_path):
     app = LumiApp(_core(tmp_path, llm))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "точно?")
-        assert any(ln.startswith("Лілі 😕:") for ln in app.transcript)  # plain low glyph
+        assert any(ln.startswith("Lili 😕:") for ln in app.transcript)  # plain low glyph
 
 
 async def test_mood_command_shows_the_resolution(tmp_path):
@@ -660,7 +660,7 @@ async def test_queued_messages_each_get_their_own_reply(tmp_path):
             await pilot.pause()
             if not app._input_queue and not app._busy and not app._draining:
                 break
-        lili = [line for line in app.transcript if line.startswith("Лілі")]
+        lili = [line for line in app.transcript if line.startswith("Lili")]
         assert len(lili) == 2  # one reply per queued message — NEVER merged into one
         assert not app._input_queue  # fully drained
 
@@ -676,7 +676,7 @@ async def test_queued_command_does_not_stall_the_drain(tmp_path):
             if not app._input_queue and not app._busy and not app._draining:
                 break
         assert not app._input_queue  # the command didn't stall the drain
-        assert any(line.startswith("Лілі") for line in app.transcript)  # the chat line got answered
+        assert any(line.startswith("Lili") for line in app.transcript)  # the chat line got answered
 
 
 async def test_drained_chat_line_shows_no_duplicate_user_row(tmp_path):
@@ -804,7 +804,7 @@ async def test_streamed_reply_appears_once_in_the_conversation(tmp_path):
         await _submit(pilot, app, "привіт")
         lili_lines = [ln for ln in app.transcript if "Привіт, як ти?" in ln]
         assert len(lili_lines) == 1                       # exactly ONE copy, not two
-        assert lili_lines[0].startswith("Лілі")
+        assert lili_lines[0].startswith("Lili")
         assert app._stream_body is None                   # finalized — the grown widget became the reply
         assert app._stream_buf == ""
         with pytest.raises(NoMatches):                    # the old separate #live box is gone
@@ -829,7 +829,7 @@ async def test_streaming_off_renders_reply_once(tmp_path):
     app = LumiApp(_core(tmp_path, MockLLMClient("добре")))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "привіт")
-        lili_lines = [ln for ln in app.transcript if "добре" in ln and ln.startswith("Лілі")]
+        lili_lines = [ln for ln in app.transcript if "добре" in ln and ln.startswith("Lili")]
         assert len(lili_lines) == 1
         assert app._stream_body is None                   # no streaming widget was used
 

@@ -66,16 +66,16 @@ from tui.remote import NOT_YET, ServerBusy, ServerUnavailable, client_mode_confi
 from tui.sound import SoundPlayer
 
 USER_LABEL = "You"
-LILI_LABEL = "Лілі"  # her name (the persona is Ukrainian); UI chrome is English
+LILI_LABEL = "Lili"  # her name as the interface writes it (v4.8); her persona and her words stay Ukrainian
 _log = logging.getLogger("lumi.tui")
 
-ERROR_LINE = "Лілі is unavailable right now. Try again in a moment."
+ERROR_LINE = "Lili is unavailable right now. Try again in a moment."
 
 # Speaker colors — so your lines and Лілі's read apart at a glance.
 USER_COLOR = "cyan"
 TELEGRAM_LABEL = "📱 Telegram"  # v0.13: an incoming line from the Telegram bridge
 TELEGRAM_COLOR = "blue"
-VOICE_LABEL = "🎤 ти"  # v0.26: a dictated line (source="voice") — shown as your own line
+VOICE_LABEL = "🎤 you"  # v0.26: a dictated line (source="voice") — shown as your own line
 VOICE_COLOR = "cyan"
 LILI_COLOR = "green"
 ERROR_COLOR = "red"
@@ -90,12 +90,12 @@ STATUS_OFFLINE = "offline"
 # v0.33: surfacing an autonomous act (a %directive) in the TUI — a status-line state (always on) + an
 # optional chat-log meta line (gated by LUMI_THOUGHT_SURFACE). Distinct from a chat turn's `requesting…`.
 _THOUGHT_VERBS = {
-    "think": "думає", "wonder": "цікавиться", "note": "занотовує", "review": "перечитує нотатки",
-    "explore": "блукає файлами", "journal": "пише щоденник", "lookup": "шукає у вікіпедії",
-    "learn": "вчиться", "catchup": "читає новини", "brief": "переглядає новини",
-    "search": "шукає в інтернеті", "events": "дивиться, що попереду", "recall": "пригадує",
-    "prompt": "виконує прохання", "gaze": "розглядає картинку", "imagine": "малює",
-    "share": "ділиться картинкою",
+    "think": "is thinking", "wonder": "is wondering", "note": "is taking a note", "review": "is rereading her notes",
+    "explore": "is wandering her files", "journal": "is writing her journal", "lookup": "is searching Wikipedia",
+    "learn": "is learning", "catchup": "is reading the news", "brief": "is skimming the news",
+    "search": "is searching the web", "events": "is looking at what's ahead", "recall": "is remembering",
+    "prompt": "is doing what you asked", "gaze": "is looking at a picture", "imagine": "is drawing",
+    "share": "is sharing a picture",
 }
 
 
@@ -105,8 +105,8 @@ def thought_status_label(name: str, last_tool: str | None = None) -> str:
 
 
 def thought_meta_line(name: str) -> str:
-    """The v0.33 (gated) chat-log meta line marking an autonomous act — e.g. ``✦ Лілі читає новини…``."""
-    return f"✦ Лілі {_THOUGHT_VERBS.get(name, 'міркує')}…"
+    """The v0.33 (gated) chat-log meta line marking an autonomous act — e.g. ``✦ Lili is reading the news…``."""
+    return f"✦ {LILI_LABEL} {_THOUGHT_VERBS.get(name, 'is musing')}…"
 
 
 def command_renderable(result: CommandResult) -> RenderableType:
@@ -224,7 +224,7 @@ class ChatInput(TextArea):
 class LumiApp(App[None]):
     """A minimal chat loop: scrollable history, an input line, clean exit."""
 
-    TITLE = "Lumi — Лілі"
+    TITLE = "Lumi — Lili"
     # priority=True so these app shortcuts win over the multi-line input's own
     # key bindings (TextArea otherwise captures ctrl+y/o/l/t while focused).
     BINDINGS = [
@@ -372,7 +372,7 @@ class LumiApp(App[None]):
         with Vertical():
             thinking = RichLog(id="thinking", wrap=True, markup=False)
             thinking.border_title = "Thinking"
-            thinking.border_subtitle = "Лілі's reasoning — last turn only"
+            thinking.border_subtitle = "Lili's reasoning — last turn only"
             yield thinking
             yield VerticalScroll(id="history")  # the conversation — one mounted widget per line/message
             prompt = ChatInput(id="prompt", show_line_numbers=False, soft_wrap=True)
@@ -780,7 +780,7 @@ class LumiApp(App[None]):
                     body = f"💭 {outcome.thought.text}"
                     self._emit(body, Markdown(body))  # silent → nothing shown
                 if outcome.saved_to:  # v0.33: confirm a code-owned save to a sink (notes / a file)
-                    saved = f"✦ збережено → {outcome.saved_to}"
+                    saved = f"✦ saved → {outcome.saved_to}"
                     self._emit(saved, Text(saved, style="grey50"))
                 self._last_activity = self._core.clock()
                 prompt.focus()
@@ -822,7 +822,7 @@ class LumiApp(App[None]):
         self._listening = not self._listening
         set_listen_flag(self._listen_flag_path, self._listening)
         if self._listening:
-            self._say(VOICE_LABEL, "🎙 слухаю…", VOICE_COLOR)  # "listening…"
+            self._say(VOICE_LABEL, "🎙 listening…", VOICE_COLOR)
         else:
             self.notify("Stopped listening — recognizing…", timeout=1)
         self._render_status()
@@ -1255,24 +1255,24 @@ class LumiApp(App[None]):
         stops it. Voice is additive — the keyboard and every slash command keep working."""
         arg = text[len("/mode-set"):].strip().lower()
         if not arg:
-            body = (f"**Режим:** {self._mode} — `/mode-set text | voice` "
-                    "(voice: мікрофон → Deepgram → Лілі → ElevenLabs; навушники обов'язково)")
+            body = (f"**Mode:** {self._mode} — `/mode-set text | voice` "
+                    "(voice: the mic → Deepgram → Lili → ElevenLabs; headphones required)")
             self._emit(body, Markdown(body))
             return
         if arg == "voice" and self._remote:  # v2.2: the live voice loop needs the in-process core
             self._emit_not_yet("voice mode")
             return
         if arg not in ("text", "voice"):
-            msg = "Невідомий режим — `/mode-set text | voice`."
+            msg = "Unknown mode — `/mode-set text | voice`."
             self._emit(msg, Text(msg, style="yellow"))
             return
         if arg == self._mode:
-            self._emit(f"Режим уже {arg}.", Text(f"Режим уже {arg}.", style="yellow"))
+            self._emit(f"Already in {arg} mode.", Text(f"Already in {arg} mode.", style="yellow"))
             return
         if arg == "voice":
             await self._start_voice_mode()
         else:
-            await self._stop_voice_mode("Режим: text ✓")
+            await self._stop_voice_mode("Mode: text ✓")
 
     async def _start_voice_mode(self) -> None:
         """Bring the live loop up; ANY failure prints a readable line and stays in text mode."""
@@ -1283,7 +1283,7 @@ class LumiApp(App[None]):
                                           ("ELEVENLABS_API_KEY", cfg.elevenlabs_api_key),
                                           ("LUMI_VOICE_ID", cfg.voice_id)) if not val]
         if missing:
-            msg = f"Голосовий режим потребує {', '.join(missing)} у .env — лишаюся в text."
+            msg = f"Voice mode needs {', '.join(missing)} — staying in text mode."
             self._emit(msg, Text(msg, style="yellow"))
             return
         try:
@@ -1332,10 +1332,10 @@ class LumiApp(App[None]):
             ]
         except Exception as exc:  # noqa: BLE001 — no key/dep/device/WS → text mode, never a dead TUI
             _log.exception("voice mode failed to start (%s)", type(exc).__name__)
-            await self._stop_voice_mode(f"Голосовий режим не стартував ({type(exc).__name__}) — text.")
+            await self._stop_voice_mode(f"Voice mode didn't start ({type(exc).__name__}) — text mode.")
             return
         self._mode = "voice"
-        msg = "Режим: voice ✓ — говори (навушники!); /mode-set text — повернутися."
+        msg = "Mode: voice ✓ — speak (headphones!); /mode-set text — back to text."
         self._emit(msg, Markdown(msg))
         self._render_status()
 
@@ -1376,9 +1376,9 @@ class LumiApp(App[None]):
             raise
         except Exception as exc:  # noqa: BLE001 — unexpected (the resilient pump absorbs drops)
             _log.exception("voice pump dropped (%s)", type(exc).__name__)
-            await self._stop_voice_mode(f"Голосовий зв'язок упав ({type(exc).__name__}) — text.")
+            await self._stop_voice_mode(f"The voice link dropped ({type(exc).__name__}) — text mode.")
         else:  # the retries exhausted — the same graceful fallback as before
-            await self._stop_voice_mode("Голосовий зв'язок закрився — text.")
+            await self._stop_voice_mode("The voice link closed — text mode.")
 
     async def _voice_synth(self) -> None:
         """The sentence → ElevenLabs pump (blocking reads in a thread; cancelled on stop)."""
@@ -1398,8 +1398,8 @@ class LumiApp(App[None]):
             await asyncio.sleep(0.1)
             waited += 0.1
         if self._busy:  # a stuck turn — drop the utterance with a visible note, never deadlock
-            self._emit("(голос: хід пропущено — попередній ще триває)",
-                       Text("(голос: хід пропущено — попередній ще триває)", style="yellow"))
+            self._emit("(voice: turn skipped — the previous one is still running)",
+                       Text("(voice: turn skipped — the previous one is still running)", style="yellow"))
             return
         # LUMI-206: arm the stage stamps for THIS spoken turn (commit/endpoint were just recorded
         # by the VoiceLoop; llm-first lands on the first streamed delta, first-audio via mark_turn).
@@ -1442,7 +1442,7 @@ class LumiApp(App[None]):
             return
         query = text.split(None, 1)[1].strip() if " " in text else ""
         if not query:
-            self.notify("Що знайти в інтернеті? /web <запит>", severity="warning", timeout=3)
+            self.notify("Look up what on the web? /web <query>", severity="warning", timeout=3)
             return
         self._last_activity = self._core.clock()  # a typed command resets the idle timer
         await self._run_turn(query, mirror_input=True)  # a normal turn — she looks it up + answers
@@ -1597,7 +1597,7 @@ class LumiApp(App[None]):
 
     def _emit_not_yet(self, feature: str) -> None:
         """A feature the v2.2 server doesn't host yet — said plainly, never a crash."""
-        line = f"{feature}: {NOT_YET} (LUMI_SERVER=off runs the full in-process Лілі)"
+        line = f"{feature}: {NOT_YET} (LUMI_SERVER=off runs the full in-process Lili)"
         self._emit(line, Text(line, style=SYSTEM_COLOR))
 
     def _announce_not_yet(self) -> None:
@@ -1662,10 +1662,10 @@ class LumiApp(App[None]):
     def action_copy_reply(self) -> None:
         """Copy Лілі's last reply to the system clipboard."""
         if not self._last_reply:
-            self.notify("No Лілі reply to copy yet.", severity="warning")
+            self.notify("No Lili reply to copy yet.", severity="warning")
             return
         self._copy(self._last_reply)
-        self.notify("Copied Лілі's last reply.")
+        self.notify("Copied Lili's last reply.")
 
     def action_copy_all(self) -> None:
         """Copy the whole conversation (plain text) to the system clipboard."""
@@ -1680,7 +1680,7 @@ class LumiApp(App[None]):
         self.query_one("#history", VerticalScroll).remove_children()
         self.transcript.clear()
         self._last_reply = None
-        self.notify("Screen cleared. Лілі still remembers — history is kept.")
+        self.notify("Screen cleared. Lili still remembers — history is kept.")
 
     def action_toggle_mouse(self) -> None:
         """Release/recapture the mouse so the terminal can select text natively.

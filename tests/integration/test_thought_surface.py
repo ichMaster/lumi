@@ -15,9 +15,9 @@ def test_thought_status_label():
 
 
 def test_thought_meta_line():
-    assert thought_meta_line("catchup") == "✦ Лілі читає новини…"
-    assert thought_meta_line("imagine") == "✦ Лілі малює…"
-    assert thought_meta_line("zzz") == "✦ Лілі міркує…"  # unknown → generic fallback
+    assert thought_meta_line("catchup") == "✦ Lili is reading the news…"
+    assert thought_meta_line("imagine") == "✦ Lili is drawing…"
+    assert thought_meta_line("zzz") == "✦ Lili is musing…"  # unknown → generic fallback
 
 
 # --- the gated chat-log meta line (through the real app) ------------------------------------------
@@ -38,7 +38,7 @@ async def test_meta_line_appears_when_surface_on(tmp_path):
     async with app.run_test() as pilot:
         app._thought_surface = True
         await _fire(pilot, app, "%wonder")
-        assert any("✦ Лілі" in line for line in app.transcript)  # the act is marked in the transcript
+        assert any("✦ Lili" in line for line in app.transcript)  # the act is marked in the transcript
 
 
 async def test_meta_line_absent_when_surface_off(tmp_path):
@@ -46,4 +46,4 @@ async def test_meta_line_absent_when_surface_off(tmp_path):
     async with app.run_test() as pilot:
         app._thought_surface = False
         await _fire(pilot, app, "%wonder")
-        assert not any("✦ Лілі" in line for line in app.transcript)  # off → no extra log line
+        assert not any("✦ Lili" in line for line in app.transcript)  # off → no extra log line

@@ -736,13 +736,27 @@ function renderStatus() {
 function fmtMs(ms) { return ms === null || ms === undefined ? "—" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`; }
 function fmtTokens(n) { return n === null || n === undefined ? "—" : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
 
+// v4.8: the server's style status is "<key> (Lili|you)", "auto" or "auto · you suggest: <k1+k2>"; a key is her
+// palette's own word and is shown by its English name.
+function styleLabel(raw) {
+  const name = (k) => (S.styles && S.styles[k]) || k;
+  if (!raw) return "—";
+  if (raw === "normal") return t("details.style.normal");
+  if (raw === "auto") return t("details.style.auto");
+  const who = /^(.*) \((Lili|you)\)$/.exec(raw);
+  if (who) return t(who[2] === "you" ? "details.style.byYou" : "details.style.byLili", { style: name(who[1]) });
+  const suggest = /^auto · you suggest: (.+)$/.exec(raw);
+  if (suggest) return t("details.style.suggest", { styles: suggest[1].split("+").map(name).join(" + ") });
+  return name(raw);
+}
+
 function renderDetails() {
   const box = $("details");
   box.hidden = !st.detailsOpen;
   if (!st.detailsOpen) return;
   const s = st.server, totals = s.totals || {}, last = s.last_stats || {};
   const tokens = ["input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"].reduce((a, k) => a + (totals[k] || 0), 0);
-  const style = s.style === "normal" ? t("details.style.normal") : (S.styles && S.styles[s.style]) || s.style || "—";
+  const style = styleLabel(s.style);
   const cells = [
     ["details.env", s.env || "—"], ["details.version", s.version || "—"], ["details.model", s.model || "—"],
     ["details.profile", s.profile || "—"], ["details.thinking", s.thinking ? t("details.thinking.on") : t("details.thinking.off")],
