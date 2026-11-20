@@ -903,6 +903,26 @@ def test_v47_click_toggles_hold_talks_and_option_space_does_both():
     assert "if (micKey(ev)) return;" in js
 
 
+def test_v47_a_held_option_space_types_nothing_into_the_input():
+    """Code review #1: the key's auto-repeat while ⌥Space is held is swallowed — on macOS each repeat would type a
+    non-breaking space into the input — and starts or stops nothing."""
+    got = _node_eval("""
+const dict = { state: "idle", press: null }; const calls = [];
+function micShown() { return true; }
+function dictStart() { calls.push("start"); dict.state = "listening"; }
+function dictStop() { calls.push("stop"); }
+""" + _fn("micKey") + """
+function key(type, repeat) {
+  const ev = { type, altKey: true, code: "Space", repeat, prevented: false, preventDefault() { this.prevented = true; } };
+  const handled = micKey(ev);
+  return [handled, ev.prevented];
+}
+const first = key("keydown", false);
+const repeats = [key("keydown", true), key("keydown", true)];
+console.log(JSON.stringify({ first, repeats, calls }));""")
+    assert got == {"first": [True, True], "repeats": [[True, True], [True, True]], "calls": ["start"]}
+
+
 def test_v47_esc_cancels_and_leaves_the_input_as_it_was():
     js = _js()
     esc = 'if (ev.key === "Escape" && dict.state !== "idle") { ev.preventDefault(); dictCancel(); return; }'

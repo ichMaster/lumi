@@ -1311,8 +1311,9 @@ function micUp() {
 
 function micKey(ev) {  // ⌥Space: the same as the button — a tap toggles, a hold talks while held
   if (ev.type === "keydown") {
-    if (!(ev.altKey && ev.code === "Space") || ev.repeat || !micShown()) return false;
+    if (!(ev.altKey && ev.code === "Space") || !micShown()) return false;
     ev.preventDefault();
+    if (ev.repeat) return true;  // a held ⌥Space repeats: swallowed, or macOS types non-breaking spaces
     if (dict.state === "idle") { dict.press = { at: Date.now(), key: true }; dictStart(); }
     else if (dict.state === "listening" || dict.state === "starting") { dict.press = null; dictStop(); }
     return true;
