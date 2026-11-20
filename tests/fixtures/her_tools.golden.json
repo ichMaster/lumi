@@ -1,0 +1,601 @@
+{
+ "core.agent.RECALL_TOOLS": [
+  {
+   "name": "recall",
+   "description": "Шукає у ТВОЇЙ власній памʼяті (минулі розмови) за змістовим запитом і повертає кілька релевантних моментів (уривок + коли це було). Це ТВІЙ спогад, не зовнішнє джерело. Корисно, коли треба саме те, чого людина зараз НЕ написала прямо, або щоб уточнити пошук кількома кроками. Запит може відрізнятися від поточного повідомлення.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "Змістовий запит для пошуку в памʼяті."
+     },
+     "k": {
+      "type": "integer",
+      "description": "Скільки моментів повернути (необовʼязково)."
+     },
+     "after": {
+      "type": "string",
+      "description": "Лише з цієї дати й пізніше (РРРР-ММ-ДД, необовʼязково)."
+     },
+     "before": {
+      "type": "string",
+      "description": "Лише до цієї дати, не включно (РРРР-ММ-ДД, необовʼязково)."
+     },
+     "scope": {
+      "type": "string",
+      "enum": [
+       "messages",
+       "facts",
+       "all"
+      ],
+      "description": "Де шукати: messages (минулі розмови, типово) / facts (стійкі факти про людину) / all."
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ ],
+ "core.agent.DATE_TOOLS": [
+  {
+   "name": "messages_on",
+   "description": "Повертає ТВОЇ дослівні повідомлення (твої й людини) за конкретну ДАТУ (РРРР-ММ-ДД) — сирий журнал того дня, БЕЗ змістового пошуку. Це ТВОЯ памʼять; для пошуку за змістом — recall.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "description": "Дата (РРРР-ММ-ДД)."
+     }
+    },
+    "required": [
+     "date"
+    ]
+   }
+  },
+  {
+   "name": "messages_between",
+   "description": "Повертає ТВОЇ дослівні повідомлення за діапазон дат [start, end] включно (РРРР-ММ-ДД) — сирий журнал за кілька днів. Діапазон обмежений кількома днями.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "start": {
+      "type": "string",
+      "description": "Початкова дата (РРРР-ММ-ДД)."
+     },
+     "end": {
+      "type": "string",
+      "description": "Кінцева дата (РРРР-ММ-ДД, включно)."
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   }
+  },
+  {
+   "name": "message_context",
+   "description": "Повертає КОНКРЕТНЕ повідомлення — за його id АБО за позначкою часу ts — РАЗОМ із K повідомленнями до і після нього в тій самій розмові, щоб побачити той момент у контексті. І id (#xxxxxxxx), і час є у результаті recall біля знайденого рядка. Це ТВОЯ памʼять.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "msg_id": {
+      "type": "string",
+      "description": "Id повідомлення (повний або префікс, напр. #xxxxxxxx з recall)."
+     },
+     "ts": {
+      "type": "string",
+      "description": "Або позначка часу — префікс РРРР-ММ-ДД чи РРРР-ММ-ДДTГГ:ХХ."
+     },
+     "k": {
+      "type": "integer",
+      "description": "Скільки повідомлень до і після (за замовч. 3)."
+     }
+    }
+   }
+  }
+ ],
+ "core.files.READ_TOOLS": [
+  {
+   "name": "list_files",
+   "description": "Перелік файлів (імена, розміри, дати створення/зміни) у теці пісочниці Лілі; можна звузити за датою ЗМІНИ — after/before (РРРР-ММ-ДД, напівінтервал [after, before)).",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Тека відносно кореня пісочниці (типово '.')."
+     },
+     "after": {
+      "type": "string",
+      "description": "Лише змінені від цієї дати (РРРР-ММ-ДД, включно)."
+     },
+     "before": {
+      "type": "string",
+      "description": "Лише змінені до цієї дати (РРРР-ММ-ДД, виключно)."
+     }
+    }
+   }
+  },
+  {
+   "name": "find_in_file",
+   "description": "Шукає в файлі рядок-підрядок і повертає НОМЕРИ РЯДКІВ збігів із коротким прев'ю, щоб знайти потрібне місце перед читанням.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Файл відносно кореня пісочниці."
+     },
+     "query": {
+      "type": "string",
+      "description": "Рядок для пошуку (літерально)."
+     }
+    },
+    "required": [
+     "path",
+     "query"
+    ]
+   }
+  },
+  {
+   "name": "read_file",
+   "description": "Читає line_count рядків, починаючи з 1-індексованого start_line, і повідомляє total_lines, щоб можна було гортати до кінця файлу.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Файл відносно кореня пісочниці."
+     },
+     "start_line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-індексований перший рядок."
+     },
+     "line_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Скільки рядків прочитати."
+     }
+    },
+    "required": [
+     "path"
+    ]
+   }
+  },
+  {
+   "name": "stat_file",
+   "description": "Повертає РОЗМІР і дати (створення/зміни) одного файлу — без переліку всієї теки.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Файл відносно кореня пісочниці."
+     }
+    },
+    "required": [
+     "path"
+    ]
+   }
+  },
+  {
+   "name": "search_files",
+   "description": "Шукає підрядок у ВМІСТІ всіх файлів пісочниці (рекурсивно) і повертає шляхи з НОМЕРАМИ РЯДКІВ збігів (path:рядок: текст) — крос-файловий аналог find_in_file, щоб знайти потрібний файл і місце; номер рядка передається далі в read_around.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "Рядок для пошуку (літерально; regex=true → шаблон)."
+     },
+     "path": {
+      "type": "string",
+      "description": "Підтека для звуження пошуку (типово вся пісочниця)."
+     },
+     "regex": {
+      "type": "boolean",
+      "description": "Трактувати query як регулярний вираз."
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  },
+  {
+   "name": "read_around",
+   "description": "Читає рядки НАВКОЛО вказаного — від line−k до line+k, з позначкою на самому рядку. Аналог message_context для файлів: номер рядка з find_in_file/search_files → контекст довкола.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Файл відносно кореня пісочниці."
+     },
+     "line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-індексований рядок-якір."
+     },
+     "k": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Скільки рядків до і після (типово 3)."
+     }
+    },
+    "required": [
+     "path",
+     "line"
+    ]
+   }
+  }
+ ],
+ "core.files.WRITE_TOOLS": [
+  {
+   "name": "create_file",
+   "description": "Створює НОВИЙ файл із заданим вмістом у пісочниці Лілі. Помилка, якщо шлях уже існує — нічого не перезаписує (без перезапису й видалення).",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Новий файл відносно кореня пісочниці."
+     },
+     "content": {
+      "type": "string",
+      "description": "Вміст нового файлу."
+     }
+    },
+    "required": [
+     "path",
+     "content"
+    ]
+   }
+  },
+  {
+   "name": "append_file",
+   "description": "Додає текст у КІНЕЦЬ наявного файлу в пісочниці Лілі. Помилка, якщо файлу немає — нічого не створює і не перезаписує.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Наявний файл відносно кореня пісочниці."
+     },
+     "content": {
+      "type": "string",
+      "description": "Текст, який додати в кінець."
+     }
+    },
+    "required": [
+     "path",
+     "content"
+    ]
+   }
+  },
+  {
+   "name": "create_folder",
+   "description": "Створює НОВУ теку в пісочниці Лілі. Помилка, якщо шлях уже існує — нічого не перезаписує і не видаляє.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Нова тека відносно кореня пісочниці."
+     }
+    },
+    "required": [
+     "path"
+    ]
+   }
+  },
+  {
+   "name": "copy_file",
+   "description": "Копіює наявний файл пісочниці у НОВЕ місце. Обидва шляхи в пісочниці; призначення має не існувати (без перезапису) — копіює, нічого не видаляючи.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "src": {
+      "type": "string",
+      "description": "Наявний файл-джерело відносно кореня."
+     },
+     "dest": {
+      "type": "string",
+      "description": "Нове призначення відносно кореня."
+     }
+    },
+    "required": [
+     "src",
+     "dest"
+    ]
+   }
+  }
+ ],
+ "core.imagegen.GENERATE_TOOLS": [
+  {
+   "name": "generate_image",
+   "description": "Згенерувати НОВЕ зображення (PNG) за текстовим описом і зберегти у пісочниці Лілі. Опис — лише з творчого наміру, без особистих даних людини. Не перезаписує наявні файли.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "prompt": {
+      "type": "string",
+      "description": "Опис того, що намалювати (англійською або українською)."
+     },
+     "filename": {
+      "type": "string",
+      "description": "Необовʼязкова назва файлу — лише імʼя (напр. mood.png); теку art/ додано автоматично, не дублюй префікс."
+     }
+    },
+    "required": [
+     "prompt"
+    ]
+   }
+  }
+ ],
+ "core.imagetool.VIEW_TOOLS": [
+  {
+   "name": "view_image",
+   "description": "Подивитися на зображення з пісочниці Лілі (png/jpg/gif/webp) і потім описати/обговорити те, що на ньому. Повертає саме зображення у поле зору. ВАЖЛИВО: коли користувач називає файл-картинку (напр. «chat.png» чи «глянь kiln-303.png»), це файл у твоїй пісочниці — ВІДКРИЙ його цим інструментом за назвою. У цьому текстовому інтерфейсі картинку не можна «прикріпити», тож ніколи не вважай, що зображення «не долетіло» чи відсутнє — просто виклич view_image з цією назвою.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Назва файлу-зображення (коротка назва теж працює — знайдеться в art/ і будь-де в пісочниці)."
+     }
+    },
+    "required": [
+     "path"
+    ]
+   }
+  }
+ ],
+ "core.journal.JOURNAL_TOOLS": [
+  {
+   "name": "journal_write",
+   "description": "Записати у щоденник СВІЙ підсумок сьогоднішнього дня — літературно, від першої особи, своїм голосом (тільки твоя проза; дату/настрій/біоритми/прогноз додасть код, не пиши їх сама). Пиши лише коли день був вартісним. Перший запис дня створює файл; пізніший — додається.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string",
+      "description": "Твоя проза — підсумок дня, твоїми словами."
+     }
+    },
+    "required": [
+     "text"
+    ]
+   }
+  },
+  {
+   "name": "journal_read",
+   "description": "Перечитати запис щоденника за датою (YYYY-MM-DD). Без дати — найсвіжіший запис. Повертає текст запису (твоя проза + заголовок із настроєм/біоритмами/прогнозом).",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "description": "Дата запису YYYY-MM-DD (необовʼязково)."
+     }
+    },
+    "required": []
+   }
+  },
+  {
+   "name": "journal_list",
+   "description": "Перелік дат, за які є записи щоденника (найновіші першими).",
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+   }
+  }
+ ],
+ "core.llm._EMOTION_TOOL": {
+  "name": "set_state",
+  "description": "Поверни відповідь Лілі разом із її емоційним станом для цього ходу.",
+  "input_schema": {
+   "type": "object",
+   "properties": {
+    "reply": {
+     "type": "string",
+     "description": "Текст відповіді Лілі (лише її слова)."
+    },
+    "emotion": {
+     "type": "string",
+     "enum": [
+      "joy",
+      "calm",
+      "playful",
+      "tender",
+      "thoughtful",
+      "serious",
+      "surprise",
+      "doubt",
+      "sad"
+     ]
+    },
+    "intensity": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1
+    },
+    "thinking_summary": {
+     "type": "string",
+     "description": "Короткий ПУБЛІЧНИЙ підсумок міркування для боксу Thinking: 1-3 короткі речення, тією ж мовою, що й reply; не приватний chain-of-thought."
+    },
+    "relation": {
+     "type": "object",
+     "description": "Оцінка ОСТАННЬОГО повідомлення співрозмовника (не Лілі), кожен вимір 0–1.",
+     "properties": {
+      "warmth": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "vulnerability": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "playful": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "harm": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "manipulation": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      }
+     }
+    },
+    "intent": {
+     "type": "string",
+     "enum": [
+      "deepen",
+      "position",
+      "object",
+      "develop",
+      "associate",
+      "example",
+      "return",
+      "mutate",
+      "switch"
+     ],
+     "description": "Обраний арбітром стиль розмови цього ходу (внутрішня позначка, v1.1)."
+    }
+   },
+   "required": [
+    "reply",
+    "emotion",
+    "intensity"
+   ]
+  }
+ },
+ "core.news.NEWS_TOOLS": [
+  {
+   "name": "news_search",
+   "description": "Шукає свіжі новини в The Guardian за темою і повертає кандидатів (заголовок + короткий опис + id), щоб обрати, що прочитати. Запит формуй АНГЛІЙСЬКОЮ і лише з того, що людина прямо просить (без особистих даних). Теми (sections): world, politics, business, technology, science, environment, culture, sport.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "Пошуковий запит англійською (тема новини)."
+     },
+     "topic": {
+      "type": "string",
+      "description": "Розділ Guardian (world/politics/…), необовʼязково."
+     },
+     "days": {
+      "type": "integer",
+      "description": "Свіжість у днях (за замовчуванням 7)."
+     }
+    },
+    "required": []
+   }
+  },
+  {
+   "name": "news_read",
+   "description": "Читає ОДНУ статтю за id з останнього news_search цього ходу і повертає текст + ПОСИЛАННЯ-ДЖЕРЕЛО. Відповідай УКРАЇНСЬКОЮ, своїм голосом, чесно що це переказ англомовного джерела, із посиланням.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "description": "Opaque id з news_search цього ходу (напр. n1)."
+     }
+    },
+    "required": [
+     "id"
+    ]
+   }
+  }
+ ],
+ "core.sendimage.SEND_TOOLS": [
+  {
+   "name": "send_image",
+   "description": "Надіслати зображення з пісочниці Лілі у Telegram власнику — коли Лілі САМА вирішує поділитися картинкою (своєю згенерованою або тією, що ти лишив). Можна додати підпис. Потрібен підключений Telegram-міст.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "path": {
+      "type": "string",
+      "description": "Файл-зображення відносно кореня пісочниці."
+     },
+     "caption": {
+      "type": "string",
+      "description": "Необовʼязковий підпис до фото."
+     }
+    },
+    "required": [
+     "path"
+    ]
+   }
+  }
+ ],
+ "core.weblookup.WEB_LOOKUP_TOOLS": [
+  {
+   "name": "web_lookup",
+   "description": "Дізнатися СВІЖУ інформацію з живого інтернету просто зараз — що відбувається / що попереду (подія цього тижня, дата виходу, останні новини, сьогоднішній результат). Запит формуй АНГЛІЙСЬКОЮ і лише з того, що людина прямо просить (без особистих даних). Повертає коротку синтезовану відповідь із живого пошуку Google. Переказуй УКРАЇНСЬКОЮ, своїм голосом, спершу суть, чесно що ти щойно глянула в інтернеті.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "Пошуковий запит англійською (тема)."
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ ],
+ "core.wiki.WIKI_TOOLS": [
+  {
+   "name": "wiki_search",
+   "description": "Шукає у Вікіпедії статті за запитом і повертає кандидатів (назва + короткий опис), щоб обрати потрібну перед читанням. Запит — лише з того, що людина прямо просить.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "Пошуковий запит (тема статті)."
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  },
+  {
+   "name": "wiki_read",
+   "description": "Читає коротке резюме однієї статті Вікіпедії за назвою і повертає текст + ПОСИЛАННЯ-ДЖЕРЕЛО, щоб відповісти з посиланням на джерело.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "description": "Точна назва статті (з wiki_search)."
+     }
+    },
+    "required": [
+     "title"
+    ]
+   }
+  }
+ ]
+}
