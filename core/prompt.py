@@ -59,7 +59,7 @@ STYLE_HEADER = (
     "(не компетентність і не теплота). У кінці: <style>назва</style> (тег не коментуй)."
 )
 
-# Inline style tag: <style>лагідна</style> — Лілі's declared answer style for the turn.
+# Inline style tag: `<style>лагідна</style>` — Лілі's declared answer style for the turn.
 _STYLE_TAG_RE = re.compile(r"<style>\s*([^<>]+?)\s*</style>", re.IGNORECASE)
 _STRAY_STYLE_RE = re.compile(r"</?style\b[^>]*>", re.IGNORECASE)
 
@@ -228,8 +228,8 @@ def build_system_prompt(
       day). The in-session digest is **not** here — it changes on compaction (see the tail), so
       keeping it off the prefix means a compaction never re-writes the static head.
     - **Per-turn tail** (recomputed each turn → never cached): `# Раніше в цій розмові` (the
-      in-session compaction — grows every `LUMI_COMPACTION_BATCH` messages), `# Релевантні моменти
-      минулого` (the v0.17 per-turn RAG block — the query-relevant past, so it changes every turn), `# Зараз`
+      in-session compaction — grows every `LUMI_COMPACTION_BATCH` messages), `# Релевантні моменти минулого`
+      (the v0.17 per-turn RAG block — the query-relevant past, so it changes every turn), `# Зараз`
       (ambient now/here — its timestamp changes each turn), `# Близькість` (`update_closeness`
       rebuilds it each turn), `# Що в мене на думці` (the last-24h thoughts), and finally — kept
       **last + most salient** — `# Стиль відповіді` (the :data:`STYLE_HEADER`; *form*, never competence).

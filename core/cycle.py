@@ -38,7 +38,7 @@ class CyclePhase:
 
     day: int  # day in the cycle, 1…length
     length: int
-    phase: str  # менструація | фолікулярна | овуляція | лютеїнова | ПМС
+    phase: str  # `менструація` | `фолікулярна` | `овуляція` | `лютеїнова` | `ПМС`
     note: str  # how it tends to color her tone/energy
 
 

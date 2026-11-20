@@ -489,7 +489,7 @@ class Config:
     closeness: bool = True  # v0.10 relationship level on/off
     closeness_tuning: ClosenessTuning = field(default_factory=ClosenessTuning)
     intent: bool = False  # v1.1: persist+replay the arbiter's chosen style (on/off)
-    facts_enabled: bool = True      # LUMI_FACTS master switch: on → inject the ## Про Віталія static
+    facts_enabled: bool = True      # LUMI_FACTS master switch: on → inject the `## Про Віталія` static
     #                                 facts section (the skill-curated identity-core); off → no section.
     facts_core_max: int = 0         # v0.36: identity-core injection cap (0 → all core facts)
     recall_scope: str = "messages"  # v0.36: default scope the recall tool searches when omitted
@@ -563,7 +563,7 @@ class Config:
     rag: bool = False
     rag_k: int = 4                  # top-K relevant past moments injected per turn
     rag_floor: float = 0.3          # cosine relevance floor — weaker matches aren't injected
-    facts_rag: bool = False         # v0.36: per-turn fact-RAG push (# Релевантні факти, non-core)
+    facts_rag: bool = False         # v0.36: per-turn fact-RAG push (`# Релевантні факти`, non-core)
     facts_rag_k: int = 4            # v0.36: top-K relevant non-core facts pushed per turn
     rag_max_chars: int = 1200       # the recall block's total char budget (spend recall tokens carefully)
     rag_w: int = 2                  # context-expansion window: ±W neighbour messages around each hit

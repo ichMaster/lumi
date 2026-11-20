@@ -1,4 +1,4 @@
-"""v2.7.1 — emotion in Лілі's voice: ElevenLabs audio tags (ported from matrix-agora's v5.9, Кіра's voice).
+"""v2.7.1 — emotion in Лілі's voice: ElevenLabs audio tags (ported from matrix-agora's v5.9, «Кіра»'s voice).
 
 The newer ElevenLabs models perform square-bracket directions written inside the text — ``[laughs]``,
 ``[sighs]``, ``[whispers]`` — while the older ones (``eleven_multilingual_v2``, ``eleven_turbo_v2_5``) read
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-# measured on Кіра's voice (matrix-agora, 2026-10-25): these perform the tags; the v2 models read them aloud
+# measured on «Кіра»'s voice (matrix-agora, 2026-10-25): these perform the tags; the v2 models read them aloud
 TAG_MODELS = frozenset({"eleven_v3", "eleven_v3_conversational", "eleven_v4", "eleven_v4_turbo"})
 
 # a tag: a bracket that opens with a letter of any case and holds 2–40 characters, none a digit, and is not a

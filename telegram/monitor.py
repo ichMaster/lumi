@@ -95,7 +95,7 @@ def render(cfg: Config, lines: int, *, now: str = "") -> str:
         "",
         "  recent inbox (Telegram → you):",
         *_fmt_records(_records(cfg.inbox_path), lines),
-        "  recent outbox (Лілі → Telegram):",
+        "  recent outbox (Lili → Telegram):",
         *_fmt_records(_records(cfg.outbox_path), lines),
         "",
         f"  inbound log ({log_dir / 'telegram-inbound.log'}):",

@@ -88,8 +88,8 @@ SPEECH_STYLE = (
 )
 
 # Text-mode service tags the snapshot teaches the model to emit (<emotion>…</emotion>,
-# <intent>…</intent>, <think>…</think>, a trailing ЕМОЦІЯ: line). In voice they leak into SPEECH —
-# English tokens mid-repliка (and they drag the accent). SPEECH_STYLE forbids them; this parser
+# <intent>…</intent>, <think>…</think>, a trailing `ЕМОЦІЯ:` line). In voice they leak into SPEECH —
+# English tokens mid-reply (and they drag the accent). SPEECH_STYLE forbids them; this parser
 # strips whatever still slips through from the displayed transcript.
 _SERVICE_TAGS_RE = re.compile(
     r"<think>.*?</think>|<(emotion|intent)>[^<]*</\1>|^\s*ЕМОЦІЯ:.*$",
@@ -98,7 +98,7 @@ _SERVICE_TAGS_RE = re.compile(
 
 
 def strip_service_tags(text: str) -> str:
-    """Remove text-protocol tags (<emotion>/<intent>/<think>/ЕМОЦІЯ:) from a spoken transcript."""
+    """Remove text-protocol tags (`<emotion>` / `<intent>` / `<think>` / `ЕМОЦІЯ:`) from a spoken transcript."""
     return re.sub(r"[ \t]{2,}", " ", _SERVICE_TAGS_RE.sub("", text)).strip()
 
 

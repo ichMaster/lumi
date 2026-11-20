@@ -68,7 +68,7 @@ def _run_client(cfg) -> None:
     except ServerAuthError as exc:  # the server is up — the tokens differ
         raise SystemExit(f"{exc}\nUse the same server.token as the server's secrets.yaml.") from None
     except ServerUnavailable as exc:
-        raise SystemExit(f"{exc}\nStart it with ./lumi-server — or run ./lumi for the in-process Лілі.") from None
+        raise SystemExit(f"{exc}\nStart it with ./lumi-server — or run ./lumi for the in-process Lili.") from None
     LumiApp(core).run()
 
 

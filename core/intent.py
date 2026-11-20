@@ -16,15 +16,15 @@ from __future__ import annotations
 # instruction. One source of truth: the set_state schema (core/llm.py) and the prompt instruction
 # read this tuple.
 INTENTS: tuple[str, ...] = (
-    "deepen",     # заглибити — конкретне питання про аспект сказаного
-    "position",   # позиція — власне твердження від першої особи
-    "object",     # заперечити — незгода зі сказаним або припущеним
-    "develop",    # розвинути — наступний логічний крок з думки співрозмовника
-    "associate",  # асоціація — власний матеріал (думки, минулі розмови)
-    "example",    # приклад — потягнути з абстрактного в конкретне
-    "return",     # повернутись — відкрите питання зі старої теми
-    "mutate",     # уява — повернути тему боком одним «а що якщо…» (навпаки/масштаб/деінде/схрестити)
-    "switch",     # переключити — за настроєм: чесно не хоче про його тему, закриває і пропонує свою
+    "deepen",     # «заглибити» — a concrete question about one aspect of what was said
+    "position",   # «позиція» — her own statement, in the first person
+    "object",     # «заперечити» — disagreeing with what was said or assumed
+    "develop",    # «розвинути» — the next logical step from the other person's thought
+    "associate",  # «асоціація» — her own material (thoughts, past conversations)
+    "example",    # «приклад» — pulling the abstract down to the concrete
+    "return",     # «повернутись» — an open question from an old topic
+    "mutate",     # «уява» — turning the topic sideways with one «а що якщо…» (reversed / scaled / elsewhere / crossed)
+    "switch",     # «переключити» — by mood: honestly not wanting his topic, closing it and offering her own
 )
 
 

@@ -219,8 +219,8 @@ _CYR_ENDINGS = "йаяоеєиіїуюь"
 
 def private_name_pattern(names: object) -> re.Pattern | None:
     """One case-insensitive pattern for his real names (``agora.private_names``), ``None`` when there are none.
-    A Ukrainian name ending in a vowel or «й» matches by its stem, so its case forms count (Віталій → Віталія,
-    Віталію, Віталієм, Віталік — but not «вітали»); any other name matches as a whole word."""
+    A Ukrainian name ending in a vowel or «й» matches by its stem, so its case forms count («Віталій» →
+    «Віталія», «Віталію», «Віталієм», «Віталік» — but not «вітали»); any other name matches as a whole word."""
     parts = []
     for name in names or ():
         name = str(name).strip()
@@ -844,8 +844,8 @@ class AgoraSpace:
 
     def _time_note(self, now: object, lines: list[SpaceMessage]) -> str:
         """v3.4 review #1: her local time now and the room's last line's — an initiative opens after a silence of
-        unknown length, so she knows the time of day and how long the room has been quiet («Зараз 21:40, 16.11.
-        Остання репліка в кімнаті — 16.11 о 09:12.»)."""
+        unknown length, so she knows the time of day and how long the room has been quiet (e.g.
+        «Зараз 21:40, 16.11. Остання репліка в кімнаті — 16.11 о 09:12.»)."""
         tz = self._tz()
         here = now.astimezone(tz) if getattr(now, "tzinfo", None) else now
         note = f"Зараз {here:%H:%M}, {here:%d.%m}."

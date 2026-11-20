@@ -114,7 +114,7 @@ _EMOTION_LINE_RE = re.compile(r"^\s*ЕМОЦІЯ:.*$", re.MULTILINE)
 
 
 def clean_sentence(text: str) -> str:
-    """Strip an unspoken trailer (a plain ЕМОЦІЯ: line) + collapse leftover whitespace."""
+    """Strip an unspoken trailer (a plain `ЕМОЦІЯ:` line) + collapse leftover whitespace."""
     return re.sub(r"[ \t]{2,}", " ", _EMOTION_LINE_RE.sub("", text)).strip()
 
 

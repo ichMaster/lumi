@@ -239,7 +239,7 @@ class LumiApp(App[None]):
     ]
     CSS = """
     #thinking {
-        height: 6;                 /* a small fixed peek at Лілі's reasoning */
+        height: 6;                 /* a small fixed peek at Lili's reasoning */
         border: round $primary-darken-3;
         padding: 0 1;
         margin: 1 1 0 1;

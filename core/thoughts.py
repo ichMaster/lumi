@@ -198,7 +198,7 @@ THOUGHT_SYSTEM = (
 
 # A tool-thought must USE its tools, not just muse about them. THOUGHT_SYSTEM alone biases her toward a
 # short musing — so for a directive with tools we append a nudge: do the tool work first (read / look up /
-# save), THEN the short ЕМОЦІЯ thought. A directive may override it with its own ``tool_hint`` (e.g. %journal).
+# save), THEN the short `ЕМОЦІЯ` thought. A directive may override it with its own ``tool_hint`` (e.g. %journal).
 _TOOL_NUDGE = (
     "У тебе Є інструменти для цього — скористайся ними (прочитай / знайди / подивись / запиши, що доречно), "
     "а не просто подумай про це. Спершу зроби потрібне інструментами, і лише тоді — підсумкова коротка думка "

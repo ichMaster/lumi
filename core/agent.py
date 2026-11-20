@@ -166,7 +166,7 @@ _EMOTION_VALUES = frozenset(e.value for e in Emotion)
 
 # The full daily mood reading is logged here (only the resolution rides in the prompt).
 _mood_log = logging.getLogger("lumi.mood")
-# A fresh mood call cut off before its РЕЗОЛЮЦІЯ / ТЕМА close is retried once (v2.5.1).
+# A fresh mood call cut off before its `РЕЗОЛЮЦІЯ` / `ТЕМА` close is retried once (v2.5.1).
 _MOOD_ATTEMPTS = 2
 
 # Every recorded thought is logged here (the v0.3 logged tier) — never persisted to long-term memory.
@@ -760,7 +760,7 @@ class Core:
         self._intent_enabled = intent_enabled
         # The level a fresh user (no record) sits at — derived from the configured baseline.
         self._default_level = naive_level(self._closeness_tuning.baseline)
-        # LUMI_FACTS master switch: off → no ## Про Віталія section; the identity-core is the
+        # LUMI_FACTS master switch: off → no `## Про Віталія` section; the identity-core is the
         # skill-curated core facts, capped by LUMI_FACTS_CORE_MAX (0 → all core).
         self._facts_enabled = facts_enabled
         self._facts_core_max = facts_core_max
@@ -791,7 +791,7 @@ class Core:
         self._rag_floor = rag_floor
         self._rag_max_chars = rag_max_chars
         self._rag_w = rag_w
-        # v0.36: the per-turn fact-RAG push (# Релевантні факти — top-K relevant non-core facts).
+        # v0.36: the per-turn fact-RAG push (`# Релевантні факти` — top-K relevant non-core facts).
         self._facts_rag = facts_rag
         self._facts_rag_k = facts_rag_k
         self._rag_snippet_chars = rag_snippet_chars  # per-line cap for recalled moments
@@ -1695,7 +1695,7 @@ class Core:
                 f"[{format_date(s.ts)}] " + (session_gist(s.gist, s.summary) if as_gist else s.summary)
                 for s in window
             ]
-        # Long-term facts: the ## Про Віталія static section is the skill-curated identity-core, capped
+        # Long-term facts: the `## Про Віталія` static section is the skill-curated identity-core, capped
         # by LUMI_FACTS_CORE_MAX (0 → all core). Master switch LUMI_FACTS: off → no section at all. The
         # episodic tail (non-core facts) is reachable via recall(scope=facts) and the per-turn fact-RAG.
         if self._facts_enabled:
@@ -2802,7 +2802,7 @@ class Core:
         # v1.1: the arbiter's chosen intent. Sources, in order: the structured set_state field;
         # the inline <intent> tag in the reply; or — the common case on providers that reason in
         # a separate channel (Gemini thought parts / extended thinking) — the <intent> tag the
-        # model writes INSIDE its reasoning (the [арбітр] line), which split_reasoning already
+        # model writes INSIDE its reasoning (the `[арбітр]` line), which split_reasoning already
         # lifted out of the reply into last_thinking. Validated against the closed enum
         # (unknown/garbled → None, silently), gated so off never stores a value.
         thinking_intent = split_intent(self.last_thinking)[0] if self.last_thinking else None
