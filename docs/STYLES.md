@@ -12,7 +12,7 @@ behavior; the design note lives in
 > writes in it, and **declares it as `<style>name</style>`** (parsed and
 > stripped, like the emotion tag). **`/style <name>`** is a **soft recommendation** (she still
 > decides); **`/style auto`** clears it. The status line shows her chosen style and **who
-> picked it** — `(Лілі)`, or `(ти)` when she followed your recommendation. Per‑session.
+> picked it** — `(Lili)`, or `(you)` when she followed your recommendation. Per‑session.
 
 ---
 
@@ -20,8 +20,8 @@ behavior; the design note lives in
 
 | Kind | What it is | Example |
 |---|---|---|
-| **Base style** | one overlay — a concrete instruction with a length limit | `коротко` → "2–3 sentences, ≤40 words" |
-| **Meta‑style** | a preset that expands to **several** base styles | `лагідна` → `поясни + просто + приклад` |
+| **Base style** | one overlay — a concrete instruction with a length limit | `коротко` (briefly) → "2–3 sentences, ≤40 words" |
+| **Meta‑style** | a preset that expands to **several** base styles | `лагідна` (gentle) → `поясни + просто + приклад` |
 
 The default is **auto** — Лілі picks her own style each turn (preferring meta‑styles);
 `auto`/`normal` just means *no recommendation*. Names are **Ukrainian**; base styles are
@@ -36,22 +36,22 @@ is enforceable. Authored in [../core/styles.md](../core/styles.md).
 
 | Category | Style | Form | Limit |
 |---|---|---|---|
-| **Довжина** | `коротко` | brief, no preamble | 2–3 sentences / ~40 words |
-| | `суть` | the essence only | 1 sentence / ~25 words |
-| | `докладно` | exhaustive | **no length cap** |
-| **Пояснення** | `поясни` | step‑by‑step + why + example | 4–8 sentences / ~150 words |
-| | `просто` | like to a child, one analogy | 3–5 short sentences |
-| | `приклад` | lead with a concrete example | 1 example + 2–3 sentences |
-| | `метафора` | one running metaphor throughout | ~6 sentences |
-| **Структура** | `списком` | bulleted list | 3–6 bullets, one line each |
-| | `кроки` | numbered how‑to | one action per line |
-| | `порівняй` | side‑by‑side / за‑проти table | + a one‑line verdict |
-| | `практично` | concrete advice, no fluff | ≤5 points / ~80 words |
-| **Тон** | `офіційно` | neutral, precise, no slang | full sentences |
-| | `невимушено` | relaxed, contractions OK | like to a friend |
-| | `емоційно` | feeling‑led, warm | 2–4 sentences / ~60 words |
-| | `поетично` | lyrical, image‑rich | ≤4–5 lines |
-| **Взаємодія** | `питанням` | answers by asking 1–2 questions back | ties to the «Коани» game |
+| **Length** | `коротко` | brief, no preamble | 2–3 sentences / ~40 words |
+| | `суть` (the essence) | the essence only | 1 sentence / ~25 words |
+| | `докладно` (in detail) | exhaustive | **no length cap** |
+| **Explanation** | `поясни` (explain) | step‑by‑step + why + example | 4–8 sentences / ~150 words |
+| | `просто` (simply) | like to a child, one analogy | 3–5 short sentences |
+| | `приклад` (example) | lead with a concrete example | 1 example + 2–3 sentences |
+| | `метафора` (metaphor) | one running metaphor throughout | ~6 sentences |
+| **Structure** | `списком` (as a list) | bulleted list | 3–6 bullets, one line each |
+| | `кроки` (steps) | numbered how‑to | one action per line |
+| | `порівняй` (compare) | side‑by‑side / pros‑and‑cons table | + a one‑line verdict |
+| | `практично` (practically) | concrete advice, no fluff | ≤5 points / ~80 words |
+| **Tone** | `офіційно` (formally) | neutral, precise, no slang | full sentences |
+| | `невимушено` (casually) | relaxed, contractions OK | like to a friend |
+| | `емоційно` (emotionally) | feeling‑led, warm | 2–4 sentences / ~60 words |
+| | `поетично` (poetically) | lyrical, image‑rich | ≤4–5 lines |
+| **Interaction** | `питанням` (with a question) | answers by asking 1–2 questions back | ties to the «Коани» (Koans) game |
 
 ---
 
@@ -64,12 +64,12 @@ the base list) that rides in the prompt's style palette, so it can be as detaile
 
 | `/style` | expands to | the vibe |
 |---|---|---|
-| **`блискавична`** | `коротко` + `списком` | швидко, яскраво |
-| **`лагідна`** | `поясни` + `просто` + `приклад` | веде лагідно |
-| **`прискіплива`** | `докладно` + `порівняй` + `офіційно` | розкладає прискіпливо |
-| **`завзята`** | `кроки` + `практично` + `невимушено` | береться завзято |
-| **`лірична`** | `поетично` + `метафора` + `емоційно` | лірика, чуття |
-| **`допитлива`** | `питанням` + `приклад` + `невимушено` | вертає питаннями |
+| **`блискавична`** (lightning‑quick) | `коротко` + `списком` | fast, vivid |
+| **`лагідна`** | `поясни` + `просто` + `приклад` | leads gently |
+| **`прискіплива`** (meticulous) | `докладно` + `порівняй` + `офіційно` | takes it apart meticulously |
+| **`завзята`** (zealous) | `кроки` + `практично` + `невимушено` | gets to work with zeal |
+| **`лірична`** (lyrical) | `поетично` + `метафора` + `емоційно` | lyricism, feeling |
+| **`допитлива`** (curious) | `питанням` + `приклад` + `невимушено` | answers back with questions |
 
 ---
 
@@ -86,13 +86,14 @@ the base list) that rides in the prompt's style palette, so it can be as detaile
 
 Rules:
 - **It's a hint, not a switch** — the recommendation rides in the prompt as *«Користувач
-  радить: … — врахуй, якщо доречно; ти все одно вирішуєш.»* Лілі may follow it or not.
+  радить: … — врахуй, якщо доречно; ти все одно вирішуєш.»* ("The user suggests: … — take it into
+  account if it fits; you decide anyway."). Лілі may follow it or not.
 - **All‑or‑nothing** — if *any* name is unknown (`/style коротко xxx`), the recommendation is
   unchanged and you get `Unknown style in '…'`.
 - **`auto`/`normal`/empty** clears it; duplicates are de‑duped; order is preserved.
-- The **status line** shows her chosen style and **who picked it**: `style: лагідна (Лілі)`
-  (her own), `style: коротко (ти)` (she followed your recommendation), or `style: авто` before
-  her first reply (`· радиш: …` if you've recommended one).
+- The **status line** shows her chosen style and **who picked it**: `style: лагідна (Lili)`
+  (her own), `style: коротко (you)` (she followed your recommendation), or `style: auto` before
+  her first reply (`· you suggest: …` if you've recommended one).
 - **Per‑session** — the recommendation and her last pick reset on `/new` and on restart.
 
 ---
@@ -159,12 +160,12 @@ Core._system_prompt → _style_directive
 
 model reply "…<style>лагідна</style>"
                     → split_style → Core.last_style = "лагідна"   (tag stripped)
-                    → status: «style: лагідна (Лілі | ти)»
+                    → status: «style: лагідна (Lili | you)»
 ```
 
 `set_style` stores a soft recommendation (all‑or‑nothing validation); `auto`/`normal`/empty
 clears it. `_style_directive` lists the whole palette so Лілі can choose. `style` returns her
-last pick + who chose it — `(Лілі)`, or `(ти)` when it matches your recommendation — or `авто`
+last pick + who chose it — `(Lili)`, or `(you)` when it matches your recommendation — or `auto`
 before her first reply.
 
 ---
@@ -213,7 +214,7 @@ mock model (no paid calls):
 - **auto‑style palette** — every turn the prompt offers the **whole palette** (all base texts +
   meta compositions) and asks her to choose (prefer mega) and declare it; no styles → no palette.
 - **her choice + who** — a declared `<style>` is recorded as `last_style` and stripped from the
-  reply; `style` shows `(Лілі)`, or `(ти)` when her pick matches the recommendation; `авто`
+  reply; `style` shows `(Lili)`, or `(you)` when her pick matches the recommendation; `auto`
   before her first reply.
 - **recommendation** — `/style <name>` puts a soft recommendation in the prompt; `auto`/`normal`/
   empty clears it; unknown is rejected (all‑or‑nothing); dedupe/order; per‑session reset.
@@ -228,7 +229,7 @@ mock model (no paid calls):
 1. **Prompt‑only.** The limits are instructions Лілі follows, not hard truncation — a style
    nudges length/form, it doesn't guarantee it.
 2. **She chooses, not you.** `/style` only *recommends*; Лілі may follow it or pick another.
-   Watch the status «who» (`(Лілі)` vs `(ти)`) to see whether she took the hint. There is no
+   Watch the status «who» (`(Lili)` vs `(you)`) to see whether she took the hint. There is no
    way to force a style — that's the design (cf. her self‑emitted emotion).
 3. **Per‑session, not persisted.** The recommendation and her last pick reset each session; they
    don't carry across restarts. (The daily **mood** is the persistent, automatic sibling.)

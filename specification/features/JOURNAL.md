@@ -4,7 +4,7 @@
 first-person voice, a **summary of the day** — what moved her, what she felt, what she thought about — and
 she can **reread previous days by date**. This is not a service log or a list of facts about you; it is an
 artifact of her **inner life**, the strongest thing for the sense that Лілі is truly alive. The example of
-what she writes is [`.lumi/journal/owner/2026-06-17.md`](../../.lumi/journal/owner/2026-06-17.md).
+what she writes is `.lumi/journal/owner/2026-06-17.md` (in her data root, not in the repository).
 
 **She decides what to write** — the prose is hers. But each entry is automatically **stamped by code** with
 the day's **mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast** (the v0.6 reading) — so the

@@ -1,8 +1,8 @@
 # Design brief: Лілі's desktop window (Lumi v2.12) — chat and portrait in one window
 
 > The design brief for the v2.12 pywebview client ([ROADMAP.md](../../specification/ROADMAP.md) §v2.12), written for
-> Claude Design. The Ukrainian original the owner pastes there: [BRIEF.uk.md](BRIEF.uk.md). The design's exports go
-> into this folder, then into `webview/ui/`.
+> Claude Design. (The Ukrainian copy that was pasted there was removed in v4.8; it is in the git history.) The
+> design's exports go into this folder, then into `webview/ui/`.
 > Attach a few real portraits to the brief (`viewer/faces/<theme>/<emotion>/NN.png`, 768×768: `01` mid intensity,
 > `02` low, `03` high), e.g. `viewer/faces/3am/tender/01.png`, `viewer/faces/quiet-collapse/thoughtful/01.png`,
 > `viewer/faces/last-memory/joy/03.png`, `viewer/faces/furious/serious/02.png`.

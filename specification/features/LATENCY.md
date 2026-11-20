@@ -158,7 +158,7 @@ the *latency* framing and the interim knobs:
   talking = `effort=low` (or budget 0), thinking = high/dynamic. Today `LUMI_EFFORT` is one global
   knob — the register router makes it per-turn.
 - **Model by register.** talking = the profile's fast tier (haiku 4.5 / gemini-flash /
-  gpt-5.5-mini — [core/models.toml](../../core/models.toml) already names them), emotional/thinking
+  gpt-5.5-mini — [core/models.yaml](../../core/models.yaml) already names them), emotional/thinking
   = the frontier reply model. Fast tiers also cut TTFT and 5–25× the cost.
 - **Interim, zero-code, today:** `LUMI_EFFORT=low` + a trimmed `inner_voice.md` retrospective —
   banks a chunk of the saving until register routing is ever scheduled.

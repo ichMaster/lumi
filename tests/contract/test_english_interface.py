@@ -137,3 +137,21 @@ def test_the_guard_catches_a_ukrainian_word():
     # A guard on the guard: Ukrainian prose is caught; a quote of it, a backtick span and her name are not.
     assert _prose_left("# the mood is cut off before its close — тут обрізано") is not None
     assert _prose_left("# before its `РЕЗОЛЮЦІЯ` close, e.g. «Зараз 21:40»; Лілі's turn") is None
+
+
+# --- v4.8 LUMI-339: the documentation is English -------------------------------------------------------------------
+
+DOC_ROOTS = ("specification", "docs", "design")
+UKRAINIAN_DOC = re.compile(r"(\.uk|_uk|_UK)\.md$")
+
+
+def ukrainian_documents() -> list[str]:
+    found = [str(p.relative_to(ROOT)) for root in DOC_ROOTS for p in (ROOT / root).rglob("*.md")
+             if UKRAINIAN_DOC.search(p.name) or "ukrainian" in p.relative_to(ROOT).parts]
+    found += [p.name for p in ROOT.glob("*.md") if UKRAINIAN_DOC.search(p.name)]
+    return sorted(found)
+
+
+def test_no_ukrainian_document_is_left():
+    assert ukrainian_documents() == [], ("the documentation is English (v4.8): translate the document, or remove it "
+                                         "when an English twin covers it")

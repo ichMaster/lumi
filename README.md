@@ -396,7 +396,7 @@ Builds on **0.35 — Lean memory II: the conversation tier.** The `## Остан
 orthogonal controls**: **`LUMI_SESSION_DETAIL_N`** (*how many* recent sessions — unset = all · `0` = none ·
 `N` = last N) and **`LUMI_SESSION_FORMAT`** (**`summary`** full / **`gist`** one line); a gisted session's
 detail stays one query away via **auto-RAG** and **`recall`** / **`messages_on`** / **`messages_between`**.
-Documented in **[docs/MEMORY_SESSION_LOGIC_UK.md](docs/MEMORY_SESSION_LOGIC_UK.md)** (UA).
+Documented in **[docs/MEMORY_SESSION_LOGIC.md](docs/MEMORY_SESSION_LOGIC.md)**.
 
 Builds on **0.34's lean memory (tool-pull).** The first slice of moving the verbose
 memory tiers from *injected* to *pulled* (index in the prompt, body fetched by a tool). The **day/week

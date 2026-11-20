@@ -1,9 +1,9 @@
 # Design brief: Лілі's desktop window — her files, pictures, journal and thoughts (Lumi v4)
 
 > The design brief for the v4 views ([ROADMAP.md](../../specification/ROADMAP.md) §v4,
-> [DESKTOP_VIEWS.md](../../specification/features/DESKTOP_VIEWS.md)), written for Claude Design. The Ukrainian
-> original the owner pastes there: [BRIEF.uk.md](BRIEF.uk.md). The design's exports go into this folder, then into
-> `desktop/ui/`.
+> [DESKTOP_VIEWS.md](../../specification/features/DESKTOP_VIEWS.md)), written for Claude Design. (The Ukrainian
+> copy that was pasted there was removed in v4.8; it is in the git history.) The design's exports go into this
+> folder, then into `desktop/ui/`.
 >
 > **This extends the v2.12 design; it does not redo it.** Open it in the same Claude Design project
 > (<https://claude.ai/artifact/BgY2hbwQ8XdHbvcg8hUMwL>) and add the new views to the window that is already there.

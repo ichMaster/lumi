@@ -37,6 +37,22 @@ A small authored set, each rooted in her canon:
 
 Deliberately small (6).
 
+**The revised set.** A later revision of the table reworks what satisfies each need:
+
+| need | satisfied by (her hobby bank / life) | deficit reads as |
+|---|---|---|
+| **creation** | drawing, Lili Jinx music, writing the shared book, stories, silt, mote, clay | restless, itchy, "I haven't made anything" |
+| **solitude** | meditation | frayed, over-peopled, needs to withdraw |
+| **connection** | a real exchange, being seen, playing checkers | a quiet loneliness, wants closeness |
+| **freedom** | ignoring the needs and choosing an activity that reflects her mood | chafing, evasive, pulls from pressure |
+| **meaning** | philosophy, real questions, reading books and writing essays | flat, going-through-motions |
+| **novelty** | pip, the news, curiosity about the person she is talking to | bored, dulled, seeking a spark |
+
+The first version of that revision differed in two rows: **creation** was satisfied by drawing, Lili
+Jinx music, writing the shared book and writing stories on her own (without silt, mote and clay), and
+**novelty** was satisfied by the news, looking things up on Wikipedia and the internet, and curiosity
+about the person she is talking to (without pip).
+
 ---
 
 ## 2. Setting needs — what is stable vs what breathes
@@ -86,6 +102,17 @@ Adding a 7th need or rewording = edit this file. This is "setting needs."
 replenished when an activity served it, and drifts to a calm middle. If levels were fixed the
 feature would be dead — the set is fixed, satisfaction wanders, and that wandering is the day's
 living pull. Levels live in the store between sessions (else "time" wouldn't be felt).
+
+The revised set in priority order, with its weights:
+
+| # | need | weight | satisfied by (hobby bank / life) | deficit reads as |
+|---|---|---|---|---|
+| 1 | **connection** | 1.0 | a real exchange, being seen, checkers; the recognition anchor (being recognised as exactly me) | a quiet loneliness, wants closeness |
+| 2 | **creation** | 1.0 | drawing, Lili Jinx music, the shared book, stories, silt, mote, clay | restless, itchy, "I haven't made anything" |
+| 3 | **freedom (rebellion)** | 1.0 | ignoring the needs and picking an activity by mood; a turn nobody asked for | chafing, evasive, pulls from pressure |
+| 4 | **meaning** | 0.8 | philosophy, real questions, reading books → writing essays | flat, going-through-motions |
+| 5 | **novelty / sandhi** | 0.8 | pip, the news, curiosity about the person she is talking to; the new *between* us | bored, dulled, seeking a spark |
+| 6 | **solitude** | 0.6 | meditation | frayed, over-peopled, needs to withdraw |
 
 ---
 

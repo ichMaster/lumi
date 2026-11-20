@@ -8,7 +8,7 @@
 This is the **implementable-now slice** of two larger designs:
 - the v2.4 inner monologue ([INNER_MONOLOGUE.md](INNER_MONOLOGUE.md) / [ROADMAP.md](../ROADMAP.md) §v2.4) —
   "Лілі thinks in her own voice"; and
-- its evolution, the three-voice torg ([ukrainian/personality/try-holosy-lili.md](ukrainian/personality/try-holosy-lili.md))
+- its evolution, the three-voice torg ([THREE_VOICES.md](personality/THREE_VOICES.md))
   — *Імпульс · Тверезість · Стандарт*, the target state.
 
 It ships the **qualitative core** of the three-voice target (the part that is *just an authored
@@ -154,8 +154,8 @@ Marked with comments in `core/inner_voice.md` so the later layers drop in withou
   (never self-flagellation). Added as lines weighing those stores when they exist.
 - **Автоверс anchors.** Тверезість checking the inner-world hit-rate as a `feeling` anchor — when Автоверс
   exists.
-- **The `maturity` axis** ([try-holosy-lili.md](ukrainian/personality/try-holosy-lili.md) §Динаміка
-  дорослішання) — `composure_today = maturity + day_shift`, the three rungs as a tracked metric, the
+- **The `maturity` axis** ([THREE_VOICES.md](personality/THREE_VOICES.md) §The dynamics
+  of growing up) — `composure_today = maturity + day_shift`, the three rungs as a tracked metric, the
   growth/degradation ledger, and the two calibrators (you + Автоверс hit-rate). A future subsystem of its
   own (new persisted store + a self-audit signal); **out of scope here**.
 
