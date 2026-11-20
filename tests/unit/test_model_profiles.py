@@ -149,8 +149,8 @@ async def test_model_set_lists_profiles_and_marks_active(tmp_path):
         await pilot.press("enter")
         await pilot.pause()
         joined = "\n".join(app.transcript)
-        assert "Профілі моделей" in joined and "gemini" in joined
-        assert "← активний" in joined  # the active profile is marked
+        assert "Model profiles" in joined and "gemini" in joined
+        assert "← active" in joined  # the active profile is marked
 
 
 async def test_model_set_switches_the_whole_stack_and_status_shows_profile(tmp_path):
@@ -165,7 +165,7 @@ async def test_model_set_switches_the_whole_stack_and_status_shows_profile(tmp_p
         await pilot.pause()
         assert core.profile == "gemini" and core.model == "g-pro"
         assert core._model_for("session-close") == "g-lite"
-        assert any("Профіль:" in line and "gemini" in line for line in app.transcript)
+        assert any("Profile:" in line and "gemini" in line for line in app.transcript)
         assert "gemini:" in app._status_text()  # the status bar carries the profile mark
 
 

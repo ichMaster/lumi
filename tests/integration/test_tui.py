@@ -506,7 +506,7 @@ async def test_mood_command_shows_the_resolution(tmp_path):
         await pilot.press("enter")
         await pilot.pause()
         joined = "\n".join(app.transcript)
-        assert "Настрій Лілі сьогодні" in joined and "Хотітиметься тиші" in joined
+        assert "Lili's mood today" in joined and "Хотітиметься тиші" in joined
 
 
 async def test_mood_command_pending_when_no_mood(tmp_path):
@@ -515,7 +515,7 @@ async def test_mood_command_pending_when_no_mood(tmp_path):
         app.query_one("#prompt").text = "/mood"
         await pilot.press("enter")
         await pilot.pause()
-        assert any("ще не визначила настрій" in line for line in app.transcript)
+        assert any("hasn't settled on today's mood" in line for line in app.transcript)
 
 
 class _SpySound:

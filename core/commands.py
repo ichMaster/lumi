@@ -20,8 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from core.biorhythm import format_biorhythms
-from core.cycle import format_cycle
+from core.cycle import PHASE_KEYS
 from core.llm import LLMError
 from core.prompt import mark_cache_breakpoint
 
@@ -30,12 +29,23 @@ from core.prompt import mark_cache_breakpoint
 KINDS = ("info", "notice", "ack", "meta", "warning", "error", "toast")
 
 MEMORY_EMPTY = "_Memory is empty so far._"
-MOOD_PENDING = "_Лілі ще не визначила настрій сьогодні — напиши їй, і він складеться._"
-BIORHYTHM_OFF = "_Біоритми вимкнені або немає дати народження — напиши їй, щоб порахувати._"
-FORGET_QUESTION = "Clear Лілі's memory about you? This can't be undone."
+MOOD_PENDING = "_Lili hasn't settled on today's mood yet — write to her and it will form._"
+BIORHYTHM_OFF = "_Biorhythms are off, or there is no birth date — write to her to compute them._"
+FORGET_QUESTION = "Clear Lili's memory about you? This can't be undone."
 CLEARED_LINE = "Memory cleared (short- and long-term)."
 CANCELLED_LINE = "Cancelled."
-JOURNAL_WRITE_TURN = "Запиши, будь ласка, підсумок сьогоднішнього дня у щоденник."
+JOURNAL_WRITE_TURN = "Запиши, будь ласка, підсумок сьогоднішнього дня у щоденник."  # a turn she is handed: hers
+
+# v4.8: the interface is English. Her closeness levels by number (the window's names; core/closeness.md keeps hers).
+CLOSENESS_NAMES = {1: "Polite", 2: "Friendly", 3: "Warm", 4: "Close", 5: "Dearest"}
+# The cycle phases by their English key (core.cycle.PHASE_KEYS), with how each tends to color her tone and energy.
+CYCLE_PHASES = {
+    "menstrual": ("menstrual", "the body asks for quiet and warmth; low energy, a quiet, tender, slightly tired mood"),
+    "follicular": ("follicular", "energy rising, lightness and openness, curiosity about the new"),
+    "ovulation": ("ovulation", "the peak: much energy and warmth, confidence, drawn to people and to making things"),
+    "luteal": ("luteal", "the pace slows, drawn to comfort and calm, more inward"),
+    "pms": ("PMS", "everything feels sharper: heightened sensitivity, irritability, tearfulness, tiredness"),
+}
 
 
 @dataclass(frozen=True)
@@ -71,6 +81,19 @@ def tokens_line(stats: Any) -> str | None:
     return "[TOKENS] " + " · ".join(bits)
 
 
+def biorhythms_line(b: Any) -> str:
+    """``/biorhythm``'s English line: ``physical +0.82 (high) · emotional -0.61 (low) · …`` (v4.8). Her prompt and
+    her journal keep ``core.biorhythm.format_biorhythms``."""
+    return " · ".join(f"{c.name} {c.value:+.2f} ({c.label})" for c in b)
+
+
+def cycle_line(c: Any) -> str:
+    """``/biorhythm``'s English cycle line: ``PMS (day 26/28) — everything feels sharper…`` (v4.8). Her mood call
+    keeps ``core.cycle.format_cycle``."""
+    name, note = CYCLE_PHASES.get(PHASE_KEYS.get(c.phase, ""), (c.phase, ""))
+    return f"{name} (day {c.day}/{c.length})" + (f" — {note}" if note else "")
+
+
 # --- the commands -------------------------------------------------------------------------------------
 # Each: (core, session, arg, confirmed) -> CommandResult. ``arg`` is the stripped text after the name.
 
@@ -79,7 +102,7 @@ def _memory(core, session, arg, confirmed) -> CommandResult:
     mem = core.view_memory()
     lines: list[str] = []
     if mem.facts:
-        lines.append("**What Лілі remembers about you:**")
+        lines.append("**What Lili remembers about you:**")
         lines += [f"- {f}" for f in mem.facts]
     if mem.summaries:
         lines.append("**Memory of past conversations:**")
@@ -135,16 +158,16 @@ def _style(core, session, arg, confirmed) -> CommandResult:
         bases = ", ".join(core.base_names())
         rec = core.recommendation or "—"
         line = (
-            f"Лілі обирає стиль сама (зараз: {core.style} · рекомендація: {rec}).\n"
-            f"Мега-стилі: {metas}\nБазові: {bases}\n"
-            "/style <назва> — порадити · /style auto — без поради"
+            f"Lili picks the style herself (now: {core.style} · your suggestion: {rec}).\n"
+            f"Meta-styles: {metas}\nBase styles: {bases}\n"
+            "/style <name> — suggest one · /style auto — no suggestion"
         )
         return CommandResult(line, kind="notice")
     if core.set_style(arg):
         rec = core.recommendation
         line = (
-            f"Рекомендація стилю → {rec}. Лілі врахує (вирішує сама)."
-            if rec else "Стиль → авто. Лілі обирає сама."
+            f"Style suggestion → {rec}. Lili takes it into account (she decides)."
+            if rec else "Style → auto. Lili picks it herself."
         )
         return CommandResult(line, kind="ack")
     names = ", ".join(core.style_names())
@@ -153,7 +176,7 @@ def _style(core, session, arg, confirmed) -> CommandResult:
 
 def _mood(core, session, arg, confirmed) -> CommandResult:
     resolution = core.mood
-    return CommandResult(f"**Настрій Лілі сьогодні:**\n\n{resolution}" if resolution else MOOD_PENDING)
+    return CommandResult(f"**Lili's mood today:**\n\n{resolution}" if resolution else MOOD_PENDING)
 
 
 def _model_set(core, session, arg, confirmed) -> CommandResult:
@@ -161,23 +184,23 @@ def _model_set(core, session, arg, confirmed) -> CommandResult:
     if not arg:
         active = core.profile
         if not profiles:
-            return CommandResult("Профілі не налаштовані.", kind="warning")
+            return CommandResult("No model profiles are configured.", kind="warning")
         lines = []
         for name in sorted(profiles):
             p = profiles[name]
-            mark = " **← активний**" if name == active else ""
+            mark = " **← active**" if name == active else ""
             lines.append(f"- **{name}** ({p.provider}): reply `{p.reply}` · think `{p.think}` · "
                          f"mood `{p.mood}` · housekeeping `{p.housekeeping}`{mark}")
-        return CommandResult("**Профілі моделей:**\n" + "\n".join(lines) +
-                             "\n\n`/model-set <назва>` — перемкнути весь стек (reply + tiers) без рестарту.")
+        return CommandResult("**Model profiles:**\n" + "\n".join(lines) +
+                             "\n\n`/model-set <name>` — switch the whole stack (reply + tiers) without a restart.")
     try:
         core.switch_profile(arg)
     except ValueError as exc:  # unknown profile → a clear, non-fatal message
         return CommandResult(str(exc), kind="warning")
     except LLMError as exc:  # missing key / unknown provider → the old stack stays in place
-        return CommandResult(f"Не вдалося перемкнути профіль: {exc}", kind="error")
+        return CommandResult(f"Couldn't switch the profile: {exc}", kind="error")
     p = profiles[core.profile]
-    return CommandResult(f"**Профіль:** {core.profile} ({p.provider}) ✓ — reply `{p.reply}`, "
+    return CommandResult(f"**Profile:** {core.profile} ({p.provider}) ✓ — reply `{p.reply}`, "
                          f"think `{p.think}`, mood `{p.mood}`, housekeeping `{p.housekeeping}`")
 
 
@@ -185,8 +208,8 @@ def _model(core, session, arg, confirmed) -> CommandResult:
     alias_list = ", ".join(sorted(core.model_aliases)) or "(none configured)"
     if not arg:
         current = f"{core.provider or '?'} / {core.model}"
-        return CommandResult(f"**Двигун:** {current}\n\nАліаси: {alias_list}\n"
-                             "`/model <аліас>`, `/model <повний-id>` або `/model provider:id` — перемкнути без рестарту.")
+        return CommandResult(f"**Engine:** {current}\n\nAliases: {alias_list}\n"
+                             "`/model <alias>`, `/model <full-id>` or `/model provider:id` — switch without a restart.")
     try:
         provider, model = core.resolve_model_target(arg)
     except ValueError as exc:  # unknown alias / malformed → a clear, non-fatal message
@@ -194,8 +217,8 @@ def _model(core, session, arg, confirmed) -> CommandResult:
     try:
         core.switch_model(provider, model)
     except LLMError as exc:  # missing key / unknown provider → the old engine stays in place
-        return CommandResult(f"Не вдалося перемкнути двигун: {exc}", kind="error")
-    return CommandResult(f"**Двигун:** {provider} / {model} ✓")
+        return CommandResult(f"Couldn't switch the engine: {exc}", kind="error")
+    return CommandResult(f"**Engine:** {provider} / {model} ✓")
 
 
 def _biorhythm(core, session, arg, confirmed) -> CommandResult:
@@ -204,22 +227,22 @@ def _biorhythm(core, session, arg, confirmed) -> CommandResult:
         return CommandResult(BIORHYTHM_OFF)
     parts: list[str] = []
     if b:
-        parts.append(f"**Біоритми Лілі сьогодні:**\n\n{format_biorhythms(b)}")
+        parts.append(f"**Lili's biorhythms today:**\n\n{biorhythms_line(b)}")
     if c:
-        parts.append(f"**Цикл:** {format_cycle(c)}")
+        parts.append(f"**Cycle:** {cycle_line(c)}")
     return CommandResult("\n\n".join(parts))
 
 
 def _closeness(core, session, arg, confirmed) -> CommandResult:
     level, name = core.closeness_status()  # only the level + its name; raw scores stay internal
-    return CommandResult(f"**Близькість:** {name or f'рівень {level}'} (рівень {level} з 5)")
+    return CommandResult(f"**Closeness:** {CLOSENESS_NAMES.get(level, f'level {level}')} (level {level} of 5)")
 
 
 def _thoughts(core, session, arg, confirmed) -> CommandResult:
     if core.thoughts_show == "off":
-        return CommandResult("Перегляд думок вимкнено.")
+        return CommandResult("The thoughts view is off.")
     view = core.thoughts_view()
-    return CommandResult(f"**Що в мене на думці:**\n\n{view}" if view else "Поки що жодних думок.")
+    return CommandResult(f"**Lili's thoughts:**\n\n{view}" if view else "No thoughts yet.")
 
 
 def _regen_summaries(core, session, arg, confirmed) -> CommandResult:
@@ -229,7 +252,7 @@ def _regen_summaries(core, session, arg, confirmed) -> CommandResult:
 
 def _recall(core, session, arg, confirmed) -> CommandResult:
     if not core.recall_enabled:
-        return CommandResult("Семантичний пошук вимкнено (увімкни `LUMI_RECALL=on`).")
+        return CommandResult("Recall is off (set `LUMI_RECALL=on`).")
     # By default `/recall` searches PAST conversations, skipping the current session's own echoes (they're
     # in the live window); `!all` / `!here` includes this conversation. `after:`/`before:` filter by date.
     include_current = False
@@ -248,16 +271,16 @@ def _recall(core, session, arg, confirmed) -> CommandResult:
             kept.append(tok)
     query = " ".join(kept)
     if not query:
-        return CommandResult("Що згадати? `/recall <запит>` — фільтри: `!all` (і ця розмова), "
-                             "`after:РРРР-ММ-ДД`, `before:РРРР-ММ-ДД` (за датою)")
+        return CommandResult("Recall what? `/recall <query>` — filters: `!all` (this conversation too), "
+                             "`after:YYYY-MM-DD`, `before:YYYY-MM-DD` (by date)")
     exclude = None if include_current or session is None else session.id
     moments = core.recall_moments(query, exclude_session=exclude, before=before, after=after)
-    parts = ([] if exclude else ["з цією розмовою"]) \
-        + ([f"від {after}"] if after else []) + ([f"до {before}"] if before else [])
+    parts = ([] if exclude else ["this conversation included"]) \
+        + ([f"from {after}"] if after else []) + ([f"before {before}"] if before else [])
     flt = f" ({', '.join(parts)})" if parts else ""
     if not moments:
-        return CommandResult(f"Нічого не згадалося про «{query}»{flt}.")
-    return CommandResult(f"**Згадую про «{query}»{flt}:**\n\n" + "\n\n".join(moments))
+        return CommandResult(f"Nothing recalled about \"{query}\"{flt}.")
+    return CommandResult(f"**Recalling \"{query}\"{flt}:**\n\n" + "\n\n".join(moments))
 
 
 def _journal(core, session, arg, confirmed) -> CommandResult:
@@ -271,17 +294,17 @@ def _journal(core, session, arg, confirmed) -> CommandResult:
 
 
 def _theme(core, session, arg, confirmed) -> CommandResult:
-    available = ", ".join(core.themes) or "(жодної)"
+    available = ", ".join(core.themes) or "(none)"
     if not arg:
-        current = core.theme or "(плоский v0.7)"
-        return CommandResult(f"**Тема обличчя:** {current}\nДоступні: {available}\n"
-                             "`/theme <назва>` — поставити, `/theme auto` — за настроєм дня.")
+        current = core.theme or "(the flat v0.7 pack)"
+        return CommandResult(f"**Face theme:** {current}\nAvailable: {available}\n"
+                             "`/theme <name>` — set it, `/theme auto` — follow the mood of the day.")
     if arg.lower() == "auto":
         core.set_theme(None)
-        return CommandResult("Тема обличчя: **авто** (за настроєм дня).")
+        return CommandResult("Face theme: **auto** (follows the mood of the day).")
     if core.set_theme(arg):
-        return CommandResult(f"Тема обличчя: **{arg}**.")
-    return CommandResult(f"Невідома тема «{arg}». Доступні: {available}")
+        return CommandResult(f"Face theme: **{arg}**.")
+    return CommandResult(f"Unknown theme \"{arg}\". Available: {available}")
 
 
 Handler = Callable[[Any, Any, str, bool], CommandResult]

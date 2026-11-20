@@ -72,9 +72,9 @@ def test_memory_clear_with_a_yes(tmp_path):
 def test_model_and_model_set(tmp_path):
     api, _ = _api(tmp_path)
     code, out, _ = _run(["model"], api)
-    assert code == 0 and "**Двигун:**" in out
+    assert code == 0 and "**Engine:**" in out
     code, out, _ = _run(["model-set"], api)
-    assert code == 0 and "Профілі" in out
+    assert code == 0 and "profiles" in out.lower()
 
 
 def test_config_masks_every_secret(monkeypatch):

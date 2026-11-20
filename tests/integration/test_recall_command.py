@@ -141,7 +141,7 @@ async def test_recall_command_renders_expanded_snippets(tmp_path):
         # `/recall` excludes the current conversation by default — the prior-session match still renders.
         await _submit(pilot, app, "/recall кава")
         joined = "\n".join(app.transcript)
-        assert "Згадую про «кава»" in joined
+        assert 'Recalling "кава"' in joined
         assert "ти:" in joined and "кава" in joined        # who + the text
         assert "← (matched" in joined                      # the anchor is marked (expanded snippet)
 
@@ -153,22 +153,22 @@ async def test_recall_excludes_current_session_by_default(tmp_path):
         await _submit(pilot, app, "я люблю каву вранці")   # in the CURRENT session
         app.transcript.clear()
         await _submit(pilot, app, "/recall кава")          # default → skips the current conversation
-        assert any("Нічого не згадалося" in line for line in app.transcript)
+        assert any("Nothing recalled" in line for line in app.transcript)
         app.transcript.clear()
         await _submit(pilot, app, "/recall !all кава")     # !all → includes this conversation → found
         joined = "\n".join(app.transcript)
-        assert "Згадую про «кава»" in joined and "← (matched" in joined
+        assert 'Recalling "кава"' in joined and "← (matched" in joined
 
 
 async def test_recall_command_empty_query_prompts(tmp_path):
     app = LumiApp(_core(tmp_path, embedder=MockEmbedder()))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "/recall")
-        assert any("Що згадати" in line for line in app.transcript)
+        assert any("Recall what?" in line for line in app.transcript)
 
 
 async def test_recall_command_says_when_disabled(tmp_path):
     app = LumiApp(_core(tmp_path, embedder=MockEmbedder(), recall=False))
     async with app.run_test() as pilot:
         await _submit(pilot, app, "/recall кава")
-        assert any("вимкнено" in line for line in app.transcript)
+        assert any("Recall is off" in line for line in app.transcript)

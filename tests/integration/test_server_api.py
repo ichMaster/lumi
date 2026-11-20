@@ -103,7 +103,7 @@ def test_commands_over_the_api(tmp_path):
     assert mood["handled"] is True and mood["result"]["kind"] == "info"
     assert client.post("/v1/command", json={"line": "/nope"}, headers=AUTH).json()["handled"] is False
     model = client.post("/v1/command", json={"line": "/model"}, headers=AUTH).json()
-    assert "**Двигун:**" in model["result"]["text"]
+    assert "**Engine:**" in model["result"]["text"]
 
 
 def test_the_confirm_protocol_over_the_api(tmp_path):

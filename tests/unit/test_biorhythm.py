@@ -170,8 +170,8 @@ async def test_biorhythm_command_shows_the_cycles(tmp_path):
         app.query_one("#prompt", ChatInput).text = "/biorhythm"
         await pilot.press("enter")
         await pilot.pause()
-        assert any("Біоритми Лілі" in line for line in app.transcript)
-        assert any("фізичний" in line for line in app.transcript)
+        assert any("Lili's biorhythms today" in line for line in app.transcript)
+        assert any("physical +" in line for line in app.transcript)
 
 
 async def test_biorhythm_command_off_shows_a_note(tmp_path):
@@ -183,5 +183,5 @@ async def test_biorhythm_command_off_shows_a_note(tmp_path):
         app.query_one("#prompt", ChatInput).text = "/biorhythm"
         await pilot.press("enter")
         await pilot.pause()
-        assert any(("вимкнені" in line or "немає дати" in line) for line in app.transcript)
+        assert any("Biorhythms are off" in line for line in app.transcript)
         assert core.biorhythms is None

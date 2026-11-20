@@ -105,5 +105,5 @@ async def test_biorhythm_command_also_shows_the_cycle(tmp_path):
         app.query_one("#prompt", ChatInput).text = "/biorhythm"
         await pilot.press("enter")
         await pilot.pause()
-        assert any("Цикл:" in line for line in app.transcript)
-        assert any("овуляція" in line for line in app.transcript)
+        assert any("Cycle:" in line for line in app.transcript)
+        assert any("ovulation (day" in line for line in app.transcript)

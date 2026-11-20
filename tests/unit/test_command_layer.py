@@ -76,7 +76,7 @@ def test_latency_before_a_turn_is_a_notice(tmp_path):
 def test_style_list_set_and_unknown(tmp_path):
     core = _core(tmp_path)
     listed = run_command(core, None, "/style")
-    assert listed.kind == "notice" and "Лілі обирає стиль сама" in listed.text
+    assert listed.kind == "notice" and "Lili picks the style herself" in listed.text
     name = core.style_names()[0]
     assert run_command(core, None, f"/style {name}").kind == "ack"
     assert run_command(core, None, "/style no-such-style").kind == "error"
@@ -89,7 +89,7 @@ def test_mood_pending(tmp_path):
 def test_model_show_and_unknown_alias(tmp_path):
     core = _core(tmp_path)
     shown = run_command(core, None, "/model")
-    assert shown.kind == "info" and "**Двигун:**" in shown.text
+    assert shown.kind == "info" and "**Engine:**" in shown.text
     assert run_command(core, None, "/model no-such-alias-xyz").kind == "warning"
 
 
@@ -103,7 +103,7 @@ def test_biorhythm_off(tmp_path):
 
 def test_closeness_and_thoughts(tmp_path):
     core = _core(tmp_path)
-    assert run_command(core, None, "/closeness").text.startswith("**Близькість:**")
+    assert run_command(core, None, "/closeness").text.startswith("**Closeness:**")
     assert run_command(core, None, "/thoughts").kind == "info"
 
 
@@ -113,7 +113,7 @@ def test_regen_summaries_is_a_notice(tmp_path):
 
 
 def test_recall_off(tmp_path):
-    assert "вимкнено" in run_command(_core(tmp_path), None, "/recall кава").text
+    assert "Recall is off" in run_command(_core(tmp_path), None, "/recall кава").text
 
 
 def test_recall_filters_and_session_exclusion():
@@ -127,10 +127,10 @@ def test_recall_filters_and_session_exclusion():
     session = Session(id="s1", user_id="owner", started_at="2026-10-04T10:00")
     res = run_command(core, session, "/recall кава after:2026-01-01 before:2026-02-01")
     assert seen == {"query": "кава", "exclude": "s1", "before": "2026-02-01", "after": "2026-01-01"}
-    assert res.text.startswith("**Згадую про «кава» (від 2026-01-01, до 2026-02-01):**")
+    assert res.text.startswith('**Recalling "кава" (from 2026-01-01, before 2026-02-01):**')
     run_command(core, session, "/recall кава !all")
     assert seen["exclude"] is None  # !all includes this conversation
-    assert "Що згадати?" in run_command(core, session, "/recall").text
+    assert "Recall what?" in run_command(core, session, "/recall").text
 
 
 def test_journal_off_is_a_toast(tmp_path):
@@ -162,10 +162,10 @@ def test_theme_show_set_auto_unknown():
         return False
 
     core = SimpleNamespace(themes=["vigil"], theme=None, set_theme=set_theme)
-    assert run_command(core, None, "/theme").text.startswith("**Тема обличчя:** (плоский v0.7)")
-    assert run_command(core, None, "/theme vigil").text == "Тема обличчя: **vigil**."
-    assert run_command(core, None, "/theme auto").text.startswith("Тема обличчя: **авто**")
-    assert "Невідома тема" in run_command(core, None, "/theme nope").text
+    assert run_command(core, None, "/theme").text.startswith("**Face theme:** (the flat v0.7 pack)")
+    assert run_command(core, None, "/theme vigil").text == "Face theme: **vigil**."
+    assert run_command(core, None, "/theme auto").text.startswith("Face theme: **auto**")
+    assert "Unknown theme" in run_command(core, None, "/theme nope").text
 
 
 def test_tokens_line_formats_usage():
@@ -173,3 +173,58 @@ def test_tokens_line_formats_usage():
                             cache_write_tokens=0, latency_ms=2300)
     assert tokens_line(stats) == "[TOKENS] in 1.5k · out 200 · cache 1.0k↩ · 2.3s"
     assert tokens_line(None) is None
+
+
+# --- v4.8 LUMI-336: the commands answer in English; her content inside an answer stays hers ------------------------
+
+_CYRILLIC = set("абвгґдеєжзиіїйклмнопрстуфхцчшщьюяАБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ")
+
+
+def _english(text: str) -> bool:
+    return not any(ch in _CYRILLIC for ch in text)
+
+
+@pytest.mark.parametrize("line", [
+    "/memory", "/mood", "/biorhythm", "/closeness", "/thoughts", "/style", "/style auto", "/style nope",
+    "/model", "/model-set", "/recall", "/recall coffee", "/theme", "/theme auto", "/theme nope", "/forget",
+    "/prompt", "/latency", "/journal",
+])
+def test_v48_every_commands_own_answer_is_english(tmp_path, line):
+    # A fresh core holds none of her content (no mood, no thoughts, no memory), so the whole answer is the
+    # command's own text — and it is English.
+    res = run_command(_core(tmp_path), None, line)
+    assert res is not None and _english(res.text), res.text
+    assert res.confirm is None or _english(res.confirm)
+
+
+def test_v48_the_mood_answer_wraps_her_resolution_in_english(tmp_path):
+    core = SimpleNamespace(mood="Тиха зосередженість; хочеться глибини.")
+    text = run_command(core, None, "/mood").text
+    assert text.startswith("**Lili's mood today:**") and "Тиха зосередженість" in text  # her words, unchanged
+
+
+def test_v48_biorhythm_and_cycle_lines_are_english_and_leave_her_formatters_alone():
+    from core.biorhythm import Biorhythms, Cycle, format_biorhythms
+    from core.commands import biorhythms_line, cycle_line
+    from core.cycle import CyclePhase, format_cycle
+
+    b = Biorhythms(physical=Cycle("physical", 1.0, "high"), emotional=Cycle("emotional", -0.61, "low"),
+                   intellectual=Cycle("intellectual", 0.1, "rising"))
+    assert biorhythms_line(b) == "physical +1.00 (high) · emotional -0.61 (low) · intellectual +0.10 (rising)"
+    assert "фізичний" in format_biorhythms(b)  # her mood call and the journal stamp keep the Ukrainian line
+    phase = CyclePhase(day=26, length=28, phase="ПМС", note="усе відчувається гостріше")
+    assert cycle_line(phase).startswith("PMS (day 26/28) — everything feels sharper")
+    assert format_cycle(phase).startswith("ПМС (день 26/28)")  # hers, unchanged
+
+
+@pytest.mark.parametrize(("level", "name"), [(1, "Polite"), (2, "Friendly"), (3, "Warm"), (4, "Close"),
+                                             (5, "Dearest")])
+def test_v48_closeness_names_the_level_in_english(level, name):
+    core = SimpleNamespace(closeness_status=lambda: (level, "Ім'я рівня"))
+    assert run_command(core, None, "/closeness").text == f"**Closeness:** {name} (level {level} of 5)"
+
+
+def test_v48_the_journal_request_she_is_handed_stays_hers(tmp_path):
+    core = SimpleNamespace(journal_enabled=True)
+    res = run_command(core, None, "/journal write")
+    assert res.turn == JOURNAL_WRITE_TURN == "Запиши, будь ласка, підсумок сьогоднішнього дня у щоденник."

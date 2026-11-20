@@ -231,7 +231,7 @@ class RemoteCore:
         if res.status_code == 401:
             raise ServerAuthError(self._rejected())
         if res.status_code == 409:
-            raise ServerBusy("Лілі is busy with another request — try again")
+            raise ServerBusy("Lili is busy with another request — try again")
         if res.status_code >= 400:
             try:
                 detail = res.json().get("detail")
@@ -305,7 +305,7 @@ class RemoteCore:
                 if res.status_code == 401:
                     raise ServerAuthError(self._rejected())
                 if res.status_code == 409:
-                    raise ServerBusy("Лілі is busy with another request — try again")
+                    raise ServerBusy("Lili is busy with another request — try again")
                 if res.status_code == 404:
                     raise _StreamBroken("no stream route (an older server)")
                 if res.status_code >= 400:

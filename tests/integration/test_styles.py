@@ -121,7 +121,7 @@ def test_she_declares_a_style_which_is_recorded_and_stripped(tmp_path):
     out = core.reply("привіт", core.start_session())
     assert out.reply == "Готово!"  # the tag never shows in the reply
     assert core.last_style == "combo"
-    assert core.style == "combo (Лілі)"  # she chose it herself
+    assert core.style == "combo (Lili)"  # she chose it herself
 
 
 def test_status_who_is_you_when_she_follows_the_recommendation(tmp_path):
@@ -129,7 +129,7 @@ def test_status_who_is_you_when_she_follows_the_recommendation(tmp_path):
     s = core.start_session()
     assert core.set_style("combo") is True  # you recommend combo
     core.reply("привіт", s)
-    assert core.style == "combo (ти)"  # she followed your recommendation
+    assert core.style == "combo (you)"  # she followed your recommendation
 
 
 def test_status_who_is_lili_when_she_overrides_the_recommendation(tmp_path):
@@ -137,15 +137,15 @@ def test_status_who_is_lili_when_she_overrides_the_recommendation(tmp_path):
     s = core.start_session()
     core.set_style("combo")  # you recommend combo…
     core.reply("привіт", s)
-    assert core.style == "formal (Лілі)"  # …but she chose formal
+    assert core.style == "formal (Lili)"  # …but she chose formal
 
 
 def test_style_is_auto_before_her_first_reply(tmp_path):
     core = _core(tmp_path)
     core.start_session()
-    assert core.style == "авто"
+    assert core.style == "auto"
     core.set_style("combo")
-    assert core.style == "авто · радиш: combo"  # her pick not made yet; rec shown
+    assert core.style == "auto · you suggest: combo"  # her pick not made yet; rec shown
 
 
 # --- /style as a recommendation -------------------------------------------
@@ -196,10 +196,10 @@ def test_recommendation_and_choice_reset_per_session(tmp_path):
     s = core.start_session()
     core.set_style("combo")
     core.reply("привіт", s)
-    assert core.style == "combo (ти)"
+    assert core.style == "combo (you)"
     core.start_session()  # a new session resets both
     assert core.recommendation == "" and core.last_style is None
-    assert core.style == "авто"
+    assert core.style == "auto"
 
 
 # --- reasoning hygiene (unchanged) ----------------------------------------
@@ -235,13 +235,13 @@ async def test_style_command_lists_and_recommends(tmp_path):
         app.query_one("#prompt", ChatInput).text = "/style"
         await pilot.press("enter")
         await pilot.pause()
-        assert any("Лілі обирає стиль сама" in line for line in app.transcript)
+        assert any("Lili picks the style herself" in line for line in app.transcript)
 
         app.query_one("#prompt", ChatInput).text = "/style combo"
         await pilot.press("enter")
         await pilot.pause()
         assert core.recommendation == "combo"
-        assert any("Рекомендація стилю → combo" in line for line in app.transcript)
+        assert any("Style suggestion → combo" in line for line in app.transcript)
         assert "combo" in app._status_text()  # shown in the status bar
 
         app.query_one("#prompt", ChatInput).text = "/style auto"
@@ -265,11 +265,11 @@ async def test_status_shows_the_chosen_style_and_who(tmp_path):
     core = _core(tmp_path, MockLLMClient("ок <style>combo</style>"))
     app = LumiApp(core)
     async with app.run_test() as pilot:
-        assert "style: авто" in app._status_text()  # before her first pick
+        assert "style: auto" in app._status_text()  # before her first pick
         app.query_one("#prompt", ChatInput).text = "привіт"
         await pilot.press("enter")
         for _ in range(50):
             await pilot.pause()
             if len(app.transcript) >= 2:
                 break
-        assert "style: combo (Лілі)" in app._status_text()  # her self-chosen style + who
+        assert "style: combo (Lili)" in app._status_text()  # her self-chosen style + who

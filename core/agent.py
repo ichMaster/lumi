@@ -1155,15 +1155,16 @@ class Core:
 
     @property
     def style(self) -> str:
-        """The style for the status line: Лілі's last choice + **who** picked it.
+        """The style for the status line: Лілі's last choice + **who** picked it (English, v4.8).
 
-        ``"<name> (Лілі)"`` when she chose it herself; ``"<name> (ти)"`` when her
+        ``"<name> (Lili)"`` when she chose it herself; ``"<name> (you)"`` when her
         choice matches your standing recommendation (so you can see whether she
-        followed it). Before her first reply: ``"авто"`` (+ your recommendation, if any).
+        followed it). Before her first reply: ``"auto"`` (+ your recommendation, if any).
+        The ``<name>`` is her palette's key, which the window maps to its English name.
         """
         if self.last_style is None:
-            return f"авто · радиш: {'+'.join(self._recommendation)}" if self._recommendation else "авто"
-        who = "ти" if (self._recommendation and self.last_style in self._recommendation) else "Лілі"
+            return f"auto · you suggest: {'+'.join(self._recommendation)}" if self._recommendation else "auto"
+        who = "you" if (self._recommendation and self.last_style in self._recommendation) else "Lili"
         return f"{self.last_style} ({who})"
 
     @property
