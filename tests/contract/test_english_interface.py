@@ -33,7 +33,10 @@ ALLOWED_LITERALS = {
     "Запиши, будь ласка, підсумок сьогоднішнього дня у щоденник.",  # /journal write — a turn she is handed
     "Лілі is answering the room — try again",  # docs/agora-space-api.json, the contract shared with matrix-agora
 }
-QUOTED = re.compile(r"«[^»]*»|“[^”]*”|\"[^\"]*\"|`+[^`]*`+|'[^'\n]*'")
+# A quote of her text or of a pattern: «…» (may span lines), “…”, "…" and '…' (never across a line), a backtick span.
+# A single quote opens or closes a quote only outside a word, so the apostrophes of "turn's … doesn't" are not one
+# (code review #1).
+QUOTED = re.compile(r"«[^»]*»|“[^”\n]*”|\"[^\"\n]*\"|`+[^`]*`+|(?<!\w)'[^'\n]*'(?!\w)")
 RULE = ("the interface and the code comments are English (v4.8): write it in English; Ukrainian only inside a quote "
         "of her text or of a pattern the code matches, or as her name «Лілі»")
 
@@ -137,6 +140,17 @@ def test_the_guard_catches_a_ukrainian_word():
     # A guard on the guard: Ukrainian prose is caught; a quote of it, a backtick span and her name are not.
     assert _prose_left("# the mood is cut off before its close — тут обрізано") is not None
     assert _prose_left("# before its `РЕЗОЛЮЦІЯ` close, e.g. «Зараз 21:40»; Лілі's turn") is None
+
+
+def test_english_apostrophes_never_hide_ukrainian_prose():
+    # Code review #1: an apostrophe pair ("turn's … doesn't") read as a quote let Ukrainian prose through; so did a
+    # stray double quote pairing with one on another line.
+    assert _prose_left("# the turn's tail — тут обрізано — doesn't matter") is not None
+    assert _prose_left("# Lili's mood is тихий, isn't it") is not None
+    assert _prose_left('"""A 12" frame.\nтут проза\nthen "x"."""') is not None
+    for quoted in ("# the word 'тихо' here", '# the word "тихо" here', "# «тихо, тихо»", "# the `тихо` key",
+                   "# a quote «that spans\n# тихо two lines»"):
+        assert _prose_left(quoted) is None, quoted
 
 
 # --- v4.8 LUMI-339: the documentation is English -------------------------------------------------------------------
