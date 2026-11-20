@@ -993,9 +993,12 @@ function onPush(event, data) {
 
 /* her voice (v4.6 LUMI-330): a line that names a voice id shows "voicing…" until the server's `voice` push — then a
    ▶ (ready) or nothing (failed). ▶ fetches the audio with the window's key into a blob: URL and plays it; one line plays
-   at a time, ❚❚ pauses, Esc stops. Nothing ever plays without a click. */
+   at a time, ❚❚ pauses, Esc stops. Nothing ever starts without a click; a line WebKit pauses by itself plays on (v4.8.1). */
 const VOICE_ID = /^[0-9a-f]{32}$/;
 const VOICE_KEEP = 200;  // the lines, readiness and audio the window remembers — the oldest go first
+// v4.8.1: WebKit pauses her voice by itself now and then (an app in the background, App Nap): the line plays on.
+const VOICE_RESUMES = 5;  // the unasked pauses one play survives before it stays paused (the next ▶ or focus resumes)
+const VOICE_RESUME_MS = 300;
 const voice = { lines: new Map(), ready: new Map(), urls: new Map(), now: null, switching: false };
 
 function voiceKeep(map, key, value, drop) {
@@ -1055,8 +1058,8 @@ async function voiceFetch(vid) {
 async function voiceToggle(vid, btn) {  // a click: the only way her voice ever plays
   const now = voice.now;
   if (now && now.vid === vid) {
-    if (now.audio.paused) now.audio.play().catch(() => voiceStop());
-    else now.audio.pause();
+    if (now.audio.paused) { now.wanted = true; now.resumes = 0; now.audio.play().catch(() => voiceStop()); }
+    else { now.wanted = false; now.audio.pause(); }  // ❚❚: the owner's pause — never resumed by itself
     return;
   }
   voiceStop();
@@ -1069,15 +1072,49 @@ async function voiceToggle(vid, btn) {  // a click: the only way her voice ever 
     if (voice.now) return;  // another line started meanwhile: this one waits for its next click
   }
   const audio = new Audio(url);
-  voice.now = { vid, audio, btn };
+  voice.now = { vid, audio, btn, wanted: true, resumes: 0 };  // wanted: the owner wants it playing
   const draw = () => { if (voice.now && voice.now.audio === audio) voiceDraw(btn, audio); };
   for (const ev of ["play", "pause", "timeupdate"]) audio.addEventListener(ev, draw);
+  audio.addEventListener("pause", () => voiceInterrupted(audio));
   audio.addEventListener("ended", () => { if (voice.now && voice.now.audio === audio) voiceStop(); });
   audio.addEventListener("error", () => {  // an audio the window can't decode: stop, and say so on the button
     if (voice.now && voice.now.audio === audio) voiceStop();
     btn.title = t("voice.failed");
   });
   audio.play().catch(() => { voiceStop(); btn.title = t("voice.again"); });  // the click's moment passed: once more
+}
+
+// v4.8.1: a pause nobody asked for (not ❚❚, not Esc, not the media key, not the end) is WebKit's — play on, a few
+// times; if play() is refused the line stays paused at its time, as before.
+function voiceInterrupted(audio) {
+  const now = voice.now;
+  if (!now || now.audio !== audio || !now.wanted || audio.ended || now.resumes >= VOICE_RESUMES) return;
+  now.resumes++;
+  setTimeout(() => voiceResume(audio), VOICE_RESUME_MS);
+}
+
+function voiceResume(audio) {
+  const now = voice.now;
+  if (!now || now.audio !== audio || !now.wanted || !audio.paused || audio.ended) return;
+  audio.play().catch(() => { /* refused: it stays paused at its time; ▶ or the window's focus tries again */ });
+}
+
+function voiceOnReturn() {  // v4.8.1: the window is back (focus, visible) — a line WebKit paused plays on
+  const now = voice.now;
+  if (now && now.wanted && now.audio.paused && !now.audio.ended) voiceResume(now.audio);
+}
+
+function voiceMediaKeys() {  // v4.8.1: the Mac's media keys are the owner's own play / pause, never "unasked"
+  const session = navigator.mediaSession;
+  if (!session || typeof session.setActionHandler !== "function") return;
+  const handlers = {
+    pause: () => { if (voice.now) { voice.now.wanted = false; voice.now.audio.pause(); } },
+    play: () => { if (voice.now) { voice.now.wanted = true; voice.now.resumes = 0; voice.now.audio.play().catch(() => {}); } },
+    stop: () => voiceStop(),
+  };
+  for (const [action, handler] of Object.entries(handlers)) {
+    try { session.setActionHandler(action, handler); } catch (e) { /* an action this WebKit doesn't know */ }
+  }
 }
 
 function voiceStop() {
@@ -3734,6 +3771,9 @@ async function start() {
     if (dict.state === "idle") dictStart(); else dictStop();
   });
   try { dict.sendWhenStop = localStorage.getItem(DICT_STORE) === "on"; } catch (e) { /* off */ }
+  voiceMediaKeys();  // v4.8.1: her voice — the media keys are the owner's; a paused line plays on when the window is back
+  window.addEventListener("focus", voiceOnReturn);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") voiceOnReturn(); });
   document.addEventListener("keyup", (ev) => { micKey(ev); });
   $("composer").addEventListener("submit", (ev) => { ev.preventDefault(); const text = input.value; input.value = ""; grow(); updateSlash(); submit(text); });
   input.addEventListener("keydown", onKey);

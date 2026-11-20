@@ -249,6 +249,9 @@ once, with one switch for both. ROADMAP §v4.6 holds the Tasks and DoD.
   - ▶ fetches `GET /v1/voice/<id>` with the window's key into a `blob:` URL and plays it.
   - ❚❚ pauses, and the elapsed time sits beside the button.
   - One line plays at a time, and Esc stops it.
+  - A pause the owner didn't ask for — WebKit pauses audio by itself now and then, mostly when the window is in the
+    background — plays on (a few times per play, and again when the window is back); ❚❚, Esc and the Mac's media keys
+    are the owner's own. The window's shell opts out of App Nap while it is open (v4.8.1).
   - The window never makes a sound by itself.
 - **The «Voice» toggle** sits in the status line, right of the state. It reflects `state.voice.enabled` and turns the
   switch with `POST /v1/voice`. It is disabled, with the reason as its title, while the server has no key or voice id,

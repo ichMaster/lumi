@@ -823,14 +823,18 @@ def test_v46_her_voice_never_plays_without_a_click():
     js = _js()
     assert "autoplay" not in js.lower()
     toggle = _fn("voiceToggle")
-    assert js.count(".play(") == toggle.count(".play(") == 2  # only in the click's handler: start, or resume
+    assert js.count("new Audio(") == toggle.count("new Audio(") == 1  # a line starts only in the click's handler
     assert "onclick: () => voiceToggle(vid, btn)" in _fn("voiceReady")  # and that handler is only a click
+    # v4.8.1: every other .play() only plays on the line the owner already started (voice.now), never a new one
+    resume, keys = _fn("voiceResume"), _fn("voiceMediaKeys")
+    assert js.count(".play(") == toggle.count(".play(") + resume.count(".play(") + keys.count(".play(")
+    assert "now.audio !== audio || !now.wanted" in resume and "if (voice.now)" in keys
 
 
 def test_v46_one_line_plays_at_a_time_and_esc_stops_it():
     toggle = _fn("voiceToggle")
     assert toggle.index("voiceStop();") < toggle.index("new Audio(url)")  # the playing line stops first
-    assert "voice.now = { vid, audio, btn };" in toggle
+    assert "voice.now = { vid, audio, btn, wanted: true, resumes: 0 };" in toggle
     assert "if (voice.now) return;" in toggle  # another line started while this one was fetched
     assert 'audio.addEventListener("error", () => {' in toggle  # an undecodable audio stops, never hangs "playing"
     js = _js()
@@ -1001,3 +1005,65 @@ console.log(JSON.stringify(["коротко (Lili)", "докладно (you)", "
 """)
     assert got == ["short (Lili)", "detailed (you)", "auto", "auto · you suggest short + detailed", "normal", "—",
                    "combo (Lili)"]
+
+
+def test_v481_a_pause_webkit_makes_plays_on_and_the_owners_pause_does_not():
+    # v4.8.1: WebKit paused her voice by itself (an app in the background) and the line stayed paused at its time. An
+    # unasked pause now plays on, a few times; the owner's pause (❚❚, the media key), the end and a stopped line never.
+    got = _node_eval("""
+(function () {
+const VOICE_RESUMES = 5, VOICE_RESUME_MS = 300;
+const timers = []; const setTimeout = (fn) => timers.push(fn); const run = () => timers.splice(0).forEach((f) => f());
+const voice = { now: null };
+""" + _fn("voiceInterrupted") + _fn("voiceResume") + _fn("voiceOnReturn") + """
+const mk = () => ({ paused: true, ended: false, plays: 0,
+  play() { this.plays++; this.paused = false; return Promise.resolve(); } });
+const out = {};
+let a = mk(); voice.now = { audio: a, wanted: true, resumes: 0 }; voiceInterrupted(a); run(); out.unasked = a.plays;
+a = mk(); voice.now = { audio: a, wanted: false, resumes: 0 }; voiceInterrupted(a); run(); out.asked = a.plays;
+a = mk(); a.ended = true; voice.now = { audio: a, wanted: true, resumes: 0 }; voiceInterrupted(a); run();
+out.ended = a.plays;
+a = mk(); voice.now = { audio: a, wanted: true, resumes: 0 };
+for (let i = 0; i < 8; i++) { a.paused = true; voiceInterrupted(a); run(); }
+out.capped = a.plays;
+const other = mk(); voice.now = { audio: mk(), wanted: true, resumes: 0 }; voiceInterrupted(other); run();
+out.other = other.plays;
+a = mk(); voice.now = null; voiceInterrupted(a); out.stopped = timers.length;
+a = mk(); voice.now = { audio: a, wanted: true, resumes: 5 }; voiceOnReturn(); out.returned = a.plays;
+a = mk(); voice.now = { audio: a, wanted: false, resumes: 0 }; voiceOnReturn(); out.returnedAsked = a.plays;
+console.log(JSON.stringify(out));
+})();
+""")
+    assert got == {"unasked": 1, "asked": 0, "ended": 0, "capped": 5, "other": 0, "stopped": 0, "returned": 1,
+                   "returnedAsked": 0}
+
+
+def test_v481_the_media_keys_are_the_owners_play_and_pause():
+    got = _node_eval("""
+(function () {
+const handlers = {};
+const navigator = { mediaSession: { setActionHandler(action, fn) { handlers[action] = fn; } } };
+const voice = { now: null };
+function voiceStop() { voice.now = null; }
+""" + _fn("voiceMediaKeys") + """
+voiceMediaKeys();
+const a = { paused: false, plays: 0, pauses: 0, pause() { this.pauses++; this.paused = true; },
+  play() { this.plays++; this.paused = false; return Promise.resolve(); } };
+voice.now = { audio: a, wanted: true, resumes: 3 };
+handlers.pause(); const paused = { wanted: voice.now.wanted, pauses: a.pauses };
+handlers.play(); const played = { wanted: voice.now.wanted, resumes: voice.now.resumes, plays: a.plays };
+handlers.stop();
+console.log(JSON.stringify({ actions: Object.keys(handlers).sort(), paused, played, stopped: voice.now === null }));
+})();
+""")
+    assert got == {"actions": ["pause", "play", "stop"], "paused": {"wanted": False, "pauses": 1},
+                   "played": {"wanted": True, "resumes": 0, "plays": 1}, "stopped": True}
+
+
+def test_v481_the_window_is_back_and_the_media_keys_are_wired():
+    js = _js()
+    assert "voiceMediaKeys();" in js
+    assert 'window.addEventListener("focus", voiceOnReturn);' in js
+    assert 'document.visibilityState === "visible") voiceOnReturn()' in js
+    assert 'audio.addEventListener("pause", () => voiceInterrupted(audio));' in _fn("voiceToggle")
+    assert "now.wanted = false; now.audio.pause();" in _fn("voiceToggle")  # ❚❚ is the owner's pause
