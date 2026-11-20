@@ -121,16 +121,22 @@ episode — one failing message, one recovery, at most one failing message per i
 - **One panel, two instances.** Prod is guarded (red, a shown diff, a typed confirmation); dev is free.
 - **The admin never runs the core and never writes a data root** — config files and the Docker API only.
 - **Secrets stay on the box**: `0600` files, never returned by the API, never logged, never in the audit log.
-- **LAN/Tailscale only** (the bind guard + a ufw rule), its own token; no TLS until v4.1.
+- **LAN/Tailscale only** (the bind guard + a ufw rule), its own token; no TLS until v7.1.
 - **No paid calls** from the admin unless the owner presses the probe button.
 - **Tests:** the admin API over a fake container runner and fixture data roots — no real Docker, no network, no
   paid calls in CI; contract tests pin the schema ↔ example ↔ loader and that no secret ever leaves the API.
 
 ## Not here
 
-- Users, the allowlist, invites, consent, memory views — **v4.4**, which extends this panel.
-- TLS, public exposure, security scans — **v4.1**.
-- Editing her canon or other authored texts in the panel — not planned (they stay in the repo).
+- **v5** grows this panel into two areas, the server and the agent ([ADMIN_PANEL_II.md](ADMIN_PANEL_II.md)): usage
+  analytics with every paid call and her tools, the health monitor with incidents and the containers, the log
+  explorer and alert rules, the audit of every change; then her schedule and models, her authored texts and the
+  prompt, her state, the conversation history, her memory (the summaries, the facts), thoughts, gallery, journal,
+  files and their edits.
+- Editing her canon and other authored texts: planned in **v5.6** as an instance's own copy (the owner, 2026-11-20,
+  replacing "not planned").
+- Users, the allowlist, invites, consent, other users' memory — **v7.4**, which extends this panel.
+- TLS, public exposure, security scans — **v7.1**.
 
 ## Decisions
 

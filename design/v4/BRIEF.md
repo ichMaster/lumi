@@ -51,7 +51,7 @@ so the layout should leave room for them without a redesign.
 - **The code.** A static index.html + style.css + app.js: no framework, no bundler, no node. Tokens are CSS
   variables (reuse the v2.12 `tokens.css`; add tokens only if a view needs them). System fonts (SF Pro) with
   Cyrillic. The icons are inline SVG paths, Lucide-style.
-- **The layouts.** The same UI later becomes the browser web client (v6.3). Every view needs a narrow layout (a phone
+- **The layouts.** The same UI later becomes the browser web client (v7.3). Every view needs a narrow layout (a phone
   ~390 px wide).
 - **Safety.** The page never renders HTML from her content: every text is set as text, and her markdown becomes
   built elements. Pictures come only from the local proxy.
@@ -172,7 +172,7 @@ so the layout should leave room for them without a redesign.
 - Actions: upload, "show this to her", download, rename, delete (a later version). Only leave room for an action area
   in Files and Gallery.
 - The terminal client.
-- Login and several users (v6).
+- Login and several users (v7).
 - The admin panel.
 - The Agora room.
 - Face animation.

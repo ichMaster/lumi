@@ -179,6 +179,12 @@ LUMI-{first} ({gate})
 **Generated later:** `vA.B-github-report.md` (on upload), `vA.B-execution-report.md` (on execution).
 ````
 
+### Step 2.5: Mark the phase in progress
+
+In `specification/ROADMAP.md`, set the phase's `**Status:**` line to `🟡 In progress — issues generated
+(LUMI-{first}…{last}).` If its version's `**Status:**` line (and its row in the status table at the top) says
+🔲 Planned, make it 🟡 In progress too. Nothing else in the ROADMAP changes here.
+
 ### Step 3: Report
 
 Show the user the file path, the issue count, the `LUMI-###` range, the critical path, and which id
@@ -189,7 +195,7 @@ sources were checked. Suggest the next step:
 /execute-issues-file vA.B                                     # offline flow
 ```
 
-Do **not** create GitHub issues or commit here. This skill only writes the local file, so the user can
+Do **not** create GitHub issues or commit here. This skill only writes the local file (and the ROADMAP's status line), so the user can
 read and edit it first.
 
 ## Important Rules

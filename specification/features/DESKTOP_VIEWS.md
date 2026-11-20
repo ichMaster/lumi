@@ -89,7 +89,7 @@ Nothing new runs on the Mac. The window reads only through the API, the existing
 - **Who can call it.** The owner's client token only. The room's token gets 403, like every other owner route. No
   token gets 401.
 - **User scope.** Each route reads only the resolved `user_id`'s data (today `owner`). The paths are always
-  `files_dir/<user_id>` and `journal_dir/<user_id>`; the v6.2 accounts then need no change here.
+  `files_dir/<user_id>` and `journal_dir/<user_id>`; the v7.2 accounts then need no change here.
 - **Read-only.** No route writes her sandbox, journal, store or memory. No route calls a model or a paid API, and
   none takes the turn lock, because a turn can run for minutes. A route reads files, or a copy of the in-memory
   thought list.
@@ -110,7 +110,7 @@ Nothing new runs on the Mac. The window reads only through the API, the existing
 | v4.3 | `GET /v1/journal` | `{days:[{date, sections, size, stamp}]}` | The `YYYY-MM-DD.md` files, newest first. `stamp` (bool) marks a day written with the code-owned stamp (the list's "· no stamp"). Owner-only. |
 | v4.3 | `GET /v1/journal/{date}` | `{date, stamp:{mood, biorhythms:[{name, value, label}]\|null, forecast}\|null, sections:[{time, text}], markdown}` | Parsed from the v0.28 layout: the `# date` heading (dropped; an early day's heading isn't the date); the code-owned blockquote stamp (`> **Настрій:**`, `> **Біоритми:**`, `> **Прогноз:**`), each line optional, the biorhythm line as its three cells; the `## HH:MM` sections, prose before the first one an untimed section (`time: null`). An entry without a stamp gives `stamp: null`. A bad date gives 400; a missing day gives 404; a day over 256 KB 413. Owner-only. |
 | v4.3 | `GET /v1/thoughts?before=&limit=&kind=&spoken=&date=` | `{items:[{when, kind, text, emotion, spoken}], next, stats:{total, per_day, spoken_share}, days:{date: count}, kinds:[…]}` | Newest first, `limit` ≤ 100; `kind` may repeat (several at once); `date` jumps to a day. `stats` feed the header ("5,512 · about 30 a day · 6% spoken") and `days` the day dividers' counts (a page can cut a day), both over the stream filtered by kind and spoken; `kinds` are the directive names. Filtered by the surfacing rule (`thoughts_for(user_id)`), so a thought sparked with another user never shows up. `seeds` stay internal. |
-| v4.4 | `GET /v1/today` | `{date, mood:{resolution, reading, theme, made_at:null}\|null, biorhythms:[{name, value, label, trend: rising\|falling, period, day}], closeness:{level, name}, cycle:{day, length, phase, note, phases}\|null, plan: null}` | The structured form of `/mood`, `/biorhythm`, `/closeness`. `cycle` (added at the owner's request) is the hormonal cycle, drawn in State as a fourth cycle; the state snapshot's `cycle` `{phase, day, length}` names the phase in the portrait panel. `mood` only once today's mood is computed (the route never computes it); `reading` is the body without the resolution and the theme line; `made_at` stays `null` (the mood keeps no time, and a restart restores it from the log). `period` (23/28/33) and `day` (today's place in the cycle) let the window draw the ±14-day sine; `trend` is the sine's direction. `plan` once v5.7 exists. |
+| v4.4 | `GET /v1/today` | `{date, mood:{resolution, reading, theme, made_at:null}\|null, biorhythms:[{name, value, label, trend: rising\|falling, period, day}], closeness:{level, name}, cycle:{day, length, phase, note, phases}\|null, plan: null}` | The structured form of `/mood`, `/biorhythm`, `/closeness`. `cycle` (added at the owner's request) is the hormonal cycle, drawn in State as a fourth cycle; the state snapshot's `cycle` `{phase, day, length}` names the phase in the portrait panel. `mood` only once today's mood is computed (the route never computes it); `reading` is the body without the resolution and the theme line; `made_at` stays `null` (the mood keeps no time, and a restart restores it from the log). `period` (23/28/33) and `day` (today's place in the cycle) let the window draw the ±14-day sine; `trend` is the sine's direction. `plan` once v6.7 exists. |
 | v4.4 | `GET /v1/schedule` | `{now, quiet_hours, day_cap, fired_today, entries:[{name, directive, seeds, show, enabled, trigger:{kind: at\|every\|idle\|between\|cron, interval_s, at, days, window, cron}, last_fired, next_due, if_silent, topic, seed_lines}]}` | The brain host's scheduler: every entry (disabled ones too), `last_fired` from `schedule.state`, `next_due` by the scheduler's own `due` (quiet hours veto all but `at`; a reached cap moves it past midnight); `if_silent` for `idle` ("if silent"). `topic` (raw, its placeholders fill in when it fires) and a seeds row's `seed_lines` show what each directive does (added at the owner's request). The trigger is structured; the window words it in English ("every day at 08:00"). 404 while no scheduler runs. |
 
 **Additions to existing routes:**
@@ -304,15 +304,15 @@ ROADMAP §v4.7 holds the Tasks and DoD.
 
 ## Conflicts with the spec
 
-- **Journal visibility.** ROADMAP §v9.6 describes the journal as "admin-only, never shown to users". Today the owner
+- **Journal visibility.** ROADMAP §v10.6 describes the journal as "admin-only, never shown to users". Today the owner
   is the only user and the admin, and `/journal` already shows it to the owner. The journal routes are therefore
-  **owner/admin-only by rule** from the start: the token check plus a role check that v6.2's accounts can fill in.
-  Another user's token must never read the journal (a contract test with a second token). §v9.6 now says so.
-- **The v9.1 gallery.** v9.1 plans a gallery store behind the `Repository`, with metadata and `lili`/`user` tags. The
-  v4.2 Gallery view reads the sandbox's picture files, because that is what exists. When v9.1 lands, the view's data
+  **owner/admin-only by rule** from the start: the token check plus a role check that v7.2's accounts can fill in.
+  Another user's token must never read the journal (a contract test with a second token). §v10.6 now says so.
+- **The v10.1 gallery.** v10.1 plans a gallery store behind the `Repository`, with metadata and `lili`/`user` tags. The
+  v4.2 Gallery view reads the sandbox's picture files, because that is what exists. When v10.1 lands, the view's data
   source changes and the view stays. Until then the view cannot say who made a picture or with what prompt;
-  `generate_image` stores no such record. §v9.1 now says so.
-- **"Her pictures in the conversation"** moved from v6.3 (the web client) to v4.2. §v6.3 now says the web client
+  `generate_image` stores no such record. §v10.1 now says so.
+- **"Her pictures in the conversation"** moved from v7.3 (the web client) to v4.2. §v7.3 now says the web client
   reuses it.
 
 ## Phases
@@ -340,7 +340,7 @@ read-only, so this is safe on prod, unlike a test turn.
 
 ## Not in this version
 
-- Multi-user accounts (v6.2) and the web client (v6.3). The routes are user-scoped so both can reuse them.
-- The v9.1 gallery store and its metadata.
+- Multi-user accounts (v7.2) and the web client (v7.3). The routes are user-scoped so both can reuse them.
+- The v10.1 gallery store and its metadata.
 - Search across files (her `search_files` tool exists; a search box could reuse it later).
 - The Agora room's data (the space has its own store and no files).

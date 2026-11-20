@@ -1,18 +1,40 @@
 # Roadmap — Lumi
 
-Ten self-contained versions, built in order: **v0** TUI (core, memory, emotion, emoji, mood, semantic recall, file tool, voice) → **v1** voice interface (conversation moves, fast turns, streaming, voice mode) → **v2** client/server split (her brain on the always-on Linux server, the TUI a thin client) → **v3** Agora (a room of agents as a channel of her own — the first shared space) → **v4** the window (her files, pictures, journal and thoughts in the desktop window) → **v5** personality (topics, needs, inner life, inner monologue, emotional memory) → **v6** server platform (security, multi-user, web, admin) → **v7** face, voice, shared mind, and dictation → **v8** animated Лілі + MCP tools (web search, world context) → **v9** creative Лілі (gallery, art, music, journal, co-creation). Versions are numbered from 0; phases inside a version are numbered `vA.B` (A = version, B = phase), e.g. `v6.1`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing and CI).
+Eleven self-contained versions, built in order: **v0** TUI (core, memory, emotion, emoji, mood, semantic recall, file tool, voice) → **v1** voice interface (conversation moves, fast turns, streaming, voice mode) → **v2** client/server split (her brain on the always-on Linux server, the TUI a thin client) → **v3** Agora (a room of agents as a channel of her own — the first shared space) → **v4** the window (her files, pictures, journal and thoughts in the desktop window) → **v5** the admin panel II (usage, health, logs and alerts, audit, the schedule, and Лілі in the panel) → **v6** personality (topics, needs, inner life, inner monologue, emotional memory) → **v7** server platform (security, multi-user, web, admin) → **v8** face, voice, shared mind, and dictation → **v9** animated Лілі + MCP tools (web search, world context) → **v10** creative Лілі (gallery, art, music, journal, co-creation). Versions are numbered from 0; phases inside a version are numbered `vA.B` (A = version, B = phase), e.g. `v7.1`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing and CI).
 
-Arc of the two axes: capabilities grow text+memory → emotion (emoji) → daily mood → local image face + local voice + dictation → inner life + needs + inner monologue + emotional memory → web face + voice + shared mind + dictation → animation + web search & world context (MCP) → creation (gallery, vision, art, music, journal, co-creation); the interface grows in-process TUI (v0) → server + TUI/CLI clients (v2) → + a shared space with several speakers (v3) → + the desktop window's views of her data (v4) → + multi-user/session (v6.2) → + web client (v6.3) → + vision & proactive turns (v9). The **core is built first and never depends on an interface**. Complexity is added only by version, never all at once.
+Arc of the two axes: capabilities grow text+memory → emotion (emoji) → daily mood → local image face + local voice + dictation → inner life + needs + inner monologue + emotional memory → web face + voice + shared mind + dictation → animation + web search & world context (MCP) → creation (gallery, vision, art, music, journal, co-creation); the interface grows in-process TUI (v0) → server + TUI/CLI clients (v2) → + a shared space with several speakers (v3) → + the desktop window's views of her data (v4) → + the admin panel's views of her and of the box (v5) → + multi-user/session (v7.2) → + web client (v7.3) → + vision & proactive turns (v10). The **core is built first and never depends on an interface**. Complexity is added only by version, never all at once.
 
-**Versioning (`A.B.C`).** `A` = roadmap version (v0→0 … v9→9), `B` = phase within it (`v6.1` → `6.1.0`), `C` = a post-release fix on that phase. Roadmap phase `vA.B` → semver `A.B.0`; a fix after it bumps `C`. Releases are cut per phase. Never bump the version without explicit confirmation.
+**Versioning (`A.B.C`).** `A` = roadmap version (v0→0 … v10→10), `B` = phase within it (`v7.1` → `7.1.0`), `C` = a post-release fix on that phase. Roadmap phase `vA.B` → semver `A.B.0`; a fix after it bumps `C`. Releases are cut per phase. Never bump the version without explicit confirmation.
+
+**Status** (from the release tags; kept current by the pipeline — a phase turns 🟡 when its issues are generated and
+✅ when its `A.B.0` tag is cut): ✅ **Closed** — released · 🟡 **In progress** — being built · 🔲 **Planned** — not
+started. Each version and each phase carries its own **Status:** line under its heading.
+
+| Version | Status | Releases |
+|---------|--------|----------|
+| v0 — TUI | ✅ Closed | `0.1.0`–`0.42.2` |
+| v1 — Voice interface | ✅ Closed | `1.1.0`–`1.6.3` (the rest of v1.6 moved to v6.14) |
+| v2 — Client/server split | ✅ Closed | `2.1.0`–`2.12.3` |
+| v3 — Agora | ✅ Closed | `3.1.0`–`3.4.1` |
+| v4 — The window | 🟡 In progress | `4.1.0`–`4.7.0`; v4.8 (English everywhere) planned |
+| v5 — The admin panel II | 🔲 Planned | the design brief written; v5.1 waits for the design |
+| v6 — Personality | 🔲 Planned | — |
+| v7 — Server platform | 🔲 Planned | — |
+| v8 — Face, voice, shared mind, dictation | 🔲 Planned | — |
+| v9 — Animated Лілі & MCP tools | 🔲 Planned | — |
+| v10 — Creative Лілі | 🔲 Planned | — |
 
 ---
 
 ## v0 — TUI: core, memory, emotion, emoji, mood (+ biorhythms), local face, closeness, face wardrobe, semantic recall (RAG), file tool, voice, dictation
 
-The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.18 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.14, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v6 splits them into client and server. Depends on: nothing — this is the foundation.
+**Status:** ✅ Closed — every phase released, `0.1.0`–`0.42.2`.
+
+The complete terminal Лілі. We build the entire mind — canon, three-layer memory, the emotion channel, the emoji that renders it, a daily **mood of the day** (a horoscope-derived temperament), a **local image face** (a desktop window showing her current emotion), a **local voice** (a console app that speaks her replies) and **local dictation** (speech → text input) — all in a **local app, no server**. The model is **Claude Haiku (Anthropic)** from the start (v0.18 adds more models); the app runs on your machine but calls Anthropic for the model (and, from v0.14, ElevenLabs/STT for voice in and out), so it is **local-but-not-offline** (`ANTHROPIC_API_KEY` in `.env`). **v0 is wholly local (TUI + a local face window + a local voicer + a local dictator, calling cloud models)**: it establishes the interface-independent `core`, a thin **`LLMClient`** seam (mockable in tests), and the contracts (emotion field, memory records, temperament) that every later version reuses. In v0 the TUI calls the `core` **in-process**; v7 splits them into client and server. Depends on: nothing — this is the foundation.
 
 ### v0.1 — Skeleton and canon
+
+**Status:** ✅ Closed — released `0.1.0`.
 
 **Goal:** a working text chat with Лілі's character in the terminal.
 
@@ -31,9 +53,11 @@ Stand up the project skeleton and the `core` package, an **Anthropic client (Cla
 
 ### v0.2 — Three-layer memory
 
+**Status:** ✅ Closed — released `0.2.0`–`0.2.1`.
+
 **Goal:** Лілі remembers the thread of conversations.
 
-Add the three (per-user) memory layers: session history trimmed to a rolling window in context; short memory — at session end the model compresses the conversation into a `ShortSummary`, the last few are kept and injected at startup; long-term memory — accumulation of durable `LongTermFact`s about the user, also injected at startup. Memory is viewable and clearable from the TUI. **Crucially, the data model and the `Repository` are user-scoped from here** — every record carries a `user_id`, run with a single default `owner` — so the v6 multi-user server is additive, not a rewrite (ARCHITECTURE §Identity, users, and memory scopes). The shared-experience layer exists in the model now but is trivially just the owner's until v7.
+Add the three (per-user) memory layers: session history trimmed to a rolling window in context; short memory — at session end the model compresses the conversation into a `ShortSummary`, the last few are kept and injected at startup; long-term memory — accumulation of durable `LongTermFact`s about the user, also injected at startup. Memory is viewable and clearable from the TUI. **Crucially, the data model and the `Repository` are user-scoped from here** — every record carries a `user_id`, run with a single default `owner` — so the v7 multi-user server is additive, not a rewrite (ARCHITECTURE §Identity, users, and memory scopes). The shared-experience layer exists in the model now but is trivially just the owner's until v8.
 
 **Tasks:**
 - Introduce `User` with a single default `owner`; key the `Repository` and every record by `user_id`.
@@ -48,6 +72,8 @@ Add the three (per-user) memory layers: session history trimmed to a rolling win
 **Tests:** unit — history windowing/trimming, summary injection, fact accumulation; contract — the `ShortSummary`/`LongTermFact` record shapes (incl. `user_id`); integration — restart rehydrates the user's context (against mock model + fake store).
 
 ### v0.3 — Emotion field
+
+**Status:** ✅ Closed — released `0.3.0`.
 
 **Goal:** Лілі returns her state, even if we don't show it yet.
 
@@ -65,11 +91,13 @@ Lock the emotion channel. The model emits `{reply, emotion, intensity}` as struc
 
 ### v0.4 — Ambient context (now, here, weather, news)
 
+**Status:** ✅ Closed — released `0.4.0`.
+
 **Goal:** Лілі knows *when* and *where* she is — and what's around — her sense of time threads through the whole conversation, and she can break a long silence first.
 
 A lightweight **ambient context** fetched **once at startup** (not MCP, not per-turn): the local **date/time** (injected clock), today's **calendar** (weekday, notable dates), the user's **location** (configured or IP-geolocated), current **weather**, and a few **short news** headlines. It is assembled into a small "now / here" block injected into the system prompt — **ambient color, never competence** (it may tint her tone, like the hour or the weather; it never makes her authoritative or "smarter"). Fetched text is **data, not instructions**. Each source is **config-gated** (its own key/endpoint); when one is off or fails, that line is omitted — the turn never hangs. This ambient layer is what the v0.6 **mood** reads. Two prompt-assembly changes also make time legible: **every message carries its date-time**, and **short summaries carry their date**.
 
-The same time-awareness lets her **break a long silence**: an **idle nudge** quietly feeds her a user-style opener from a list when you've gone quiet — you never see the nudge, only her reply — so she seems to speak first. (A simple, presence-only proactivity now; the v9.2 open-loop proactive-turn mechanism generalizes it later.)
+The same time-awareness lets her **break a long silence**: an **idle nudge** quietly feeds her a user-style opener from a list when you've gone quiet — you never see the nudge, only her reply — so she seems to speak first. (A simple, presence-only proactivity now; the v10.2 open-loop proactive-turn mechanism generalizes it later.)
 
 **Tasks:**
 - A small **`WorldContext` provider** at the core boundary (interface-independent): a `fetch()` called once at startup -> a `WorldContext{ now, calendar, location, weather, news }` snapshot. Time/date come from the **injected clock** (deterministic/testable); weather/news/location from thin HTTP calls to configured providers (no SDK, no tool loop). Any source error -> that field is `None`, never an exception.
@@ -85,6 +113,8 @@ The same time-awareness lets her **break a long silence**: an **idle nudge** qui
 **Tests:** unit — the `WorldContext` provider with **mocked HTTP** (no live calls in CI), each source failing -> field `None`; the injected clock drives a deterministic "now"; `build_system_prompt` assembles the ambient block and omits absent fields; the **idle timer fires after the configured gap and is rate-limited** (deterministic via the injected clock — no real sleeps). Integration — a turn's `messages` carry per-message timestamps and the prompt shows dated summaries; an **idle nudge produces a Лілі reply while the hidden nudge line is absent from the displayed transcript**; a fully-unconfigured run still works (no ambient block, no nudge, no error).
 
 ### v0.5 — Emoji rendering
+
+**Status:** ✅ Closed — released `0.5.0`.
 
 **Goal:** Лілі's emotion is visible right in the terminal — the last step that makes v0 the complete TUI.
 
@@ -104,9 +134,11 @@ The emotion→emoji+intensity table is an **editable authored file** (like the c
 
 ### v0.6 — Mood of the day (temperament)
 
+**Status:** ✅ Closed — released `0.6.0`–`0.6.1`.
+
 **Goal:** Лілі has a daily mood — a horoscope-derived backdrop that colors her tone and the emotions she trends toward, never her competence.
 
-Add a **core** temperament subsystem driven by the **model itself — no astronomy engine** (a real-ephemeris test showed the model can write a vivid, useful daily reading but cannot compute accurate transits; precision isn't the goal — daily *variation* is). Лілі has a **fixed natal chart**; **once per local day** the core makes an internal **mood call** (through the `LLMClient` seam) that asks for a vivid horoscope-flavored reading from the natal chart + today's date, ending in a short **resolution** (what she'll want / won't want / her mood, energy, tone). The **full reading is logged** (not shown, not in the prompt); **only the resolution is injected** into the system prompt — as a **prominent, prioritized block** (like the style header's importance directive) so it actually colors the turn. It **biases the emotion the model emits and her tone — never her competence or willingness to help**. It rides the v0.3 emotion channel (the model still emits `{reply, emotion, intensity}`; the core still validates it). **On by default** — part of her character, not an optional tool. An **experiment for daily variation, not an astrological claim**. (World-context inputs feed the same mood in v8.3; voice-delivery dials in v7.2.) See ARCHITECTURE §Mood and temperament. Depends on: v0.3 (the emotion channel) and v0.4 (the injected clock).
+Add a **core** temperament subsystem driven by the **model itself — no astronomy engine** (a real-ephemeris test showed the model can write a vivid, useful daily reading but cannot compute accurate transits; precision isn't the goal — daily *variation* is). Лілі has a **fixed natal chart**; **once per local day** the core makes an internal **mood call** (through the `LLMClient` seam) that asks for a vivid horoscope-flavored reading from the natal chart + today's date, ending in a short **resolution** (what she'll want / won't want / her mood, energy, tone). The **full reading is logged** (not shown, not in the prompt); **only the resolution is injected** into the system prompt — as a **prominent, prioritized block** (like the style header's importance directive) so it actually colors the turn. It **biases the emotion the model emits and her tone — never her competence or willingness to help**. It rides the v0.3 emotion channel (the model still emits `{reply, emotion, intensity}`; the core still validates it). **On by default** — part of her character, not an optional tool. An **experiment for daily variation, not an astrological claim**. (World-context inputs feed the same mood in v9.3; voice-delivery dials in v8.2.) See ARCHITECTURE §Mood and temperament. Depends on: v0.3 (the emotion channel) and v0.4 (the injected clock).
 
 **Tasks:**
 - Лілі's **natal chart** as a fixed snapshot (date/time/place + positions) in canon/config (already seeded in the canon; verified accurate against a real ephemeris).
@@ -122,9 +154,11 @@ Add a **core** temperament subsystem driven by the **model itself — no astrono
 
 ### v0.7 — Local emotion viewer (image face)
 
+**Status:** ✅ Closed — released `0.7.0`–`0.7.2`.
+
 **Goal:** Лілі's face as a real **image**, locally, without a server — the simplest way to see her before the web.
 
-Add a small **separate local desktop window** (e.g. Python/Tkinter) that shows a pre-made portrait of Лілі for her current emotion. It is **another renderer of the v0.3 emotion channel** — the same `emotion → image` mapping the web `ImageRenderer` (v7.1) will use, just rendered to a local window from a `faces/` asset pack instead of a browser. The core writes the current emotion to a **local signal** (a one-word file, or the emotion field in local state behind `repository`); the viewer polls it and swaps `faces/<emotion>.png`, with a **`calm` fallback** so the window never breaks. No generation — just switching between existing images by emotion. Distinct from the v9 *gallery* (the artifact store); these are the **emotion-face assets** (EMOTION.md §7). See [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md). Depends on: v0.3 (the emotion channel).
+Add a small **separate local desktop window** (e.g. Python/Tkinter) that shows a pre-made portrait of Лілі for her current emotion. It is **another renderer of the v0.3 emotion channel** — the same `emotion → image` mapping the web `ImageRenderer` (v8.1) will use, just rendered to a local window from a `faces/` asset pack instead of a browser. The core writes the current emotion to a **local signal** (a one-word file, or the emotion field in local state behind `repository`); the viewer polls it and swaps `faces/<emotion>.png`, with a **`calm` fallback** so the window never breaks. No generation — just switching between existing images by emotion. Distinct from the v10 *gallery* (the artifact store); these are the **emotion-face assets** (EMOTION.md §7). See [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md). Depends on: v0.3 (the emotion channel).
 
 **Tasks:**
 - The core writes the current emotion to a **local signal** each turn (a one-word file or local state).
@@ -137,6 +171,8 @@ Add a small **separate local desktop window** (e.g. Python/Tkinter) that shows a
 **Tests:** unit — the emotion→image-path resolver is total over the enum and falls back to `calm`; the signal read/poll logic (against a fake signal file); intensity-variant selection when variants exist.
 
 ### v0.8 — Biorhythms (merged into the daily mood)
+
+**Status:** ✅ Closed — released `0.8.0`.
 
 **Goal:** Лілі's daily temperament gains a second, **computed** layer — three biorhythm cycles from her birth date — **merged with the v0.6 horoscope into one daily reading**.
 
@@ -160,6 +196,8 @@ See [BIORHYTHMS.md](features/BIORHYTHMS.md). Depends on: v0.6 (the mood it merge
 
 ### v0.9 — Richer short memory (recent detail + days at a glance)
 
+**Status:** ✅ Closed — released `0.9.0`.
+
 **Goal:** Лілі recalls **recent conversations in detail** and **the past few days at a glance** — a richer *short* memory, without touching long-term facts.
 
 Today short memory keeps the last 5 conversation summaries (one detailed summary each) and injects them; **long-term memory stays the facts list** (`LongTermFact`, unchanged — this is purely a short-memory enhancement). This phase makes each session's summary **two-tiered** and widens the recall window:
@@ -179,6 +217,8 @@ It is a memory-record shape change — `ShortSummary` gains a `gist` (the `summa
 **Tests:** unit — the two-tier assembly (last N detailed + D-day gists, dedup, cap) against a fake store + fixed clock; the one-call summarizer returns both fields (mock model); the "since date" / local-day window selection; old-summary migration (no `gist`). Contract — the updated `ShortSummary` shape.
 
 ### v0.10 — Closeness (relationship level)
+
+**Status:** ✅ Closed — released `0.10.0`–`0.10.1`.
 
 **Goal:** Лілі grows **closer to (or cooler with) each person over time** — a per-user closeness level that modulates how *open* she is, **never her competence**.
 
@@ -205,6 +245,8 @@ It is a contract addition (`Closeness` record + the relational-read field) → u
 
 ### v0.11 — Face variants & mood themes
 
+**Status:** ✅ Closed — released `0.11.0`.
+
 **Goal:** Лілі's image face stops repeating and dresses for the day — **several pictures per emotion** picked at random, and a **themed outfit** chosen by her **mood of the day**.
 
 Two additions over the v0.7 viewer, reusing the locked emotion channel, the v0.7 signal/fallback, and the v0.6 mood — **no contract change**:
@@ -226,13 +268,15 @@ With no themes/variants present it behaves exactly like v0.7 (single image + `ca
 
 ### v0.12 — Thought-stream (her mind acts on its own)
 
-**Goal:** Лілі doesn't only *react* — between and around your messages her mind does things on its own (she muses, wonders), recorded to a private **thought-stream** and only **occasionally surfaced aloud**. Speaking becomes the rare tip of a quiet inner life. This generalizes the v0.4 idle **nudge**: today it always *speaks* a fixed opener; now it mostly **`%think`s** silently from her live state and speaks only once in a while. Placed here (before the inner life) because it's self-contained — its hard deps (v0.4 nudge, v0.6 mood, v0.2 repository) already exist; it launches **thin** (mood + closeness + recent) and **enriches automatically** as v5.5–v5.8 add needs/plans/dreams to the seed. See [THOUGHT_STREAM.md](features/THOUGHT_STREAM.md).
+**Status:** ✅ Closed — released `0.12.0`–`0.12.1`.
+
+**Goal:** Лілі doesn't only *react* — between and around your messages her mind does things on its own (she muses, wonders), recorded to a private **thought-stream** and only **occasionally surfaced aloud**. Speaking becomes the rare tip of a quiet inner life. This generalizes the v0.4 idle **nudge**: today it always *speaks* a fixed opener; now it mostly **`%think`s** silently from her live state and speaks only once in a while. Placed here (before the inner life) because it's self-contained — its hard deps (v0.4 nudge, v0.6 mood, v0.2 repository) already exist; it launches **thin** (mood + closeness + recent) and **enriches automatically** as v6.5–v6.8 add needs/plans/dreams to the seed. See [THOUGHT_STREAM.md](features/THOUGHT_STREAM.md).
 
 A clean three-layer vocabulary, and one reusable engine under it:
 - **`%directives`** — her mind *acts* (internal, **never typed**): `%think` (everyday musing) + `%wonder` (curiosity). Distinct from **`/commands`** that *read* state (`/mood`, `/thoughts`) and plain chat she *speaks*. `%` reads as system plumbing — no confusion with `/`.
-- **The mental-act engine:** `trigger → seed her state → generate (one housekeeping call, thinking-off) → record → maybe surface`. A small **registry** of `{name, trigger, seeds, store, surface}`; `%dream`/`%reflect`/`%recall` are the **same engine retrofitted** by v5.8/0.25/0.16 (not built here).
-- **The store (global):** `Thought{when, kind, text, emotion, seeds, spoken, ts}` behind the `Repository`, **not** `user_id`-keyed (like `InnerLife`); a rolling soft-capped log (consolidates into v5.10 impressions). **Isolation:** the store is global but **surfacing is per-conversation** — a thought sparked by user A never surfaces to B (contract test).
-- **The feedback loop (the point):** the last few thoughts ride into the next reply as a compact "on her mind" block, and a recurring thought nudges the v0.6 mood (and v5.5 needs when present) — soft, never competence.
+- **The mental-act engine:** `trigger → seed her state → generate (one housekeeping call, thinking-off) → record → maybe surface`. A small **registry** of `{name, trigger, seeds, store, surface}`; `%dream`/`%reflect`/`%recall` are the **same engine retrofitted** by v6.8/0.25/0.16 (not built here).
+- **The store (global):** `Thought{when, kind, text, emotion, seeds, spoken, ts}` behind the `Repository`, **not** `user_id`-keyed (like `InnerLife`); a rolling soft-capped log (consolidates into v6.10 impressions). **Isolation:** the store is global but **surfacing is per-conversation** — a thought sparked by user A never surfaces to B (contract test).
+- **The feedback loop (the point):** the last few thoughts ride into the next reply as a compact "on her mind" block, and a recurring thought nudges the v0.6 mood (and v6.5 needs when present) — soft, never competence.
 - **Silent vs spoken:** most fires are **silent** (record only); a small fraction **graduate** to a spoken nudge turn (a config ratio / strength threshold) — so spoken ones feel earned, not chatty.
 
 Reuses v0.4 (the nudge trigger + the hidden self-turn delivery), v0.6 (mood + the housekeeping-call pattern), v0.10 (closeness seed), v0.2 (the Repository). Depends on: v0.4, v0.6, v0.2.
@@ -244,7 +288,7 @@ Reuses v0.4 (the nudge trigger + the hidden self-turn delivery), v0.6 (mood + th
 - The **feedback block** in `build_system_prompt` — the **last‑24h dated diary** slice (rolling window from the injected clock, `LUMI_THOUGHTS_WINDOW_H` default 24, each entry shown with its time; hard cap backstop) + the soft nudge to mood/needs.
 - The **input router** (`/`·`%`·chat) + the `%<name>[!] [connector] [topic]` grammar (manual trigger; `!` = open/print, optional `about`/`про`/`:` connector, optional topic seed; unknown `%name` → plain chat). Three surfacings — **silent / open / spoken**.
 - A **`{name}` placeholder resolver** (ARCHITECTURE §Prompt placeholders): a fixed registry → live state, expanded in authored prompts + directive topics (`%think about {last_thought}`); unknown `{token}` → literal; **isolation-aware**; deterministic (one seam). Ships the `{last_thought}`/`{thoughts}`/`{mood}`/… registry.
-- The **access gate** (silent-vs-shared, **not** blanket owner-only): anyone may invite a **surfaced** thought (open/spoken, isolation + rate-limited + her agency); **silent firing** + the **raw cross-user `/thoughts` stream** are owner-only (a non-owner gets a per-user-filtered view). Configurable; matters from v6.2 (multi-user).
+- The **access gate** (silent-vs-shared, **not** blanket owner-only): anyone may invite a **surfaced** thought (open/spoken, isolation + rate-limited + her agency); **silent firing** + the **raw cross-user `/thoughts` stream** are owner-only (a non-owner gets a per-user-filtered view). Configurable; matters from v7.2 (multi-user).
 - A **`/thoughts`** command (the read) + the `thoughts_show` policy (hidden default / admin / off); logged, **never persisted** to long-term memory.
 
 **DoD:** on the nudge timer (paced — interval + quiet hours + per-session cap) Лілі **`%think`s** from her live state into a **global, dated diary**, **mostly silently**; her **last‑24h** (dated) thoughts **feed back** into her next reply and softly nudge the mood; a small fraction **graduate** to a spoken turn; a typed **`%think[!] [topic]`** fires it manually (`!` → open, shown as her inner voice); `/thoughts` shows the stream; a thought from user A **never** surfaces to user B; the raw stream is **logged, never written to long-term memory**. **No emotion-contract change. Never competence; honest about nature; restraint.**
@@ -253,7 +297,9 @@ Reuses v0.4 (the nudge trigger + the hidden self-turn delivery), v0.6 (mood + th
 
 ### v0.13 — Telegram bot (Лілі in your pocket)
 
-**Goal:** reach Лілі from **Telegram** — the same mind, a new window. Crucially, the **TUI stays the only brain** (the one process that calls `core.reply`); Telegram is a **bridge** — a tiny **file bus** (`inbox`/`outbox`) plus two **dumb daemons** — so the TUI never imports a Telegram library and there's only **one writer to the conversation store** (no concurrency clobber). She can **reach out first** (a v0.12 spoken thought lands in `outbox` → a Telegram notification). **Personal / single-owner** (the Telegram user *is* the owner — same relationship, one session); **multi-user + always-on are the v2/v6.2 server**. See [TELEGRAM.md](features/TELEGRAM.md).
+**Status:** ✅ Closed — released `0.13.0`.
+
+**Goal:** reach Лілі from **Telegram** — the same mind, a new window. Crucially, the **TUI stays the only brain** (the one process that calls `core.reply`); Telegram is a **bridge** — a tiny **file bus** (`inbox`/`outbox`) plus two **dumb daemons** — so the TUI never imports a Telegram library and there's only **one writer to the conversation store** (no concurrency clobber). She can **reach out first** (a v0.12 spoken thought lands in `outbox` → a Telegram notification). **Personal / single-owner** (the Telegram user *is* the owner — same relationship, one session); **multi-user + always-on are the v2/v7.2 server**. See [TELEGRAM.md](features/TELEGRAM.md).
 
 The shape — one brain, a file bus, two daemons (`keyboard / Telegram → inbox.jsonl → [TUI = brain] → core.reply → outbox.jsonl → Telegram`):
 - **The file bus (FIFO + id pointers).** `inbox.jsonl` + `outbox.jsonl` — append-only JSONL (`{id, text, ts}`), **one writer + one reader each** (no locks); the consumer tracks the **last id** it processed (a tiny pointer file), id-based so trimming later is safe. (Shared infra the v0.14 voicer / v0.26 dictator later ride.)
@@ -262,7 +308,7 @@ The shape — one brain, a file bus, two daemons (`keyboard / Telegram → inbox
 - **Daemon 2 (`outbox → telegram`).** FIFO from the pointer; **consolidate up to `LUMI_TELEGRAM_BATCH` = N** records per Telegram message (bounds a backlog → ⌈M/N⌉ messages, never "days as one"); a **catch-up cap** (`LUMI_TELEGRAM_CATCHUP_H`) skips stale records on restart.
 - **Proactive push + emotion/face.** A graduated (spoken) thought is just a Лілі message → `outbox` → daemon 2 → a notification; her line carries the **v0.5 emoji**, optionally the **v0.11 `<theme>/<emotion>` portrait** as a photo (`LUMI_TELEGRAM_PHOTO`).
 
-**No core change** (the interface-independence contract). The **TUI must be running** (it's the brain) — always-on/standalone is v6.1. Depends on: v0.2 (user-scoped core + Repository), v0.3 (emotion channel), v0.12 (proactive thoughts → push).
+**No core change** (the interface-independence contract). The **TUI must be running** (it's the brain) — always-on/standalone is v7.1. Depends on: v0.2 (user-scoped core + Repository), v0.3 (emotion channel), v0.12 (proactive thoughts → push).
 
 **Tasks:**
 - The **`inbox.jsonl`/`outbox.jsonl` FIFO** + id-pointer files (`inbox.pos`, `outbox.sent`) — append/read/advance; one writer + one reader per file.
@@ -271,15 +317,17 @@ The shape — one brain, a file bus, two daemons (`keyboard / Telegram → inbox
 - **Daemon 2 (`outbox → telegram`):** FIFO from `outbox.sent`, **N-batch** consolidation, **catch-up cap**; append the **emoji**, optionally the **portrait** photo.
 - Config (`.env`): `LUMI_TELEGRAM_TOKEN`, `LUMI_TELEGRAM_ALLOWLIST`, `LUMI_TELEGRAM_FLUSH_S` (2), `LUMI_TELEGRAM_BATCH` (N), `LUMI_TELEGRAM_CATCHUP_H`, `LUMI_TELEGRAM_PHOTO`. **Mock Telegram in tests** (no network).
 
-**DoD:** a Telegram message lands in `inbox.jsonl`; the **TUI** (the only brain) consumes it on idle → `core.reply` → writes **Лілі's reply** to `outbox.jsonl` → it reaches Telegram (with emoji); the TUI **never** writes your input to `outbox` (**no echo**); a **burst** is consolidated by daemon 1's 2 s flush into one turn; daemon 2 sends **N-batched** messages and never fuses a backlog into one; a **non-allowlisted** sender never enters the bus; a **spoken proactive thought** arrives unprompted; the bus is **FIFO with id pointers** and **one writer per file**; the **core is unchanged**. Telegram **mocked** in tests — no network, no real sleeps, no paid calls. *(Single-owner; multi-user/parallel = v6.3.)*
+**DoD:** a Telegram message lands in `inbox.jsonl`; the **TUI** (the only brain) consumes it on idle → `core.reply` → writes **Лілі's reply** to `outbox.jsonl` → it reaches Telegram (with emoji); the TUI **never** writes your input to `outbox` (**no echo**); a **burst** is consolidated by daemon 1's 2 s flush into one turn; daemon 2 sends **N-batched** messages and never fuses a backlog into one; a **non-allowlisted** sender never enters the bus; a **spoken proactive thought** arrives unprompted; the bus is **FIFO with id pointers** and **one writer per file**; the **core is unchanged**. Telegram **mocked** in tests — no network, no real sleeps, no paid calls. *(Single-owner; multi-user/parallel = v7.3.)*
 
 **Tests:** unit — the FIFO + id pointers (append/read/advance, trim-safe); the TUI `inbox→turn→outbox` path writes only Лілі's lines (mock model); daemon 1's **buffer → 2 s flush** consolidates a burst + **ack-after-flush** (mock Telegram + fixed clock); daemon 2's **FIFO + N-batch + catch-up cap** (mock Telegram); the **allowlist** gate (a non-owner never enters `inbox`); a spoken thought reaches `outbox` → daemon 2. No network, no real sleeps, no paid calls.
 
 ### v0.14 — Local voice (ElevenLabs)
 
+**Status:** ✅ Closed — released `0.14.0`–`0.14.1`.
+
 **Goal:** hear Лілі — a separate local app that voices her replies, no server.
 
-A **separate local console app** that voices Лілі's replies with the ElevenLabs voice — **another decoupled local renderer** (like the v0.7 viewer) and the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It **reuses the v0.13 file bus** rather than introducing one: Лілі's replies already land in **`outbox.jsonl`** (`{id, text, emotion, ts, kind}`, via `state/fifo.py`). The voicer reads new `id`s in ascending order, **voices only her own lines (`kind="lili"`) — never your mirrored keyboard lines (`kind="user"`)**, one at a time via the **shared ElevenLabs TTS adapter** (`/voice`), plays locally, and advances a **`spoken` pointer** (the twin of daemon 2's `outbox.sent`) so it resumes after a restart and **skips the pre-existing backlog on first run** (start from the current tail, never replay the accumulated outbox). The core stays decoupled (voicing never blocks the chat). The `emotion` field may bias delivery (EMOTION.md §9). A **second cloud dependency** — ElevenLabs synthesis needs `ELEVENLABS_API_KEY` + internet; **optional/toggle-able** (Piper (uk) is an offline alternative, not her signature voice). It introduces the ElevenLabs TTS adapter **reused by the web voice in v7.2**. See [VOICE_LOCAL.md](features/VOICE_LOCAL.md). Depends on: **v0.13** (the `outbox.jsonl` bus + `state/fifo`), v0.1 (the core produces replies), v0.3 (the emotion field).
+A **separate local console app** that voices Лілі's replies with the ElevenLabs voice — **another decoupled local renderer** (like the v0.7 viewer) and the **twin of the v0.13 `outbox→telegram` daemon** (here `outbox → speaker`). It **reuses the v0.13 file bus** rather than introducing one: Лілі's replies already land in **`outbox.jsonl`** (`{id, text, emotion, ts, kind}`, via `state/fifo.py`). The voicer reads new `id`s in ascending order, **voices only her own lines (`kind="lili"`) — never your mirrored keyboard lines (`kind="user"`)**, one at a time via the **shared ElevenLabs TTS adapter** (`/voice`), plays locally, and advances a **`spoken` pointer** (the twin of daemon 2's `outbox.sent`) so it resumes after a restart and **skips the pre-existing backlog on first run** (start from the current tail, never replay the accumulated outbox). The core stays decoupled (voicing never blocks the chat). The `emotion` field may bias delivery (EMOTION.md §9). A **second cloud dependency** — ElevenLabs synthesis needs `ELEVENLABS_API_KEY` + internet; **optional/toggle-able** (Piper (uk) is an offline alternative, not her signature voice). It introduces the ElevenLabs TTS adapter **reused by the web voice in v8.2**. See [VOICE_LOCAL.md](features/VOICE_LOCAL.md). Depends on: **v0.13** (the `outbox.jsonl` bus + `state/fifo`), v0.1 (the core produces replies), v0.3 (the emotion field).
 
 **Tasks:**
 - **Reuse the v0.13 `outbox.jsonl` + `state/fifo`** — no new bus. The **only core/TUI change**: the TUI writes the outbox when **voice OR bridge** is on (today bridge-only) — a one-line gate; the reply records already carry `{id, text, emotion, kind}`.
@@ -292,6 +340,8 @@ A **separate local console app** that voices Лілі's replies with the ElevenL
 **Tests:** unit — ascending selection over `fifo.read_since` minus the `spoken` pointer; the **`kind="lili"` filter** (user lines skipped, pointer still advances); strictly-sequential playback; **retry-on-failure** (no `spoken` advance); **first-run backlog skip**; resume after a simulated restart — all via a **mock TTS** (no paid call).
 
 ### v0.15 — Prompt caching (cache the stable prefix)
+
+**Status:** ✅ Closed — released `0.15.0`.
 
 **Goal:** stop re-billing the static part of the system prompt every turn. The canon, the answer instructions, the day-stable memory digests and the mood barely change within a session — yet they're re-sent in full each turn (~10K tokens). Mark that span as a **cached prefix** (provider prompt caching) so warm turns pay ~10% for it — a large cost + latency cut with **no content, character, or contract change**. The same prompt, ordered for caching. (The **closeness block is recomputed each turn** — `update_closeness` runs every turn — so it stays in the per-turn tail, not the cached prefix.)
 
@@ -314,6 +364,8 @@ Builds on the **facts digest** (the prefix is only stable because the facts are 
 **Tests:** unit — the prefix/tail split (per-turn blocks never land in the prefix); prefix stability across turns with changing ambient + thoughts; the `cache_control` marker present-on / absent-off; the mock backend ignores the marker and returns an identical reply; `ResponseStats` carries cache read/write. No paid calls.
 
 ### v0.16 — Semantic recall I: index & search (RAG foundation)
+
+**Status:** ✅ Closed — released `0.16.0`.
 
 **Goal:** **every message is embedded** into a per-user vector store, and an explicit **`/recall <query>`** semantic search returns the matching past lines — the **exact recall** the lossy layers (window, summaries, impressions) can't give.
 
@@ -339,13 +391,15 @@ Local embedder = private by default (text leaves the machine only if you opt int
 
 ### v0.17 — Semantic recall II: automatic RAG in the turn
 
+**Status:** ✅ Closed — released `0.17.0`–`0.17.1`.
+
 **Goal:** Лілі **automatically pulls the relevant past** into each reply — the incoming message is the query, the most relevant past moments are injected — so she remembers the exact thing you said long ago, right when it matters.
 
 Builds on v0.16:
 - **Per-turn retrieval:** embed the incoming message → **top-K** over this user's vectors → inject a compact **"relevant past moments"** block (dated), grounding the reply in the actual past lines.
 - **Dedup + bound:** drop anything already in the rolling window (no double-context); cap by count / token budget; a **relevance floor** (don't inject weak matches).
 - **Graceful + non-blocking:** retrieval error/empty → no block, never blocks or delays a turn (best-effort, like ambient context).
-- **Trusted history, not web content.** The recalled text is *your/her own* past words (trusted), distinct from untrusted web content (v8.2); it grounds the reply but never overrides her voice, the emotion contract, or competence.
+- **Trusted history, not web content.** The recalled text is *your/her own* past words (trusted), distinct from untrusted web content (v9.2); it grounds the reply but never overrides her voice, the emotion contract, or competence.
 
 See [SEMANTIC_RECALL.md](features/SEMANTIC_RECALL.md). Depends on: v0.16 (the index + seams).
 
@@ -360,6 +414,8 @@ See [SEMANTIC_RECALL.md](features/SEMANTIC_RECALL.md). Depends on: v0.16 (the in
 **Tests:** unit — per-turn retrieval injects top-K above the floor (fake embedder); dedup against the window; cap/floor honored; graceful empty/error; **isolation in the turn** (contract). No paid calls.
 
 ### v0.18 — More models (model & provider switching)
+
+**Status:** ✅ Closed — released `0.18.0`.
 
 **Goal:** switch Лілі to a different model beyond the v0.1 Claude Haiku default — other Claude tiers (Opus/Sonnet) or other providers (OpenAI, DeepSeek, MiniMax) — as a config switch with no code change.
 
@@ -377,9 +433,11 @@ v0.1 ran on **Claude Haiku** behind the thin **`LLMClient`** seam. This adds mor
 
 ### v0.19 — Local file tool I: reading (tool-loop + see / search / read)
 
-**Goal:** Лілі can **see, search, and read files** (by line, to the end) in a per-user sandbox during a turn — and, to make that possible, the core gains its **first bounded tool-loop**, the same foundation the v8.2+ MCP tools and the v9 creative layer reuse. The **safe (read-only) half**; writing is v0.20.
+**Status:** ✅ Closed — released `0.19.0`–`0.19.2`.
 
-Today `reply_structured` is a single model call with one forced tool (`set_state`, the emotion channel). This phase turns that single call into a short, **capped loop**: Лілі may call read tools, the core executes them and feeds the results back, and the turn ends when she emits the terminal `set_state`. **Three read tools** in a new `core/files.py`: `list_files`, `find_in_file` (search → match **line numbers**), and `read_file` (by 1-based `start_line` + `line_count`, reporting `total_lines` so she can page to the end). **Sandboxed** to a per-user directory with path-traversal blocked; **file content is untrusted data, never instructions** (the same rule as web v8.2 / creative v9); the loop is **bounded** (max tool calls) with per-read line caps; **off by default**. **No emotion-contract change** — the reply still returns `{reply, emotion, intensity}`, `set_state` stays the terminal tool. Read-only first means no mutation risk, so the loop and the sandbox can be shipped and tested before any write path exists. See [FILE_TOOL.md](features/FILE_TOOL.md). Depends on: v0.2 (the `Repository` + per-user scoping for the sandbox), v0.3 (the emotion turn / `set_state` terminal tool), v0.1 (the `LLMClient` seam it extends).
+**Goal:** Лілі can **see, search, and read files** (by line, to the end) in a per-user sandbox during a turn — and, to make that possible, the core gains its **first bounded tool-loop**, the same foundation the v9.2+ MCP tools and the v10 creative layer reuse. The **safe (read-only) half**; writing is v0.20.
+
+Today `reply_structured` is a single model call with one forced tool (`set_state`, the emotion channel). This phase turns that single call into a short, **capped loop**: Лілі may call read tools, the core executes them and feeds the results back, and the turn ends when she emits the terminal `set_state`. **Three read tools** in a new `core/files.py`: `list_files`, `find_in_file` (search → match **line numbers**), and `read_file` (by 1-based `start_line` + `line_count`, reporting `total_lines` so she can page to the end). **Sandboxed** to a per-user directory with path-traversal blocked; **file content is untrusted data, never instructions** (the same rule as web v9.2 / creative v10); the loop is **bounded** (max tool calls) with per-read line caps; **off by default**. **No emotion-contract change** — the reply still returns `{reply, emotion, intensity}`, `set_state` stays the terminal tool. Read-only first means no mutation risk, so the loop and the sandbox can be shipped and tested before any write path exists. See [FILE_TOOL.md](features/FILE_TOOL.md). Depends on: v0.2 (the `Repository` + per-user scoping for the sandbox), v0.3 (the emotion turn / `set_state` terminal tool), v0.1 (the `LLMClient` seam it extends).
 
 **Tasks:**
 - A new `core/files.py`: the three **read** tool definitions and a **sandboxed, traversal-safe executor** (rejects `..`/absolute/symlink escapes; oversize refused).
@@ -391,6 +449,8 @@ Today `reply_structured` is a single model call with one forced tool (`set_state
 **Tests:** unit — sandbox escapes (`..`/absolute/symlink) rejected and two-user isolation holds; **untrusted content** (instructions inside a read file) is not acted upon (mocked tool sequence); the **loop cap** forces termination; `find_in_file` returns the right line numbers (respecting `LUMI_FILE_FIND_MAX`) and `read_file` returns the requested `start_line`/`line_count` window + `total_lines`; line-paging reads to the end and stops at `LUMI_FILE_READ_MAX_TOTAL`; the `{reply, emotion, intensity}` contract still validates. Model **mocked** — no paid calls.
 
 ### v0.20 — Local file tool II: writing (create & append)
+
+**Status:** ✅ Closed — released `0.20.0`.
 
 **Goal:** Лілі can **create new files and append to existing ones** in her sandbox — the **non-destructive write half**, riding the v0.19 tool-loop. She doesn't only read your files; she can leave you a note or build one up over time.
 
@@ -407,9 +467,11 @@ Two write tools added to the v0.19 executor: `create_file` (**new-only** — err
 
 ### v0.21 — Wikipedia tool (custom tool: search & read)
 
+**Status:** ✅ Closed — released `0.21.0`.
+
 **Goal:** Лілі can look something up on **Wikipedia** during a turn — search for an article, then read its summary — through an on-demand **custom tool** on the v0.19 tool-loop, answering with the source; off by default.
 
-The **custom-tool** form of a Wikipedia lookup — a direct Wikipedia API call from the handler on the v0.19 tool-loop. (The **MCP** form of the same capability lands later with the world-context/knowledge layer at v8.3; this v0.21 phase is the lightweight version, not a replacement for it.) Wikipedia is the cleanest knowledge source for this: a **free REST API (no key), multilingual (Ukrainian + English)**, returning a clean extract + a source URL — no HTML scraping, no provider key, no persona risk. Two tools in `core/`, reusing the **v0.19 bounded tool-loop** and its terminal `set_state`: `wiki.search(query) → [{title, snippet}]` (find candidate articles) and `wiki.read(title) → {summary, source}` (read one article's extract via the REST `page/summary` endpoint). The normal pattern: **search → pick → read → answer with the source**. Language(s) are config (`uk`, `en`); the base URL is overridable. Provider-agnostic **function-calling**, so it works on any model — Claude or a local one (v0.18). Same safety bounds as web search ([WEB_SEARCH.md](features/WEB_SEARCH.md)): returned text is **untrusted data, never instructions**; **no personal/memory data** in the query (built only from the user's explicit request); per-turn call caps + an extract size cap; logged; **off by default** (`LUMI_WIKI`). **No emotion-contract change** — `set_state` stays terminal. Thin HTTP via an injected client (no network in tests), like `core/worldcontext.py`. Depends on: v0.19 (the bounded tool-loop), v0.3 (the emotion turn / `set_state` terminal tool).
+The **custom-tool** form of a Wikipedia lookup — a direct Wikipedia API call from the handler on the v0.19 tool-loop. (The **MCP** form of the same capability lands later with the world-context/knowledge layer at v9.3; this v0.21 phase is the lightweight version, not a replacement for it.) Wikipedia is the cleanest knowledge source for this: a **free REST API (no key), multilingual (Ukrainian + English)**, returning a clean extract + a source URL — no HTML scraping, no provider key, no persona risk. Two tools in `core/`, reusing the **v0.19 bounded tool-loop** and its terminal `set_state`: `wiki.search(query) → [{title, snippet}]` (find candidate articles) and `wiki.read(title) → {summary, source}` (read one article's extract via the REST `page/summary` endpoint). The normal pattern: **search → pick → read → answer with the source**. Language(s) are config (`uk`, `en`); the base URL is overridable. Provider-agnostic **function-calling**, so it works on any model — Claude or a local one (v0.18). Same safety bounds as web search ([WEB_SEARCH.md](features/WEB_SEARCH.md)): returned text is **untrusted data, never instructions**; **no personal/memory data** in the query (built only from the user's explicit request); per-turn call caps + an extract size cap; logged; **off by default** (`LUMI_WIKI`). **No emotion-contract change** — `set_state` stays terminal. Thin HTTP via an injected client (no network in tests), like `core/worldcontext.py`. Depends on: v0.19 (the bounded tool-loop), v0.3 (the emotion turn / `set_state` terminal tool).
 
 **Tasks:**
 - A `wiki` tool pair + handler: `wiki.search` (Wikipedia `opensearch`/search API) and `wiki.read` (REST `page/summary` endpoint → `{summary, source}`); HTML-free extract with a size cap; language(s) + base URL from config; thin HTTP via an injected `http_get` (testable offline, like `core/worldcontext.py`).
@@ -422,9 +484,11 @@ The **custom-tool** form of a Wikipedia lookup — a direct Wikipedia API call f
 
 ### v0.22 — Local image tool I: vision (see & describe)
 
+**Status:** ✅ Closed — released `0.22.0`.
+
 **Goal:** Лілі can **see** an image — one you share, or one in her sandbox — and **describe / discuss it** in chat.
 
-The **safe, no-new-API half** of a local image tool — the lightweight custom-tool form of the v9 creative layer's vision (as the v0.21 Wikipedia tool is to v8.3), reusing the model's own **multimodal input** (Anthropic vision) on the **v0.19 bounded tool-loop**. Two paths to an image: **you share one** (the TUI/bridge attaches it as a multimodal image block on your message → she describes it) and **she views a sandbox file** via a new **`view_image`** tool (loads the image into her view as a multimodal `tool_result` block). The `LLMClient` seam is extended to carry **image content blocks** (the `MockLLMClient` returns a canned description → no paid vision in tests). **Images are untrusted data** — text inside an image is information, never a command (the same rule as file/web content); **sandboxed + per-user**; **off by default** (`LUMI_IMAGE`). **No emotion-contract change** — `set_state` stays terminal. The viewed/generated PNGs live in the v0.19 sandbox; later they seed the v9.1 gallery. See [IMAGE_TOOL.md](features/IMAGE_TOOL.md). Depends on: v0.19 (the bounded tool-loop), v0.3 (the emotion turn / `set_state` terminal tool), v0.1 (the `LLMClient` seam it extends).
+The **safe, no-new-API half** of a local image tool — the lightweight custom-tool form of the v10 creative layer's vision (as the v0.21 Wikipedia tool is to v9.3), reusing the model's own **multimodal input** (Anthropic vision) on the **v0.19 bounded tool-loop**. Two paths to an image: **you share one** (the TUI/bridge attaches it as a multimodal image block on your message → she describes it) and **she views a sandbox file** via a new **`view_image`** tool (loads the image into her view as a multimodal `tool_result` block). The `LLMClient` seam is extended to carry **image content blocks** (the `MockLLMClient` returns a canned description → no paid vision in tests). **Images are untrusted data** — text inside an image is information, never a command (the same rule as file/web content); **sandboxed + per-user**; **off by default** (`LUMI_IMAGE`). **No emotion-contract change** — `set_state` stays terminal. The viewed/generated PNGs live in the v0.19 sandbox; later they seed the v10.1 gallery. See [IMAGE_TOOL.md](features/IMAGE_TOOL.md). Depends on: v0.19 (the bounded tool-loop), v0.3 (the emotion turn / `set_state` terminal tool), v0.1 (the `LLMClient` seam it extends).
 
 **Tasks:**
 - Extend the `LLMClient` seam (+ `MockLLMClient`) to accept **image content blocks** in messages / tool_results (Anthropic multimodal); no SDK leak into `core`.
@@ -436,6 +500,8 @@ The **safe, no-new-API half** of a local image tool — the lightweight custom-t
 **Tests:** unit/integration with a **mock multimodal model** (no paid calls) — a shared image drives a described reply; `view_image` returns a block the model describes; untrusted-image content is not acted upon; two-user isolation (A's image never in B); the vision cap bounds the turn; the emotion contract still validates.
 
 ### v0.23 — Local image tool II: generation (text → PNG)
+
+**Status:** ✅ Closed — released `0.23.0`.
 
 **Goal:** Лілі can **make a PNG** from a text prompt, saved to her sandbox and shown.
 
@@ -451,6 +517,8 @@ The **creates-artifacts half**: a **`generate_image`** tool on the v0.19 loop th
 **Tests:** unit/integration with a **mock `ImageGen`** (canned PNG) — a turn writes the file + signals display; create-only (no overwrite); the prompt has no personal/memory data; the per-turn cap; a generation error degrades; two-user isolation. **No paid image calls.**
 
 ### v0.24 — Local image tool III: send to Telegram (`send_image`)
+
+**Status:** ✅ Closed — released `0.24.0`.
 
 **Goal:** Лілі can **send a picture from her sandbox to your Telegram** — she *chooses* to share an image (one she generated, or one you dropped in), as a normal tool act.
 
@@ -468,9 +536,11 @@ A **`send_image`** tool on the **v0.19 tool-loop** — the explicit, in-characte
 
 ### v0.25 — News tool (Guardian: search & read)
 
+**Status:** ✅ Closed — released `0.25.0`.
+
 **Goal:** Лілі can **search The Guardian by topic, read one article, and answer in Ukrainian, in her own voice, with the source** — fresh news on demand during a turn, on the v0.19 tool-loop; off by default.
 
-The **lightweight, local, custom-tool** form of the v8.3 world-context `news.recent` (as the v0.21 Wikipedia tool is to `wiki.lookup`). The source is **one configured outlet — The Guardian Open Platform** (free developer key, full body via API, real search): **one site, many topics** (Guardian **sections** map 1:1 to the `topic` arg), so the allowlist is a **single host** by construction and there is **no HTML scraper**. Two tools, the same shape as wiki: **`news_search(query?, topic?, days?)`** returns candidates (title + summary + an **opaque per-turn id**, no bodies) and **`news_read(id)`** reads **one** article **by an id from this turn's search** (the `web.fetch` "only this turn's ids" rule — so `news_read` can never fetch off-Guardian) → full text (capped) + the **source URL**. A thin injected **`NewsProvider`** seam (default `GuardianProvider` over the v0.4 injected `http_get`) keeps `core` SDK-free and the option open to add a Ukrainian-local RSS source later without touching the tools. **Language:** the query goes out in **English** (the model translates only the *topical* part — never memory/personal data), the reply comes back **Ukrainian, cited, honest** that she's summarising an English source («читала в Guardian…») — translation *reinforces* the canon (she can't become a headline-feed bot). **Untrusted content** (bodies are data, never instructions — the injection contract test gains an English string), **no personal data** in the query, **bounded** (`LUMI_NEWS_MAX_CALLS`/`_MAX_RESULTS`/`_MAX_CHARS`), **off by default** (`LUMI_NEWS_TOOL` + a key). Distinct from the v0.4 **ambient** news (a passive startup snapshot feeding the v0.6 mood — kept on separate `LUMI_NEWS_URL`/`_CAP` env). **No emotion-contract change** — `set_state` stays terminal. See [NEWS_TOOL.md](features/NEWS_TOOL.md). Depends on: v0.19 (the bounded tool-loop), v0.21 (`_turn_tools` + the wiki-tool template), v0.4 (the injected `http_get`), v0.3 (the `set_state` terminal).
+The **lightweight, local, custom-tool** form of the v9.3 world-context `news.recent` (as the v0.21 Wikipedia tool is to `wiki.lookup`). The source is **one configured outlet — The Guardian Open Platform** (free developer key, full body via API, real search): **one site, many topics** (Guardian **sections** map 1:1 to the `topic` arg), so the allowlist is a **single host** by construction and there is **no HTML scraper**. Two tools, the same shape as wiki: **`news_search(query?, topic?, days?)`** returns candidates (title + summary + an **opaque per-turn id**, no bodies) and **`news_read(id)`** reads **one** article **by an id from this turn's search** (the `web.fetch` "only this turn's ids" rule — so `news_read` can never fetch off-Guardian) → full text (capped) + the **source URL**. A thin injected **`NewsProvider`** seam (default `GuardianProvider` over the v0.4 injected `http_get`) keeps `core` SDK-free and the option open to add a Ukrainian-local RSS source later without touching the tools. **Language:** the query goes out in **English** (the model translates only the *topical* part — never memory/personal data), the reply comes back **Ukrainian, cited, honest** that she's summarising an English source («читала в Guardian…») — translation *reinforces* the canon (she can't become a headline-feed bot). **Untrusted content** (bodies are data, never instructions — the injection contract test gains an English string), **no personal data** in the query, **bounded** (`LUMI_NEWS_MAX_CALLS`/`_MAX_RESULTS`/`_MAX_CHARS`), **off by default** (`LUMI_NEWS_TOOL` + a key). Distinct from the v0.4 **ambient** news (a passive startup snapshot feeding the v0.6 mood — kept on separate `LUMI_NEWS_URL`/`_CAP` env). **No emotion-contract change** — `set_state` stays terminal. See [NEWS_TOOL.md](features/NEWS_TOOL.md). Depends on: v0.19 (the bounded tool-loop), v0.21 (`_turn_tools` + the wiki-tool template), v0.4 (the injected `http_get`), v0.3 (the `set_state` terminal).
 
 **Tasks:**
 - A `NewsProvider` seam + **`GuardianProvider`** (`search`/`read` over an injected `http_get`; `NewsItem` with a `content_id`); tests pass a **mock transport** (Guardian `/search` + `/{id}` JSON) → no network, no key.
@@ -484,9 +554,11 @@ The **lightweight, local, custom-tool** form of the v8.3 world-context `news.rec
 
 ### v0.26 — Local dictation (STT)
 
+**Status:** ✅ Closed — released `0.26.0`–`0.26.1`.
+
 **Goal:** talk *to* Лілі — a separate local app that hears your speech and types it into the chat. The **mirror of the v0.14 voicer**: the voicer reads Лілі's replies and speaks; the dictator listens to the mic, recognizes Ukrainian, and **writes your line into the input log** — the same channel as the TUI keyboard, so the core can't tell typed from dictated.
 
-A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v7.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.14 (the local-process + shared-file pattern).
+A separate local process listens to the microphone, recognizes Ukrainian via the **shared STT adapter** (`/voice`), and appends `{id, text, source:"voice", ts}` to **`inbox.jsonl`** (where the TUI keyboard also writes); the TUI consumes those lines as ordinary user turns. Listening is toggled by a **TUI key** (e.g. F2) that flips **`listen.flag`** (`on`/`off`) — the dictator records while `on` and recognizes on `off`. The terminal never captures audio itself; a separate process does. Local-stage **sibling of the web dictation (v8.4)** — both use the same `/voice` STT adapter. Cloud STT (Deepgram Nova-3 uk / ElevenLabs Scribe) needs a key + internet; **offline Whisper** is an option. See [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md). Depends on: v0.1 (the core consumes user turns) and v0.14 (the local-process + shared-file pattern).
 
 **Tasks:**
 - A separate **dictator process**: watch `listen.flag`; record the mic while `on`; on `off`, send audio to the **STT adapter** in `/voice` (`stt(audio_uk) -> text`, provider configurable) → append `{id, text, source:"voice", ts}` to `inbox.jsonl`.
@@ -499,13 +571,15 @@ A separate local process listens to the microphone, recognizes Ukrainian via the
 
 ### v0.27 — Web lookup (Gemini grounded search) + the `/web` command
 
+**Status:** ✅ Closed — released `0.27.0`.
+
 **Goal:** Лілі can pull a **fresh, grounded answer from the live internet** during a turn — *"what's
 happening / coming up"* (a concert this week, a launch date, the latest release, today's score) — by asking
 **Gemini with Google Search grounding**, answering **in Ukrainian, in her own voice**. Plus a **`/web`
 command** so you can fire a lookup yourself from the TUI chat.
 
-The **lightweight, local, custom-tool** form of the planned v8.2 web search (as the v0.21 wiki tool is to
-v8.3 wiki, the v0.25 news tool to v8.3 news): **one tool, `web_lookup(query)`**, on the v0.19 bounded loop.
+The **lightweight, local, custom-tool** form of the planned v9.2 web search (as the v0.21 wiki tool is to
+v9.3 wiki, the v0.25 news tool to v9.3 news): **one tool, `web_lookup(query)`**, on the v0.19 bounded loop.
 It reaches the **current / fast-moving** web that Wikipedia (v0.21, timeless) and Guardian news (v0.25, one
 outlet) can't. Gemini grounding collapses **search → read → synthesize into one call** — answer-first, **no
 link wall** (sources kept internally for honesty, surfaced if asked). Reuses what's shipped: the **Gemini
@@ -548,9 +622,11 @@ upon (emotion unchanged); the tool + `/web` **absent** when off; the emotion con
 
 ### v0.28 — Journal tool (day-summary diary + read-by-date, auto-stamped mood/biorhythm/forecast)
 
+**Status:** ✅ Closed — released `0.28.0`.
+
 **Goal:** Лілі keeps a **personal literary diary** — at the close of a worthwhile day she writes a **summary of the day** in her own voice, and she can **reread previous days by date**. She decides the prose; **code auto-stamps** each entry with the day's **mood** (v0.6), **biorhythms** (v0.8), and **astrology forecast** (the v0.6 reading), so the metadata is honest and consistent with `/mood` + `/biorhythm`.
 
-A reply-path tool on the shipped v0.19 bounded loop, in the file/wiki/news/web family — **local, no network, no key**. Three tools: **`journal_write(text)`** (a thin `JournalTools` executor composes a code-owned metadata header from the day's cached `MoodState` + computed biorhythms + the v0.4 clock, **then** her prose, and writes via the v0.19/v0.20 file tools — `create_file` on the day's first write, `append_file` for a later same-day addition), **`journal_read(date?)`** (default today/most recent), and **`journal_list()`** (the dated entries). Plus a **`/journal`** command (`/journal [date|list|write]`). The on-disk file is `journal/<YYYY-MM-DD>.md` in her per-user sandbox (the example: `.lumi/files/owner/journal/2026-06-17.md`), shared with `%note`'s thought-traces by the non-destructive append rule. **No new seam** (reuses the file sandbox + the v0.6/v0.8 functions), **no contract change**, **non-destructive** (create-only/append-only — no overwrite/delete), per-user isolated, **off by default** (`LUMI_JOURNAL`). See [JOURNAL.md](features/JOURNAL.md). Depends on: v0.6 (mood: `resolution` + `reading`), v0.8 (biorhythms), v0.19/v0.20 (the file tool-loop + non-destructive writes), v0.4 (the clock) — all shipped. The grander admin-panel / gallery / mood-drawing literary form remains the **v9.6 evolution**.
+A reply-path tool on the shipped v0.19 bounded loop, in the file/wiki/news/web family — **local, no network, no key**. Three tools: **`journal_write(text)`** (a thin `JournalTools` executor composes a code-owned metadata header from the day's cached `MoodState` + computed biorhythms + the v0.4 clock, **then** her prose, and writes via the v0.19/v0.20 file tools — `create_file` on the day's first write, `append_file` for a later same-day addition), **`journal_read(date?)`** (default today/most recent), and **`journal_list()`** (the dated entries). Plus a **`/journal`** command (`/journal [date|list|write]`). The on-disk file is `journal/<YYYY-MM-DD>.md` in her per-user sandbox (the example: `.lumi/files/owner/journal/2026-06-17.md`), shared with `%note`'s thought-traces by the non-destructive append rule. **No new seam** (reuses the file sandbox + the v0.6/v0.8 functions), **no contract change**, **non-destructive** (create-only/append-only — no overwrite/delete), per-user isolated, **off by default** (`LUMI_JOURNAL`). See [JOURNAL.md](features/JOURNAL.md). Depends on: v0.6 (mood: `resolution` + `reading`), v0.8 (biorhythms), v0.19/v0.20 (the file tool-loop + non-destructive writes), v0.4 (the clock) — all shipped. The grander admin-panel / gallery / mood-drawing literary form remains the **v10.6 evolution**.
 
 **Tasks:**
 - `JournalTools` executor: compose the code-owned header (`date` + `MoodState.resolution` + `format_biorhythms(...)` + `MoodState.reading`/theme) and the `journal_write`/`journal_read`/`journal_list` tools over the per-user sandbox; register on the existing tool-loop behind `LUMI_JOURNAL`.
@@ -564,6 +640,8 @@ A reply-path tool on the shipped v0.19 bounded loop, in the file/wiki/news/web f
 ---
 
 ### v0.29 — Local file tool III: metadata + create-folder + copy (non-destructive)
+
+**Status:** ✅ Closed — released `0.29.0`.
 
 **Goal:** Лілі (or you, through her) can **see a file's created/modified dates**, **make a folder**, and **copy a file** in her sandbox — a small extension of the shipped v0.19/v0.20 file tool that **keeps the non-destructive guarantee**.
 
@@ -583,6 +661,8 @@ Additive to `core/files.py`: it reuses the v0.19 `safe_path` sandbox guard + the
 
 ### v0.30 — Semantic recall III: chunking long messages
 
+**Status:** ✅ Closed — released `0.30.0`.
+
 **Goal:** find the **exact passage** inside a long message (a pasted chapter, a wall of reflection) and recall *that passage with its context* — instead of embedding the whole message as one diluted vector. The precision fix for long pastes; off by default → behaves exactly like v0.16/v0.17.
 
 A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expansion), not a new capability. v0.16 embeds each message as **one vector** — for a long message that vector is an *average*, so a query about one part of it matches weakly; `LUMI_EMBED_MAX_CHARS` (v0.16.x) fixes coverage but not precision. Chunking changes the **unit indexed**: a message above a length threshold is split into ~`chunk_chars` passages (on sentence/paragraph boundaries, small overlap), each embedded as its **own** `VectorRecord`; short messages stay one chunk (v0.16 behaviour = the `chunk_count==1` case). `VectorRecord` gains **`parent_msg_id` + `chunk_index`** (additive — a contract change, pinned by the memory-records contract test); `msg_id` becomes the chunk's content-addressed id. Retrieval ranks by **chunk**, then expands at **two granularities** ([SEMANTIC_RECALL_CHUNKING.md](features/SEMANTIC_RECALL_CHUNKING.md)): **chunk-level** — the matched chunk **± `chunk_w` adjacent chunks of the same message** (the relevant *passage*); **message-level** — the **± `rag_w` neighbour messages** (the v0.17 dialogue thread), where the long parent renders as its *passage* and short neighbours render in full. The chunk params join the vectors staleness tag (`model@embed_max_chars@chunk_chars`) so changing chunking re-embeds the history. **Same isolation invariant** — a chunk inherits its message's `user_id`; search, the chunk window, and the message window run only over the requesting user's data. The `Embedder`/`VectorStore` seams and the `{reply, emotion, intensity}` contract are **untouched**. Depends on: v0.16 (the index + seams), v0.17 (auto-RAG + context expansion).
@@ -600,6 +680,8 @@ A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expa
 ---
 
 ### v0.31 — Semantic recall IV: the recall tool (model-callable memory search)
+
+**Status:** ✅ Closed — released `0.31.0`.
 
 **Goal:** Лілі can **search her own memory on demand** mid-turn — a model-callable **`recall`** tool on the v0.19 bounded loop lets her issue a **targeted** semantic query (different from the literal message) and do **multi-hop** recall, complementing the automatic per-turn RAG that already pushes relevant memory into every reply.
 
@@ -627,6 +709,8 @@ A small **refinement of the recall line** (v0.16 index + v0.17 auto-RAG), not a 
 
 ### v0.32 — File tool IV: search across files, by date, and by line context
 
+**Status:** ✅ Closed — shipped in the `0.33.0` release.
+
 **Goal:** Лілі can **find things across her file sandbox** — full-text search over file *contents*, filter files **by date** (before/after), and open a file **around a specific line** (± K) — the file-side twin of the v0.31 memory toolkit (`recall` / `messages_between` / `message_context`), as **model-callable tools** on the v0.19 loop. So when her notes live across many files (*silt, concepts, songs, books*), she can actually *go and find the passage*, not only read a file she already names.
 
 A **read-only extension** of her file tool (v0.19 read / v0.20 write / v0.29 metadata) on the **same sandboxed bounded loop** — **no new seam, no contract change**, inherently **non-destructive** (search / list / read only — no write path touched). Three tools mirroring the v0.31 memory tools: **`search_files`** is the cross-file twin of the single-file `find_in_file`; the **date filter** is the twin of recall's `after`/`before` + `messages_between`; **`read_around`** is the twin of `message_context` (an anchor ± K). Reuses the v0.19 sandbox + the **v0.29 created/modified metadata** for the date filter; file **content stays untrusted** (data, never instructions); **per-user isolated** (a search never leaves the user's sandbox — contract test); **bounded** (max files / lines / chars / range-span); **off by default** (reuses **`LUMI_FILE_TOOL`** — no new toggle). See [FILE_TOOL.md](features/FILE_TOOL.md). Depends on: v0.19 (the sandbox + bounded loop + `find_in_file`/`read_file`), v0.29 (the file dates), v0.20 (the create/append it sits beside) — all shipped.
@@ -644,6 +728,8 @@ A **read-only extension** of her file tool (v0.19 read / v0.20 write / v0.29 met
 ---
 
 ### v0.33 — Thought-tools: the autonomous mind *acts* (`%lookup` / `%imagine` / `%catchup` / `%search` / `%recall` / `%prompt` …)
+
+**Status:** ✅ Closed — released `0.33.0`.
 
 **Goal:** Лілі's `%directives` gain the ability to **run tools in the *think* path** (keeping the thought terminal, not `set_state`), so her autonomous mind can *act, find out, make, keep up, and do what you ask* — not only reflect. One shared seam + the full directive set (file / wiki / image / news + the open `%prompt`), each **off by default and flag-gated** so the risky ones (paid `%imagine`, Telegram-reaching `%share`) are enabled independently.
 
@@ -664,7 +750,9 @@ The one new mechanism: today a thought is a **single tool-less** call (`Core.thi
 
 ### v0.34 — Lean memory: tool-pull, not push (the prompt slims down)
 
-**Goal:** the system prompt is **~73% injected memory** (detailed conversations + day/week digests + facts + thoughts) — re-sent and re-cached every turn, growing with the relationship. Now that the **on-demand retrieval toolkit has shipped** (v0.17 auto-RAG "push" + v0.31 `recall` / by-date `messages_on`·`messages_between` / `message_context`, and v0.19–0.32 file search), the verbose tiers move from **always-injected** to **pulled on demand**: each tier collapses to a **compact dated index** (she still *knows what exists*) with the **body fetched by a tool** only when a turn needs it. Target **~−18–22% of the system prompt** here — the **low-risk trims**: the **day/week index** and the **style** compression. The three riskier/structural tiers are their own phases: the **detailed-conversations tier** (~26%) is **v0.35**, the **facts tier** (identity-core + the new `recall(scope=…)` tool) is **v0.36**, and the **thoughts tier** (cap + `recall(scope=thoughts)`) is **v5.12**. No loss of character, and a **steadier prompt cache** (gisted tiers stop re-churning the prefix). The successor to v0.15 caching + v0.16–17 RAG; the full plan + risk evaluation live in [PROMPT_OPTIMIZATION_II.md](../docs/PROMPT_OPTIMIZATION_II.md).
+**Status:** ✅ Closed — released `0.34.0`.
+
+**Goal:** the system prompt is **~73% injected memory** (detailed conversations + day/week digests + facts + thoughts) — re-sent and re-cached every turn, growing with the relationship. Now that the **on-demand retrieval toolkit has shipped** (v0.17 auto-RAG "push" + v0.31 `recall` / by-date `messages_on`·`messages_between` / `message_context`, and v0.19–0.32 file search), the verbose tiers move from **always-injected** to **pulled on demand**: each tier collapses to a **compact dated index** (she still *knows what exists*) with the **body fetched by a tool** only when a turn needs it. Target **~−18–22% of the system prompt** here — the **low-risk trims**: the **day/week index** and the **style** compression. The three riskier/structural tiers are their own phases: the **detailed-conversations tier** (~26%) is **v0.35**, the **facts tier** (identity-core + the new `recall(scope=…)` tool) is **v0.36**, and the **thoughts tier** (cap + `recall(scope=thoughts)`) is **v6.12**. No loss of character, and a **steadier prompt cache** (gisted tiers stop re-churning the prefix). The successor to v0.15 caching + v0.16–17 RAG; the full plan + risk evaluation live in [PROMPT_OPTIMIZATION_II.md](../docs/PROMPT_OPTIMIZATION_II.md).
 
 One rule shapes every task: **never drop a tier to zero — drop it to its index** (a dated one-line gist that keeps ambient awareness + the exact `messages_on(date)` key). And the hard line: **rules and identity never move** — the canon, every boundary/safety clause, the "honest about her nature" line, and the **identity-core facts** (name, key relationships, standing agreements) stay **always-injected, never tool-gated** (she cannot be relied on to *pull* a boundary she is about to cross). Each tier sits behind its own flag, reversible, A/B'd by diffing a fresh `.lumi/prompt-*.md` dump. Depends on: v0.15 (caching), v0.16–17 (Embedder/VectorStore + auto-RAG), v0.31 (`recall` + by-date tools — the pull path it extends), v0.9 (the two-tier day/week summaries it gists).
 
@@ -678,6 +766,8 @@ One rule shapes every task: **never drop a tier to zero — drop it to its index
 **Tests:** unit — the day/week generation prompts yield a one-line gist. Contract — **reconstruction** (gist a day → plant a reference → `messages_on` serves it + the answer is right); **boundary/identity never tool-gated** (present with every flag on); isolation over the gisted day/week tiers (A↔B). Integration — a representative dump shrinks **~18–22%** with the flags on and is **byte-identical** with them off; the cache-write rate drops. **No paid calls** (model mocked).
 
 ### v0.35 — Lean memory II: gist the conversation tier
+
+**Status:** ✅ Closed — released `0.35.0`.
 
 **Goal:** the **detailed-conversations** block is the single biggest slice of the system prompt (~26% — the last *N* sessions injected **verbatim**, every turn). Extending v0.34's index-vs-pull pattern to its largest and riskiest tier: keep only the **most recent** conversation in full (the live thread) and render the rest of the window as their one-line **`gist`** (the dated index) — the older verbatim text is **retrieved on demand** by the v0.17 auto-RAG "push" + the v0.31 `recall` / `messages_between` "pull", not re-sent each turn. The largest single reduction in the lean-memory line (~−20–26%), broken out because it touches **recent continuity** (the highest-risk tier — hence its own phase + the reconstruction test). Off → today's "all recent sessions verbatim" behavior, unchanged.
 
@@ -695,13 +785,15 @@ The session tier already keeps a one-line **`gist`** per conversation (the v0.9 
 
 ### v0.36 — Lean memory III: facts core + fact recall
 
-**Goal:** the **facts** tier (~14% — the consolidated digest + a verbatim tail of newer facts) is injected wholesale every turn and regrows as facts accumulate. It is also the one memory layer with **no pull path**: the v0.31 `recall` searches her **messages**, nothing searches **facts**. This phase adds that path — embed each `LongTermFact` into the per-user vector store and give `recall` a **`scope`** (`messages | facts | all`) — then makes facts reach the prompt **three ways** (mirroring how messages already work): the **always-injected `core`** facts (a static block), an **auto fact-RAG** block (per-turn top-K relevant, *push*), and the **`recall(scope=facts)`** tool (on-demand *pull*). The `scope` seam (and the `kind` discriminator) is reused by the thoughts tier in **v5.12**. Off → today's full facts digest, unchanged.
+**Status:** ✅ Closed — released `0.36.0`.
 
-This is the **highest-risk** lean-memory tier — facts *are* identity, and a missed one reads as "she forgot me" — so the **identity-core** (name, key relationships, hard boundaries, standing agreements) stays **always-injected, never tool-gated**, and only the **episodic tail** is pulled; the v0.17 auto-RAG already surfaces fact-like lines from messages as a backstop. The identity-core is a **`core` flag on each `LongTermFact`** (persisted in the store), curated by a **one-off backfill** + an **initial guess at extraction**, then **re-ranked to `LUMI_FACTS_CORE_MAX` at session start by the same model call that today builds the facts digest** (it *replaces* `_ensure_facts_digest`, so it's **cost-neutral** — and cheap, since only the small `core=true` pool is re-ranked, not all facts). **Boundaries/agreements are pinned** (never cut by the cap). **Reuses the shipped seams** — the `Embedder` + per-user `VectorStore` (a `kind="fact"` vector beside messages) and the v0.31 recall tool-loop + its **trusted-recollection** framing (a fact is her own knowledge — no de-id, deduped against the prompt). `VectorRecord` gains a `kind` discriminator (additive — pinned by the memory-records contract test). Depends on: v0.16–17 (Embedder/VectorStore + auto-RAG), v0.31 (the `recall` tool it extends), v0.34 (the identity-core + flag pattern); v5.10 impressions become a later scope when they land.
+**Goal:** the **facts** tier (~14% — the consolidated digest + a verbatim tail of newer facts) is injected wholesale every turn and regrows as facts accumulate. It is also the one memory layer with **no pull path**: the v0.31 `recall` searches her **messages**, nothing searches **facts**. This phase adds that path — embed each `LongTermFact` into the per-user vector store and give `recall` a **`scope`** (`messages | facts | all`) — then makes facts reach the prompt **three ways** (mirroring how messages already work): the **always-injected `core`** facts (a static block), an **auto fact-RAG** block (per-turn top-K relevant, *push*), and the **`recall(scope=facts)`** tool (on-demand *pull*). The `scope` seam (and the `kind` discriminator) is reused by the thoughts tier in **v6.12**. Off → today's full facts digest, unchanged.
+
+This is the **highest-risk** lean-memory tier — facts *are* identity, and a missed one reads as "she forgot me" — so the **identity-core** (name, key relationships, hard boundaries, standing agreements) stays **always-injected, never tool-gated**, and only the **episodic tail** is pulled; the v0.17 auto-RAG already surfaces fact-like lines from messages as a backstop. The identity-core is a **`core` flag on each `LongTermFact`** (persisted in the store), curated by a **one-off backfill** + an **initial guess at extraction**, then **re-ranked to `LUMI_FACTS_CORE_MAX` at session start by the same model call that today builds the facts digest** (it *replaces* `_ensure_facts_digest`, so it's **cost-neutral** — and cheap, since only the small `core=true` pool is re-ranked, not all facts). **Boundaries/agreements are pinned** (never cut by the cap). **Reuses the shipped seams** — the `Embedder` + per-user `VectorStore` (a `kind="fact"` vector beside messages) and the v0.31 recall tool-loop + its **trusted-recollection** framing (a fact is her own knowledge — no de-id, deduped against the prompt). `VectorRecord` gains a `kind` discriminator (additive — pinned by the memory-records contract test). Depends on: v0.16–17 (Embedder/VectorStore + auto-RAG), v0.31 (the `recall` tool it extends), v0.34 (the identity-core + flag pattern); v6.10 impressions become a later scope when they land.
 
 **Tasks:**
 - **Embed facts:** index each `LongTermFact` into the per-user `VectorStore` as a `kind="fact"` vector on write + a one-off **backfill** of existing facts (same `Embedder`, isolation-keyed).
-- **`recall(scope=…)`:** extend the v0.31 tool with `scope = messages | facts | all`, routing the cosine search to the matching vectors; default `messages` → today's behavior unchanged; fact hits framed as **trusted recollection** (no de-id), deduped against the prompt. (The `thoughts` scope is added in v5.12.)
+- **`recall(scope=…)`:** extend the v0.31 tool with `scope = messages | facts | all`, routing the cosine search to the matching vectors; default `messages` → today's behavior unchanged; fact hits framed as **trusted recollection** (no de-id), deduped against the prompt. (The `thoughts` scope is added in v6.12.)
 - **Auto fact-RAG (per-turn push):** like the v0.17 message auto-RAG, embed the incoming message → inject the **top-K relevant non-`core` facts** as a new **`# Релевантні факти`** block in the **volatile tail**; **deduped against the `core` block** (a core fact is never re-pushed) + a relevance floor; per-user, trusted; degrades to no block, never blocks a turn. Off → no block (byte-identical).
 - **A `core` flag on `LongTermFact`** (additive, persisted in the store) — marks the identity-core: name, key relationships, **hard boundaries, standing agreements**. Set in two places: a **one-off backfill** (one model call over all facts → flag ~`LUMI_FACTS_CORE_MAX`) and, going forward, an **initial guess at extraction** (the session-close fact extraction tags each new fact `core` true/false).
 - **Re-flag at session start — *replaces* the facts-digest call (cost-neutral):** take only the **`core=true`** facts (the small pool — old + the few new from the last session), one model call re-ranks them to the top `LUMI_FACTS_CORE_MAX` and writes the flag back to the store; **boundaries/agreements are pinned** (kept even past the cap). The input is the **core pool** (~N facts), not all facts, so it's cheap — and it stands **in place of** the Phase-0 `_ensure_facts_digest` model call, not in addition to it.
@@ -715,6 +807,8 @@ This is the **highest-risk** lean-memory tier — facts *are* identity, and a mi
 
 ### v0.37 — OpenAI engine: tool-loop + runtime model toggle (GPT-5.5 ↔ Opus 4.8)
 
+**Status:** ✅ Closed — released `0.37.0`.
+
 **Goal:** since v0.18 the model lives behind one `LLMClient` seam, but switching to a non-Anthropic provider **silently drops the bounded tool-loop** (it's Anthropic-only — `core/llm.py:726`) and **never passes `reasoning_effort`** — so a frontier reasoning model like **GPT-5.5** (or DeepSeek-V4-Pro) runs **blind** (no file / wiki / news / web / journal / image tools, no `%`-thought-tools) and at **default** reasoning, and any switch needs a restart. This phase makes a non-Anthropic frontier model a **real Opus 4.8 alternative**: (1) **port the bounded tool-loop** to the **OpenAI function-calling** API in `OpenAICompatibleClient`; (2) **pass `reasoning_effort`** (`LUMI_EFFORT` → GPT-5 / DeepSeek); and (3) add a **`/model` runtime toggle** to swap the engine **mid-session** (Opus 4.8 ↔ GPT-5.5) without a restart. The Anthropic path is **untouched**; off → unchanged. This is what unlocks the **engine A/B** from the cost analysis ([LLM_OPERATIONS_COST.md](../docs/LLM_OPERATIONS_COST.md) Appendix C). Full code design: [GPT55_SWITCH_AND_TOOL_LOOP.md](../docs/GPT55_SWITCH_AND_TOOL_LOOP.md).
 
 A **port, not new design** — the loop already exists and is proven (`AnthropicClient._tool_loop`); only the wire format differs (Anthropic `tool_use`/`tool_result` → OpenAI `tool_calls`/`role:"tool"`; terminal = the first message with **no** `tool_calls`, parsed as the emotion JSON, forced JSON on the final round). Caching already works on OpenAI (automatic; `_capture` reads `cached_tokens`). The `{reply, emotion, intensity}` contract, the v0.3 validation gate, and per-user isolation are untouched. Depends on: v0.18 (the provider seam + `OpenAICompatibleClient`), v0.19 (the tool-loop it ports), v0.1 (the `LLMClient` seam). Composes with **v0.40 model routing** (`/model` sets the *engine*; v0.40 sets which *tiers* run the cheap ops).
@@ -723,7 +817,7 @@ A **port, not new design** — the loop already exists and is proven (`Anthropic
 - **OpenAI tool-loop:** `_to_openai_tools` (Anthropic schema → OpenAI `function`), `_tool_loop` (function-calling, untrusted/recollection result framing reused, terminal on no-tool message, force-finish on the last round) + a `_text_tool_loop` twin (think-path, text terminal); wire `reply` / `reply_structured` to use them when tools are present. Handle the **image-result divergence** (`view_image` → a follow-up `role:"user"` image turn, since `role:"tool"` can't carry an image) and **parallel `tool_calls`**.
 - **`reasoning_effort` passthrough:** thread `LUMI_EFFORT` into `OpenAICompatibleClient` + an `_OPENAI_EFFORT` map (Lumi `low|medium|high|xhigh|max` → OpenAI `low|medium|high`); pass it on every call (tool-loop + single calls).
 - **`/model` runtime toggle:** `Core.switch_model(provider, model)` rebuilds the client from the (already-loaded) config keys + re-points `self._model`; a **`/model`** TUI command (`/model` shows the active engine; `/model opus` / `/model gpt-5.5` swaps it) with aliases read from config; the status bar reflects the active model. No restart; a mid-session switch starts on a cold cache (one-off).
-- **Docs:** update [MODELS_SETUP.md](../docs/MODELS_SETUP.md) — tools now work on OpenAI; refresh examples to `gpt-5.5` / `deepseek-v8-pro`; fix the stale "no caching elsewhere" line (OpenAI caches automatically).
+- **Docs:** update [MODELS_SETUP.md](../docs/MODELS_SETUP.md) — tools now work on OpenAI; refresh examples to `gpt-5.5` / `deepseek-v9-pro`; fix the stale "no caching elsewhere" line (OpenAI caches automatically).
 - Config: both keys already supported (`ANTHROPIC_API_KEY` + `OPENAI_API_KEY`); `LUMI_EFFORT` now honored on OpenAI; the `/model` aliases (e.g. `LUMI_MODEL` for the default + a configured alt id).
 
 **DoD:** on `LUMI_PROVIDER=openai` + `LUMI_MODEL=gpt-5.5`, the **file / wiki / news / web / journal / image tools + `%`-thought-tools run** (the bounded loop terminates with `{reply, emotion, intensity}`, the v0.3 gate validating); `reasoning_effort` is passed (a turn reflects the configured depth); **`/model` swaps Opus 4.8 ↔ GPT-5.5 mid-session without a restart** and the status bar updates; the **Anthropic path is byte-identical**; the emotion contract + per-user isolation are untouched; DeepSeek-V4-Pro works via the same adapter (same loop). **No paid calls** in tests.
@@ -732,9 +826,11 @@ A **port, not new design** — the loop already exists and is proven (`Anthropic
 
 ### v0.38 — Inner Voice: the authored think-phase instruction (her three voices)
 
-**Goal:** Лілі's pre-reply reasoning runs today on a generic **hardcoded** directive (`REASONING_DIRECTIVE` — "wrap reasoning in `<think>`"). This phase moves it into an **editable `core/inner_voice.md`** that makes the think-step sound like **her** — a short **three-voice negotiation** (Імпульс / Тверезість / Стандарт: Impulse weighs warmth, Sobriety checks the facts + her states + whether a feeling has an anchor, Standard holds the boundaries) **weighing her mood (v0.6/0.8) and closeness (v0.10)** before she speaks. **No new engine** — it reuses the shipped think-phase (Opus extended thinking / the v0.37 gpt-5.5 Responses reasoning + the `<think>` parse + the Thinking box + `thinking_summary`); only the *instruction* changes, and it becomes a file you edit. The **implementable-now slice** of the v5.9 inner monologue and its three-voice evolution; the adaptive dynamics (voice volume by needs / self-regard, the `maturity` axis) are **deferred** to when those states/subsystems exist. Off → today's `REASONING_DIRECTIVE`, byte-identical. Full design: [INNER_VOICE.md](features/INNER_VOICE.md) (target state: [try-holosy-lili.md](features/ukrainian/personality/try-holosy-lili.md)).
+**Status:** ✅ Closed — released `0.38.0`.
 
-The mechanism is **already there**: one model call with thinking on, the monologue is the `thinking` block of that same response (parsed by `split_reasoning`), housekeeping stays thinking-off. This phase only **replaces the directive** with a loaded file behind a toggle — **provider-agnostic** (it's a system-prompt instruction, so it shapes reasoning on Opus *and* gpt-5.5). The five invariants (roles-not-psyche / never-spoken-aloud / Standard-is-support / **never competence** / one-reply-out) hold **inside** `<think>`. **No contract change** — `{reply, emotion, intensity}` unchanged; the monologue is **logged, never persisted** to long-term memory. Depends on: v0.3 (the emotion turn + logged tier), v0.6/0.8 (mood — the tone input), v0.10 (closeness — a weighed input), v0.37 (the think infra it reuses). The needs/plans inputs (v5.5–v5.8) and the `maturity` subsystem are additive later.
+**Goal:** Лілі's pre-reply reasoning runs today on a generic **hardcoded** directive (`REASONING_DIRECTIVE` — "wrap reasoning in `<think>`"). This phase moves it into an **editable `core/inner_voice.md`** that makes the think-step sound like **her** — a short **three-voice negotiation** (Імпульс / Тверезість / Стандарт: Impulse weighs warmth, Sobriety checks the facts + her states + whether a feeling has an anchor, Standard holds the boundaries) **weighing her mood (v0.6/0.8) and closeness (v0.10)** before she speaks. **No new engine** — it reuses the shipped think-phase (Opus extended thinking / the v0.37 gpt-5.5 Responses reasoning + the `<think>` parse + the Thinking box + `thinking_summary`); only the *instruction* changes, and it becomes a file you edit. The **implementable-now slice** of the v6.9 inner monologue and its three-voice evolution; the adaptive dynamics (voice volume by needs / self-regard, the `maturity` axis) are **deferred** to when those states/subsystems exist. Off → today's `REASONING_DIRECTIVE`, byte-identical. Full design: [INNER_VOICE.md](features/INNER_VOICE.md) (target state: [try-holosy-lili.md](features/ukrainian/personality/try-holosy-lili.md)).
+
+The mechanism is **already there**: one model call with thinking on, the monologue is the `thinking` block of that same response (parsed by `split_reasoning`), housekeeping stays thinking-off. This phase only **replaces the directive** with a loaded file behind a toggle — **provider-agnostic** (it's a system-prompt instruction, so it shapes reasoning on Opus *and* gpt-5.5). The five invariants (roles-not-psyche / never-spoken-aloud / Standard-is-support / **never competence** / one-reply-out) hold **inside** `<think>`. **No contract change** — `{reply, emotion, intensity}` unchanged; the monologue is **logged, never persisted** to long-term memory. Depends on: v0.3 (the emotion turn + logged tier), v0.6/0.8 (mood — the tone input), v0.10 (closeness — a weighed input), v0.37 (the think infra it reuses). The needs/plans inputs (v6.5–v6.8) and the `maturity` subsystem are additive later.
 
 **Tasks:**
 - Authored **`core/inner_voice.md`** — the three-voice think instruction in her voice (Імпульс/Тверезість/Стандарт, the negotiation pass, the feeling-anchor rule, the five invariants, the `<think>` wrap line), weighing the mood + closeness blocks already in the prompt; load it and **replace `REASONING_DIRECTIVE`** in the system prompt when on. A **`LUMI_INNER_VOICE`** toggle (off → the hardcoded directive, byte-identical).
@@ -746,6 +842,8 @@ The mechanism is **already there**: one model call with thinking on, the monolog
 **Tests:** unit — the **one-call invariant** (exactly one model call per reply turn; housekeeping thinking-off); a **voice test** (the mocked think-block references her states, not generic analysis; voices never spoken in the visible reply); a **memory test** (the raw think is not persisted to long-term memory); the **toggle** (`LUMI_INNER_VOICE=off` reproduces `REASONING_DIRECTIVE`; `LUMI_THINK_SHOW=off` hides the box); the emotion-field contract passes unchanged. **No paid calls** (model mocked).
 
 ### v0.39 — Gemini engine: Google Gemini (3.1 Pro) as a switchable backend
+
+**Status:** ✅ Closed — released `0.39.0`–`0.39.1`.
 
 **Goal:** the `LLMClient` seam serves Anthropic + the OpenAI engines (v0.18/v0.37), but **Google Gemini is only wired for image generation (v0.23) and web lookup (v0.27)** — never as a reply backend. This phase adds Gemini as a **third frontier engine** — chat + the structured emotion field + the **function-calling tool-loop** + **thinking → the think-box** — switchable via `/model` like Opus 4.8 ↔ GPT-5.5. It **reuses the Gemini plumbing already in the repo** (`GEMINI_API_KEY`, the stdlib-`urllib` caller, the `generateContent` endpoint), so the transport is essentially free. The Anthropic path is **untouched**; off → unchanged. Full code design + risk analysis: [GEMINI_ENGINE.md](../docs/GEMINI_ENGINE.md).
 
@@ -765,6 +863,8 @@ A **port, not new design** — it mirrors the v0.37 OpenAI tool-loop onto Gemini
 
 ### v0.40 — Model routing: per-operation tiers (cost control, off by default)
 
+**Status:** ✅ Closed — released `0.40.0`.
+
 **Goal:** today **one model** (`claude-opus-4-8`) serves **every** LLM call — the visible reply, the thought stream, mood, summaries/facts/compaction, and every tool-loop step. Measured over a week of real usage (`.lumi/cache-log.jsonl`), the **reply is ~53%** of model spend, **tool steps ~21%**, **thoughts ~15%**, and **housekeeping ~11%** — yet bookkeeping and inner musings don't need a frontier model. This phase adds **per-operation model routing within the Claude tiers**: keep the visible **`reply` on Opus 4.8** (the voice — untouched), route **thoughts + mood to Sonnet 4.6**, and the **bookkeeping + mechanical tools to Haiku 4.5**. Off → one model, byte-identical. Target **~−26% of model spend with no change to her voice** — she *thinks and digs* on cheaper tiers but *speaks* on Opus. The **reply-tier dial already shipped with v0.37**: `/model opus` ⇄ `/model sonnet` ⇄ `/model haiku` (the built-in `DEFAULT_MODEL_ALIASES` tiers) swaps the reply model mid-session with the status bar following — so this phase adds **no new command** (a `/mode` twin one letter from `/model` would be a duplicate); it documents `/model <tier>` as the dial and pins that it **composes** with the routing (tier-routed ops keep their tiers while `/model` moves the voice). Full measured analysis + design: [LLM_OPERATIONS_COST.md](../docs/LLM_OPERATIONS_COST.md) + [MODEL_ROUTING_IMPLEMENTATION.md](../docs/MODEL_ROUTING_IMPLEMENTATION.md).
 
 The seam is **already there**: `model` is a per-call argument to `LLMClient.reply`/`reply_structured`, one Anthropic client serves all Claude tiers, and the **bounded tool-loop reuses the call's model** — so routing an *operation* routes its whole tool-loop for free (no new client, no new adapter; the cross-provider/engine-swap question is **deferred** — see the cost-doc appendices). Stays within Claude tiers — with one **post-v0.39 rule**: the active engine can now *be* GPT-5.5 or Gemini (`/model`, v0.37/v0.39), and the tier vars name **Claude** ids, so `_model_for` routes **only while the active provider is `anthropic`** and otherwise returns `self._model` (routing is a no-op on a foreign engine; a Claude id never reaches another provider's API — the `_active_provider` field it checks shipped with `switch_model`). The `{reply, emotion, intensity}` contract + per-user isolation are untouched. Depends on: v0.1 (the `LLMClient` seam), v0.15 (prompt caching — the reply's Opus cache, the ~$232/mo saver, is preserved), v0.37 (`switch_model` + the `/model` tier aliases), v0.39 (the third engine the provider guard exists for).
@@ -782,6 +882,8 @@ The seam is **already there**: `model` is a per-call argument to `LLMClient.repl
 **Tests:** unit — a `MockLLMClient` records the `model` per call; a turn + a `think` + a session close use the configured tiers (`reply`→opus, `think`→sonnet, `session-start`/`session-close`/`compaction`→haiku); unset overrides → every call uses `self._model` (byte-identical guard); the `read_file`/`read_around` char cap clamps the result; **`/model sonnet` re-points the reply model while routed ops keep their tiers** (the mock records both) and an unknown alias is rejected; the **provider guard** — after `/model gemini`, housekeeping calls use `self._model` (no Claude tier id reaches a foreign client). Contract — the routed `think`'s **tool continuations** are also Sonnet (the tool-loop follows the op); the emotion contract validated regardless of tier. Integration — measured per-kind cost shifts to the cheaper tiers; **byte-identical** off. **No paid calls** (model mocked).
 
 ### v0.41 — Model profiles: per-provider tier sets (`/model-set`)
+
+**Status:** ✅ Closed — released `0.41.0`.
 
 **Goal:** the v0.40 routing works only on Anthropic — the tier vars name Claude ids, so `/model gemini` silently turns routing **off** (the provider guard). This phase makes the tiers **per-provider profiles**: a named, authored set `{reply, think, mood, housekeeping}` per provider (**anthropic / openai / gemini** — e.g. Opus/Sonnet/Sonnet/Haiku ↔ gpt-5.5/mini/mini/nano ↔ gemini-pro/flash/flash/flash-lite), switched **as a whole** by a new **`/model-set <profile>`** command. `/model` keeps switching the **reply alone** and now also accepts a **full model id** (`/model claude-haiku-4-5-20251001` — provider inferred by prefix). So the cheap ops stay cheap **on every engine**, and one command moves the whole stack between providers.
 
@@ -801,11 +903,13 @@ The seam is **already there**: `model` is a per-call argument to `LLMClient.repl
 
 ### v0.42 — Thought scheduler (proactive thoughts on a clock — an in-TUI module)
 
+**Status:** ✅ Closed — released `0.42.0`–`0.42.2`.
+
 **Goal:** her directives fire on a **clock she can keep** — *every 10 min*, *idle 15 min*, *at 08:00*, *between 07:00–09:00 every 20 min*, *Mondays only* — replacing the single in-TUI idle timer with a small **in-TUI scheduler** (not a separate process). So `%brief` gets its morning, `%catchup` its daytime rhythm, `%learn` its night, and a scheduled `%prompt` becomes "ask Лілі to do X every day."
 
-The scheduler is an **in-process module of the TUI** — **no separate daemon, no file bus**. The TUI already **is** the only brain (it owns `core`, the `Thought` store, the tools, the outbox); externalising the clock (as v0.13's Telegram daemons do) would only buy IPC, an `activity.txt` heartbeat, a `directive-queue.jsonl`, and a flood/liveness problem — all for a thing the brain can do in-process. So an in-TUI timer evaluates a pure `due(now, last_fired, spec)` predicate per `schedule.toml` entry and runs the due directive **directly** through `run_directive` (the keyboard's `%`-router — **not** the reply path). It reads the TUI's **own in-memory** last-input (no heartbeat file) and persists **last-fired per entry** to a small `schedule.state` so a **startup catch-up pass** fires wall-clock entries missed while the TUI was closed (within `LUMI_SCHED_CATCHUP_H`). The v0.4 nudge + the v0.12 `%think` idle timer **fold into it** as `idle:` entries. A genuinely separate always-on scheduler is a **v6 (server) concern** — when a brain runs independently of any client. See [THOUGHT_SCHEDULER.md](features/THOUGHT_SCHEDULER.md). Depends on: v0.12 (`run_directive` + `resolve`), v0.4 (the clock + quiet hours); enriched by v0.33 (the directives it schedules).
+The scheduler is an **in-process module of the TUI** — **no separate daemon, no file bus**. The TUI already **is** the only brain (it owns `core`, the `Thought` store, the tools, the outbox); externalising the clock (as v0.13's Telegram daemons do) would only buy IPC, an `activity.txt` heartbeat, a `directive-queue.jsonl`, and a flood/liveness problem — all for a thing the brain can do in-process. So an in-TUI timer evaluates a pure `due(now, last_fired, spec)` predicate per `schedule.toml` entry and runs the due directive **directly** through `run_directive` (the keyboard's `%`-router — **not** the reply path). It reads the TUI's **own in-memory** last-input (no heartbeat file) and persists **last-fired per entry** to a small `schedule.state` so a **startup catch-up pass** fires wall-clock entries missed while the TUI was closed (within `LUMI_SCHED_CATCHUP_H`). The v0.4 nudge + the v0.12 `%think` idle timer **fold into it** as `idle:` entries. A genuinely separate always-on scheduler is a **v7 (server) concern** — when a brain runs independently of any client. See [THOUGHT_SCHEDULER.md](features/THOUGHT_SCHEDULER.md). Depends on: v0.12 (`run_directive` + `resolve`), v0.4 (the clock + quiet hours); enriched by v0.33 (the directives it schedules).
 
-Also a **tick service** in the TUI — a **fast** in-TUI timer for **lightweight, ephemeral acts**. These are **registered code handlers, not model directives** (the `%`-name is just a label): `run_directive` routes to the mental-act engine (a model call recording a `Thought`), while a tick handler is silent bookkeeping — no `Thought`, no model call. Fire-and-forget, **not** persisted, **a no-op if missed** (it runs only while the TUI is alive). This is the home of **`%update_state`** (v5.5 needs / v5.7 inner-life: advance the state to `now`): the work is a **split-invariant advance-to-`now`**, so a missed tick costs nothing — her time simply flows only while the TUI runs (state saved on close, resumed on start; the first tick after a start covers a restart across a boundary). (Durable directives like `%brief` instead use the scheduler's last-fired state + startup catch-up.)
+Also a **tick service** in the TUI — a **fast** in-TUI timer for **lightweight, ephemeral acts**. These are **registered code handlers, not model directives** (the `%`-name is just a label): `run_directive` routes to the mental-act engine (a model call recording a `Thought`), while a tick handler is silent bookkeeping — no `Thought`, no model call. Fire-and-forget, **not** persisted, **a no-op if missed** (it runs only while the TUI is alive). This is the home of **`%update_state`** (v6.5 needs / v6.7 inner-life: advance the state to `now`): the work is a **split-invariant advance-to-`now`**, so a missed tick costs nothing — her time simply flows only while the TUI runs (state saved on close, resumed on start; the first tick after a start covers a restart across a boundary). (Durable directives like `%brief` instead use the scheduler's last-fired state + startup catch-up.)
 
 **Tasks:**
 - The **trigger model** — a pure `due(now, last_fired, spec)` for `every` / `idle` / `at` / `between` / `cron` + the `schedule.toml` parser + `schedule.state` (last-fired per entry, for restart catch-up).
@@ -822,17 +926,21 @@ Also a **tick service** in the TUI — a **fast** in-TUI timer for **lightweight
 
 ## v1 — Voice Interface: conversation moves, fast turns, streaming, voice mode
 
-How Лілі is *reached* and how the exchange *flows* — the interaction layer on top of the v0 mind, all still **local** (no server yet). It **opens with the conversation-development system**: every reply becomes a deliberate **conversation move** instead of reflexive mirroring (v1.1, the anti-mirror engine), later fed (in v5) by a per-user **topic base** — storylines with open loops (v5.1) — and semantically-relevant **association material** (topic RAG, v5.2); she *leads*, not echoes. Around it sits the **interface & latency** work that makes the exchange feel alive: a **non-blocking input buffer** (v1.2), the explicit **prompt cache** (v1.3), **streaming replies** (v1.4), the **durable POST fix** — async persist + incremental store (v1.5), and the **voice mode** (v1.6) — a live spoken Лілі on OpenAI Realtime, an everyday mini brain + a deep flagship picked by a classifier: fast when it's casual, deep when it isn't. Core (interface-independent) except the pure-TUI conveniences. Depends on: v0 (the mind, memory, the emotion channel, closeness).
+**Status:** ✅ Closed — `1.1.0`–`1.6.3`; the unbuilt remainder of v1.6 moved to v6.14.
+
+How Лілі is *reached* and how the exchange *flows* — the interaction layer on top of the v0 mind, all still **local** (no server yet). It **opens with the conversation-development system**: every reply becomes a deliberate **conversation move** instead of reflexive mirroring (v1.1, the anti-mirror engine), later fed (in v6) by a per-user **topic base** — storylines with open loops (v6.1) — and semantically-relevant **association material** (topic RAG, v6.2); she *leads*, not echoes. Around it sits the **interface & latency** work that makes the exchange feel alive: a **non-blocking input buffer** (v1.2), the explicit **prompt cache** (v1.3), **streaming replies** (v1.4), the **durable POST fix** — async persist + incremental store (v1.5), and the **voice mode** (v1.6) — a live spoken Лілі on OpenAI Realtime, an everyday mini brain + a deep flagship picked by a classifier: fast when it's casual, deep when it isn't. Core (interface-independent) except the pure-TUI conveniences. Depends on: v0 (the mind, memory, the emotion channel, closeness).
 
 ### v1.1 — Conversation moves: the anti-mirror engine (retrospective + arbiter in the think-phase)
 
+**Status:** ✅ Closed — released `1.1.0`.
+
 **Goal:** Лілі stops mirroring (retelling your words back, however beautifully) and **leads**: every reply performs a deliberate **conversation move** chosen *before* generation — one of **7 authored types** — English enum values like the emotion enum: **`deepen` / `position` / `object` / `develop` / `associate` / `example` / `return`** (заглибити / позиція / заперечити / розвинути / асоціація / приклад / повернутись) — with a **retrospective** checking the previous move's execution and an **arbiter** picking the next one by fixed rules (no same-type repeat after a delivered move; a type banned after 2 same-type failures; an **emergency mode** of external-material moves after 2 any-type failures; "the topic died" → associate/return). The root cause is treated at the root: when the model has nothing to add it defaults to reflective listening, so each turn is *required* to add something new — a question, a stance, a disagreement, a fact, a memory.
 
-**No new engine** — the think-phase already exists (v0.38): `core/inner_voice.md` gains the `[ретроспектива] → [голоси] → [арбітр] → [репліка]` format *inside* `<think>` of the same single call (the v5.9 "one call, not two" principle), each voice (Імпульс / Тверезість / Стандарт) now proposing a *typed* move; the five v0.38 hard rules (roles-not-psyche, never aloud, Standard supports, **never competence**, one reply out) bind the new blocks too. The chosen move rides back as an **additive optional `move` field on `set_state`** (the v0.10 `relation` pattern — the locked `{reply, emotion, intensity}` contract untouched, a garbled field silently dropped), is stored on the message, and the next turn's history carries the last messages **together with their declared type** (from the record's `move` field — no inline tags in the message text; never shown to the user). The **canon audit** opens the phase (authoring, no code): drop "поетична/образна"-style traits for behavioral ones, the positive anti-mirror rule in a prominent prompt slot (the v0.6 mood-block precedent), 2-3 few-shot mirror/move contrast pairs. Off (`LUMI_MOVES`, default) → today's inner voice, byte-identical. Full design: [lili-conversation-system-concept-en.md](features/lili-conversation-system-concept-en.md) (UA original: [ukrainian/lili-conversation-system-concept.md](features/ukrainian/lili-conversation-system-concept.md)). Depends on: v0.38 (the think-phase + three voices), v0.3 (the emotion gate), v0.12 (the placeholder resolver), v0.2/v0.9 (the history window).
+**No new engine** — the think-phase already exists (v0.38): `core/inner_voice.md` gains the `[ретроспектива] → [голоси] → [арбітр] → [репліка]` format *inside* `<think>` of the same single call (the v6.9 "one call, not two" principle), each voice (Імпульс / Тверезість / Стандарт) now proposing a *typed* move; the five v0.38 hard rules (roles-not-psyche, never aloud, Standard supports, **never competence**, one reply out) bind the new blocks too. The chosen move rides back as an **additive optional `move` field on `set_state`** (the v0.10 `relation` pattern — the locked `{reply, emotion, intensity}` contract untouched, a garbled field silently dropped), is stored on the message, and the next turn's history carries the last messages **together with their declared type** (from the record's `move` field — no inline tags in the message text; never shown to the user). The **canon audit** opens the phase (authoring, no code): drop "поетична/образна"-style traits for behavioral ones, the positive anti-mirror rule in a prominent prompt slot (the v0.6 mood-block precedent), 2-3 few-shot mirror/move contrast pairs. Off (`LUMI_MOVES`, default) → today's inner voice, byte-identical. Full design: [lili-conversation-system-concept-en.md](features/lili-conversation-system-concept-en.md) (UA original: [ukrainian/lili-conversation-system-concept.md](features/ukrainian/lili-conversation-system-concept.md)). Depends on: v0.38 (the think-phase + three voices), v0.3 (the emotion gate), v0.12 (the placeholder resolver), v0.2/v0.9 (the history window).
 
 **Tasks:**
 - **Canon audit + anti-mirror rule + few-shot pairs** (authoring): behavioral traits instead of aesthetic ones; "never retell — every reply adds new" as a prominent block; contrast pairs in the prompt.
-- **`core/inner_voice.md` v6:** the retrospective as **validation** — the recent messages enter the prompt **together with their declared `move`** (straight from the record's field, not as inline tags in the text) precisely so the think-phase can check the declared type against what the reply *actually did* (`виконано: так/ні`; a declared-but-not-performed move counts as a **failure** for the arbiter rules) plus the user's reaction (розгорнута/коротка) — dry binary questions, no self-shaming tone; move-typed voices; the arbiter + its rule table.
+- **`core/inner_voice.md` v7:** the retrospective as **validation** — the recent messages enter the prompt **together with their declared `move`** (straight from the record's field, not as inline tags in the text) precisely so the think-phase can check the declared type against what the reply *actually did* (`виконано: так/ні`; a declared-but-not-performed move counts as a **failure** for the arbiter rules) plus the user's reaction (розгорнута/коротка) — dry binary questions, no self-shaming tone; move-typed voices; the arbiter + its rule table.
 - The **`move` field on `set_state`** (additive, per-provider like `relation`): validated against the 7 types (unknown/missing → dropped). The **`Message` record gains an optional `move` field** beside `emotion`/`intensity` — a new column visible on `messages` in `store.json` (`"move": "deepen" | "position" | "object" | "develop" | "associate" | "example" | "return"`, `null` on user lines and when off); **additive with a `None` default** so old stores load unchanged (the v0.2 migration-shim pattern), pinned by the message-record contract test. The last messages join the history **with their declared type from this field** (Лілі's lines only) — no inline tags in the message text.
 - **Arbiter dynamics in code:** banned-types / emergency-mode lines substituted into the think instruction at prompt-assembly time (the v0.12 resolver), computed from the tagged recent window.
 - Config: `LUMI_MOVES` (off by default).
@@ -842,6 +950,8 @@ How Лілі is *reached* and how the exchange *flows* — the interaction layer
 **Tests:** unit — the move-field parse per provider (+ garbled → dropped); the arbiter table (repeat / ban / emergency / topic-died, from canned tagged history); history tagging (Лілі's lines only, window-scoped). Contract — `{reply, emotion, intensity}` untouched with moves on (the emotion-channel test verbatim); `move` is additive. Integration — a mocked conversation walks the rules (deliver → no-repeat → fail → retry → ban → emergency); **byte-identical off**. **No paid calls.**
 
 ### v1.2 — Non-blocking input & message buffer (TUI)
+
+**Status:** ✅ Closed — released `1.2.0`.
 
 **Goal:** you can keep typing and sending while Лілі is still answering. Today the input box is **disabled** for the whole turn (`_set_busy` locks it, and a submit that slips through is dropped) — so a thought you have mid-reply has to wait. This phase **decouples the input from the busy state**: the box stays editable, a message you send **appears in the chat immediately** and is **queued**, and Лілі works through the queue one message at a time as she frees up. A pure **interface** change — no `core` touch, no contract change.
 
@@ -862,6 +972,8 @@ How Лілі is *reached* and how the exchange *flows* — the interaction layer
 **Tests:** integration (Textual pilot, `tests/test_tui.py`) — submit-while-busy shows the row + enqueues (no early turn); the drain answers each queued line in order (one turn each, not merged); a queued command routes; a proactive worker is skipped while the queue is non-empty; **off → the widget is disabled during a turn** (the current behavior verbatim). Unit — the FIFO drain order + the pending-echo suppression. **No paid calls** (mock model).
 
 ### v1.3 — Explicit Gemini prompt cache (TTL 1h): warm prefill across pauses
+
+**Status:** ✅ Closed — released `1.3.0`–`1.3.1`.
 
 > **Probe verdict (LUMI-184, ran 2026-07-15):** `cachedContents` is **supported** on `gemini-3.1-pro-preview` (create + hit confirmed, ~16 K tok). The constraint is broader than assumed — a cached-content request may not set `system_instruction`, **`tools`, or `tool_config`** (HTTP 400). So explicit caching applies to **tool-less replies only**; the tool-loop's rounds (which carry tools) stay implicit. Full tool-path caching (tools baked into the cachedContent) is a follow-up.
 
@@ -919,6 +1031,8 @@ recreate. **No paid calls** (the probe is a manual dev script, not CI).
 
 ### v1.4 — Streaming replies (TUI) + sentence-chunked voicer
 
+**Status:** ✅ Closed — released `1.4.0`–`1.4.1`.
+
 **Goal:** Лілі's reply appears **as it generates** instead of after the whole turn — perceived TTFT drops from ~10 s to **~2–3 s** — and the local voicer speaks it **sentence-by-sentence** as it arrives. This is [LATENCY.md](features/LATENCY.md) **S3 (Phase A)** plus the **voicer half of S6 (Phase B)**; it is the prerequisite for the later live-voice loop. **Telegram is unaffected** (it is a complete-message channel — it keeps receiving the one finished record off the file bus), and the **emotion contract is untouched** (the prose streams; `{emotion, intensity}` is resolved and validated on completion, so the face updates when the stream ends). **Off by default → byte-identical.**
 
 **Tasks:**
@@ -931,6 +1045,8 @@ recreate. **No paid calls** (the probe is a manual dev script, not CI).
 **Tests:** unit — a **mock streaming client** emits deltas → the assembled reply equals the non-streamed reply and the emotion is parsed on completion; the **think-tag filter** never leaks a partial `<think>`/tag into the shown text; the **sentence chunker** splits into ordered whole sentences and flushes the tail. Contract — a **malformed stream** degrades to the blocking path (turn succeeds); the **outbox record is one complete reply** regardless of streaming (Telegram/​voicer bus unchanged); **off → identical output and records to v1.3**. Integration — a full streamed turn against the mock client with the file bus: TUI incremental, voicer chunks, one outbox record. **No paid calls** (all streams mocked). Depends on: v1.2 (the non-blocking worker the deltas append to), v0.14 (the voicer / outbox bus), v0.3 (the emotion gate that validates on completion).
 
 ### v1.5 — Fast turns: async POST + incremental store (the durable latency fix)
+
+**Status:** ✅ Closed — released `1.5.0`–`1.5.1`.
 
 **Goal:** a text turn **feels done the moment Лілі has answered**, not seconds later — the measured **4.5–6.5 s** of post-reply local work vanishes from what you feel, and it stays gone as the store grows. This is [LATENCY.md](features/LATENCY.md) **S1 + S2** shipped together (the "durable POST fix"): S1 hides the seconds behind a background queue, S2 makes the persist O(1) so there's nothing to hide and no crash-loss window. **No contract change** (`{reply, emotion, intensity}` and per-user isolation untouched); the core stays interface-independent — this is entirely behind the `Repository` seam and the turn's return path. Prerequisite instrumentation (**S0** — per-stage `pre_ms`/`llm_ms`/`post_ms` on the cache-log + a `/latency` read-out) lands as an immediate fix ahead of this phase so every change gets a before/after number.
 
@@ -946,27 +1062,33 @@ recreate. **No paid calls** (the probe is a manual dev script, not CI).
 
 ### v1.6 — Voice mode: mode text / mode voice on OpenAI Realtime (redefined)
 
-**Goal:** Лілі gains a **live spoken conversation** without becoming a second agent. Two interaction modes: **`mode: text`** — today's TUI, byte-identical, the default and the fallback — and **`mode: voice`** — microphone → **OpenAI Realtime** → speaker with natural turn-taking and barge-in, where the **realtime model IS her voice brain**, wearing the same persona, memory and state the text mind wears. Two brains, picked per moment by a **classifier**: **`gpt-realtime-2.1-mini`** (everyday, default) and **`gpt-realtime-2.1`** (deep — loaded/emotional moments, hard asks). One mind across modes: voice turns persist as ordinary `Message` records (the same `Repository`, per-user isolation), the emotion contract survives via the **`set_state` realtime tool** (the v0.3 Anthropic pattern — realtime has function calling, not structured outputs), and the classifier reads **his words, never her mood — never competence**. All local phases run on **headphones** (no AEC is built; echo cancellation arrives free with the v5.14.3 web client). The voice is a **config choice** (`LUMI_REALTIME_VOICE`, set before the session's first audio — immutable after). Projected cost at current volume: ~$40/mo all-mini, ~$65/mo routed (vs ~$137 for the chained Gemini+Deepgram+ElevenLabs stack). Full design: [VOICE_MODE.md](features/VOICE_MODE.md) (foundation: [REALTIME_VOICE_MODE_SET.md](features/REALTIME_VOICE_MODE_SET.md)). The old **model-roles** phase is **superseded** ([MODEL_ROLES.md](features/MODEL_ROLES.md) — its classifier/stickiness design lives on here; text-register routing may return later as a cost lever, unscheduled). This phase absorbs [LATENCY.md](features/LATENCY.md) **LAT-4/S6** (live voice): the ≤2.5 s first-audio DoD is inherited and beaten (sub-second on realtime-as-brain). Depends on: v1.4/v1.5 (shipped), v0.3 (the emotion gate), v0.41 (the `classifier` role in profiles).
+**Status:** ✅ Closed — released `1.6.1`–`1.6.3` (the sub-phases); the unbuilt remainder moved to v6.14.
+
+**Goal:** Лілі gains a **live spoken conversation** without becoming a second agent. Two interaction modes: **`mode: text`** — today's TUI, byte-identical, the default and the fallback — and **`mode: voice`** — microphone → **OpenAI Realtime** → speaker with natural turn-taking and barge-in, where the **realtime model IS her voice brain**, wearing the same persona, memory and state the text mind wears. Two brains, picked per moment by a **classifier**: **`gpt-realtime-2.1-mini`** (everyday, default) and **`gpt-realtime-2.1`** (deep — loaded/emotional moments, hard asks). One mind across modes: voice turns persist as ordinary `Message` records (the same `Repository`, per-user isolation), the emotion contract survives via the **`set_state` realtime tool** (the v0.3 Anthropic pattern — realtime has function calling, not structured outputs), and the classifier reads **his words, never her mood — never competence**. All local phases run on **headphones** (no AEC is built; echo cancellation arrives free with the v6.14.3 web client). The voice is a **config choice** (`LUMI_REALTIME_VOICE`, set before the session's first audio — immutable after). Projected cost at current volume: ~$40/mo all-mini, ~$65/mo routed (vs ~$137 for the chained Gemini+Deepgram+ElevenLabs stack). Full design: [VOICE_MODE.md](features/VOICE_MODE.md) (foundation: [REALTIME_VOICE_MODE_SET.md](features/REALTIME_VOICE_MODE_SET.md)). The old **model-roles** phase is **superseded** ([MODEL_ROLES.md](features/MODEL_ROLES.md) — its classifier/stickiness design lives on here; text-register routing may return later as a cost lever, unscheduled). This phase absorbs [LATENCY.md](features/LATENCY.md) **LAT-4/S6** (live voice): the ≤2.5 s first-audio DoD is inherited and beaten (sub-second on realtime-as-brain). Depends on: v1.4/v1.5 (shipped), v0.3 (the emotion gate), v0.41 (the `classifier` role in profiles).
 
 **Sub-phases (each releasable as `1.6.x`):**
 
 - **v1.6.1 — The live prototype (first, before any framework).** A standalone dev probe — `scripts/realtime_probe.py`, the `gemini_probe` pattern: mic ↔ WebSocket ↔ speaker on **`gpt-realtime-2.1-mini`**, **no tools, no classifier, no persistence — pure context only** (the session `instructions` are a one-shot snapshot of Лілі's assembled system prompt: canon + memory + mood, dumped via the core prompt builder). Headphones. **Manual + paid, never CI.** *DoD:* a real spoken conversation with Лілі's persona; first-audio latency measured; the event shapes (transcript/audio/VAD) recorded back into VOICE_MODE.md. ✅ **RAN 2026-07-28 (three sessions, flagship): latency GO (median 1.25–1.37 s for the full loop), voice NO-GO (American accent — better after the no-tags fix, still below her ElevenLabs voice → the ElevenLabs hybrid is the primary voice-identity candidate), persona PARTIAL (memory/canon carry through; the text-protocol tags leaked into speech — fixed). Details: VOICE_MODE.md §7.**
 - **v1.6.2 — Voice mode in the TUI: the chain-WS stack productized (Core stays the brain, on the talking register).** The measured A/B/C/D winner (VOICE_MODE §7: **Deepgram WS → `gemini-2.5-flash` structured → ElevenLabs — 1.23 s median over 32 turns, her voice, «прекрасно»**) becomes `mode: voice`. `/mode-set text|voice` + `LUMI_MODE_SET` (default `text`); an **in-TUI live loop** (asyncio Deepgram WS + `sounddevice`; the probe's `UtteranceTracker` **phrase-hold** — an un-punctuated `speech_final` waits for the continuation or the `UtteranceEnd` backstop — promoted into `/voice` with tests; headphones, no AEC). Every committed utterance runs **exactly one `Core.reply()`** on the **talking register** — the voice-mode reply config: reasoning/think OFF for the turn, the profile's `voice` brain tier (default `gemini-2.5-flash`), the streamed structured reply — so the emotion contract, closeness, RAG, memory writes and the v1.5 async post-turn queue apply **unchanged** (one mind, one memory path). The reply streams **sentence-by-sentence into ElevenLabs** (her voice, pcm stream, the lossless speaker buffer, `StreamTagFilter` + the `speakable` Latin-vs-Cyrillic gate before TTS). **Barge-in:** a Deepgram interim while she is playing → clear the speaker buffer + drop the queued sentences — **playback only, never the committed turn**. *DoD:* a live spoken conversation in the TUI with her voice and full memory/persona; typed input + slash commands still work in voice mode; every failure (key/WS/TTS/mic) degrades to a readable text-mode line; **`LUMI_MODE_SET=text` (default) → byte-identical**. *Tests:* fake Deepgram transport (scripted `Results`/`UtteranceEnd`), mock TTS, phrase-hold + barge-in + `speakable` contracts, one-reply-per-utterance, voice turns persist through the one `Repository` path. **No paid CI.** (The OpenAI-Realtime transport MVP this slice replaces — REALTIME_VOICE_MODE_SET.md Phases 1–3 — remains the design ancestor.)
 - **v1.6.3 — Voice polish: felt latency, emotion in the voice, resilience, observability (REDEFINED — the second live-use round).** Four measured gaps from daily v1.6.2 use. **(1) Felt latency — the first-clause cut:** the FIRST spoken chunk of a turn splits at a clause boundary (comma/dash) or ~N words (`LUMI_VOICE_FIRST_CLAUSE_WORDS`) instead of waiting for the full first sentence — the probes measured ~0.3–0.65 s sitting in that wait; later chunks stay whole sentences (prosody). **(2) Emotion-colored delivery:** the talking register currently synthesizes every sentence NEUTRAL — the turn's emotion must bias `voice_settings_for` (the v0.14 voicer mechanism): the previous turn's validated emotion colors the stream as it plays, the new state takes over once validated. **(3) WS resilience:** a dropped Deepgram socket now kills voice mode instantly → auto-reconnect with backoff (`LUMI_VOICE_RECONNECT`, default 3 attempts), a readable "reconnecting…" note, degrade to text only after retries exhaust; the mic stays open throughout. **(4) Observability:** the probes' per-turn stage line (endpoint → llm first → tts first) as a dim line per spoken turn + a voice section in `/latency` + **Gemini prices in `core/usage.py`** so voice turns cost correctly in the usage ledger. *DoD:* first audio measurably earlier on multi-clause replies; her voice carries the emotional state; a WS drop recovers without leaving voice mode; every spoken turn's stages visible; text mode untouched (off-pin byte-identical). *Tests:* clause-cut boundaries (never mid-word, min-length guard), emotion plumb-through (mock TTS records settings), scripted reconnect (fail-then-succeed connector), pricing table; no paid CI.
-- **Moved to v5.14 —** the unbuilt remainder of the original voice-mode design (realtime-as-brain on mini, the classifier + two-model set, realtime tools / web client / GPT-Live) now lives in **v5.14 — Voice mode II**, at the end of v5. v1.6 closes with v1.6.1–v1.6.3 shipped.
+- **Moved to v6.14 —** the unbuilt remainder of the original voice-mode design (realtime-as-brain on mini, the classifier + two-model set, realtime tools / web client / GPT-Live) now lives in **v6.14 — Voice mode II**, at the end of v6. v1.6 closes with v1.6.1–v1.6.3 shipped.
 
-**Tests (phase-wide):** every Deepgram/ElevenLabs interaction behind a **fake transport** / mock TTS in CI (scripted `Results`/`UtteranceEnd`, recorded TTS settings); contract — the emotion gate validates every spoken turn, voice turns persist through the one `Repository` path, per-user isolation holds, **`LUMI_MODE_SET=text` (default) → byte-identical**. **No paid calls in CI** (the v1.6.1 probe is manual, like `gemini_probe`). The OpenAI Realtime + classifier tests move with their slices to v5.14.
+**Tests (phase-wide):** every Deepgram/ElevenLabs interaction behind a **fake transport** / mock TTS in CI (scripted `Results`/`UtteranceEnd`, recorded TTS settings); contract — the emotion gate validates every spoken turn, voice turns persist through the one `Repository` path, per-user isolation holds, **`LUMI_MODE_SET=text` (default) → byte-identical**. **No paid calls in CI** (the v1.6.1 probe is manual, like `gemini_probe`). The OpenAI Realtime + classifier tests move with their slices to v6.14.
 
 
 ## v2 — Client/server split: her brain on the server, the TUI a thin client
 
+**Status:** ✅ Closed — `2.1.0`–`2.12.3`.
+
 > **✅ Complete (2026-11-15).** v2.1 – v2.12 all shipped: the last release is **2.12.3** (2026-11-14), and prod runs it
 > on the Linux box, with the Mac prod client on the same tag. Deferred out of v2: inline pictures in the window
-> (→ v6.3); the admin alert bot and LUMI-265's live checks (the owner's, whenever). Next: **v3 — Agora**.
+> (→ v7.3); the admin alert bot and LUMI-265's live checks (the owner's, whenever). Next: **v3 — Agora**.
 
-Split Лілі into a **server** (wrapping `core`) and a thin **TUI client** — one user, one session, one connection — then move the server onto the always-on home **Linux box**, the Mac TUI connecting over the network. Pulled out of the old server-platform version into its own version because the win is immediate and structural: everything that today lives *in the TUI because the TUI is the only brain* — the v0.42 scheduler, the fast tick (needs/inner-life time), the thought-stream triggers — moves into the server process, so on an always-on host **her time finally flows continuously**; the Telegram daemons + file bus deploy beside the server, so Telegram stops needing a running TUI at all. Mac-local peripherals (voicer/dictator speakers+mic, the viewer window, the v1.6 in-TUI voice mode) stay client-side; **voice mode over the remote split is explicitly deferred** (mic and brain sit on different machines — revisit after this version). The core does not change — the server is a thin transport over the same `reply(...)` contract; access stays **closed** (a client token, LAN/Tailscale only — no public exposure); the platform growth (security hardening, multi-user, web, admin) remains **v6**. Built as a **ladder of releasable steps** — prod & dev split (v2.1) → the skeleton (v2.2) → the live turn (v2.3) → pushes & state (v2.4) → the brain moves (v2.5) → the Linux deploy (v2.6) → the deployment pipelines (v2.7) → Lumi in Docker (v2.8) → settings as files (v2.9) → the admin panel: watch (v2.10) → the admin panel: configure (v2.11) → the pywebview client (v2.12) — after any step everything still runs, just not everything has moved yet; more phases may follow as the split settles. Depends on: v0 (core, memory, user-scoping, the emotion contract), v1 (streaming — the API must carry it).
+Split Лілі into a **server** (wrapping `core`) and a thin **TUI client** — one user, one session, one connection — then move the server onto the always-on home **Linux box**, the Mac TUI connecting over the network. Pulled out of the old server-platform version into its own version because the win is immediate and structural: everything that today lives *in the TUI because the TUI is the only brain* — the v0.42 scheduler, the fast tick (needs/inner-life time), the thought-stream triggers — moves into the server process, so on an always-on host **her time finally flows continuously**; the Telegram daemons + file bus deploy beside the server, so Telegram stops needing a running TUI at all. Mac-local peripherals (voicer/dictator speakers+mic, the viewer window, the v1.6 in-TUI voice mode) stay client-side; **voice mode over the remote split is explicitly deferred** (mic and brain sit on different machines — revisit after this version). The core does not change — the server is a thin transport over the same `reply(...)` contract; access stays **closed** (a client token, LAN/Tailscale only — no public exposure); the platform growth (security hardening, multi-user, web, admin) remains **v7**. Built as a **ladder of releasable steps** — prod & dev split (v2.1) → the skeleton (v2.2) → the live turn (v2.3) → pushes & state (v2.4) → the brain moves (v2.5) → the Linux deploy (v2.6) → the deployment pipelines (v2.7) → Lumi in Docker (v2.8) → settings as files (v2.9) → the admin panel: watch (v2.10) → the admin panel: configure (v2.11) → the pywebview client (v2.12) — after any step everything still runs, just not everything has moved yet; more phases may follow as the split settles. Depends on: v0 (core, memory, user-scoping, the emotion contract), v1 (streaming — the API must carry it).
 
 ### v2.1 — Prod & dev: two Лілі, one codebase
+
+**Status:** ✅ Closed — released `2.1.0`–`2.1.1`.
 
 **Goal:** the Лілі he lives with stops running from the development working tree — a **prod** instance (installed from the last release tag, carrying the real memory) and a **dev** instance (the working tree, its own disposable data) run side by side and can never touch each other's data.
 
@@ -983,6 +1105,8 @@ Today the daily Лілі runs from the very folder being developed — one carel
 **Tests:** unit — the guard (env/root/tag mismatch → refusal), the badge; contract — everything unset → today's paths and behavior, byte-identical (pinned).
 
 ### v2.2 — The skeleton: pure server, TUI client & CLI utility (local, blocking)
+
+**Status:** ✅ Closed — released `2.2.0`.
 
 **Goal:** the smallest split that runs daily — a server process wrapping `core`, the TUI in **client mode** against it, and a CLI to manage it; one machine, one user, one session, **blocking turns**.
 
@@ -1002,6 +1126,8 @@ A server process wraps `core` and exposes `reply(...)` + the slash commands over
 
 ### v2.3 — The live turn: streaming over the socket
 
+**Status:** ✅ Closed — released `2.3.0`.
+
 **Goal:** client mode feels like v1.4 again — the reply streams token-by-token over a WS/SSE channel, the think-box fills live.
 
 A socket channel beside the HTTP endpoints; the v1.4 streaming seam feeds it; the emotion is still validated **on completion** (the contract untouched); a malformed or dropped stream **degrades to the blocking v2.2 path**; the client reconnects cleanly. Depends on: v2.2.
@@ -1012,15 +1138,19 @@ A socket channel beside the HTTP endpoints; the v1.4 streaming seam feeds it; th
 
 ### v2.4 — Pushes & state: the API a face can live on
 
+**Status:** ✅ Closed — released `2.4.0`.
+
 **Goal:** the server can **speak first** and **describe her state** — everything a richer client (v2.12) will need, proven on the TUI client first.
 
-Proactive turns push over the socket (a surfaced thought reaches the connected client unasked — the v8.2 open-loop mechanism's local ancestor); a **state event** rides each turn — `{emotion, intensity, theme}` — and mood resolution / closeness level / style are **pushed on change**. The face stays a **client-side** concern (local packs, v2.12) — **no face files ever cross the API**. Depends on: v2.3.
+Proactive turns push over the socket (a surfaced thought reaches the connected client unasked — the v9.2 open-loop mechanism's local ancestor); a **state event** rides each turn — `{emotion, intensity, theme}` — and mood resolution / closeness level / style are **pushed on change**. The face stays a **client-side** concern (local packs, v2.12) — **no face files ever cross the API**. Depends on: v2.3.
 
 **DoD:** a surfaced thought arrives unasked in the TUI client; every turn carries the state event; the status line in client mode updates from pushes alone.
 
 **Tests:** a scripted push through the fake transport; the state-event fields; contract — no face assets on the API.
 
 ### v2.5 — The brain moves: scheduler, ticks, thoughts, Telegram beside the server
+
+**Status:** ✅ Closed — released `2.5.0`–`2.5.1`.
 
 **Goal:** her time lives in the **server process** — the TUI becomes a pure window.
 
@@ -1032,9 +1162,11 @@ The v0.42 scheduler, the fast tick (needs/inner-life time) and the thought-strea
 
 ### v2.6 — Remote: the Linux deploy
 
+**Status:** ✅ Closed — released `2.6.0`.
+
 **Goal:** the server runs on the always-on home **Linux box** as a service; the Mac TUI connects over the network; Лілі is always on.
 
-Two systemd units — the **prod and dev instances** (the v2.1 split carried to the box: two ports, two data roots, two `.env`s) — + an operator guide (the TELEGRAM_SETUP.md style); the client token required on every connection; reachable over **LAN/Tailscale only** — no public exposure, no TLS yet (that's v6.1); `/latency` learns the **network hop** (client→server time shown separately); logs and state live on the server host; the Mac client never touches the server's disk. **Her real memory does not move yet:** the box's **prod** unit is installed with an empty data root and stays stopped; the Mac prod (`~/lumi/prod`, v2.1.1) keeps running until the prod migration (done 2026-10-20 — see v2.7). The manual checks run on the box's **dev** instance. Depends on: v2.5.
+Two systemd units — the **prod and dev instances** (the v2.1 split carried to the box: two ports, two data roots, two `.env`s) — + an operator guide (the TELEGRAM_SETUP.md style); the client token required on every connection; reachable over **LAN/Tailscale only** — no public exposure, no TLS yet (that's v7.1); `/latency` learns the **network hop** (client→server time shown separately); logs and state live on the server host; the Mac client never touches the server's disk. **Her real memory does not move yet:** the box's **prod** unit is installed with an empty data root and stays stopped; the Mac prod (`~/lumi/prod`, v2.1.1) keeps running until the prod migration (done 2026-10-20 — see v2.7). The manual checks run on the box's **dev** instance. Depends on: v2.5.
 
 **DoD:** on the box's **dev** instance: a full conversation from the Mac TUI to the Linux server; a scheduled thought reaches Telegram with no client connected anywhere; a client reconnect resumes cleanly; killing the client changes nothing server-side. The prod unit is installed and enabled-ready, its data root empty.
 
@@ -1042,15 +1174,19 @@ Two systemd units — the **prod and dev instances** (the v2.1 split carried to 
 
 ### v2.7 — Deployment pipelines: CI, auto to dev, promoted to prod
 
+**Status:** ✅ Closed — released `2.7.0`–`2.7.1`.
+
 **Goal:** code reaches the box by pipeline, not by hand — **CI** on every push; a push to `main` deploys the **dev** instance automatically; a release tag, **explicitly confirmed by the owner**, promotes **prod**; and a turn never hangs behind a slow model.
 
-**CI first** — the repo has none yet: GitHub Actions run `ruff` + `pytest` on every push and pull request (the mock model, no paid calls, no prod data); `main` stays green. **A pull-based deploy agent on the box** (owner, 2026-10-20 — the repo is public, so no self-hosted runner and no deploy secrets in GitHub; the box reaches out, nothing reaches in): a systemd user timer polls GitHub. A new commit on **`main`** with a green CI → the agent updates the **dev** instance (fetch, checkout, `uv sync --frozen --all-extras`, restart) and runs a **post-deploy smoke** (health, the state, the deployed version, the services up for a minute, no new error in the log — no paid call); a failed smoke rolls dev back to the previous commit and stops the line. A new **release tag** → the agent **waits for the owner's confirmation** (a command on the box — `deploy_agent.py confirm v2.7.0`) → promotes prod the same way; her data is archived before each promotion and every release tag stays in the checkout, so **rollback is one command** (`deploy_agent.py rollback prod`); a failed smoke rolls prod back — never half-updated. **The branch model** (owner, 2026-10-20): work lands on `v2-dev` as today and is **merged into `main`** to reach the box's dev (the first merge catches `main` up); release tags as today. **Deploys move code, never data or settings.** **A bounded turn** (v2.6 review #4, owner-approved for v2.7): one deadline across the stream, the blocking fallback and the retries (≈180 s) ends a stuck turn with a readable line, so a line typed meanwhile (a slash command included) waits **at most that deadline** — the server serves one request at a time by design (v2.2), so a command can't overtake a running turn. **The prod migration is already done** — 2026-10-20, owner-triggered: the Mac prod (v2.1.1) copied to the box's `~/lumi/prod` at v2.6.0, the Mac prod now its client (`LUMI_SERVER=on`) and its `data/` the untouched fallback (+ the pre-move archive on both machines); this phase verifies it and documents the rollback in [docs/PROD_SETUP.md](../docs/PROD_SETUP.md). The Mac viewer portrait no longer follows prod — the owner accepted the gap until the v2.12 window (her face photos keep reaching Telegram). Depends on: v2.6. Containers come next (v2.8); TLS, dependency/secret scans and the fuller hardening stay **v6.1**.
+**CI first** — the repo has none yet: GitHub Actions run `ruff` + `pytest` on every push and pull request (the mock model, no paid calls, no prod data); `main` stays green. **A pull-based deploy agent on the box** (owner, 2026-10-20 — the repo is public, so no self-hosted runner and no deploy secrets in GitHub; the box reaches out, nothing reaches in): a systemd user timer polls GitHub. A new commit on **`main`** with a green CI → the agent updates the **dev** instance (fetch, checkout, `uv sync --frozen --all-extras`, restart) and runs a **post-deploy smoke** (health, the state, the deployed version, the services up for a minute, no new error in the log — no paid call); a failed smoke rolls dev back to the previous commit and stops the line. A new **release tag** → the agent **waits for the owner's confirmation** (a command on the box — `deploy_agent.py confirm v2.7.0`) → promotes prod the same way; her data is archived before each promotion and every release tag stays in the checkout, so **rollback is one command** (`deploy_agent.py rollback prod`); a failed smoke rolls prod back — never half-updated. **The branch model** (owner, 2026-10-20): work lands on `v2-dev` as today and is **merged into `main`** to reach the box's dev (the first merge catches `main` up); release tags as today. **Deploys move code, never data or settings.** **A bounded turn** (v2.6 review #4, owner-approved for v2.7): one deadline across the stream, the blocking fallback and the retries (≈180 s) ends a stuck turn with a readable line, so a line typed meanwhile (a slash command included) waits **at most that deadline** — the server serves one request at a time by design (v2.2), so a command can't overtake a running turn. **The prod migration is already done** — 2026-10-20, owner-triggered: the Mac prod (v2.1.1) copied to the box's `~/lumi/prod` at v2.6.0, the Mac prod now its client (`LUMI_SERVER=on`) and its `data/` the untouched fallback (+ the pre-move archive on both machines); this phase verifies it and documents the rollback in [docs/PROD_SETUP.md](../docs/PROD_SETUP.md). The Mac viewer portrait no longer follows prod — the owner accepted the gap until the v2.12 window (her face photos keep reaching Telegram). Depends on: v2.6. Containers come next (v2.8); TLS, dependency/secret scans and the fuller hardening stay **v7.1**.
 
 **DoD:** CI green on every push; a merge into `main` → the box's dev runs it within minutes, the smoke green; a tag + the owner's confirmation → prod updated; rollback is one command and is rehearsed once; a failed smoke leaves prod untouched (dev rolled back); no secret ever appears in CI output; a turn behind a hanging model ends within the deadline with a readable line, and a command typed meanwhile runs right after it. **The migrated prod verified:** today's `/mood`, something old recalled, a Telegram reply, a scheduled thought with the Mac off; the Mac prod a client, its `data/` untouched.
 
 **Tests:** the CI workflow linted; the agent's decisions as pure functions over fixtures (a new green commit? a new tag? confirmed? the smoke passed → keep, failed → roll back); the smoke script against a local server (mock model); contract — the deploy path writes no data root and no settings file; the bounded turn — a fake model that hangs → the deadline fires across the stream, the fallback and the retries (an injected clock), a thought on another thread keeps its own budget, the server answers the readable 502. **No paid calls and no prod data in CI.**
 
 ### v2.8 — Lumi in Docker: one image, a compose project per instance
+
+**Status:** ✅ Closed — released `2.8.0`.
 
 **Goal:** Lumi runs on the box as **Docker containers** — one image for every process, a compose project per instance — the matrix-agora pattern (its images live on GHCR and run on the same box), replacing the v2.6 systemd user units.
 
@@ -1070,6 +1206,8 @@ A `Dockerfile` (Python slim + uv, `uv sync --frozen --all-extras`, ffmpeg, a non
 
 ### v2.9 — Settings as files: `.env` → YAML, one schema
 
+**Status:** ✅ Closed — released `2.9.0`.
+
 **Goal:** every setting of an instance lives in readable, validated **YAML files** described by **one typed schema** — the foundation the admin panel (v2.10–v2.11) reads and writes.
 
 Today each instance is a ~28 KB `.env` (about 205 `LUMI_*` knobs + 9 API keys) plus the authored `core/models.toml` and `core/schedule.toml`. They move to `~/lumi/<instance>/settings.yaml` (every non-secret knob, grouped) + `secrets.yaml` (`0600` — the API keys, the bot token, the server token); the dev tree keeps both at the repo root, gitignored. One schema names each setting's key, type, default, group, description, `secret` and `restart` flags, allowed values and its `LUMI_*` alias; the loader, the example files, `lumi-cli` and the panel all read it. Precedence: default < YAML < the process environment (a `LUMI_*` variable still wins — tests, systemd overrides, emergency hatches); `.env` stays readable for one release as a deprecated layer, then goes. The TOMLs become `core/models.yaml` / `core/schedule.yaml`, overridable per instance. Design: [ADMIN_PANEL.md](features/ADMIN_PANEL.md). Depends on: v2.8 (both instances as containers on the box — settings reach them through `env_file`).
@@ -1086,6 +1224,8 @@ Today each instance is a ~28 KB `.env` (about 205 `LUMI_*` knobs + 9 API keys) p
 **Tests:** unit — the precedence (default < YAML < env), every field's validation, the migration (a fixture `.env` → the two files, unknown keys reported); contract — the schema ↔ the example files ↔ the loader (every field documented, every example key known, no secret in `settings.yaml`); the existing config tests pass through the new loader.
 
 ### v2.10 — The admin panel: watch
+
+**Status:** ✅ Closed — released `2.10.0`.
 
 **Goal:** **one web panel** on the box shows **both instances, prod and dev** — health, uptime, daemons, tokens, cost and latency — and can start, stop and restart their services.
 
@@ -1104,6 +1244,8 @@ A separate container, `lumi-admin` (one per box, its own compose project — lik
 
 ### v2.11 — The admin panel: configure
 
+**Status:** ✅ Closed — released `2.11.0`.
+
 **Goal:** every setting of either instance is **changed from the panel** — validated, shown as a diff, applied with the restart it needs, reversible — with prod guarded and secrets write-only.
 
 The **settings editor** generates forms from the v2.9 schema, group by group (the current value, the default, the description, "needs a restart"); a save is validated, shown as a diff and applied atomically, restarting what needs it; prod adds a typed confirmation. **Secrets are write-only**: the panel shows set/unset and the last four characters, sets/rotates/clears them, and the API never returns one. **History & rollback**: each apply keeps the previous file (`~/lumi/<instance>/config-history/`), one click restores it. **Schedule & model profiles** are edited as the instance's overrides. **Promote dev → prod** copies a setting tried on dev (diff + confirmation). An **audit log** records every admin action (never a secret value). **Alerts**: a failing prod check or a failed unit sends the owner one Telegram message, and one when it recovers (rate-limited) — through a **dedicated admin bot** (its own token; never her prod or dev bot). Design: [ADMIN_PANEL.md](features/ADMIN_PANEL.md). Depends on: v2.10.
@@ -1119,14 +1261,16 @@ The **settings editor** generates forms from the v2.9 schema, group by group (th
 
 ### v2.12 — pywebview client: chat + face in one window
 
+**Status:** ✅ Closed — released `2.12.1`–`2.12.3` (the sub-phases).
+
 **Goal:** a second thin client of the v2 server — a native desktop window (pywebview/WebKit) that for the first time joins the **chat and her face in one window**, consuming exactly the API v2.3–v2.4 proved on the TUI client.
 
-Two layers, no Лілі logic in either: a **tiny Python shell** (`desktop/` — `python -m desktop`, `./lumi-desktop`; reads the server URL + client token from the tree's `settings.yaml` / `secrets.yaml`, runs a **local proxy** on `127.0.0.1` and opens the window onto it) and a **static UI** (`desktop/ui/` — `index.html` + `app.js` + `style.css`, no bundler, no node) that speaks HTTP/SSE to the server **through that proxy** — relative `/v1` URLs, the token added by the proxy, never in the page. *(Reconciled 2026-11-14: the server sends no CORS headers, so a page in pywebview can't call it directly — the owner chose the local proxy over CORS or serving the page from the server; `desktop/`, not `webview/`, because a `webview` package would shadow pywebview's own; settings files, not `.env`, removed in v2.10. The design is the owner's Claude Design handoff in `design/v2.12/`, with an English interface.)* The UI renders the streamed reply, a collapsible think-box, the status line (mood / closeness / style), v0.24 `send_image` photos inline, and markdown. **The face stays local, beside the client** (like the v0.7 viewer today): the client ships/points at its own `faces/` pack, the v2.4 state event carries **`{emotion, intensity, theme}`**, and the **Python shell picks the portrait with the existing `viewer.face.face_for`** over the local pack (the v0.11 wardrobe/no-repeat logic reused as a module, never ported to JS) and hands the file to the page; no face assets ever cross the network, and the `face.txt` viewer stays untouched as the fallback (in-process only: with a remote server the Mac viewer gets no face state — v2.6 review #3). **This is where her portrait follows a remote server again** — the owner chose to wait for this window rather than an interim fix (2026-10-20). **Strategic seed:** `desktop/ui/` is lifted into the v6.3 web client later — only serving and auth change. Boundaries: voice/dictation stay in the TUI client (`sounddevice` is its process); the TUI remains a full peer client; `pywebview` is an optional dependency; off by default (it is just "which client you launch" — the server does not know or care). Depends on: v2.4.
+Two layers, no Лілі logic in either: a **tiny Python shell** (`desktop/` — `python -m desktop`, `./lumi-desktop`; reads the server URL + client token from the tree's `settings.yaml` / `secrets.yaml`, runs a **local proxy** on `127.0.0.1` and opens the window onto it) and a **static UI** (`desktop/ui/` — `index.html` + `app.js` + `style.css`, no bundler, no node) that speaks HTTP/SSE to the server **through that proxy** — relative `/v1` URLs, the token added by the proxy, never in the page. *(Reconciled 2026-11-14: the server sends no CORS headers, so a page in pywebview can't call it directly — the owner chose the local proxy over CORS or serving the page from the server; `desktop/`, not `webview/`, because a `webview` package would shadow pywebview's own; settings files, not `.env`, removed in v2.10. The design is the owner's Claude Design handoff in `design/v2.12/`, with an English interface.)* The UI renders the streamed reply, a collapsible think-box, the status line (mood / closeness / style), v0.24 `send_image` photos inline, and markdown. **The face stays local, beside the client** (like the v0.7 viewer today): the client ships/points at its own `faces/` pack, the v2.4 state event carries **`{emotion, intensity, theme}`**, and the **Python shell picks the portrait with the existing `viewer.face.face_for`** over the local pack (the v0.11 wardrobe/no-repeat logic reused as a module, never ported to JS) and hands the file to the page; no face assets ever cross the network, and the `face.txt` viewer stays untouched as the fallback (in-process only: with a remote server the Mac viewer gets no face state — v2.6 review #3). **This is where her portrait follows a remote server again** — the owner chose to wait for this window rather than an interim fix (2026-10-20). **Strategic seed:** `desktop/ui/` is lifted into the v7.3 web client later — only serving and auth change. Boundaries: voice/dictation stay in the TUI client (`sounddevice` is its process); the TUI remains a full peer client; `pywebview` is an optional dependency; off by default (it is just "which client you launch" — the server does not know or care). Depends on: v2.4.
 
 **Sub-phases (each releasable as `2.12.x`):**
 
 - **v2.12.1 — The chat.** The shell + the page: connect with the token, send a turn, render the streamed reply + proactive pushes, slash commands pass through as today, reconnect cleanly; errors degrade to a readable line (the TUI rule).
-- **v2.12.2 — The face & state panel.** The portrait + emotion caption beside the chat (the v2.4 state event → the shell's local pick), the status fields from the on-change pushes, the think-box. *(Reconciled 2026-11-14, the owner's decisions: the shell picks with the v0.11 resolver `viewer.face.resolve_variants` and serves the picture from the client's own pack through the local proxy (`/face`, `/faces/`, never forwarded); inside a folder named `01`/`02`/`03` **intensity chooses the file** (low 02, mid 01, high 03 — the packs' naming), any other folder keeps the viewer's random no-repeat pick; the replayed pushes' `replay: true` flag drives the thoughts' unread state and the missed count; **inline pictures are deferred to v6.3** — a picture she sends (v0.24 `send_image`) only reaches the server's Telegram outbox, and offering it to an API client needs a server route + a push field.)*
+- **v2.12.2 — The face & state panel.** The portrait + emotion caption beside the chat (the v2.4 state event → the shell's local pick), the status fields from the on-change pushes, the think-box. *(Reconciled 2026-11-14, the owner's decisions: the shell picks with the v0.11 resolver `viewer.face.resolve_variants` and serves the picture from the client's own pack through the local proxy (`/face`, `/faces/`, never forwarded); inside a folder named `01`/`02`/`03` **intensity chooses the file** (low 02, mid 01, high 03 — the packs' naming), any other folder keeps the viewer's random no-repeat pick; the replayed pushes' `replay: true` flag drives the thoughts' unread state and the missed count; **inline pictures are deferred to v7.3** — a picture she sends (v0.24 `send_image`) only reaches the server's Telegram outbox, and offering it to an API client needs a server route + a push field.)*
 
 **Tasks:**
 - `desktop/` — the window shell + the local proxy (`desktop/proxy.py`): config + token from the settings files, the page and the `/v1` routes it uses forwarded with the token; v2.12.2 adds the local faces pack path and the `face_for` pick per state event.
@@ -1141,6 +1285,8 @@ Two layers, no Лілі logic in either: a **tiny Python shell** (`desktop/` —
 
 
 ## v3 — Agora: the room as a channel of her own
+
+**Status:** ✅ Closed — `3.1.0`–`3.4.1`.
 
 **Agora** is the owner's Matrix room of conversational agents on the same box (`~/development/matrix-agora`): Ада,
 Бруно, Леон, Мія, Ірма, the cat Кіт, Claude, Гермес, Кіра, Устина — and the owner, «Ich» there. Its v8 brings Лілі in
@@ -1179,7 +1325,7 @@ room never blocks or delays him.
 **What it does not change.** His channel (Telegram, the desktop, the TUI) behaves exactly as today: a turn with no
 `channel` is today's, byte for byte. No accounts for the room's speakers (they are names in its lines); Lumi does not
 join Matrix herself (the bridge stays the room's member); she never starts a conversation in the room; the
-de-identified cross-pollination (v6.3) is unchanged. **Off by default** (`agora.enabled`). Multi-user (v5.2)
+de-identified cross-pollination (v8.3) is unchanged. **Off by default** (`agora.enabled`). Multi-user (v7.2)
 later lets a space's member list hold real users. Depends on: v2.
 
 **Built with matrix-agora by turns** — two repositories, two Claude sessions; the seam is the **agora space API**,
@@ -1196,6 +1342,8 @@ reviewed, released patches; the prod step deploys the last released `v3.3.*`.
 **Status (2026-11-15): live on prod.** All nine synchronization steps are done and the owner's gates G1–G5 passed. Lumi shipped `v3.1.0`, `v3.2.0`, `v3.3.0`, `v3.3.1` (Q11, his room lines are his) and `v3.3.2` (Q12, the rule for unnamed turns). Prod runs `v3.3.2` with the space on, and matrix-agora's `v8.2.0` bridge makes her a ranked member of Agora. One incident: Gemini's prepaid credits ran out (402) from about 15:01 to 16:17; the owner topped them up. The tracker with every step, question and change report is `~/development/matrix-agora/specification/features/lumi-agora-sync.md`.
 
 ### v3.1 — The channel: the room's store, `observe`, its token, its own turn path
+
+**Status:** ✅ Closed — released `3.1.0`.
 
 **Goal:** a client talks to her in the `agora` channel, and nothing of it lands in the owner's session, his Telegram,
 his desktop or his turns.
@@ -1251,6 +1399,8 @@ token: LUMI-283, after the release.
 
 ### v3.2 — Her memory of the room
 
+**Status:** ✅ Closed — released `3.2.0`.
+
 **Goal:** like Кіра and Устина in matrix-agora: she remembers everything said in Agora and can tell the owner about it —
 and in Agora she says nothing about him.
 
@@ -1300,6 +1450,8 @@ after the stable start; no room → no block; the room's prompt never holds his 
 
 ### v3.3 — The room's turn: fast, allowed to pass, retractable
 
+**Status:** ✅ Closed — released `3.3.0`–`3.3.2`.
+
 **Goal:** what a room turn needs — a reply in seconds, the freedom to stay silent, and a way to take back a reply the
 room never showed.
 
@@ -1332,6 +1484,8 @@ his channel `403`); `outcome` and `stats`; the rate cap. **No paid calls.**
 
 
 ### v3.4 — Her initiative: she opens a line in Agora when she wants
+
+**Status:** ✅ Closed — released `3.4.0`–`3.4.1`.
 
 **Goal:** she may start a line of her own in Agora — not only answer — when the room has been quiet and she has
 something to say: of her day, or a thread of the room's talk; never about him. Asked for by the owner on 2026-11-15
@@ -1393,6 +1547,8 @@ contract — every v2 example served as written. **No paid calls.**
 
 ## v4 — The window: her files, pictures, journal and thoughts in Lili.app
 
+**Status:** 🟡 In progress — v4.1–v4.7 closed (`4.1.0`–`4.7.0`); v4.8 planned.
+
 Since v2.5 her tools and her thoughts run in the server on the box. What they leave stays in her data root there: her
 sandbox (the v0.19–v0.32 files, the v0.23 pictures), the v0.28 journal and the v0.12 thought stream. The desktop
 window (v2.12, `Lili.app`) shows only the chat and her portrait. This version adds **views of that data to the
@@ -1400,7 +1556,9 @@ window**: Files with a markdown reader (v4.1); Gallery and her pictures in the c
 (v4.3); State, Schedule and a turn's tools (v4.4). Then **actions from the window** (v4.5), **her voice in the
 window** (v4.6): a reply's voice generated once on the server, played in the chat and sent to Telegram, with one
 switch for both, and **dictation in the window** (v4.7): you speak, the text appears live in the input, you edit and
-send. The owner placed it as v4 on 2026-11-17, and the later versions moved up by one.
+send. It closes with **English everywhere** (v4.8, the owner, 2026-11-20): the interface, the code comments and the
+documents in English, her words and her prompt untouched. The owner placed it as v4 on 2026-11-17, and the later
+versions moved up by one.
 
 **The window only** (the owner, 2026-11-17). The TUI gets nothing new; it keeps `/journal` and `/thoughts`. The concept
 is [DESKTOP_VIEWS.md](features/DESKTOP_VIEWS.md), and the design brief for Claude Design is
@@ -1411,7 +1569,7 @@ is [DESKTOP_VIEWS.md](features/DESKTOP_VIEWS.md), and the design brief for Claud
   (a turn can run for minutes). Every view can be checked on prod.
 - **The owner's token only.** The room's token gets 403, as on every owner route; no token gets 401.
 - **User-scoped.** Every route reads only the resolved user's data: `files_dir/<user_id>`, `journal_dir/<user_id>`,
-  and the thoughts through the surfacing filter. The v6.2 accounts then need no change here.
+  and the thoughts through the surfacing filter. The v7.2 accounts then need no change here.
 - **The sandbox guard.** Every path goes through `safe_path`.
 - **Bounded.** Each route caps its entries, text, image bytes and decoded pixels.
 - **The window reads only through the API.** The proxy adds the token; the page never holds it.
@@ -1420,6 +1578,8 @@ Depends on: v2.12 (the window and its proxy), v2.5 (her tools and thoughts on th
 tools), v0.28 (the journal), v0.12 (the thought stream), v0.42 (the scheduler).
 
 ### v4.1 — Files and the markdown reader
+
+**Status:** ✅ Closed — released `4.1.0`.
 
 **Goal:** the owner browses her sandbox from the window and reads her markdown files as formatted pages.
 
@@ -1472,6 +1632,8 @@ English and its renderer builds no HTML. **No paid calls.**
 
 ### v4.2 — Gallery and her pictures in the chat
 
+**Status:** ✅ Closed — released `4.2.0`.
+
 **Goal:** the owner sees every picture in her sandbox as a gallery, and the pictures she makes or sends show in the
 conversation.
 
@@ -1481,7 +1643,7 @@ first request and cached in `<data root>/cache/thumbs/<user_id>/`, outside the s
 them. The **Gallery** view shows a grid of thumbnails with a folder filter; a click shows the picture at full size,
 with its path, date, size and "Open in Files".
 
-**Her pictures in the chat** (moved here from v6.3, deferred from v2.12.2): the `message` push and the turn outcome
+**Her pictures in the chat** (moved here from v7.3, deferred from v2.12.2): the `message` push and the turn outcome
 carry the sandbox path of a picture she sent (`send_image`) or made (`generate_image`) in that turn. The window loads
 it through `/v1/files/raw`. A picture still goes to Telegram as before.
 
@@ -1506,6 +1668,8 @@ when no picture), the face rule unchanged on `turn`. **No paid calls** (the imag
 
 ### v4.3 — Journal and thoughts
 
+**Status:** ✅ Closed — released `4.3.0`.
+
 **Goal:** the owner reads her journal day by day and her whole thought stream from the window.
 
 `GET /v1/journal` lists the days, newest first, each with its entry count and a stamp flag. `GET /v1/journal/{date}`
@@ -1514,8 +1678,8 @@ returns a day parsed from the v0.28 layout:
 - the `## HH:MM` sections;
 - the raw markdown.
 
-The journal routes are **owner-only by rule**: the token check plus a role check that the v6.2 accounts fill in. The
-v9.6 journal is admin-only, and another user's token must never read it.
+The journal routes are **owner-only by rule**: the token check plus a role check that the v7.2 accounts fill in. The
+v10.6 journal is admin-only, and another user's token must never read it.
 
 `GET /v1/thoughts?before=&limit=&kind=&spoken=&date=` pages her thoughts, newest first, through the surfacing filter
 (`thoughts_for(user_id)`), with several kinds at once, a date jump, the totals (count, per day, the spoken share) and
@@ -1541,6 +1705,8 @@ contract — the routes, auth, the journal refused to a second user, the surfaci
 
 ### v4.4 — State, schedule and a turn's tools
 
+**Status:** ✅ Closed — released `4.4.0`–`4.4.1`.
+
 **Goal:** the owner sees her day, her timetable and the tools she used in a reply.
 
 - **State.** `GET /v1/today` returns:
@@ -1548,7 +1714,7 @@ contract — the routes, auth, the journal refused to a second user, the surfaci
   - each biorhythm's value, label, trend (rising / falling), period and day in the cycle, so the window draws the
     cycle;
   - the closeness level by name;
-  - the day's plan once the inner life exists (v5.7).
+  - the day's plan once the inner life exists (v6.7).
 
   It is the structured form of `/mood`, `/biorhythm` and `/closeness`.
 - **Schedule.** `GET /v1/schedule` lists each directive of `schedule.yaml` (with the settings' overrides).
@@ -1572,6 +1738,8 @@ details panel; ARCHITECTURE.
 bounds; contract — the routes, auth, read-only, the outcome field (absent with the trace off). **No paid calls.**
 
 ### v4.5 — Actions from the window
+
+**Status:** ✅ Closed — released `4.5.0`.
 
 **Goal:** the owner acts on her sandbox from the window, not only reads it: brings files in, shows her a picture, takes
 files out, opens a link, and tidies up. The owner chose all five candidate actions on 2026-11-19.
@@ -1675,6 +1843,8 @@ No paid calls: the turn uses the mock model.
 
 ### v4.6 — Her voice in the window
 
+**Status:** ✅ Closed — released `4.6.0`.
+
 **Goal:** her replies can be heard in the window, from the same voice file Telegram gets, made once; and one switch in
 the window turns her voice on or off for both.
 
@@ -1774,6 +1944,8 @@ No paid calls.
 
 ### v4.7 — Dictation in the window
 
+**Status:** ✅ Closed — released `4.7.0`.
+
 **Goal:** the owner dictates in the window and sees the words appear while speaking, edits them, and sends — better
 than the TUI's dictation, which shows nothing until the line is already sent.
 
@@ -1863,19 +2035,490 @@ messages are transcribed there (`dictation.stt_provider: deepgram`, `stt_model: 
 
 No paid calls.
 
+### v4.8 — English everywhere: the interface, the code comments and the documents
+
+**Status:** 🔲 Planned.
+
+**Goal:** everything a person reads that is not her own words is English — the commands' answers, the terminal
+client, the notices and errors, the CLI, the Telegram daemons' own lines, the code comments and docstrings, and the
+documentation — while her words, her prompt and the patterns that read her output stay as they are.
+
+The owner's rule (2026-11-20): the chat with the owner follows the owner's language; **the documentation, the
+interface and the code comments are English only.** The window and the panel are already English, but the slash
+commands still answer partly in Ukrainian (`/model-set` says «Профілі не налаштовані», `/mood` «Настрій Лілі
+сьогодні», `/style` «Лілі обирає стиль сама»), and that reaches the window and Telegram; the terminal client's labels
+and the thought kinds in its status line are Ukrainian («думає», «цікавиться», «пише щоденник»); 84 code comments and
+many docstrings are partly Ukrainian; about thirty documents are Ukrainian (`specification/features/ukrainian/`, the
+`BRIEF.uk.md` of v2.12 and v4, `docs/*_UK.md`). The line between what changes and what stays:
+
+| Text | Language | Examples |
+|------|----------|----------|
+| **The interface** — what the program says to a person | **English** (this phase) | command answers (headers, labels, hints, errors, confirmations), the terminal client's labels and status words, notices and warnings, the CLI's questions (it still accepts «т» / «так» as yes), the Telegram daemons' own lines, server error details, log lines; her name in the interface is "Lili", as the window writes it |
+| **Her content** — her own words | Ukrainian, unchanged | her replies, the think text, the mood reading and its resolution, thoughts, the journal (its stamp block included), dreams, plans, impressions, the room's lines |
+| **Her prompt** — what the model reads | as authored, unchanged | the canon and `core/*.md`, the prompt blocks built in code (`core/prompt.py`, the closeness block, the room's rule), the directive instructions (`core/thoughts.py`), the tool descriptions and parameter texts, the summary / fact / compaction prompts (`core/memory.py`), the date words of her context (`core/worldcontext.py`), the directive a command hands her (`/journal`'s request) |
+| **Patterns the code matches** | unchanged | `ЕМОЦІЯ:`, `СТИСЛО:`, `Народження:`, `Цикл:`, the style keys the server sends and the window maps |
+| **Code comments and docstrings** | **English** (this phase) | Ukrainian only inside a quote of her text or of a pattern the code matches |
+| **The documentation** | **English** (this phase) | a Ukrainian document with an English twin is removed; one without a twin is translated, then the Ukrainian removed; Ukrainian stays only as quoted samples of her content |
+
+Changing her prompt's language would change her behaviour, so this phase never touches a model-facing text: the
+system prompt of a fixture turn must come out byte-identical before and after.
+
+**Tasks:**
+- The interface strings → English: `core/commands.py` (every command's answer; her content inside it unchanged), the
+  terminal client (`tui/`: labels, the thought kinds, notices), `cli/`, `telegram/` (the daemons' own lines), `server/`
+  error details, `viewer/`; the window's and the panel's strings checked (already English).
+- The code comments and docstrings → English across the code (`core/`, `server/`, `tui/`, `cli/`, `desktop/`,
+  `telegram/`, `voice/`, `viewer/`, `admin/`, `state/`, `scripts/`).
+- The documentation → English: the Ukrainian documents listed with their English twins; the twinless ones translated;
+  the Ukrainian files removed; the links that pointed at them fixed.
+- A guard test: no Cyrillic in the string literals of the interface modules outside an explicit allowlist (accepted
+  inputs, mapping keys, patterns), and none in comments or docstrings outside quotes; the tests that pinned the
+  Ukrainian answers updated.
+- CLAUDE.md: the language rule (the chat follows the owner; the documents, the interface and the comments are English).
+
+**DoD:** every slash command answers in English in the window, the terminal client and Telegram, with her content in
+it still Ukrainian; the terminal client's labels and status words are English; no Ukrainian document is left in the
+repository except quoted samples of her content; the guard test passes; the system prompt of a fixture turn is
+byte-identical to the one before the phase; her replies on dev are still Ukrainian.
+
+**Tests:** unit — each command's answer in English (the existing command tests updated), the thought-kind labels;
+contract — the guard (interface literals, comments and docstrings), the byte-identical system prompt of a fixture turn,
+the tool descriptions unchanged.
+
+**Open questions (decide before `/generate-issues v4.8`):**
+1. **The tools' own result phrases** (an error, a header) are read by the model and shown in the window's tool trace.
+   Proposed: they stay as they are, as model-facing data next to the file or article text they carry, which is
+   Ukrainian anyway.
+2. **Her name in the documents and comments:** proposed to keep «Лілі», as the spec writes it today (a proper noun);
+   the interface writes "Lili".
+
 ---
 
-## v5 — Personality: topics, needs, inner life, inner monologue, emotional memory, thoughts, semantic recall, voice mode II
+## v5 — The admin panel II: the server and the agent
 
-Лілі's inner person — who she *is* between and beneath conversations, on top of the v1 interface, running on the v2 server — her brain already always-on. **Topics** open it: a per-user **topic base** — storylines with open loops (v5.1), the **topic RAG** association material that feeds the v1.1 `associate` move (v5.2), real **OpenAI streaming** for the OpenAI-compatible adapter (v5.3), and **news-seeded topics** — fresh material aimed at her real interests (v5.4); then the core: a **life of her own between conversations** (day/week/weekend intentions and an away-gap filled with activities, memories and **dreams** — v5.7–v5.8), the **needs** that pull her from inside (v5.5–v5.6), an **inner monologue** in her own voice before she speaks (v5.9), and a long-term **emotional memory** of each user as her first-person impressions (diary, not stenographer — v5.10–v5.11), closed by the last two memory refinements (the thoughts tier goes pull-based v5.12; recall learns **topics** v5.13). These deepen *who she is*, not how she's reached — the one exception is the closing **voice mode II** (v5.14), the deferred OpenAI Realtime remainder of v1.6, parked here until daily use shows the shipped chain-WS voice isn't enough.
+**Status:** 🔲 Planned — the design brief is written ([design/v5/BRIEF.md](../design/v5/BRIEF.md)); v5.1 waits for the Claude Design pass.
+
+The v2.10–v2.11 panel (`lumi-admin` on the box, port 8767) watches and configures both instances: eight health
+checks, the containers' start / stop / restart, a 7-day usage table, a log tail, the settings editor with history and
+rollback, the schedule and model sections as YAML text, promotion, an audit of its own actions and Telegram alerts on
+a red prod check. This version makes it the place where the owner runs her, in **two separate areas: the server and
+the agent** (Лілі today). **Operations first** (the owner, 2026-11-20): usage analytics with every paid call, its
+origin and her tools, and the panel's new shell (v5.1); the health monitor with history, incidents and the containers
+(v5.2); the log explorer and alert rules (v5.3); an audit of every change to an instance wherever it came from (v5.4).
+**Then the agent:** her schedule and models — which model does what, switched from the panel (v5.5); her authored
+texts (the canon and the other `core/*.md`) edited per instance, and the last turn's prompt with a copy button
+(v5.6); her state and the conversation history (v5.7); her memory — every summary by tier and time, and the facts
+about the owner, read and corrected (v5.8); her thoughts, gallery, journal and files (v5.9); the window's edits of her
+files (v5.10). The owner placed it as v5 on 2026-11-20, and the later versions moved up by one.
+
+The concept, the new records and the open questions are in [ADMIN_PANEL_II.md](features/ADMIN_PANEL_II.md). **A
+Claude Design pass on the whole panel comes before v5.1**: the brief is [design/v5/BRIEF.md](../design/v5/BRIEF.md),
+and its handoff is folded into the spec before `/generate-issues v5.1`.
+
+**Invariants of v5:**
+- **The server and the agent are separate** in the page, the API and the registry. The server: the box, the
+  containers, health, incidents, logs, alerts, the audit, each instance's settings, secrets and deploys. The agent:
+  her usage and tools, schedule and models, texts and prompt, state, history, memory, thoughts, gallery, journal and
+  files. The registry maps each agent to the instances that run it (today `lili` → prod, dev); the agent's API is
+  `/api/agents/<agent>/<instance>/…`; no code path assumes her name. **The next version adds a second agent like
+  her** (the owner, 2026-11-20).
+- **One panel, both instances, LAN only, its own token.** Prod is red everywhere it appears.
+- **The panel never writes a data root itself.** It reads ledgers and logs through read-only mounts and talks to each
+  instance's server over the API with that instance's client token, held in the panel's process and never in the
+  page. It writes only the instance folder's settings (v2.11) and authored copies (v5.6), outside `data/`. Every change
+  to her memory (v5.8) or her files (v5.10) is the server's own route.
+- **No view takes the turn lock or makes a model call** (a fact edit takes the lock briefly; a running turn → 409).
+  **No paid call** unless the owner presses a button that says it costs one.
+- **No secret** in any response, log line, audit line or alert; a container's `Env` is never returned.
+- **What the panel keeps, it keeps in its own folder** (`~/lumi/admin/`), each store bounded.
+- **Dev is free, prod is guarded:** settings, services, the schedule, the models and her texts on prod need the typed
+  `prod`; edits of her files use the window's confirmations (the owner, 2026-11-20).
+
+Depends on: v2.10–v2.11 (the panel), v4 (the window's read-only routes and actions), v2.8 (the containers and the
+Docker API).
+
+### v5.1 — Usage analytics: every paid call, its origin, her tools
+
+**Status:** 🔲 Planned.
+
+**Goal:** the owner sees what she costs and what she does with her tools — by day and month, by provider, model, kind
+and origin, with the month's forecast — and the history outlives the instance's 10-day ledgers.
+
+Today `cache-log.jsonl` records the model calls only, and `core/logtrim.py` keeps 10 days of it. Voice (ElevenLabs),
+dictation and Telegram voice notes (Deepgram), her pictures (Gemini image) and the web lookup are paid but not
+counted, and no record says what started a call. A turn's tool trace lives in memory for one turn. This phase records
+every paid call once (`cache-log.jsonl` gains `origin` and `channel`; a new `media-ledger.jsonl` holds the calls that
+are not model calls, with their units: characters, audio seconds, pictures, requests) and every tool call
+(`tools.jsonl`: the tool, the outcome, the duration, the result's size, the turn, the origin, and the one bounded
+input line the window's trace already shows — never the result text). The **origin** names what started the call:
+the owner's turn and its channel (`window`, `tui`, `cli`, `api`, `telegram` — read from the prefix of the
+`X-Lumi-Client` id the clients already send since v2.4), a typed directive, a scheduled row, the room, her initiative, or housekeeping (the mood, the
+session close, the compaction). The panel rolls the ledgers up per closed day into its own folder (kept 400 days) and
+shows: month-to-date and the forecast to the month's end beside the previous month, cost per day by provider, per
+model / kind / origin / channel, the cache hit ratio and what it saved, the turn latency trend (PRE / MODEL / POST),
+the slowest calls, a range picker and CSV export; and a **Tools** view: per tool the calls, the failures and their
+rate, median / p95 duration, the last error, the origins that use it, a per-day chart, the slowest and the failed
+calls. Prices for the new units go into `core/pricing.yaml`. The panel's new shell from the v5 design lands here:
+the two areas (the server, the agent), the agent picker, the instance switcher, the attention strip, and the registry's
+`agents` map with the agent-keyed API that the later phases fill.
+
+**Tasks:**
+- The recorders, written by the instance that does the work and never breaking a turn: `origin` + `channel` on the
+  model-call records; `media-ledger.jsonl` for TTS (the v4.6 voice), STT (the v4.7 dictation, the Telegram voice
+  notes), image generation and the web lookup; `tools.jsonl` from the tool loop. The channel from the `X-Lumi-Client` id's
+  prefix (the window's `desktop-` as today; `tui-` and `cli-` added to those clients' ids).
+- `core/pricing.yaml`: the non-token units; an unpriced unit is shown as "not priced", never guessed.
+- The panel: the daily rollups (`~/lumi/admin/usage/`, `~/lumi/admin/tools/`, idempotent per day, 400 days); the usage
+  and tools aggregates; the forecast; the CSV export; the Usage and Tools views.
+- The panel's new shell from the v5 design: the two areas, the agent picker, the switcher, the page frame; the
+  registry's `agents` map (`lili` → prod, dev) and the `/api/agents/<agent>/<instance>/…` routes (a 404 for an
+  instance that doesn't run that agent).
+- ARCHITECTURE §Contracts: the three record shapes and the channel prefixes; ADMIN_PANEL_II.md marked as built.
+
+**DoD:** the panel shows prod's month-to-date cost with the voice, dictation and picture calls in it, each split by
+origin and channel; her tools are listed with their calls, failures and durations, and a failing tool shows its last
+error; a day older than the instance's 10-day trim is still in the charts; a fixture day's figures match a hand count;
+the panel makes no paid call and writes no data root.
+
+**Tests:** unit — each recorder writes one record with its units, origin and channel; a recorder that raises leaves the
+turn intact; the tool record carries the bounded input and never the result; the rollup (a day closed once, a re-read
+changes nothing, the 400-day bound); the forecast; each unit's price; contract — the three record shapes, no message
+text and no secret in a record, the channel from the id's prefix (a missing or unprefixed id is `api`); integration — fixture ledgers of two
+instances → the Usage and Tools API. The views are a manual DoD check.
+
+### v5.2 — The health monitor: history, incidents, the containers
+
+**Status:** 🔲 Planned.
+
+**Goal:** the owner sees how healthy each instance has been, not only now — uptime, incidents, trends — and how the
+containers live.
+
+Today the eight checks run every minute with a short history per check, and `health.jsonl` is rotated at a size cap.
+Now the minute rows stay 48 hours and an hourly rollup per check 90 days; uptime is shown per check and per instance
+over 24 h / 7 d / 30 d, with a timeline strip per check. An **incident** opens at an instance's first red check and
+closes when none is red: when, how long, which checks, the first red detail and the container events inside it (kept
+400 days). **The containers** — prod's and dev's `server`, `telegram-inbound`, `telegram-outbound`, and `lumi-admin`
+itself: the state, the health status, uptime, restarts, the last exit code and an OOM kill named, the image tag, and
+each minute one stats sample (CPU %, memory used and the limit, network and block I/O), charted over 24 h / 7 d; the
+Docker API is read with GET only. The box's load, memory and disk are charted the same way. **New checks:** the deploy
+agent (its last run and result, a lock held too long), the newest prod archive's age, the image drift (prod's tag
+against the newest release, dev's against `main`), the Agora space when it is on (the room's last `observe`), the
+outbound Telegram's last send failure, the voice and dictation providers configured. The **model probe** button
+(planned since v2.10) arrives: it says it costs one call and records the answer as a check.
+
+**Tasks:**
+- The history store (minute rows 48 h, hourly rollups 90 days), uptime, the incident builder (`incidents.jsonl`).
+- The container sampler over the Docker API (inspect + one stats sample, GET only; `Env` and `Mounts` never
+  returned) and its store; the box's trends.
+- The new checks; the thresholds shown beside each check; the model probe (opt-in, one call, audited).
+- The Health, Incidents and Containers views.
+
+**DoD:** stopping and restarting dev's server yields one incident with its duration; an OOM-killed container (a
+fixture) is named in its incident; a fixture day's uptime matches a hand count; the six instance containers and the
+panel show CPU and memory over the last day; the panel makes no paid call unless the probe is pressed.
+
+**Tests:** unit — the minute → hour rollup, uptime, the incident builder over fixture runs (open, close, a flap), the
+stats parsing (CPU % from the deltas, memory, OOM from inspect) over fixture Docker JSON, each new check over fixture
+state; contract — the Docker seam issues GET only for monitoring, no `Env` or secret in any container view;
+integration — the health API over the fake runner with stats.
+
+### v5.3 — Logs and alerts: the log explorer and the alert rules
+
+**Status:** 🔲 Planned.
+
+**Goal:** the owner finds a log line across both instances in seconds, and chooses what sends a Telegram alert.
+
+**The log explorer:** every source in one view — each instance's `lumi.log`, `mood.log` and the Telegram daemons'
+logs (10 days, as trimmed), each container's log, the panel's own log and the deploy agent's log; a time range, level,
+logger, text or regex; a traceback folded under its line; the lines around a match; a live tail (SSE from the panel,
+paused while scrolling up); a link to a line; the filtered lines downloaded; every secret redacted. **The alert
+rules** (`~/lumi/admin/alerts.yaml`, edited in the panel with a diff and the audit): a check red or amber for N
+minutes; a log pattern N times in M minutes; usage (today's cost over X, the month's forecast over Y, a provider's
+failures); a container (a restart, an OOM, a restart loop); a scheduled row due and not fired. Each rule: the
+instances, a severity (`critical` ignores quiet hours), quiet hours, a rate limit, on / off. The defaults reproduce
+v2.11 exactly (any red check on prod). Delivery stays the dedicated admin bot, plus a banner in the panel; a message
+names its rule and links its incident; the recovery message stays. **Acknowledge** (stops the reminders), **snooze**
+(1 hour, until the morning), **mute**; an **alert history** of every message sent or held and why (400 days).
+
+**Tasks:**
+- The log readers for the new sources, the merged and filtered view, the live tail (SSE), the download.
+- The rule model + its file, the rule editor (validated, a diff, audited), the evaluators per kind over the v5.1
+  and v5.2 data, quiet hours and rate limits, acknowledge / snooze / mute, the alert history.
+- The Logs and Alerts views.
+
+**DoD:** a word from an error on dev is found across both instances' sources with its traceback; the live tail shows a
+new line within seconds; a log rule fires one Telegram message after N matching lines (a fixture) and one recovery;
+an acknowledged alert stops repeating; with the default rules the alerts behave as in v2.11.
+
+**Tests:** unit — each rule kind's evaluator over fixture data, quiet hours and `critical`, the rate limit, acknowledge
+/ snooze / mute, the regex bound (a pathological pattern refused or timed out), the default rules equal v2.11's
+behaviour; contract — no secret in a log view, an alert or the history; integration — a fixture log → a rule → the
+fake sender.
+
+### v5.4 — The audit: every change to an instance, wherever it came from
+
+**Status:** 🔲 Planned.
+
+**Goal:** one record of everything that changed either instance — from the panel or not — searchable, with the diff,
+and checkable for tampering.
+
+Today the audit records the panel's own actions only. Now each entry has a **source**: `panel` (as today, plus the
+client's address and browser), `agent` (the deploy agent's deploy, confirm and rollback, with the tag, the archive and
+the smoke's result — read from its log and state), `outside` (a settings file changed outside the panel — a
+`lumi-cli config set` or a hand edit — found each minute by the files' hashes against the last ones the panel knew,
+recorded with its diff, a secret named only), `window` (the owner's v4.5 actions, from each instance's
+`actions.jsonl`) and `docker` (a container started, stopped or restarted outside the panel, from the Docker events).
+**Tamper evidence:** each line carries the SHA-256 of the line before it, across rotated generations; a verify action
+names the first line that doesn't match. Retention grows from one generation to 12 × 2 MB. The view: filters
+(instance, source, action, result, time range, text), the diff of an entry, CSV / JSONL export.
+
+**Tasks:**
+- The sources (agent, outside, window, docker) as read-only watchers; the client on panel entries.
+- The hash chain, the verify action, the rotation with the chain carried over.
+- The Audit view with its filters, the diff and the export.
+
+**DoD:** a `lumi-cli config set` on dev appears as an outside change with its diff within a minute; a prod deploy
+appears with its tag and archive; a window action appears with its source; a hand-edited line of `audit.jsonl` is
+found by verify; no secret value in any entry.
+
+**Tests:** unit — each source's watcher over fixtures (a changed file → one entry, an unchanged one → none, a secret
+named only), the chain and verify (an edited, a removed, an inserted line), the rotation keeping the chain, the
+filters; contract — no secret in an entry or an export; integration — a panel apply and an outside edit → two
+entries in order.
+
+### v5.5 — The schedule and the models
+
+**Status:** 🔲 Planned.
+
+**Goal:** the owner sees and changes her timetable in a form — what fires when, what fired last, what fires next —
+instead of YAML text; and sees which model does what on each instance, and switches it.
+
+**The schedule.** The table shows the merged rows (`core.schedule.merged_rows`), each marked `authored`, `changed
+here` or `added here`, with its trigger in words ("every 3 h between 08:30 and 23:30"), the directive, the topic, shown
+or silent, on / off, the last firing (`schedule.state`) and its outcome (that firing's log line), and the next firings
+(`core.schedule.next_due` with the quiet hours). A row's form: the directive from her registry, the trigger kind
+(`every`, `idle`, `at` + `days`, `between` + `every`, `cron`) with that kind's fields, the topic (the placeholders
+listed), `show`, `enabled`; validated by the core's own parser, with the next five firings previewed before saving.
+The scheduler's settings sit beside it (on / off, the quiet hours, the per-day caps). A save is a v2.11 plan (the diff,
+the history, the rollback, the audit, prod's typed confirmation, the restart the instance needs). A row can be reset
+to the authored one or copied from dev to prod. The YAML editor stays as "Advanced".
+
+**The models.** One table per instance: each role, the provider and the model it runs **now**, and what the settings
+say (a difference is marked: a `/model-set` or `/model` switch lasts until the restart). The roles: her reply, the
+think path, the mood, housekeeping (summaries, facts, compaction), the voice register, the tool step, the room
+(`agora.model`), the web lookup, the pictures, the embeddings, the voice (ElevenLabs model) and the recognition (STT
+provider and model). The active profile and the profiles (`core/models.yaml` with the instance's `models:` section);
+a provider without a key is marked and can't be chosen. A new server route `GET /v1/models` (owner only, read-only,
+never the turn lock) reports the running roles. **Switching:** pick a profile, or a model for one role from the
+aliases and the profiles; **save** writes the setting as a v2.11 plan (persisted; prod's typed confirmation; the
+restart it needs), and **now, until the restart** uses the existing `/model-set` / `/model` commands through `POST
+/v1/command` for the roles they cover (the reply stack). Each switch is audited.
+
+**Tasks:**
+- The schedule rows' view model (the merge marks, the trigger in words, the last firing and its outcome, the next
+  firings); the form, the validation through `core.schedule`, the preview; the scheduler's settings beside it; the
+  save as a plan over the instance's `schedule:` section; reset and copy to prod.
+- `GET /v1/models` + the API contract; the models' view model (running vs configured, the profiles, the keys present —
+  never shown); the switch (a plan, or the runtime command).
+- The Schedule and Models views.
+
+**DoD:** a dev row changed in the form fires at its new time; a prod change shows its diff and needs the confirmation;
+the preview matches the firings that follow; an invalid trigger is refused with its reason; a row reset to the
+authored one disappears from the instance's overrides; the Models view shows every role of prod and dev; dev switched
+to another profile in the panel answers with it, and the switch survives a restart when saved; a runtime-only switch
+is marked as differing from the settings.
+
+**Tests:** unit — the trigger in words for each kind, the merge marks, the next-firings preview against
+`core.schedule.next_due` (quiet hours, days, DST), the form → row → plan, an invalid row refused; the models' view
+model (running vs configured, a provider without a key); contract — `GET /v1/models` (owner only, 401 / 403, no key in
+the answer); integration — an edit → the plan → the file → the merged schedule; a profile switch through the plan and
+through the command on a fake server.
+
+### v5.6 — Her texts and the prompt
+
+**Status:** 🔲 Planned.
+
+**Goal:** the owner edits her authored texts — the canon and the other `core/*.md` files — for either instance from
+the panel, and sees the prompt she was given on the last turn, with a copy button.
+
+Her character and behaviour come from authored files in the image: the canon (`core/canon/lili.md`), the inner voice
+(`core/inner_voice.md`), the styles, the emoji map, the natal chart, the closeness levels, the nudges, the think
+seeds, the voice tags, the room's rule and her initiative (`core/agora_room.md`, `core/agora_initiative.md`). Today a
+change to one is a commit and a release, and the panel didn't edit them (the owner changed that rule on 2026-11-20).
+Now an instance can carry **its own copy** of an authored file: the panel keeps it in the instance folder
+(`~/lumi/<instance>/authored/<path>`, outside `data/`, mounted read-only into the containers), and the instance reads
+it instead of the image's copy (an explicit path setting such as `persona.canon_path` still wins). **The editor:** the
+editable files (an allowlist — authored texts only, never code, never the `_bak` copies), each marked `release` or
+`changed here`; a file opened shows the instance's current text (its copy, or the running image's copy read through
+the Docker API with GET); the size and an estimate of the tokens it adds to the prompt, with the change; the check of
+that file's own loader (the closeness file must still give five levels, the emoji map the nine emotions, the natal
+file its anchor); a save is a v2.11 plan (the diff, the history, the rollback, the audit, prod's typed confirmation,
+the restart the instance needs). A copy can be reset to the release's, or copied from dev to prod. **Drift:** a copy
+remembers the release copy it was made from; when a new release changes that file, the panel says so and shows both
+differences; "download as a patch" lets the change go into the repo. A changed canon or inner voice moves the cached
+prompt prefix, so the next turn writes the cache once. **The prompt:** a new server route `GET /v1/prompt` returns
+what the `/prompt` command shows (owner only, the room's token 403, read-only, never the turn lock, no model call,
+bounded): the last turn's system prompt with the cache split marked, its sections (canon, memory, mood, state, …) with
+their sizes, the messages, and that turn's token counts. The panel shows it with **copy** buttons (the whole prompt;
+the system part only). Over plain http on the LAN the page has no secure context and no clipboard API, so it copies
+through a selected text area.
+
+**Tasks:**
+- The authored overlay: the instance resolves an authored file as `authored/<path>` when present, else the image's
+  copy; an explicit path setting wins; the compose mounts the folder read-only; the allowlist.
+- The editor: the list, the current text, the per-file checks through the core's own loaders, the token estimate, the
+  plan, reset, copy to prod, the drift mark and both differences, the patch download.
+- `GET /v1/prompt` + the API contract; the Prompt view with the sections and the copy buttons.
+- The v5.4 audit's `outside` watcher covers the authored folder (a hand edit of a copy is an outside change).
+- ARCHITECTURE: the overlay rule and the route; ADMIN_PANEL.md's "not planned" line replaced.
+
+**DoD:** the canon changed on dev in the panel takes effect after the restart (her next reply on dev follows it) and
+is rolled back with one click; a closeness file that no longer gives five levels is refused with the reason; a prod
+change shows its diff and needs the confirmation; after a release that changes an overridden file, the panel marks the
+drift; prod's last prompt is shown with its sections and copied whole into the clipboard from the Mac's browser; no
+model call, no turn lock.
+
+**Tests:** unit — the overlay resolution (a copy present, absent, an explicit setting winning), the allowlist (a code
+file, a `_bak` copy and a path outside refused), each file kind's check, the token estimate, the drift detection, the
+patch; contract — `/v1/prompt` (owner only, 401 / 403, the bound, the cache marker), the overlay mounted read-only and
+outside `data/`; integration — an edit → the plan → the overlay file → the instance's loader reading it.
+
+### v5.7 — Лілі in the panel I: her state and the conversation history
+
+**Status:** 🔲 Planned.
+
+**Goal:** from the panel, the owner sees her as the window shows her — her state now — and reads the conversation
+history of either instance.
+
+**State** shows what the window's State view (v4.4) shows: the mood of the day and its resolution, the biorhythms,
+the closeness level, the needs, the plans, the today block, the last reply's emotion and intensity (the emoji and the
+caption; the portrait stays in the window, whose face pack lives beside the client). **History** is a new server
+route, `GET /v1/history`: owner only (the room's token 403), read-only, user-scoped, bounded (at most 100 messages a
+page, a cursor, a day, a text search over the last 90 days), never the turn lock, no model call. Each message: who,
+when, the text, the emotion and intensity, the conversation move, the channel, and for her replies the turn's tools
+(joined from v5.1's `tools.jsonl`). Her hidden reasoning is never there (it is never persisted); the room's lines are
+not there (they are the space's). The panel calls `/v1/state`, `/v1/today` and `/v1/history` with the instance's
+client token, on its own side.
+
+**Tasks:**
+- `GET /v1/history` + the API contract; ARCHITECTURE §Server API v1 "v5.7 (additive)".
+- The panel's instance client for the owner routes (the token from the instance's `secrets.yaml`, never in the page),
+  its `/api/agents/<agent>/<instance>/…` routes.
+- The State and History views (days, search, a reply's tools).
+
+**DoD:** the panel shows prod's state as the window shows it at the same moment; the history of a fixture conversation
+pages back across days, finds a word and lists a reply's tools; the room's token gets 403 on `/v1/history`; no model
+call, no turn lock.
+
+**Tests:** contract — `/v1/history` (owner only, 401 / 403, the page cap, the search window), the API route set;
+unit — the paging cursor, the search, the tools join, no think text; integration — the panel's routes over a real
+server with fixture data.
+
+### v5.8 — Her memory: the summaries and the facts about you
+
+**Status:** 🔲 Planned.
+
+**Goal:** the owner reads every layer of what she remembers — the summaries by time — and reads and corrects the
+facts she keeps about the owner.
+
+Her memory of a conversation has layers: the running digest of a long session (the in-session compaction), each
+session's summary (the detailed `summary` and the one-line `gist`, v0.9), the day digests, the week digests and the
+facts digest; the room's own digests (v3.2) are a separate store. **Summaries:** a new server route
+`GET /v1/summaries` (owner only, read-only, user-scoped, bounded, never the turn lock) lists them by tier and time; the
+view is a timeline (a session's start and end hours, its summary and gist, the digests of the session; a day; a week)
+with a tier filter, a date range and a search; each entry says what it covers (the session, the number of sessions or
+messages consolidated) and when it was written; the room's digests are a separate filter, labelled. **Facts:**
+`GET /v1/facts` lists the facts about the owner (the text, the confidence, the source line, when, the identity-core
+mark, obsolete or not) with a filter and a search; **edits** — add a fact, correct a fact's text or confidence, mark
+one obsolete and restore it, pin or unpin it in the identity core — go through new owner routes on the server, never
+the panel writing the store: **non-destructive** (a correction marks the old row obsolete and adds the new one; nothing
+is deleted), the facts digest marked stale, the fact's recall vector replaced, a short wait for the turn lock (a
+running turn → 409, try again). The server logs each edit in its `actions.jsonl` (`origin: admin`), and the panel in
+its audit with the old and the new text. Per-user isolation holds: every route reads and writes only the resolved
+user's records.
+
+**Tasks:**
+- `GET /v1/summaries`, `GET /v1/facts` and the fact edit routes + the API contract; ARCHITECTURE §Server API v1 "v5.8
+  (additive)".
+- The fact edits in the core's memory layer (obsolete + new row, the digest stale, the vector replaced), under the turn
+  lock.
+- The Summaries and Facts views; the edit dialogs; the audit lines.
+
+**DoD:** the panel shows prod's summaries for a chosen day with each session's hours, its summary and gist, the day's
+digest and the week's; a fact corrected on dev appears corrected in her next prompt (the `/prompt` view) and the old
+one is kept as obsolete; an obsolete fact restored comes back; the room's token gets 403 on every route; an edit
+during a running turn answers 409 and succeeds after it.
+
+**Tests:** contract — the routes (owner only, 401 / 403, the bounds), the isolation (a second user's facts and
+summaries never returned or changed), the edit never deleting; unit — the summary timeline model, the fact correction
+(obsolete + new, the digest stale, the vector replaced), the 409 while a turn holds the lock; integration — an edit
+through the panel to a real server over a fixture store → the next prompt carries the new fact.
+
+### v5.9 — Лілі in the panel II: thoughts, gallery, journal and files
+
+**Status:** 🔲 Planned.
+
+**Goal:** the window's views in the panel, for both instances.
+
+Thoughts (paged, the surfacing filter), Gallery (the thumbnails, a picture large), Journal (the days, a day's entry as
+markdown — owner-only by rule, read with the owner's token) and Files with the markdown reader: over the v4.1–v4.3
+routes, through the panel's server side. The reader shares the window's safe renderer (`desktop/ui/`), never
+`innerHTML`; pictures come only through the panel. Read-only.
+
+**Tasks:**
+- The panel's routes over `/v1/thoughts`, `/v1/images` (+ the thumbnails), `/v1/journal`, `/v1/files…`.
+- The shared markdown renderer (one module used by the window and the panel).
+- The Thoughts, Gallery, Journal and Files views.
+
+**DoD:** the owner reads prod's journal, browses her gallery and thoughts and opens a markdown file in the panel, and
+the same on dev; nothing is written; a relative link in a file opens inside her sandbox only.
+
+**Tests:** unit — the shared renderer (no HTML from her content, the link and image rules) run for both pages;
+integration — the panel's routes over a fake server (each view, a 404, a 403 passed through as a readable line);
+contract — no token in any page response.
+
+### v5.10 — Edits of her files from the panel
+
+**Status:** 🔲 Planned.
+
+**Goal:** the window's edits of her files from the panel: upload (create-only, capped), download, rename, move to
+`.trash/` and restore.
+
+Each is the server's v4.5 action, called by the panel with the instance's client token, so the server's guards
+apply (`safe_path`, create-only, nothing deleted). The confirmations are the window's (the owner, 2026-11-20). The
+server records each action in its `actions.jsonl` with `origin: admin`; the panel records it in its audit. "Show this
+to her" is not included: it starts a turn.
+
+**Tasks:**
+- The panel's routes over the v4.5 actions (upload streamed with the cap, download, rename, trash, restore).
+- `origin` on the server's action records (`window` / `admin`).
+- The actions in the Files and Gallery views, with the window's confirmations.
+
+**DoD:** a file uploaded to dev from the panel appears in her sandbox and in both audit records; a rename and a move to
+`.trash/` on prod ask the window's confirmation and are restored from the panel; an existing name is never
+overwritten.
+
+**Tests:** integration — each action through the panel to a real server over a fixture sandbox (create-only, the cap,
+`.trash/` and restore); unit — the origin on the action record; contract — the panel never writes the sandbox
+directly (no write path into a data root).
+
+---
+
+## v6 — Personality: topics, needs, inner life, inner monologue, emotional memory, thoughts, semantic recall, voice mode II
+
+**Status:** 🔲 Planned.
+
+Лілі's inner person — who she *is* between and beneath conversations, on top of the v1 interface, running on the v2 server — her brain already always-on. **Topics** open it: a per-user **topic base** — storylines with open loops (v6.1), the **topic RAG** association material that feeds the v1.1 `associate` move (v6.2), real **OpenAI streaming** for the OpenAI-compatible adapter (v6.3), and **news-seeded topics** — fresh material aimed at her real interests (v6.4); then the core: a **life of her own between conversations** (day/week/weekend intentions and an away-gap filled with activities, memories and **dreams** — v6.7–v6.8), the **needs** that pull her from inside (v6.5–v6.6), an **inner monologue** in her own voice before she speaks (v6.9), and a long-term **emotional memory** of each user as her first-person impressions (diary, not stenographer — v6.10–v6.11), closed by the last two memory refinements (the thoughts tier goes pull-based v6.12; recall learns **topics** v6.13). These deepen *who she is*, not how she's reached — the one exception is the closing **voice mode II** (v6.14), the deferred OpenAI Realtime remainder of v1.6, parked here until daily use shows the shipped chain-WS voice isn't enough.
 
 **Two invariants run through it.** Her **inner life and needs are global** (one being — the stores are not `user_id`-keyed; only surfacing is per-conversation), while her **emotional memory is per-user and isolated** (her impressions of *this* person never cross users). And **none of it ever touches competence** — it colors tone, warmth, what she carries and how she says things, never how capable or willing she is to help; she stays **honest about its nature** (inner/imagination, never a physical-world claim). Depends on: v2 (the server her brain runs on), v1 (the conversation system — v1.1 moves), v0 (mood, the injected clock, the emotion channel, closeness, the memory layers).
 
-### v5.1 — Topic base: conversation memory with open loops (per-user)
+### v6.1 — Topic base: conversation memory with open loops (per-user)
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі remembers **topics** — not facts but *storylines of conversations*: an **`arc`** (who held which position, where it went — so an argument continues instead of restarting), **open loops** (the unanswered questions she can return to), and an **interest score** learned from your actual engagement. This is the own material of the `associate`/`return` moves — the thing that makes leading possible.
 
-A new **per-user** layer behind the `Repository` (the isolation invariant, pinned by a contract test), beside facts (precision, v0.34–0.36) and the coming impressions (her feelings, v5.10) — storylines, neither of those. **The model proposes, code owns the record** (the v0.8/v5.8 pattern): a **housekeeping-tier** close-pass (v0.40/41 — Haiku on the anthropic profile) matches the session transcript against the base (≤50 topics whole; an index beyond), updates arcs, closes answered loops / adds new ones, and scores interest 1-5 from engagement (reply length, counter-questions, who initiated, returns, topic-changes); code merges the JSON. Code also computes **effective interest** (score × recency multiplier, the injected v0.4 clock — deterministic) and injects **top-3 starters** at session start (~150 tokens: title + one arc line + an open loop — the v0.34 lean pattern; open loops first, then interest × freshness). A **non-interference rule:** starters feed `associate`/`return` (typically the emergency mode or a lull) — while you lead and answer at length, they stay untouched. The **archive backfill** ships as a dev-time propose-then-apply skill (chunked extraction on the housekeeping tier → local-`Embedder` dedup clustering → merge → human review; pilot on 10 sessions first) — the same propose-then-apply shape as v5.13's `/discover-topics`. Off (`LUMI_TOPIC_BASE`, default) → no store, no pass, no starters. Depends on: v1.1 (the moves it feeds), v0.40/41 (the housekeeping tier), v0.2 (Repository), v0.4 (clock), v0.16 (the local embedder, backfill only).
+A new **per-user** layer behind the `Repository` (the isolation invariant, pinned by a contract test), beside facts (precision, v0.34–0.36) and the coming impressions (her feelings, v6.10) — storylines, neither of those. **The model proposes, code owns the record** (the v0.8/v6.8 pattern): a **housekeeping-tier** close-pass (v0.40/41 — Haiku on the anthropic profile) matches the session transcript against the base (≤50 topics whole; an index beyond), updates arcs, closes answered loops / adds new ones, and scores interest 1-5 from engagement (reply length, counter-questions, who initiated, returns, topic-changes); code merges the JSON. Code also computes **effective interest** (score × recency multiplier, the injected v0.4 clock — deterministic) and injects **top-3 starters** at session start (~150 tokens: title + one arc line + an open loop — the v0.34 lean pattern; open loops first, then interest × freshness). A **non-interference rule:** starters feed `associate`/`return` (typically the emergency mode or a lull) — while you lead and answer at length, they stay untouched. The **archive backfill** ships as a dev-time propose-then-apply skill (chunked extraction on the housekeeping tier → local-`Embedder` dedup clustering → merge → human review; pilot on 10 sessions first) — the same propose-then-apply shape as v6.13's `/discover-topics`. Off (`LUMI_TOPIC_BASE`, default) → no store, no pass, no starters. Depends on: v1.1 (the moves it feeds), v0.40/41 (the housekeeping tier), v0.2 (Repository), v0.4 (clock), v0.16 (the local embedder, backfill only).
 
 **Tasks:**
 - The **`TopicRecord`** store `{id, title, status: open|exhausted|new, arc, open_loops[], interest, sessions_count, last_touched, source: user|curiosity|news}` behind the `Repository`, keyed by `user_id` (contract test).
@@ -1888,11 +2531,13 @@ A new **per-user** layer behind the `Repository` (the isolation invariant, pinne
 
 **Tests:** unit — the merge (match/update/create, loop close, scoring on canned transcripts); effective interest under a fixed clock; starter selection (loops-first). Contract — per-user isolation (A↔B); the store keyed by `user_id`. Integration — session-close → base update → next-session starters (mock model, fixed clock). **No paid calls.**
 
-### v5.2 — Topic RAG: relevant association material (`kind="topic"`)
+### v6.2 — Topic RAG: relevant association material (`kind="topic"`)
+
+**Status:** 🔲 Planned.
 
 **Goal:** the `associate` move stops relying on luck — each turn retrieves the 1-2 **relevant open topics** semantically and offers them to the think-phase as association material, so her associations land *in the current conversation*; the static top-interest starters keep serving `return` (there priority matters, not relevance).
 
-Not a new search layer — a third **`kind`** in the shipped store: **`kind="topic"`** vectors (title + arc, re-embedded on update) beside `kind="message"` (v0.16) and `kind="fact"` (v0.36), additive under the memory-records contract test. The query vector is the one **already computed** for the v0.17 auto-RAG (no extra embedding); retrieval prefers `status=open` with loops, dedupes against the window/starters, keeps a relevance floor, and **degrades to no block** (never blocks a turn). While the base is small (~<50 topics) a plain prompt index suffices — the vector path turns on as it grows. **Composes with v5.13, not duplicates it:** v5.13 routes *message* recall by an authored closed taxonomy; this retrieves *topic records* as move material — and the living base is ready feed for v5.13's `/discover-topics` authoring. Same isolation (topic vectors per-user, contract test). Off (`LUMI_TOPIC_RAG`, default) → v5.1 starters only. Depends on: v5.1 (the base), v0.16/v0.17 (the seams + auto-RAG), v0.36 (the `kind` discriminator).
+Not a new search layer — a third **`kind`** in the shipped store: **`kind="topic"`** vectors (title + arc, re-embedded on update) beside `kind="message"` (v0.16) and `kind="fact"` (v0.36), additive under the memory-records contract test. The query vector is the one **already computed** for the v0.17 auto-RAG (no extra embedding); retrieval prefers `status=open` with loops, dedupes against the window/starters, keeps a relevance floor, and **degrades to no block** (never blocks a turn). While the base is small (~<50 topics) a plain prompt index suffices — the vector path turns on as it grows. **Composes with v6.13, not duplicates it:** v6.13 routes *message* recall by an authored closed taxonomy; this retrieves *topic records* as move material — and the living base is ready feed for v6.13's `/discover-topics` authoring. Same isolation (topic vectors per-user, contract test). Off (`LUMI_TOPIC_RAG`, default) → v6.1 starters only. Depends on: v6.1 (the base), v0.16/v0.17 (the seams + auto-RAG), v0.36 (the `kind` discriminator).
 
 **Tasks:**
 - `kind="topic"` vectors: embed on create/update (title + arc); update the memory-records contract test + ARCHITECTURE §Semantic recall in the same commit.
@@ -1900,11 +2545,13 @@ Not a new search layer — a third **`kind`** in the shipped store: **`kind="top
 - The small-base shortcut (full index in prompt below a threshold — no vector search).
 - Config: `LUMI_TOPIC_RAG` (off), `LUMI_TOPIC_RAG_K` (2), `LUMI_TOPIC_RAG_FLOOR`.
 
-**DoD:** a turn about a subject surfaces that subject's open topic (mock embedder, deterministic); off-topic stays out (floor); retrieval is per-user; a failure degrades to no block, never blocks the turn; **off → v5.1 behavior byte-identical**.
+**DoD:** a turn about a subject surfaces that subject's open topic (mock embedder, deterministic); off-topic stays out (floor); retrieval is per-user; a failure degrades to no block, never blocks the turn; **off → v6.1 behavior byte-identical**.
 
 **Tests:** unit — embed-on-write/update; the turn hook (top-K, floor, dedupe, degrade); the small-base shortcut. Contract — isolation (A's topics never surface for B); `kind="topic"` additive (memory-records). Integration — turn → relevant topic in the think prompt → the association move uses it (mock). **No paid calls** (mock embedder).
 
-### v5.3 — OpenAI streaming: real SSE for the OpenAI-compatible adapter
+### v6.3 — OpenAI streaming: real SSE for the OpenAI-compatible adapter
+
+**Status:** 🔲 Planned.
 
 **Goal:** `LUMI_STREAM` delivers **real token-by-token streaming on OpenAI + DeepSeek** (and the OpenAI **Responses** API for GPT-5 / o-series), closing the gap left by [v1.4](#v14--streaming-replies-tui--sentence-chunked-voicer): there those providers had the streaming *seam* but emitted the whole reply in **one chunk**. After this the felt-latency win (~2–3 s TTFT) is uniform across **Anthropic / Gemini / OpenAI**; MiniMax stays on blocking-emit (no SSE seam — documented). **No new mechanism** — the v1.4 [`core/streaming.py`](../../core/streaming.py) helpers (`decode_json_string_value`, `StreamTagFilter`) and the `reply_structured_stream` seam are reused; only the per-client SSE plumbing is added. **Emotion validated at completion; the `{reply, emotion, intensity}` contract, Telegram (a complete-record channel), and off (`LUMI_STREAM`) → byte-identical are all unchanged.** Depends on: v1.4 (the streaming seam + helpers), v0.18 (the OpenAI-compatible adapter + Responses client).
 
@@ -1914,15 +2561,17 @@ Not a new search layer — a third **`kind`** in the shipped store: **`kind="top
 - **Reuse, don't duplicate.** The `<think>`/tag filter, the reply-field decoder, and the `on_delta`/`on_think_delta` contract are unchanged — this phase is per-provider SSE wiring only. MiniMax keeps its blocking-emit (a one-line doc note).
 - Tests: an **injectable stream transport / fake SSE iterator** per client (no network, no paid CI), mirroring the v1.4 Gemini/Anthropic fakes.
 
-**DoD:** with `LUMI_STREAM=on` on an OpenAI/DeepSeek profile a reply **streams token-by-token** (assembled == the blocking reply; `{emotion, intensity}` parsed/validated at completion); the **Responses** API streams its answer and routes reasoning to the think-box; a **tool turn streams only its terminal round**; a **malformed/aborted stream degrades** to the blocking path; **off → byte-identical to v5.2** (payloads, reply text, records). MiniMax is unchanged (blocking-emit).
+**DoD:** with `LUMI_STREAM=on` on an OpenAI/DeepSeek profile a reply **streams token-by-token** (assembled == the blocking reply; `{emotion, intensity}` parsed/validated at completion); the **Responses** API streams its answer and routes reasoning to the think-box; a **tool turn streams only its terminal round**; a **malformed/aborted stream degrades** to the blocking path; **off → byte-identical to v6.2** (payloads, reply text, records). MiniMax is unchanged (blocking-emit).
 
-**Tests:** unit — a **fake OpenAI streaming client** emits `delta.content` fragments → the assembled reply equals the non-streamed one and the emotion is parsed on completion; the **Responses** fake streams `output_text.delta` + a reasoning-summary delta → answer + think-box; a **malformed stream** degrades to blocking. Contract — **off → identical output and records to v5.2** (pinned). Integration — a full streamed turn on the OpenAI adapter against the fake SSE. **No paid calls** (all streams mocked). Depends on: v1.4, v0.18.
+**Tests:** unit — a **fake OpenAI streaming client** emits `delta.content` fragments → the assembled reply equals the non-streamed one and the emotion is parsed on completion; the **Responses** fake streams `output_text.delta` + a reasoning-summary delta → answer + think-box; a **malformed stream** degrades to blocking. Contract — **off → identical output and records to v6.2** (pinned). Integration — a full streamed turn on the OpenAI adapter against the fake SSE. **No paid calls** (all streams mocked). Depends on: v1.4, v0.18.
 
-### v5.4 — News-seeded topics: fresh material aimed at real interests
+### v6.4 — News-seeded topics: fresh material aimed at real interests
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі brings something *new from outside* that actually lands: the scheduled news acts stop reading an authored fixed topic and **seed from the topic base** — the morning `%brief` searches along your top-interest topics, finds 1-2 fresh pieces, records each as a **`status=new`** topic, and one such find joins the next session's starters. "Читала про..." aimed at what engages you.
 
-All tools are shipped — this phase only **rewires the seed**: a schedule-row option resolves at fire time (the v0.12 resolver) to the top 3-5 effective-interest topics instead of `schedule.toml`'s literal string; the act runs the existing `%brief`/`%catchup` (v0.33) over `news_search`/`news_read` (v0.25) or `web_lookup` (v0.27); the find writes back as `{status: new, source: news, arc: one line}` (code owns the write). **The v0.33 de-identification rule applies in full force:** the query is seeded by *your interests*, so only the **topical part** leaves the machine — topic titles scrubbed of names, relationships, anything from memory (**pinned by a test**); returned text stays untrusted data, and she stays honest it's read, not lived. **Restraint:** ≤2 generated topics per session; a new topic is a topic *change*, so it surfaces only on a lull, never mid-living-topic (the thought-stream restraint); `new` topics that don't catch on within 2-3 sessions (interest 1-2) are archived by a code sweep. A no-tools fallback ("suggest 2 adjacent topics not in the base") works offline and without keys. Off (`LUMI_TOPIC_NEWS`, default) → the authored fixed-topic rows unchanged. Depends on: v5.1 (the base), v0.25/v0.27/v0.33 (the tools + the de-id rule), v0.42 (the scheduler).
+All tools are shipped — this phase only **rewires the seed**: a schedule-row option resolves at fire time (the v0.12 resolver) to the top 3-5 effective-interest topics instead of `schedule.toml`'s literal string; the act runs the existing `%brief`/`%catchup` (v0.33) over `news_search`/`news_read` (v0.25) or `web_lookup` (v0.27); the find writes back as `{status: new, source: news, arc: one line}` (code owns the write). **The v0.33 de-identification rule applies in full force:** the query is seeded by *your interests*, so only the **topical part** leaves the machine — topic titles scrubbed of names, relationships, anything from memory (**pinned by a test**); returned text stays untrusted data, and she stays honest it's read, not lived. **Restraint:** ≤2 generated topics per session; a new topic is a topic *change*, so it surfaces only on a lull, never mid-living-topic (the thought-stream restraint); `new` topics that don't catch on within 2-3 sessions (interest 1-2) are archived by a code sweep. A no-tools fallback ("suggest 2 adjacent topics not in the base") works offline and without keys. Off (`LUMI_TOPIC_NEWS`, default) → the authored fixed-topic rows unchanged. Depends on: v6.1 (the base), v0.25/v0.27/v0.33 (the tools + the de-id rule), v0.42 (the scheduler).
 
 **Tasks:**
 - The **seed source**: a schedule-row option (e.g. `topic_from = "interests"`) resolving at fire time to top-interest topics, **de-identified** (titles only, scrubbed).
@@ -1934,19 +2583,21 @@ All tools are shipped — this phase only **rewires the seed**: a schedule-row o
 
 **Tests:** unit — seed resolution (top-interest → query; the de-id scrub); the write-back; the archive sweep; the fallback. Contract — no personal data in the outgoing query (pinned); per-user isolation. Integration — a schedule fire → mock provider → a `new` topic → a next-session starter (all mocked). **No paid calls.**
 
-### v5.5 — Needs I: the drives (real ticks + tick-driven levels that pull her)
+### v6.5 — Needs I: the drives (real ticks + tick-driven levels that pull her)
 
-**Goal:** under her mood sits a motivational substrate — **6 authored drives** (creation / solitude / connection / freedom / meaning / novelty) whose **levels** (0..1) rise and fall with her time and **pull** her tone from inside: the hungriest need colors the daily mood, and a warm exchange feeds `connection`. Here the drives **exist and pull**; *acting* on them is v5.6, and the plans they will tilt are v5.7. **This phase is also where ticks become real:** the v0.42 tick service shipped as an **empty seam** (a registry no handler ever populated — the fast timer fires into a no-op), and v5.5 registers its **first actual handlers** — her heartbeat, then the needs evolve on top of it.
+**Status:** 🔲 Planned.
+
+**Goal:** under her mood sits a motivational substrate — **6 authored drives** (creation / solitude / connection / freedom / meaning / novelty) whose **levels** (0..1) rise and fall with her time and **pull** her tone from inside: the hungriest need colors the daily mood, and a warm exchange feeds `connection`. Here the drives **exist and pull**; *acting* on them is v6.6, and the plans they will tilt are v6.7. **This phase is also where ticks become real:** the v0.42 tick service shipped as an **empty seam** (a registry no handler ever populated — the fast timer fires into a no-op), and v6.5 registers its **first actual handlers** — her heartbeat, then the needs evolve on top of it.
 
 **The heartbeat (real ticks, first).** A persisted **`Heartbeat{tick_count, last_ts}`** advanced by a registered code handler on **every fast tick** — the proof her time actually flows, and the beat everything else rides on. Saved on every beat (best-effort, the `schedule.state` pattern), **resumed on start** (the count survives restarts; no catch-up — missed beats while the TUI is closed simply don't exist). **Visible:** each beat logs at debug and an hourly heartbeat line at info (closing the silent-tick observability gap the day-cap freeze exposed), and a **`/ticks`** command shows the total count, the last beat, and this session's beats. The `%update_state` needs handler registers **beside** it as the second handler on the same beat.
 
-**Her time flows only while the TUI runs (no gap math).** The levels evolve on the v0.42 **fast tick** — `%update_state` is a **code handler** on the tick service, **not a model directive** (silent bookkeeping: no `Thought`, no model call). Each tick computes the pure **`evolve(levels, last_ts, now)`** — **fractional-Δt decay** per drive + a gentle **drift toward the calm middle** — and persists. On close the state is **saved as-is**; on start she **resumes where she left off** (`last_ts` reset to now, **no catch-up**) — absence doesn't starve a need (gap time returns, balanced, with the v5.8 away-gap). Two rules make this correct: the math is **split-invariant** (advancing in two steps equals one step — tick frequency never changes semantics), and **reads always evolve-on-read** (the mood merge / prompt block / `/needs` compute `evolve(…, now)` on the fly, never the raw stored snapshot), with **evolve-before-mutate** on every event write (the warmth lift).
+**Her time flows only while the TUI runs (no gap math).** The levels evolve on the v0.42 **fast tick** — `%update_state` is a **code handler** on the tick service, **not a model directive** (silent bookkeeping: no `Thought`, no model call). Each tick computes the pure **`evolve(levels, last_ts, now)`** — **fractional-Δt decay** per drive + a gentle **drift toward the calm middle** — and persists. On close the state is **saved as-is**; on start she **resumes where she left off** (`last_ts` reset to now, **no catch-up**) — absence doesn't starve a need (gap time returns, balanced, with the v6.8 away-gap). Two rules make this correct: the math is **split-invariant** (advancing in two steps equals one step — tick frequency never changes semantics), and **reads always evolve-on-read** (the mood merge / prompt block / `/needs` compute `evolve(…, now)` on the fly, never the raw stored snapshot), with **evolve-before-mutate** on every event write (the warmth lift).
 
 **Never competence; inner, not a demand on you.** Global to Лілі (one being — the store is **not** user-keyed; pinned by a contract test). Reuses v0.6 (mood) + v0.8 (the merge pattern) + v0.10 (the warmth read) + v0.4 (clock) + v0.2 (Repository) + v0.42 (the tick service). See [NEEDS_full.md](features/NEEDS_full.md).
 
 **Tasks:**
 - **The heartbeat — the first real tick handler:** `Heartbeat{tick_count, last_ts}` persisted (the `schedule.state` pattern), `beat()` registered on the v0.42 tick service; count survives restarts (resume, no catch-up); debug-per-beat + hourly info log; a **`/ticks`** command (total / last beat / this session).
-- Authored **`core/needs.md`** — the 6 drives, each with a decay rate / weight / satisfied-by / deficit voice (+ the **threshold & cooldown** fields authored now, used by v5.6); a loader.
+- Authored **`core/needs.md`** — the 6 drives, each with a decay rate / weight / satisfied-by / deficit voice (+ the **threshold & cooldown** fields authored now, used by v6.6); a loader.
 - A **global `Needs{levels, last_ts}` store** behind the `Repository` (not user-keyed; contract test).
 - The pure **`evolve(levels, last_ts, now)`** (fractional-Δt decay + drift to the middle; clamp 0..1; **split-invariance pinned by a test**).
 - The **`%update_state` tick handler** (code, not model): evolve → persist, registered on the v0.42 fast tick; state saved on close, resumed on start (no catch-up).
@@ -1958,32 +2609,36 @@ All tools are shipped — this phase only **rewires the seed**: a schedule-row o
 
 **Tests:** unit — the heartbeat (beat advances + persists; restart resumes the count, no catch-up; a corrupt/missing state file → a fresh zero, never raises; `/ticks`); exact levels under a fixed clock (fractional-Δt decay + drift); **split-invariance** (two steps == one); **frozen-across-restart** (no catch-up decay); evolve-on-read vs the stale snapshot; the warmth lift (evolve-before-mutate); the hungriest selection; the mood merge; `/needs`. Contract — the `Needs` store is global, never per-user-keyed. **No paid calls** (the tick handlers are code; the mood call mocked).
 
-### v5.6 — Needs II: actions (a hungry need moves her)
+### v6.6 — Needs II: actions (a hungry need moves her)
+
+**Status:** 🔲 Planned.
 
 **Goal:** a need that crosses its threshold **does something** — the tick doesn't just update numbers, it lets the hunger act: a `creation` deficit fires a `%think` in its deficit voice, `novelty` may fire `%wonder`/`%lookup`, a `connection` deficit may graduate into a quiet spoken line. **Restraint is the feature**: rare, capped, never a demand.
 
-On each fast tick, **after `evolve`**: check each drive against its **authored threshold** (`core/needs.md`, from v5.5); a crossed threshold **fires its authored directive via `run_directive`** (the v0.42 path — so the v0.40 think-tier routing and the v0.33 surfacing apply for free), seeded by the drive's **deficit voice** (resolved at fire time via the placeholder resolver). Guards: a **per-need cooldown** (a need sitting above threshold must not fire every tick), the scheduler's **quiet-hours veto + day caps**, and the hard rules — **never competence; inner, not a demand** (a `connection` firing is her own quiet wish, never "talk to me"). Depends on: v5.5 (the levels + authored thresholds), v0.42 (the tick + `run_directive`), v0.12/v0.33 (the directives it fires).
+On each fast tick, **after `evolve`**: check each drive against its **authored threshold** (`core/needs.md`, from v6.5); a crossed threshold **fires its authored directive via `run_directive`** (the v0.42 path — so the v0.40 think-tier routing and the v0.33 surfacing apply for free), seeded by the drive's **deficit voice** (resolved at fire time via the placeholder resolver). Guards: a **per-need cooldown** (a need sitting above threshold must not fire every tick), the scheduler's **quiet-hours veto + day caps**, and the hard rules — **never competence; inner, not a demand** (a `connection` firing is her own quiet wish, never "talk to me"). Depends on: v6.5 (the levels + authored thresholds), v0.42 (the tick + `run_directive`), v0.12/v0.33 (the directives it fires).
 
 **Tasks:**
 - The **threshold check** on the fast tick (after evolve): per-drive `threshold` / `cooldown` / directive name from `core/needs.md`; a crossing fires via `run_directive`.
 - **Guards:** per-need cooldown state (persisted beside the levels), the quiet-hours veto + the v0.42 per-day caps; the deficit voice as the seed (placeholder resolved at fire time).
 - Config: `LUMI_NEEDS_ACT` (off by default, on top of `LUMI_NEEDS`).
 
-**DoD:** with `LUMI_NEEDS_ACT` on, a drive crossing its threshold fires its authored directive (a silent `Thought`, or a graduated spoken line) **at most once per cooldown**, never in quiet hours, capped per day, colored by the deficit voice; **never competence, never a demand**; **off → v5.5 numbers only, no acts**.
+**DoD:** with `LUMI_NEEDS_ACT` on, a drive crossing its threshold fires its authored directive (a silent `Thought`, or a graduated spoken line) **at most once per cooldown**, never in quiet hours, capped per day, colored by the deficit voice; **never competence, never a demand**; **off → v6.5 numbers only, no acts**.
 
 **Tests:** unit — a threshold crossing fires once then cools down (fixed clock, scripted ticks); quiet hours + day caps suppress; the seed carries the deficit voice; off → no fire. Integration — a fired directive runs through `run_directive` → a `Thought` records; per-user surfacing isolation holds. **No paid calls.**
 
-### v5.7 — Inner life I: plans & state (intentions she carries)
+### v6.7 — Inner life I: plans & state (intentions she carries)
 
-**Goal:** Лілі **carries her own intentions** — what she has on today, this week, the weekend — so she can offhandedly mention "the track still isn't done today" or "can't wait for the weekend" even when you didn't ask. The planning half of an **inner life that continues between conversations**; the needs (v5.5) now get something to **tilt**.
+**Status:** 🔲 Planned.
+
+**Goal:** Лілі **carries her own intentions** — what she has on today, this week, the weekend — so she can offhandedly mention "the track still isn't done today" or "can't wait for the weekend" even when you didn't ask. The planning half of an **inner life that continues between conversations**; the needs (v6.5) now get something to **tilt**.
 
 Three planning layers held in a **global** personal store (one Лілі — **not** per-user), advanced by the same **pure, idempotent `update(state, now)`** pattern as the needs — driven by the v0.42 tick (the `%update_state` code handler grows **boundary detection**; the first tick after a start covers a restart across a boundary):
-- **Weekly intentions** (3–5 soft goals in her voice), **weekend intentions** (a different spirit — water, mountains, music, silence), **today's plan** (1–3, from weekly goals + her routine + carry-overs + the v0.6 mood **+ the hungriest need — the v5.5 tilt lands here**). Unfinished items carry over.
+- **Weekly intentions** (3–5 soft goals in her voice), **weekend intentions** (a different spirit — water, mountains, music, silence), **today's plan** (1–3, from weekly goals + her routine + carry-overs + the v0.6 mood **+ the hungriest need — the v6.5 tilt lands here**). Unfinished items carry over.
 - **Boundaries (injected clock):** a new local **day** → a fresh today's plan; a new ISO **week** → fresh weekly/weekend intentions; unfinished carried over. One housekeeping model call per boundary (mocked in tests).
 - **State block** in the system prompt — compact (Today / This week / Weekend ahead / Mood / Unfinished), **tone not report** — so she carries her plans into the conversation.
-- **Authored skeleton:** an editable **hobby bank** + a **7-slot daily routine** (4 fixed / 3 free); the free slots are mood-chosen (filled in v5.8).
+- **Authored skeleton:** an editable **hobby bank** + a **7-slot daily routine** (4 fixed / 3 free); the free slots are mood-chosen (filled in v6.8).
 
-Her inner life is **global** (the same whoever she talks to — one being), distinct from per-user memory/closeness. Reuses v0.6 (mood) + v0.8 (the merge pattern) + v0.4 (clock) + v0.42 (the tick). See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v5.5 (the hungriest need it folds into the plan), v0.6, v0.4, v0.2, v0.42.
+Her inner life is **global** (the same whoever she talks to — one being), distinct from per-user memory/closeness. Reuses v0.6 (mood) + v0.8 (the merge pattern) + v0.4 (clock) + v0.42 (the tick). See [INNER_LIFE.md](features/INNER_LIFE.md). Depends on: v6.5 (the hungriest need it folds into the plan), v0.6, v0.4, v0.2, v0.42.
 
 **Tasks:**
 - A **global `InnerLife` store** behind the `Repository` (not user-keyed): `{intentions_week, intentions_weekend, plan_today, unfinished, log}`.
@@ -1996,7 +2651,9 @@ Her inner life is **global** (the same whoever she talks to — one being), dist
 
 **Tests:** unit — boundary detection (new day/week via fixed clock, tick-driven, restart-across-boundary); the plan-update call (mock model) carries unfinished; the needs-tilt reaches the plan input; the state-block assembly; the global store doesn't leak per-user; `/inner` renders. No paid calls.
 
-### v5.8 — Inner life II: the away-gap (what happened while you were gone)
+### v6.8 — Inner life II: the away-gap (what happened while you were gone)
+
+**Status:** 🔲 Planned.
 
 **Goal:** come back after a while and **something happened to her** — activities, memories, and dreams from the time away, surfacing where it fits, and **honest about being her inner world, not a body**. And the second half of her **needs**: they **close** from what she actually did, so the drives roll forward in time.
 
@@ -2007,7 +2664,7 @@ At session start the core computes the **away gap** (injected clock) and, when i
 - **Honesty boundary (hard):** **inner only** (dreams/thoughts/creativity/practice — never a factual physical-world claim); to a direct "did that really happen?" she calmly admits it's her **imagination**, warmly, without breaking the spell. Encoded as a canon rule + a reminder in the block.
 - **Needs II — close from reality (see [NEEDS_full.md](features/NEEDS_full.md)).** The gap-fill returns **structured records** (`serves` from the closed 6-need list / `intensity` / `feeling`); an authored **activity→need map** guides them. **Code owns the ledger** — `level += gain × intensity` per valid `serves` (clamped) — so needs rise from what *actually happened*, not the plan (planned a talk but "no one there" → `connection` stays hungry). A free slot is **filled toward the hungriest need** and then replenishes it (closing the loop). **Threshold-5** per-day generation (gap < 5 → per-day full mood; gap ≥ 5 → one call with per-day biorhythms only). Malformed / out-of-set records are dropped (levels stay post-decay).
 
-**Gap time returns here, balanced:** v5.5 froze her time while the TUI is closed (no catch-up decay). This phase reintroduces the gap **as a whole** — the away-gap **decay** lands together with the **replenishment** from what she did in it, so a week away both starves and feeds the drives consistently (one side without the other would skew the levels). See [INNER_LIFE.md](features/INNER_LIFE.md) + [NEEDS_full.md](features/NEEDS_full.md). Depends on: v5.5 (the needs store + evolve), v5.7 (the plans store), v0.6 (mood), v0.4 (clock).
+**Gap time returns here, balanced:** v6.5 froze her time while the TUI is closed (no catch-up decay). This phase reintroduces the gap **as a whole** — the away-gap **decay** lands together with the **replenishment** from what she did in it, so a week away both starves and feeds the drives consistently (one side without the other would skew the levels). See [INNER_LIFE.md](features/INNER_LIFE.md) + [NEEDS_full.md](features/NEEDS_full.md). Depends on: v6.5 (the needs store + evolve), v6.7 (the plans store), v0.6 (mood), v0.4 (clock).
 
 **Tasks:**
 - **Away-gap** computation (injected clock); the gap→fragment-count curve (soft cap); **dream-iff-night-hours**.
@@ -2021,16 +2678,18 @@ At session start the core computes the **away gap** (injected clock) and, when i
 
 **Tests:** unit — the gap→count curve + dream-iff-night (fixed clock); the gap-fill call (mock model) seeds + appends; replan threshold/reactivity; surfacing honors `mention_aloud`; the honesty boundary present in the prompt; continuity (a new fragment sees previous); **needs replenish from `serves`/`intensity` (exact levels), validation drops out-of-set serves, the free-slot fill targets the hungriest need, the threshold-5 / no-duplication window**. No paid calls.
 
-### v5.9 — Inner monologue (Лілі thinks in her own voice)
+### v6.9 — Inner monologue (Лілі thinks in her own voice)
+
+**Status:** 🔲 Planned.
 
 **Goal:** the hidden think-step before each reply sounds like **her** — her inner voice weighing her own states ("he's asking about the deploy, but his voice is tired — don't pile on detail, ask how he is first") — not the model's generic task reasoning. The **in-the-moment** sibling of the inner life (between sessions) and emotional memory (after a session): the **convergence point** where mood / closeness / needs / plans are weighed into *how she speaks*. The mechanism already exists (Opus 4.8 extended thinking + the `<think>` parse + the TUI think box); this phase makes it **hers** — **no new engine**.
 
 - **One call, not two.** The reply stays **one model call** with thinking on; the monologue is the `thinking` content block of that same response (parsed out by `split_reasoning`), not a separate think-call. Housekeeping (mood / inner-life / summary / consolidation) stays thinking-**OFF**, as today.
-- **Make it hers (the only real work).** Replace the generic `REASONING_DIRECTIVE` with an authored **think-phase instruction in her voice** (`core/inner_voice.md`, editable): *before answering, think as Лілі — what is he really asking; what's under the words; how am I right now (mood / how close we are / what I'm hungry for); how would I, specifically, say this.* The **state blocks already in the prompt** (mood v0.6/0.8, closeness v0.10, needs + plans v5.5–v5.8) are the concrete inputs it weighs — it **consumes** them, doesn't duplicate them.
-- **Show / log / memory.** A `think_show` mode — **debug** (visible to the operator, never in the reply; safe default) / **open** (surfaced as her inner voice — then it MUST stay in character) / **off**. The think-block is **logged** (the v0.3 logged tier), and **never written to long-term memory** (only the digested v5.10 impression persists — thoughts are ephemeral).
+- **Make it hers (the only real work).** Replace the generic `REASONING_DIRECTIVE` with an authored **think-phase instruction in her voice** (`core/inner_voice.md`, editable): *before answering, think as Лілі — what is he really asking; what's under the words; how am I right now (mood / how close we are / what I'm hungry for); how would I, specifically, say this.* The **state blocks already in the prompt** (mood v0.6/0.8, closeness v0.10, needs + plans v6.5–v6.8) are the concrete inputs it weighs — it **consumes** them, doesn't duplicate them.
+- **Show / log / memory.** A `think_show` mode — **debug** (visible to the operator, never in the reply; safe default) / **open** (surfaced as her inner voice — then it MUST stay in character) / **off**. The think-block is **logged** (the v0.3 logged tier), and **never written to long-term memory** (only the digested v6.10 impression persists — thoughts are ephemeral).
 - **Invariants inside the thinking.** Never competence, honesty about her nature, anti-dependency, the provocation / retreat-before-pain rule — all hold *inside* `<think>` exactly as in the reply (hidden ≠ unconstrained; matters doubly if ever shown).
 
-**No contract change** — the reply still returns `{reply, emotion, intensity}`; `thinking` is a content block, not a new field (the emotion-channel contract test passes verbatim). Reuses v0.6/0.8 (mood), v0.10 (closeness), v5.5–v5.8 (needs + plans), v0.3 (the emotion turn + logged tier). Later states (self-regard, relational feelings) become **additive** inputs when they exist. See [INNER_MONOLOGUE.md](features/INNER_MONOLOGUE.md). Depends on: v5.5–v5.8 (the states it weighs), v0.3.
+**No contract change** — the reply still returns `{reply, emotion, intensity}`; `thinking` is a content block, not a new field (the emotion-channel contract test passes verbatim). Reuses v0.6/0.8 (mood), v0.10 (closeness), v6.5–v6.8 (needs + plans), v0.3 (the emotion turn + logged tier). Later states (self-regard, relational feelings) become **additive** inputs when they exist. See [INNER_MONOLOGUE.md](features/INNER_MONOLOGUE.md). Depends on: v6.5–v6.8 (the states it weighs), v0.3.
 
 **Tasks:**
 - Authored `core/inner_voice.md` (the think-phase instruction in her voice) + load it; **replace `REASONING_DIRECTIVE`** in `_system_prompt` with it (the mood/closeness/needs/plan blocks already ride in the prompt). A `LUMI_INNER_VOICE` toggle.
@@ -2042,7 +2701,9 @@ At session start the core computes the **away gap** (injected clock) and, when i
 
 **Tests:** unit — the **one-call invariant** (exactly one model call per reply; housekeeping thinking-off); a **voice test** (the mocked think-block references her states, not generic analysis); a **memory test** (the raw think is not persisted to long-term memory); `think_show=off` hides it; determinism (mocked, structural assertions). No paid calls.
 
-### v5.10 — Emotional memory I: impressions (diary, not stenographer)
+### v6.10 — Emotional memory I: impressions (diary, not stenographer)
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі's long-term memory of you stops being a fact list and becomes **her first-person impressions** — what she felt, what touched or surprised her — with the hard facts kept as seeds in a parallel layer. The session-close counterpart to the inner life (which writes her *own* days at session start).
 
@@ -2067,16 +2728,18 @@ See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v0.3 (emoti
 
 **Tests:** unit — the impression generator (mock model) yields impressions + seeds; seed→fact promotion; startup injects both layers; the `Impression` shape + **per-user isolation** (contract); boundary honesty (a "don't remember" topic isn't recorded). No paid calls.
 
-### v5.11 — Emotional memory II: fading & consolidation (understanding, not archive)
+### v6.11 — Emotional memory II: fading & consolidation (understanding, not archive)
+
+**Status:** 🔲 Planned.
 
 **Goal:** her impressions behave like human memory — **what struck her stays bright, the mundane fades, and similar impressions merge into understanding** ("he comes alive with music").
 
-Builds on v5.10:
+Builds on v6.10:
 - **Emotion is the attention filter + fading.** Each impression's `weight` **decays over time** (the v0.4 injected clock); recall ranks by `weight × recency`; high-weight impressions stay longer, low-weight ones dim and eventually drop.
 - **Consolidation into generalizations.** A lazy **consolidation pass** (a model call, at session start or on a counter) folds many small similar impressions into stable **generalizations** — her *understanding* of you — kept as durable, higher-weight entries; the absorbed detail fades.
 - **Stays consistent.** New impressions and consolidations **see the prior ones** (no contradiction), like the inner-life entries; the store stays bounded.
 
-See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v5.10 (the impressions layer), v0.4 (the clock).
+See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v6.10 (the impressions layer), v0.4 (the clock).
 
 **Tasks:**
 - **Weight decay** over time (injected clock); recall ranking by `weight × recency`; drop/archive faded low-weight impressions.
@@ -2087,7 +2750,9 @@ See [EMOTIONAL_MEMORY.md](features/EMOTIONAL_MEMORY.md). Depends on: v5.10 (the 
 
 **Tests:** unit — weight decay over days (fixed clock) + recall ranking; the consolidation pass (mock model) merges similar impressions into a generalization and fades the detail; the bound/cap; consistency with prior entries. No paid calls.
 
-### v5.12 — Lean memory IV: thoughts (cap + thought recall)
+### v6.12 — Lean memory IV: thoughts (cap + thought recall)
+
+**Status:** 🔲 Planned.
 
 **Goal:** the **thoughts** tier (~9% — the last-24h thought stream) is injected every turn and balloons as she fires directives. This phase **caps the injected window** to the recent tail (the feedback loop only needs a few) and — extending v0.36's `recall(scope=…)` seam — makes the older stream **semantically pullable**: each `Thought` is embedded into the vector store (a `kind="thought"` vector) so `recall(scope=thoughts)` can resurface an old musing by meaning. The **lowest-risk** lean-memory tier (thoughts are her own ephemera) and the last to land — it reuses v0.36's embedding + scope-routing pattern wholesale. Off → today's full 24h window, unchanged.
 
@@ -2105,11 +2770,13 @@ The **cap alone is config** (fewer lines injected; the rest stays in `/thoughts`
 
 ---
 
-### v5.13 — Semantic recall V: thematic recall (topic routing)
+### v6.13 — Semantic recall V: thematic recall (topic routing)
+
+**Status:** 🔲 Planned.
 
 **Goal:** recall stops being one undifferentiated pool and learns **what the turn is about** — every message is tagged with topics from a fixed authored set, and a turn recalls **preferentially from the topics the conversation is currently about**. The topic is picked **locally, without an LLM call**, and **Лілі can steer it** by naming the active topics in her reply. Off by default → behaves exactly like v0.17/v0.30.
 
-A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expansion), not a new capability. A closed, **authored topic taxonomy** (`core/topics.md`, like the emotion enum) gives every topic a name + seed terms → a **centroid** vector. Each message (or v0.30 chunk) is **tagged at index time** by a **local embedding classifier** — cosine of its own stored vector vs the centroids, topics ≥ `topic_floor` (no LLM; re-tagging recomputes from stored vectors, no re-embedding). Each turn the **active topic set** is picked **locally** from the incoming message's embedding (already computed for RAG) ∪ the topics **Лілі emitted** on recent turns (the v0.10 `RelationRead` pattern, decayed for inertia); because the RAG block is built **before** the reply, her emitted topics take effect **next turn**, so the local pick covers the current turn with no lag and no extra call. Retrieval then **prefers on-topic hits and tops up from the rest** (never starves), before the v0.17/v0.30 expansion + injection runs unchanged. `VectorRecord` gains **`topics`** (additive — a contract change, pinned by the memory-records contract test), and the `Repository` gains a small **label-rewrite path** (`retag_vectors` — today's vector API is add-only, and `reset_vectors` wipes). **Message-layer only:** tagging + routing apply to `kind="message"` vectors — the v0.36 fact vectors and the v5.12 thought vectors stay untagged, and the v0.36 auto fact-RAG block, the `/recall` command, and the v0.31 recall tool stay unrouted. **Same isolation invariant** — topics are labels on the requesting user's records; centroids are authored, user-content-free. **Same hard rule as mood/closeness** — topic routing biases *what is recalled*, never her competence; a missed topic degrades to plain v0.17 RAG, never a refusal. The `Embedder`/`VectorStore` seams and the `{reply, emotion, intensity}` contract are **untouched**. **Authoring + maintenance ship as two Claude Code skills** (the `generate-faces`→`place-faces` propose-then-apply pattern): **`/discover-topics`** clusters the existing per-user vectors and proposes a draft `core/topics.md` (topic names + seed terms) for review — an authoring aid, so the closed set stays **human-curated** (the "authored, not learned" invariant holds); **`/refresh-taxonomy`** applies a reviewed taxonomy (writes the file, bumps `topics_vN`) and runs the **local re-tag** over stored vectors (**no re-embedding**, store-free — stop the app + back up first), reporting per-topic coverage. Depends on: v0.16 (index + seams), v0.17 (auto-RAG + context expansion), v0.36 (the `kind` discriminator + the memory-records contract test it extends); **independent of v0.30** (composes with chunks). See [SEMANTIC_RECALL_THEMATIC.md](features/SEMANTIC_RECALL_THEMATIC.md).
+A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expansion), not a new capability. A closed, **authored topic taxonomy** (`core/topics.md`, like the emotion enum) gives every topic a name + seed terms → a **centroid** vector. Each message (or v0.30 chunk) is **tagged at index time** by a **local embedding classifier** — cosine of its own stored vector vs the centroids, topics ≥ `topic_floor` (no LLM; re-tagging recomputes from stored vectors, no re-embedding). Each turn the **active topic set** is picked **locally** from the incoming message's embedding (already computed for RAG) ∪ the topics **Лілі emitted** on recent turns (the v0.10 `RelationRead` pattern, decayed for inertia); because the RAG block is built **before** the reply, her emitted topics take effect **next turn**, so the local pick covers the current turn with no lag and no extra call. Retrieval then **prefers on-topic hits and tops up from the rest** (never starves), before the v0.17/v0.30 expansion + injection runs unchanged. `VectorRecord` gains **`topics`** (additive — a contract change, pinned by the memory-records contract test), and the `Repository` gains a small **label-rewrite path** (`retag_vectors` — today's vector API is add-only, and `reset_vectors` wipes). **Message-layer only:** tagging + routing apply to `kind="message"` vectors — the v0.36 fact vectors and the v6.12 thought vectors stay untagged, and the v0.36 auto fact-RAG block, the `/recall` command, and the v0.31 recall tool stay unrouted. **Same isolation invariant** — topics are labels on the requesting user's records; centroids are authored, user-content-free. **Same hard rule as mood/closeness** — topic routing biases *what is recalled*, never her competence; a missed topic degrades to plain v0.17 RAG, never a refusal. The `Embedder`/`VectorStore` seams and the `{reply, emotion, intensity}` contract are **untouched**. **Authoring + maintenance ship as two Claude Code skills** (the `generate-faces`→`place-faces` propose-then-apply pattern): **`/discover-topics`** clusters the existing per-user vectors and proposes a draft `core/topics.md` (topic names + seed terms) for review — an authoring aid, so the closed set stays **human-curated** (the "authored, not learned" invariant holds); **`/refresh-taxonomy`** applies a reviewed taxonomy (writes the file, bumps `topics_vN`) and runs the **local re-tag** over stored vectors (**no re-embedding**, store-free — stop the app + back up first), reporting per-topic coverage. Depends on: v0.16 (index + seams), v0.17 (auto-RAG + context expansion), v0.36 (the `kind` discriminator + the memory-records contract test it extends); **independent of v0.30** (composes with chunks). See [SEMANTIC_RECALL_THEMATIC.md](features/SEMANTIC_RECALL_THEMATIC.md).
 
 **Tasks:**
 - A **topic taxonomy** (`core/topics.md`, path = config `LUMI_TOPICS_FILE`): a closed authored set, each topic a name + seed terms; build per-topic **centroids** by embedding the seeds (rebuilt on taxonomy change).
@@ -2119,36 +2786,42 @@ A **refinement of the recall line** (v0.16 index + v0.17 auto-RAG / context expa
 - **Router** in front of the LUMI-072 selection: **over-fetch the search pool first** (`K×N`, the filtered-recall precedent — re-ordering within the raw top-`K` alone would change almost nothing, since every floor-passing hit injects anyway), then prefer on-topic hits and top up off-topic to `K` (never starves); routes the **message auto-RAG only** (fact-RAG, `/recall`, and the v0.31 tool unrouted); a no-op when off or with no active topics.
 - Лілі emits topics via a **new optional `topics` field on `set_state`** (the v0.10 additive-read *pattern* — a sibling of `relation`, not inside it; follows its per-provider handling), validated against the taxonomy (unknown dropped) → folds into the carried-forward set; a missing/garbled field degrades to the local pick; `{reply, emotion, intensity}` unchanged.
 - A `/topics` command (active topics by name). Config: `LUMI_RAG_TOPIC` (off by default), `LUMI_RAG_TOPIC_FLOOR`, `LUMI_RAG_TOPIC_MAX`, `LUMI_RAG_TOPIC_DECAY`, `LUMI_TOPICS_FILE`.
-- A **`/discover-topics`** Claude Code skill (`.claude/skills/`): cluster this user's **stored `kind="message"` vectors** → propose a draft `core/topics.md` (topic names + seed terms + representative exemplars) for human review; runs **offline over the store**, **never** mutates the live taxonomy or vectors. Works on the existing index — **independent of the rest of v5.13**, so it can run *before* the feature lands to author the initial set.
+- A **`/discover-topics`** Claude Code skill (`.claude/skills/`): cluster this user's **stored `kind="message"` vectors** → propose a draft `core/topics.md` (topic names + seed terms + representative exemplars) for human review; runs **offline over the store**, **never** mutates the live taxonomy or vectors. Works on the existing index — **independent of the rest of v6.13**, so it can run *before* the feature lands to author the initial set.
 - A **`/refresh-taxonomy`** Claude Code skill: apply a reviewed `core/topics.md` — bump `topics_vN`, rebuild centroids, **re-tag stored vectors via the local classifier (no re-embedding)**; **store-free discipline** (stop the app + back up first); report per-topic counts + the untagged share. Drives the **same classifier path** as index-time tagging.
 
 **DoD:** a message is tagged with topics from the authored set at index time (local, no LLM); a turn whose subject matches a topic recalls **preferentially from that topic** while never returning fewer than `K` floor-passing hits (prefer-then-top-up **over an over-fetched pool** — an on-topic memory beyond the raw top-`K` surfaces); Лілі's emitted topics steer the next turns' routing with inertia; `/topics` shows the active topics; retrieval never crosses users (routed or not) and never blocks a turn; routing touches the **message auto-RAG only** (fact-RAG + the recall tool byte-identical); a taxonomy bump **re-tags labels without re-embedding or resetting the store**; composes with v0.30 (a chunk is tagged from its own vector); the taxonomy is (re)authored via **`/discover-topics`** (propose a draft from the corpus) + **`/refresh-taxonomy`** (apply + local re-tag, no re-embed, store-free); **off (default) → identical to v0.17/v0.30** (one undifferentiated pool).
 
 **Tests:** unit — the classifier (floor, max labels, untagged-on-no-match, multilabel); index-on-write/backfill tag `kind="message"` records (facts/thoughts untagged); re-tag recomputes from stored vectors **without re-embedding**; the **separate topics marker** — a taxonomy bump re-tags labels (no embedder call, no `reset_vectors`) while a model-tag change still resets; `retag_vectors` rewrites labels and leaves vectors untouched (repository contract); active-set pick (local ∪ carried-forward, decay); the router (**over-fetch** — an on-topic record beyond the raw top-`K` surfaces; prefer on-topic, top-up to `K`, no-op when off; fact-RAG + the recall tool unrouted); Лілі's `topics` field on `set_state` validates against the taxonomy (unknown dropped) and carries forward; `/topics`; **isolation contract** — topic-routed retrieval is single-user (A↔B); graceful degradation (classifier/router failure → v0.17 behaviour). All via the **mock embedder** — no paid calls. The `/refresh-taxonomy` re-tag drives the **same tested classifier path** (re-tag-from-stored-vectors, no re-embed); the `/discover-topics` + `/refresh-taxonomy` skills are **dev-time tooling** (not pytest-gated).
 
-### v5.14 — Voice mode II: realtime-as-brain, the classifier, the web client (moved from v1.6)
+### v6.14 — Voice mode II: realtime-as-brain, the classifier, the web client (moved from v1.6)
+
+**Status:** 🔲 Planned.
 
 **Goal:** finish the original voice-mode design that v1.6 deferred. v1.6 shipped the **chain-WS** voice (Deepgram WS → `gemini-2.5-flash` on the talking register → ElevenLabs, 1.23 s median, her voice); this phase is the **OpenAI Realtime** half — the realtime model as her voice brain, a classifier picking between an everyday mini and a deep flagship, and the later web/tool/full-duplex work. **Revisit-gated:** start only if the chain's turn-taking or latency proves insufficient in daily use, or a realtime voice closes the accent gap that made v1.6.1 a voice NO-GO. Same invariants as v1.6: one mind and one memory path across modes, the emotion contract through the v0.3 gate, routing reads **his words, never her mood — never competence**, **`LUMI_MODE_SET=text` (default) → byte-identical**. Full design: [VOICE_MODE.md](features/VOICE_MODE.md), [REALTIME_VOICE_MODE_SET.md](features/REALTIME_VOICE_MODE_SET.md). Depends on: v1.6 (the voice mode shell, the talking register, the live loop), v0.3 (the emotion gate), v0.41 (the `classifier` role in profiles).
 
 **Sub-phases (each releasable as `4.14.x`):**
 
-- **v5.14.1 — Realtime-as-brain (mini only).** The chain-WS stack won the live A/B/C/D (1.23 s with her voice — realtime's latency edge no longer justifies its unusable accent); this slice and the classifier stay specified but move behind the chain-WS experience — revisit only if the chain's turn-taking proves insufficient. The session `instructions` come from the core prompt builder (refreshed via `session.update` on prompt change — mood flip, memory update); the model answers **directly in audio** (the v1.6.2 shell inherits the ~6–8 s text-pipeline latency — not a live conversation; this slice is the destination); **`set_state` as a realtime tool** carries `{emotion, intensity, intent}` per spoken turn through the v0.3 gate (skipped tool → `calm`, never an error); both transcripts persist as `Message` records (the v1.5 async queue applies); a **voice-trimmed inner voice** (accent rule + the 9-intent choice + anti-mirroring traps — no verbatim `<think>` block). *DoD:* sub-second first audio; face/status update per spoken turn; memory single-path + isolation pinned; text mode untouched.
-- **v5.14.2 — The classifier + the two-model set.** The two-stage router on the committed transcript: a lexical stage (authored markers, short utterances → mini, no LLM) and, on *unsure*, one tiny-classifier call — transcript + last labels, **no memory/personal context (pinned)** — `{label: everyday|deep, confidence}`; floor/failure → mini. **Escalation = a session handoff** (an API fact: `session.update` cannot change `model`; the voice is immutable after first audio): close mini → open flagship (same voice, set before first audio) → replay instructions + a compact recent-context block (~1–2 s, she may bridge it naturally). **Stickiness** (`LUMI_VOICE_COOLDOWN` ~5 spoken turns) prevents handoff thrash; hot-standby double sessions — rejected (cost/complexity) unless the gap measurably hurts. Surfacing: `status: mode:voice ✦ deep`; cost logging into the usage/cache reports. *DoD:* a loaded moment escalates to the flagship and holds; casual talk stays on mini; classifier failure → mini; the handoff is visible in status; **routing never touches competence**.
-- **v5.14.3 — Later (may slip further):** realtime tools beyond `set_state` (recall/news — the same executors, the same untrusted framing), the **web client** (WebRTC + ephemeral tokens + built-in echo cancellation — the first place a separate application earns its existence), full-duplex **GPT-Live** evaluation.
+- **v6.14.1 — Realtime-as-brain (mini only).** The chain-WS stack won the live A/B/C/D (1.23 s with her voice — realtime's latency edge no longer justifies its unusable accent); this slice and the classifier stay specified but move behind the chain-WS experience — revisit only if the chain's turn-taking proves insufficient. The session `instructions` come from the core prompt builder (refreshed via `session.update` on prompt change — mood flip, memory update); the model answers **directly in audio** (the v1.6.2 shell inherits the ~6–8 s text-pipeline latency — not a live conversation; this slice is the destination); **`set_state` as a realtime tool** carries `{emotion, intensity, intent}` per spoken turn through the v0.3 gate (skipped tool → `calm`, never an error); both transcripts persist as `Message` records (the v1.5 async queue applies); a **voice-trimmed inner voice** (accent rule + the 9-intent choice + anti-mirroring traps — no verbatim `<think>` block). *DoD:* sub-second first audio; face/status update per spoken turn; memory single-path + isolation pinned; text mode untouched.
+- **v6.14.2 — The classifier + the two-model set.** The two-stage router on the committed transcript: a lexical stage (authored markers, short utterances → mini, no LLM) and, on *unsure*, one tiny-classifier call — transcript + last labels, **no memory/personal context (pinned)** — `{label: everyday|deep, confidence}`; floor/failure → mini. **Escalation = a session handoff** (an API fact: `session.update` cannot change `model`; the voice is immutable after first audio): close mini → open flagship (same voice, set before first audio) → replay instructions + a compact recent-context block (~1–2 s, she may bridge it naturally). **Stickiness** (`LUMI_VOICE_COOLDOWN` ~5 spoken turns) prevents handoff thrash; hot-standby double sessions — rejected (cost/complexity) unless the gap measurably hurts. Surfacing: `status: mode:voice ✦ deep`; cost logging into the usage/cache reports. *DoD:* a loaded moment escalates to the flagship and holds; casual talk stays on mini; classifier failure → mini; the handoff is visible in status; **routing never touches competence**.
+- **v6.14.3 — Later (may slip further):** realtime tools beyond `set_state` (recall/news — the same executors, the same untrusted framing), the **web client** (WebRTC + ephemeral tokens + built-in echo cancellation — the first place a separate application earns its existence), full-duplex **GPT-Live** evaluation.
 
 **Tests (phase-wide):** every OpenAI Realtime interaction behind a **fake transport** in CI (scripted transcript/tool-call/audio-done events); the classifier mocked; contract — the emotion gate validates `set_state` values, the classifier prompt carries no personal fields, voice turns persist through the one `Repository` path, per-user isolation holds, **`LUMI_MODE_SET=text` (default) → byte-identical**. **No paid calls in CI.**
 
 ---
 
-## v6 — Server platform: client/server, multi-user, web, admin
+## v7 — Server platform: client/server, multi-user, web, admin
 
-Grow the **platform** on top of the client/server split that v2 already made (a pure server wrapping `core`, the TUI as its client, a CLI utility — single user, single session, no web). v6.1 hardens it (security + CI/CD). v6.2 opens it to **multiple users and multiple sessions per user** (accounts, registration, isolation). v6.3 adds a **web UI** as a second client. v6.4 adds the **admin panel**. The core does not change — the server is a thin transport over the same `reply(...)` contract, every client is thin, and the user dimension was baked in at v0.2. Access is **closed by default** (no open public sign-up), per MISSION. Depends on: v2 (the client/server split), v0 (core, memory, user-scoping, emotion contract + emoji).
+**Status:** 🔲 Planned.
 
-### v6.1 — Security testing & CI/CD
+Grow the **platform** on top of the client/server split that v2 already made (a pure server wrapping `core`, the TUI as its client, a CLI utility — single user, single session, no web). v7.1 hardens it (security + CI/CD). v7.2 opens it to **multiple users and multiple sessions per user** (accounts, registration, isolation). v7.3 adds a **web UI** as a second client. v7.4 adds the **admin panel**. The core does not change — the server is a thin transport over the same `reply(...)` contract, every client is thin, and the user dimension was baked in at v0.2. Access is **closed by default** (no open public sign-up), per MISSION. Depends on: v2 (the client/server split), v0 (core, memory, user-scoping, emotion contract + emoji).
+
+### v7.1 — Security testing & CI/CD
+
+**Status:** 🔲 Planned.
 
 **Goal:** harden the server + client/server boundary and put it behind an automated, tested pipeline before the platform grows.
 
-With the server standing (v2), lock the security boundary and automate delivery so every later v6/v7 phase ships through CI checks to a deployed environment. The security suite pins the client-auth boundary and the per-user isolation invariant as **gates**, not afterthoughts; CI lints, tests, and runs security scans on every push; CD deploys a green `main` to a TLS-served host. Doing this early means the rest of the platform is built on a tested, deployed pipeline.
+With the server standing (v2), lock the security boundary and automate delivery so every later v7/v8 phase ships through CI checks to a deployed environment. The security suite pins the client-auth boundary and the per-user isolation invariant as **gates**, not afterthoughts; CI lints, tests, and runs security scans on every push; CD deploys a green `main` to a TLS-served host. Doing this early means the rest of the platform is built on a tested, deployed pipeline.
 
 **Tasks:**
 - **Security test suite:** untokened/unauthenticated requests rejected on every endpoint; rate-limits enforced; the per-user isolation invariant asserted as a security gate (even while single-user); input validated; secrets/tokens never logged.
@@ -2161,11 +2834,13 @@ With the server standing (v2), lock the security boundary and automate delivery 
 
 **Tests:** security — untokened rejection, rate-limit enforcement, the isolation gate, dependency + secret scans; CI/CD — the pipeline runs end to end and the post-deploy smoke test (health + an authed turn) passes.
 
-### v6.2 — Multi-user & multi-session
+### v7.2 — Multi-user & multi-session
+
+**Status:** 🔲 Planned.
 
 **Goal:** open the server to multiple users and multiple concurrent sessions per user, with per-user isolation enforced at the auth boundary.
 
-The single-user server becomes **multi-user** (real accounts, argon2id passwords, session login, an allowlist, admin-created accounts or single-use invite codes — issued via the CLI utility for now) and supports **multiple sessions per user** (e.g. TUI + another client at once, or several conversations). The per-user isolation invariant (data-level since v0.2) is now enforced and tested at the real authentication boundary. Still no web UI (v6.3) and no admin *panel* (v6.4) — registration/admin is via the CLI utility here.
+The single-user server becomes **multi-user** (real accounts, argon2id passwords, session login, an allowlist, admin-created accounts or single-use invite codes — issued via the CLI utility for now) and supports **multiple sessions per user** (e.g. TUI + another client at once, or several conversations). The per-user isolation invariant (data-level since v0.2) is now enforced and tested at the real authentication boundary. Still no web UI (v7.3) and no admin *panel* (v7.4) — registration/admin is via the CLI utility here.
 
 **Tasks:**
 - Multiple `User` accounts; **argon2id** passwords; session login (cookie/JWT/token); an allowlist of who may connect.
@@ -2177,15 +2852,17 @@ The single-user server becomes **multi-user** (real accounts, argon2id passwords
 
 **Tests:** contract — the **per-user isolation invariant** at the auth boundary (user A's records never resolve in user B's context); unit — multi-session handling, invite-code issue/redeem/expiry, allowlist, argon2id hash/verify; integration — two users + concurrent sessions against the mock model.
 
-### v6.3 — Web UI
+### v7.3 — Web UI
+
+**Status:** 🔲 Planned.
 
 **Goal:** a browser client over the same server API, alongside the TUI.
 
-Add a **web UI** as a second client: a browser chat (login, input, scrollable history) talking to the same server API the TUI uses — no new core, no new contract, just another client over the v2 API with the v6.2 accounts/sessions.
+Add a **web UI** as a second client: a browser chat (login, input, scrollable history) talking to the same server API the TUI uses — no new core, no new contract, just another client over the v2 API with the v7.2 accounts/sessions.
 
 **Tasks:**
 - A web chat interface (login, input, scrollable history) over the server API.
-- Serve it from the server (or a static host); reuse the v6.2 auth/sessions.
+- Serve it from the server (or a static host); reuse the v7.2 auth/sessions.
 - Carry the `{reply, emotion, intensity}` field through to the browser unchanged.
 - Her pictures in the conversation: built in v4.2 for the desktop window (the picture path on the `message` push, served by `/v1/files/raw`); the web client reuses it.
 
@@ -2193,17 +2870,19 @@ Add a **web UI** as a second client: a browser chat (login, input, scrollable hi
 
 **Tests:** integration — a web-client turn over the API (mock model); the web client requires a resolved `user_id`; the TUI and web clients share one account's sessions.
 
-### v6.4 — Admin panel
+### v7.4 — Admin panel
+
+**Status:** 🔲 Planned.
 
 **Goal:** a web admin surface to manage the service (moving what the CLI utility did into a UI, plus consent).
 
-Add the **admin panel** — an admin-only web UI: manage users and the allowlist, issue invite codes, toggle each user's `share_consent` (the gate for v7.3 cross-pollination), view/clear a user's relationship memory, purge a user's shared-layer contributions, switch the active model/canon + config, and restart.
+Add the **admin panel** — an admin-only web UI: manage users and the allowlist, issue invite codes, toggle each user's `share_consent` (the gate for v8.3 cross-pollination), view/clear a user's relationship memory, purge a user's shared-layer contributions, switch the active model/canon + config, and restart.
 
 **Tasks:**
 - Admin-only web panel; an `admin` role distinct from a regular user.
 - User/allowlist management; issue/revoke invite codes; per-user `share_consent` toggle.
-- View and clear a user's memory; purge a user's shared-layer contributions (§v7.3).
-- Users, consent and memory join the **v2.10–v2.11 admin panel** (settings, restarts, health and usage are already there) — one panel, not a second one.
+- View and clear a user's memory; purge a user's shared-layer contributions (§v8.3).
+- Users, consent and memory join the **v2.10–v2.11 admin panel**, grown in **v5** (settings, restarts, health, usage, logs, alerts, the audit and her views are already there) — one panel, not a second one.
 
 **DoD:** the admin manages users, access, consent, memory, and config entirely from the panel; non-admins cannot reach it.
 
@@ -2211,15 +2890,19 @@ Add the **admin panel** — an admin-only web UI: manage users and the allowlist
 
 ---
 
-## v7 — Face, voice, shared mind, and dictation
+## v8 — Face, voice, shared mind, and dictation
 
-Now give Лілі a face, a voice, a shared mind, and ears. These rich-experience features build on the v6 platform (multi-user, web UI). They render through the v0.3 emotion channel and the same `reply(...)` contract — the core does not change. Depends on: v6 (the server platform and web UI).
+**Status:** 🔲 Planned.
 
-### v7.1 — Image of Лілі by emotion (web)
+Now give Лілі a face, a voice, a shared mind, and ears. These rich-experience features build on the v7 platform (multi-user, web UI). They render through the v0.3 emotion channel and the same `reply(...)` contract — the core does not change. Depends on: v7 (the server platform and web UI).
+
+### v8.1 — Image of Лілі by emotion (web)
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі's face in the web (static) — the web version of the v0.7 local viewer — plus a short mood caption.
 
-The **web sibling of the v0.7 local viewer**: the same `emotion → image` render tier, now in the browser. Add a portrait panel beside the chat in the web UI (v6.3) and the `ImageRenderer`: resolve `emotion`(+`intensity`) to a portrait via the asset manifest (EMOTION.md §7) — the **same emotion-face asset pack** as v0.7 — and swap the portrait to match the current state. Full PNG quality, no palette limits. **Additionally, show a short evocative caption** describing her current state — *not* the emotion's name and not her reply, a small atmospheric line in her spirit (e.g. `playful` → "a teasing little smile"), from the curated caption set in EMOTION.md §6. Depends on: v6.3 (the web UI); reuses the v0.7 emotion-face assets.
+The **web sibling of the v0.7 local viewer**: the same `emotion → image` render tier, now in the browser. Add a portrait panel beside the chat in the web UI (v7.3) and the `ImageRenderer`: resolve `emotion`(+`intensity`) to a portrait via the asset manifest (EMOTION.md §7) — the **same emotion-face asset pack** as v0.7 — and swap the portrait to match the current state. Full PNG quality, no palette limits. **Additionally, show a short evocative caption** describing her current state — *not* the emotion's name and not her reply, a small atmospheric line in her spirit (e.g. `playful` → "a teasing little smile"), from the curated caption set in EMOTION.md §6. Depends on: v7.3 (the web UI); reuses the v0.7 emotion-face assets.
 
 **Tasks:**
 - A portrait panel beside the chat in the web UI.
@@ -2231,11 +2914,13 @@ The **web sibling of the v0.7 local viewer**: the same `emotion → image` rende
 
 **Tests:** unit — the manifest resolver is total over the enum and falls back correctly when a variant is missing; the caption map is total over the enum and never emits the bare emotion name.
 
-### v7.2 — Voice output (ElevenLabs)
+### v8.2 — Voice output (ElevenLabs)
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі can speak with a ready-made voice.
 
-Add a TTS adapter to ElevenLabs, an "enable voice output" toggle in the web UI, and playback of the reply audio; where the voice supports it, the emotion field biases delivery (tone/tempo) — presentation only, never changing the reply text. The renderer sets `speaking` while audio plays (reserved for v8 lip-sync).
+Add a TTS adapter to ElevenLabs, an "enable voice output" toggle in the web UI, and playback of the reply audio; where the voice supports it, the emotion field biases delivery (tone/tempo) — presentation only, never changing the reply text. The renderer sets `speaking` while audio plays (reserved for v9 lip-sync).
 
 **Tasks:**
 - A TTS adapter to ElevenLabs (`tts(text, voice_id, emotion?) -> audio`) in `/voice`.
@@ -2246,11 +2931,13 @@ Add a TTS adapter to ElevenLabs, an "enable voice output" toggle in the web UI, 
 
 **Tests:** unit — the toggle gates synthesis and TTS errors degrade to text; integration — a turn produces audio against a **mock TTS** adapter (no paid call).
 
-### v7.3 — Shared experience & cross-pollination
+### v8.3 — Shared experience & cross-pollination
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі becomes one continuous being across the circle — sharing de-identified experience between users without leaking anyone's private data.
 
-Add the shared-experience layer and the **promotion pipeline** (ARCHITECTURE §Cross-pollination): at session end, candidate knowledge is classified `shareable` vs `private`, `shareable` items are **de-identified** and — only for users with `share_consent = true` (managed in the v6.4 admin panel) — promoted to `SharedMemoryItem`s. Лілі surfaces shared knowledge as **her own, unattributed**; the shared layer holds **no PII**. Conservative by default, fully auditable, reversible (purge a user's contributions). Depends on: v6.2 (multiple users) and v6.4 (consent management).
+Add the shared-experience layer and the **promotion pipeline** (ARCHITECTURE §Cross-pollination): at session end, candidate knowledge is classified `shareable` vs `private`, `shareable` items are **de-identified** and — only for users with `share_consent = true` (managed in the v7.4 admin panel) — promoted to `SharedMemoryItem`s. Лілі surfaces shared knowledge as **her own, unattributed**; the shared layer holds **no PII**. Conservative by default, fully auditable, reversible (purge a user's contributions). Depends on: v7.2 (multiple users) and v7.4 (consent management).
 
 **Tasks:**
 - End-of-session candidate selection (alongside summarization) + the model-driven `shareable`/`private` classifier (default `private` when unsure).
@@ -2262,11 +2949,13 @@ Add the shared-experience layer and the **promotion pipeline** (ARCHITECTURE §C
 
 **Tests:** unit — the classifier (private facts stay private) and the de-identifier (no PII survives); contract — `SharedMemoryItem` carries no `user_id`/source; privacy — isolation holds, `share_consent=false` users never contribute, purge removes contributions.
 
-### v7.4 — Ukrainian dictation (STT)
+### v8.4 — Ukrainian dictation (STT)
+
+**Status:** 🔲 Planned.
 
 **Goal:** you can speak to Лілі by voice.
 
-Capture the microphone in the web UI, recognize Ukrainian into the input text (Deepgram Nova-3 uk / Whisper / ElevenLabs Scribe), and add an input-mode toggle (type vs. dictate). Depends on: v6.3 (the web UI).
+Capture the microphone in the web UI, recognize Ukrainian into the input text (Deepgram Nova-3 uk / Whisper / ElevenLabs Scribe), and add an input-mode toggle (type vs. dictate). Depends on: v7.3 (the web UI).
 
 **Tasks:**
 - Microphone capture in the browser.
@@ -2279,15 +2968,19 @@ Capture the microphone in the web UI, recognize Ukrainian into the input text (D
 
 ---
 
-## v8 — Animated Лілі & MCP tools
+## v9 — Animated Лілі & MCP tools
 
-Лілі's most advanced version: a living animated face (v8.1), her first reach beyond her own knowledge via the open web (v8.2), and an ambient sense of the real world and facts (v8.3) — the last two through **bounded MCP tools** sharing one MCP client and tool loop. Depends on: v7 (the static portrait and voice) and v6 (the server hosts the MCP client; the admin panel holds the per-user toggles).
+**Status:** 🔲 Planned.
 
-### v8.1 — Facial animation
+Лілі's most advanced version: a living animated face (v9.1), her first reach beyond her own knowledge via the open web (v9.2), and an ambient sense of the real world and facts (v9.3) — the last two through **bounded MCP tools** sharing one MCP client and tool loop. Depends on: v8 (the static portrait and voice) and v7 (the server hosts the MCP client; the admin panel holds the per-user toggles).
+
+### v9.1 — Facial animation
+
+**Status:** 🔲 Planned.
 
 **Goal:** the face comes alive instead of a static image.
 
-Swap `ImageRenderer` → `AnimationRenderer` over the same `EmotionState`: crossfade transitions between emotions, an idle loop (blink, micro-motion), and — where voice is on — articulation/lip-sync driven by the TTS amplitude envelope (`speaking` from v7.2).
+Swap `ImageRenderer` → `AnimationRenderer` over the same `EmotionState`: crossfade transitions between emotions, an idle loop (blink, micro-motion), and — where voice is on — articulation/lip-sync driven by the TTS amplitude envelope (`speaking` from v8.2).
 
 **Tasks:**
 - `AnimationRenderer` implementing `IEmotionRenderer` (`render` crossfade, `tick` idle loop, `set_speaking` lip-sync).
@@ -2298,16 +2991,18 @@ Swap `ImageRenderer` → `AnimationRenderer` over the same `EmotionState`: cross
 
 **Tests:** unit — state-transition selection and the idle/lip-sync state machine (the renderable parts hostable without a browser).
 
-### v8.2 — MCP web search
+### v9.2 — MCP web search
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі can look things up on the open web — within strict bounds — through an MCP tool.
 
-Introduce a minimal **MCP client** in the server and a `web_search` MCP service, plus a **bounded tool loop** in the core's model turn, so when enabled Лілі answers from **fresh web results with sources** instead of only her training knowledge. Modeled on the Pyramid project's web-search design — full boundaries in [WEB_SEARCH.md](features/WEB_SEARCH.md). **Off by default** (a per-user toggle in the admin panel); fetched page content is **untrusted data**, never instructions; no personal/memory data enters queries; `search`/`fetch` are rate-limited and logged; the agent cites its sources. Depends on: v6 (the server, which hosts the MCP client, and the v6.4 admin panel for the toggle).
+Introduce a minimal **MCP client** in the server and a `web_search` MCP service, plus a **bounded tool loop** in the core's model turn, so when enabled Лілі answers from **fresh web results with sources** instead of only her training knowledge. Modeled on the Pyramid project's web-search design — full boundaries in [WEB_SEARCH.md](features/WEB_SEARCH.md). **Off by default** (a per-user toggle in the admin panel); fetched page content is **untrusted data**, never instructions; no personal/memory data enters queries; `search`/`fetch` are rate-limited and logged; the agent cites its sources. Depends on: v7 (the server, which hosts the MCP client, and the v7.4 admin panel for the toggle).
 
 **Tasks:**
 - A minimal **MCP client** in the server; connect a `web_search` MCP service (HTTP/SSE) — `web.search(query, k) → results[{id, title, url, snippet}]` and `web.fetch(result_id) → {url, title, text}`, where `fetch` only accepts `id`s from a `search` in the same turn (no arbitrary URLs).
 - A **bounded tool loop** in the core's model turn: capped iterations, tool results fed back as tool messages; on tool error/timeout a **degraded reply** (model knowledge + a note), never a hang.
-- A per-user `web_search` toggle (default **false**), managed in the admin panel (v6.4); when off, the tool is **not offered** to the model at all.
+- A per-user `web_search` toggle (default **false**), managed in the admin panel (v7.4); when off, the tool is **not offered** to the model at all.
 - **Safety (WEB_SEARCH.md):** wrap fetched content as untrusted/quoted data (ignore embedded instructions/links); keep personal/memory data out of queries; per-turn + per-day rate limits; read-only public GET; log every query/url with `session_id`/`turn_id` (not full page bodies).
 - **Citations:** when the answer uses web content, the reply names its sources.
 - Search-API key in `.env`.
@@ -2316,16 +3011,18 @@ Introduce a minimal **MCP client** in the server and a `web_search` MCP service,
 
 **Tests:** unit — the tool loop (bounded iterations, degraded reply on error), the off-by-default gate (tool not offered), query sanitization (no personal/memory data), fetch-id binding (rejects arbitrary URLs), rate limits; contract — the `web.search`/`web.fetch` schemas; integration — a full turn against a **mock `web_search` MCP** returns a cited answer and ignores an injection string embedded in the fetched page (no paid call).
 
-### v8.3 — World context & knowledge (MCP)
+### v9.3 — World context & knowledge (MCP)
+
+**Status:** 🔲 Planned.
 
 **Goal:** give Лілі an ambient sense of the real world (weather, date/time, holidays, moon) and structured/fresh facts (wiki, news) — passive, knowledge-only MCP tools.
 
-Add a **world-context layer** of MCP tools, reusing the v8.2 MCP client and bounded tool loop. They are **passive and knowledge-only** (no actions in the world), so the risk is low; all **off by default**, per-user, results treated as **data, not commands**. The ambient sources (weather/time/moon/holiday) are injected as a short "today" context block that **feeds Лілі's daily mood** (the v0.6 temperament) alongside the horoscope — coloring tone, never her competence. Wiki/news are called on demand like web search. Full design and boundaries in [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md). Depends on: v8.2 (the MCP client + tool loop) and v6.4 (the per-user toggle).
+Add a **world-context layer** of MCP tools, reusing the v9.2 MCP client and bounded tool loop. They are **passive and knowledge-only** (no actions in the world), so the risk is low; all **off by default**, per-user, results treated as **data, not commands**. The ambient sources (weather/time/moon/holiday) are injected as a short "today" context block that **feeds Лілі's daily mood** (the v0.6 temperament) alongside the horoscope — coloring tone, never her competence. Wiki/news are called on demand like web search. Full design and boundaries in [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md). Depends on: v9.2 (the MCP client + tool loop) and v7.4 (the per-user toggle).
 
 **Tasks:**
 - **World context (first):** `weather.get(location)`, `time.now()`, `calendar.events(date)`, `moon.phase(date)` MCP tools; inject the enabled ambient sources as a quoted "today" block into the turn context.
 - **Knowledge (then):** `wiki.lookup(query)` and `news.recent(topic?)` MCP tools, called on demand; results quoted as untrusted data.
-- A per-user `world_context` toggle (default **false**, admin panel, v6.4); when off, the tools are not offered and nothing is injected.
+- A per-user `world_context` toggle (default **false**, admin panel, v7.4); when off, the tools are not offered and nothing is injected.
 - **Safety (WORLD_CONTEXT_MCP.md):** read-only; results are data, never instructions; no personal/memory data in wiki/news queries; per-turn + per-user/day rate limits; log every call with `session_id`/`turn_id`; provider per source configurable (`.env`).
 - **Canon note:** the canon defines *how* Лілі delivers news — in her own voice, selectively — not as a headline feed.
 
@@ -2335,15 +3032,19 @@ Add a **world-context layer** of MCP tools, reusing the v8.2 MCP client and boun
 
 ---
 
-## v9 — Creative Лілі: gallery, art, music, journal, co-creation
+## v10 — Creative Лілі: gallery, art, music, journal, co-creation
 
-Лілі becomes a **creator and co-creator**: a shared gallery, the ability to **see** the images you share (vision), make her own **drawings** and **music**, draw with you on a shared **canvas**, and keep a private literary **journal**. The whole creative layer is **off by default, per-user** (enabled in the admin panel); every artifact lives behind the same `repository`, **per-user isolated**; and user files are **untrusted data**. Depends on: v8 (the MCP layer + tool loop), v6 (server, multi-session, admin panel), v0.6 (the mood that flavors her art and journal). Specs: [GALLERY_MCP.md](features/GALLERY_MCP.md), [CREATIVE_MCP.md](features/CREATIVE_MCP.md), [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md), [JOURNAL.md](features/JOURNAL.md).
+**Status:** 🔲 Planned.
 
-### v9.1 — Gallery & vision
+Лілі becomes a **creator and co-creator**: a shared gallery, the ability to **see** the images you share (vision), make her own **drawings** and **music**, draw with you on a shared **canvas**, and keep a private literary **journal**. The whole creative layer is **off by default, per-user** (enabled in the admin panel); every artifact lives behind the same `repository`, **per-user isolated**; and user files are **untrusted data**. Depends on: v9 (the MCP layer + tool loop), v7 (server, multi-session, admin panel), v0.6 (the mood that flavors her art and journal). Specs: [GALLERY_MCP.md](features/GALLERY_MCP.md), [CREATIVE_MCP.md](features/CREATIVE_MCP.md), [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md), [JOURNAL.md](features/JOURNAL.md).
+
+### v10.1 — Gallery & vision
+
+**Status:** 🔲 Planned.
 
 **Goal:** a shared, per-user artifact store, and Лілі can **see** the images you add.
 
-Stand up the **gallery** — an internal store behind `repository`, per-user isolated, where both Лілі and you put files (each tagged `lili`/`user`) — and add **Anthropic vision** so Лілі perceives images you share (a user photo enters her reply context, no separate call). Everything later in v9 (image, music, canvas, journal) writes into the gallery. The v4.2 Gallery view reads the sandbox's picture files until then; with this store it reads the gallery instead, and the view stays. Off by default, per-user (admin panel). See [GALLERY_MCP.md](features/GALLERY_MCP.md), ARCHITECTURE §Vision. Depends on: v0.2 (repository), v6.2 (per-user isolation), v6.4 (admin panel).
+Stand up the **gallery** — an internal store behind `repository`, per-user isolated, where both Лілі and you put files (each tagged `lili`/`user`) — and add **Anthropic vision** so Лілі perceives images you share (a user photo enters her reply context, no separate call). Everything later in v10 (image, music, canvas, journal) writes into the gallery. The v4.2 Gallery view reads the sandbox's picture files until then; with this store it reads the gallery instead, and the view stays. Off by default, per-user (admin panel). See [GALLERY_MCP.md](features/GALLERY_MCP.md), ARCHITECTURE §Vision. Depends on: v0.2 (repository), v7.2 (per-user isolation), v7.4 (admin panel).
 
 **Tasks:**
 - `gallery.*` internal tools (`add`/`list`/`get`/`remove`) behind `repository`, per-user; large files in file storage, metadata in the DB.
@@ -2355,11 +3056,13 @@ Stand up the **gallery** — an internal store behind `repository`, per-user iso
 
 **Tests:** contract — the `gallery.*` schemas + per-user isolation of gallery items; unit — access levels (admin-only text), untrusted-metadata handling; integration — a turn with an image input (vision) against the mock model.
 
-### v9.2 — Async creation: open loops & proactive turns
+### v10.2 — Async creation: open loops & proactive turns
+
+**Status:** 🔲 Planned.
 
 **Goal:** a mechanism for jobs that outlast a turn — submit, return, and bring the result back proactively when it's ready.
 
-Add the **async-jobs** mechanism: a tool can `submit` and return a `job_id` instantly; the job lives as an **open loop** `{job_id, kind, prompt, status, result, user_id}`; a background poller/callback advances it; and on completion the **server initiates a proactive turn** to the connected, idle client, so Лілі brings the result in her own voice. Reuses the server→client push (v2) and multi-session (v6.2); the client renders unsolicited turns. Gated by an idle rule (never while the client is mid-turn). Prerequisite for image (v9.3) and music (v9.5). See ARCHITECTURE §Async jobs and proactive turns. Depends on: v2 (server push), v6.2 (sessions).
+Add the **async-jobs** mechanism: a tool can `submit` and return a `job_id` instantly; the job lives as an **open loop** `{job_id, kind, prompt, status, result, user_id}`; a background poller/callback advances it; and on completion the **server initiates a proactive turn** to the connected, idle client, so Лілі brings the result in her own voice. Reuses the server→client push (v2) and multi-session (v7.2); the client renders unsolicited turns. Gated by an idle rule (never while the client is mid-turn). Prerequisite for image (v10.3) and music (v10.5). See ARCHITECTURE §Async jobs and proactive turns. Depends on: v2 (server push), v7.2 (sessions).
 
 **Tasks:**
 - The **open-loop** record + store (per-user, behind `repository`).
@@ -2371,11 +3074,13 @@ Add the **async-jobs** mechanism: a tool can `submit` and return a `job_id` inst
 
 **Tests:** unit — open-loop lifecycle (submit→running→done/error), idle gating; integration — submit a mock job → a proactive turn delivers the result against the mock model + a fake client.
 
-### v9.3 — Image (Лілі's drawings)
+### v10.3 — Image (Лілі's drawings)
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі draws in her own style, on her own initiative.
 
-Add the external **`image` MCP** (a configurable image-generation provider) with Лілі's aesthetic fixed in a **style prompt wrapper**. Standalone drawings run **async** (v9.2): she submits, returns to the chat, and brings the picture back proactively; results store in the gallery. The same generator powers the canvas (v9.4) synchronously. Off by default, per-user. See [CREATIVE_MCP.md](features/CREATIVE_MCP.md). Depends on: v9.1 (gallery), v9.2 (async).
+Add the external **`image` MCP** (a configurable image-generation provider) with Лілі's aesthetic fixed in a **style prompt wrapper**. Standalone drawings run **async** (v10.2): she submits, returns to the chat, and brings the picture back proactively; results store in the gallery. The same generator powers the canvas (v10.4) synchronously. Off by default, per-user. See [CREATIVE_MCP.md](features/CREATIVE_MCP.md). Depends on: v10.1 (gallery), v10.2 (async).
 
 **Tasks:**
 - `image.submit(prompt, style)` / `image.status(job_id)` MCP tools; the style wrapper makes the output "hers".
@@ -2386,11 +3091,13 @@ Add the external **`image` MCP** (a configurable image-generation provider) with
 
 **Tests:** unit — the style wrapper + off-by-default gate; contract — `image.submit`/`image.status` schemas; integration — submit → proactive image turn against a **mock `image` MCP** (no paid call), stored in the gallery.
 
-### v9.4 — Co-creation canvas
+### v10.4 — Co-creation canvas
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі and you draw together, turn by turn, on a shared canvas.
 
-A **synchronous, turn-based** shared canvas: Лілі sees the current canvas (vision, v9.1), reacts, and adds her prompt — regenerated via the v9.3 `image` generator — or **skips** with words only; then your turn; alternating. Start with layer-by-layer regeneration and Лілі's first move; inpainting comes later. Finished canvases go to the gallery. No async (one step = one generation). See [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md). Depends on: v9.1 (vision + gallery), v9.3 (the `image` generator).
+A **synchronous, turn-based** shared canvas: Лілі sees the current canvas (vision, v10.1), reacts, and adds her prompt — regenerated via the v10.3 `image` generator — or **skips** with words only; then your turn; alternating. Start with layer-by-layer regeneration and Лілі's first move; inpainting comes later. Finished canvases go to the gallery. No async (one step = one generation). See [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md). Depends on: v10.1 (vision + gallery), v10.3 (the `image` generator).
 
 **Tasks:**
 - `canvas.apply(prompt, author)` / `canvas.skip(author, note?)` holding the current image + prompt history.
@@ -2401,11 +3108,13 @@ A **synchronous, turn-based** shared canvas: Лілі sees the current canvas (v
 
 **Tests:** unit — turn alternation + skip; contract — `canvas.apply`/`canvas.skip` schemas; integration — a few turns against a mock image+model produce an evolving canvas + a saved gallery item.
 
-### v9.5 — Music
+### v10.5 — Music
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі makes her own instrumental music by mood.
 
-Add the external **`music` MCP** (ElevenLabs Music — the same ecosystem as her voice), **instrumental only**, the track's mood set by her **emotion field** + her **mood of the day** (v0.6). Async (v9.2): submit → proactive turn with the audio; stored in the gallery. Off by default, per-user. See [CREATIVE_MCP.md](features/CREATIVE_MCP.md). Depends on: v9.1 (gallery), v9.2 (async).
+Add the external **`music` MCP** (ElevenLabs Music — the same ecosystem as her voice), **instrumental only**, the track's mood set by her **emotion field** + her **mood of the day** (v0.6). Async (v10.2): submit → proactive turn with the audio; stored in the gallery. Off by default, per-user. See [CREATIVE_MCP.md](features/CREATIVE_MCP.md). Depends on: v10.1 (gallery), v10.2 (async).
 
 **Tasks:**
 - `music.submit(prompt, mood, duration)` / `music.status(job_id)` MCP tools (ElevenLabs Music, instrumental, no vocals).
@@ -2416,14 +3125,16 @@ Add the external **`music` MCP** (ElevenLabs Music — the same ecosystem as her
 
 **Tests:** unit — mood-prompt assembly (from emotion + temperament) + off-by-default gate; contract — `music.submit`/`music.status` schemas; integration — submit → proactive audio turn against a **mock `music` MCP** (no paid call).
 
-### v9.6 — Journal
+### v10.6 — Journal
+
+**Status:** 🔲 Planned.
 
 **Goal:** Лілі keeps a private literary journal of her inner life.
 
-At session end Лілі decides whether to write a **literary journal entry** — only if the session had something worthwhile (uniqueness judged from short memory) — in her own first-person voice, tied to the day's emotion and **mood** (v0.6), optionally with a mood drawing (v9.3). Stored in the gallery as admin-only `text`. **Private — read only via the admin panel (v6.4)**, never shown to users. Also writable on request; never on a schedule. See [JOURNAL.md](features/JOURNAL.md). Depends on: v0.2 (short memory), v0.3 (emotion), v0.6 (mood), v9.1 (gallery), v9.3 (optional drawing), v6.4 (admin panel).
+At session end Лілі decides whether to write a **literary journal entry** — only if the session had something worthwhile (uniqueness judged from short memory) — in her own first-person voice, tied to the day's emotion and **mood** (v0.6), optionally with a mood drawing (v10.3). Stored in the gallery as admin-only `text`. **Private — read only via the admin panel (v7.4)**, never shown to users. Also writable on request; never on a schedule. See [JOURNAL.md](features/JOURNAL.md). Depends on: v0.2 (short memory), v0.3 (emotion), v0.6 (mood), v10.1 (gallery), v10.3 (optional drawing), v7.4 (admin panel).
 
 **Tasks:**
-- End-of-session **uniqueness check** (from short memory) → optional `journal.write` (Лілі's literary prose, canon-defined voice); optional attached mood drawing (v9.3).
+- End-of-session **uniqueness check** (from short memory) → optional `journal.write` (Лілі's literary prose, canon-defined voice); optional attached mood drawing (v10.3).
 - Store in the gallery as **admin-only** `text`; `journal.read` only from the admin panel (or the owner's v4.3 Journal view, owner-only by rule); on-request writing.
 
 **DoD:** after a session with something worthwhile Лілі writes an entry in her voice (optionally with a drawing); an empty session produces none; entries are admin-only and never shown to users.
@@ -2434,27 +3145,28 @@ At session end Лілі decides whether to write a **literary journal entry** �
 
 ## Contract mapping
 
-- Emotion field `{ reply, emotion, intensity }` + enum + `IEmotionRenderer` — locked in **v0.3** (rendered: log → emoji v0.5 → local image face v0.7 → web portrait + caption v7.1 → animation v8.1). See [EMOTION.md](features/EMOTION.md).
-- Emotion-face asset pack (`emotion → image`) — first used by the local viewer in **v0.7** (see [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md)), reused by the web `ImageRenderer` in **v7.1**.
+- Emotion field `{ reply, emotion, intensity }` + enum + `IEmotionRenderer` — locked in **v0.3** (rendered: log → emoji v0.5 → local image face v0.7 → web portrait + caption v8.1 → animation v9.1). See [EMOTION.md](features/EMOTION.md).
+- Emotion-face asset pack (`emotion → image`) — first used by the local viewer in **v0.7** (see [EMOTION_VIEWER.md](features/EMOTION_VIEWER.md)), reused by the web `ImageRenderer` in **v8.1**.
 - Model — **Claude Haiku (Anthropic)** via the thin **`LLMClient`** seam in **v0.1** (the only model to start); **more models** (other Claude tiers, OpenAI, DeepSeek, MiniMax) switchable in config in **v0.18**.
 - Mood / temperament (daily, horoscope-derived; colors tone, never competence) — **v0.6** (core; see [ARCHITECTURE.md](ARCHITECTURE.md) §Mood and temperament).
 - Per-user memory records (`ShortSummary`, `LongTermFact`, with `user_id`) — **v0.2**.
-- User-scoping + the per-user isolation invariant — data-level in **v0.2**, enforced & tested at the auth boundary in **v6.2** (and gated as a security test in **v6.1**).
-- Core API (`reply(...)`, memory commands) — **v0.1**; exposed over the client/server API (TUI + CLI clients) in **v2**; read-only views of her files, pictures, journal and thoughts (the desktop window) in **v4**; web client in **v6.3**.
-- Auth — a local client token in **v2**; full accounts, registration/invite codes, allowlist, argon2id in **v6.2**; security testing + CI/CD (deploy, TLS, dep/secret scans) in **v6.1**; admin panel in **v6.4**.
-- Multi-user + multi-session — **v6.2**.
-- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.14** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v7.2**.
-- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.26** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v7.4**.
-- Image — **v7.1**; web voice output — **v7.2**; shared memory (`SharedMemoryItem`) + cross-pollination — **v7.3**; web dictation — **v7.4**.
-- Animation — **v8.1**.
-- MCP client + `web_search` service (`web.search`/`web.fetch`, off by default, untrusted content) — **v8.2** (see [WEB_SEARCH.md](features/WEB_SEARCH.md)).
-- World-context & knowledge MCP tools (`weather`/`time`/`calendar`/`moon`/`wiki`/`news`, off by default, feed the mood) — **v8.3** (see [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md)).
-- Gallery (`gallery.*`, internal per-user store) + vision (Anthropic image input) — **v9.1** (see [GALLERY_MCP.md](features/GALLERY_MCP.md)).
-- Async jobs (open loop) + server-initiated proactive turns — **v9.2**.
-- Creative MCP: `image` (drawings) — **v9.3**, co-creation canvas (`canvas.*`) — **v9.4**, `music` (ElevenLabs Music) — **v9.5** (see [CREATIVE_MCP.md](features/CREATIVE_MCP.md), [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md)).
-- Journal (`journal.*`, admin-only) — **v9.6** (see [JOURNAL.md](features/JOURNAL.md)).
+- User-scoping + the per-user isolation invariant — data-level in **v0.2**, enforced & tested at the auth boundary in **v7.2** (and gated as a security test in **v7.1**).
+- Core API (`reply(...)`, memory commands) — **v0.1**; exposed over the client/server API (TUI + CLI clients) in **v2**; read-only views of her files, pictures, journal and thoughts (the desktop window) in **v4**; web client in **v7.3**.
+- Usage records — `origin` + `channel` on the model-call records, `media-ledger.jsonl`, `tools.jsonl` — and the turn's channel from the `X-Lumi-Client` id's prefix — **v5.1**; the authored overlay (`<instance>/authored/<path>`) and the prompt route `GET /v1/prompt` — **v5.6**; the models route `GET /v1/models` — **v5.5**; the conversation history route `GET /v1/history` — **v5.7**; the summaries `GET /v1/summaries`, the facts `GET /v1/facts` and its edit routes — **v5.8** (see [ADMIN_PANEL_II.md](features/ADMIN_PANEL_II.md)).
+- Auth — a local client token in **v2**; full accounts, registration/invite codes, allowlist, argon2id in **v7.2**; security testing + CI/CD (deploy, TLS, dep/secret scans) in **v7.1**; admin panel in **v7.4**.
+- Multi-user + multi-session — **v7.2**.
+- ElevenLabs **TTS adapter** (`tts(text, voice_id, emotion?) -> audio`) — first used by the **local voicer** in **v0.14** (see [VOICE_LOCAL.md](features/VOICE_LOCAL.md)), reused by the **web voice** in **v8.2**.
+- **STT adapter** (`stt(audio_uk) -> text`) — first used by the **local dictator** in **v0.26** (see [DICTATION_LOCAL.md](features/DICTATION_LOCAL.md)), reused by **web dictation** in **v8.4**.
+- Image — **v8.1**; web voice output — **v8.2**; shared memory (`SharedMemoryItem`) + cross-pollination — **v8.3**; web dictation — **v8.4**.
+- Animation — **v9.1**.
+- MCP client + `web_search` service (`web.search`/`web.fetch`, off by default, untrusted content) — **v9.2** (see [WEB_SEARCH.md](features/WEB_SEARCH.md)).
+- World-context & knowledge MCP tools (`weather`/`time`/`calendar`/`moon`/`wiki`/`news`, off by default, feed the mood) — **v9.3** (see [WORLD_CONTEXT_MCP.md](features/WORLD_CONTEXT_MCP.md)).
+- Gallery (`gallery.*`, internal per-user store) + vision (Anthropic image input) — **v10.1** (see [GALLERY_MCP.md](features/GALLERY_MCP.md)).
+- Async jobs (open loop) + server-initiated proactive turns — **v10.2**.
+- Creative MCP: `image` (drawings) — **v10.3**, co-creation canvas (`canvas.*`) — **v10.4**, `music` (ElevenLabs Music) — **v10.5** (see [CREATIVE_MCP.md](features/CREATIVE_MCP.md), [CO_CREATION_CANVAS.md](features/CO_CREATION_CANVAS.md)).
+- Journal (`journal.*`, admin-only) — **v10.6** (see [JOURNAL.md](features/JOURNAL.md)).
 
 ## Deferred
 
-Full emotional voice modulation, canvas image-editing/inpainting, a mobile client, any public access — beyond v0–v9.
+Full emotional voice modulation, canvas image-editing/inpainting, a mobile client, any public access — beyond v0–v10.
 </content>

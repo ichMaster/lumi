@@ -62,13 +62,18 @@ Update the version string in these files:
    ```
 
    Use today's date. Keep the existing entries below unchanged.
+4. **`specification/ROADMAP.md`** — the status lines:
+   - an `A.B.0` release: the phase's `**Status:**` line becomes "✅ Closed — released `A.B.0`.";
+   - an `A.B.C` fix (C > 0): the phase's line keeps ✅ and its range grows to `A.B.0`–`A.B.C`;
+   - the version's `**Status:**` line and its row in the status table at the top: ✅ Closed once every phase of the
+     version is closed, else 🟡 In progress with the closed range.
 
 ### Step 4: Commit
 
 Stage only the version-related files:
 
 ```bash
-git add VERSION README.md RELEASE.txt
+git add VERSION README.md RELEASE.txt specification/ROADMAP.md
 ```
 
 Commit with message:
@@ -118,7 +123,8 @@ Released v<version>
 - **Never downgrade.** Refuse if the target version is less than or equal to the current version.
 - **Clean tree first.** If there are uncommitted changes, ask the user before proceeding.
 - **Annotated tags only.** Always use `git tag -a`, never lightweight tags.
-- **Don't modify source files.** This skill only touches version metadata (VERSION, README.md, RELEASE.txt), never `core`, `tui`, `cli`, `server`, `web`, `voice`, or `mcp` code.
+- **Don't modify source files.** This skill only touches version metadata (VERSION, README.md, RELEASE.txt, the
+  ROADMAP's status lines), never `core`, `tui`, `cli`, `server`, `web`, `voice`, or `mcp` code.
 - **Confirm changelog.** If auto-generating changelog from commits, show it to the user before committing.
 - **Plain-text release notes.** Keep `RELEASE.txt` plain text.
 </content>

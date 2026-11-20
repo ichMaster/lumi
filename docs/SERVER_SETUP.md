@@ -231,7 +231,7 @@ strip of quiet thoughts beside the portrait stays as it was, and its header gain
 **v4.3 (her journal and thoughts — the server's side).** Three more read-only routes:
 - `GET /v1/journal` lists the days of her journal (`journal/<user_id>/` in the data root) and `GET /v1/journal/{date}`
   returns one day, parsed. The journal is **the owner's only**: the owner's token and a role check (today the owner's
-  id; the accounts of v6.2 replace it), so a server for another user answers 403;
+  id; the accounts of v7.2 replace it), so a server for another user answers 403;
 - `GET /v1/thoughts?before=&limit=&kind=&spoken=&date=` pages through her thoughts through the surfacing filter, so a
   thought sparked with another user never shows.
 
