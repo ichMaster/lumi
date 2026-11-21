@@ -131,6 +131,16 @@ class MockSTT:
         return self._text
 
 
+def provider_of(stt: object) -> str:
+    """v5.1: the provider an adapter calls (``deepgram`` / ``elevenlabs`` / ``whisper`` / ``mock``) — the media ledger's
+    ``provider``; an unknown adapter → its class name, lowercased."""
+    for cls, name in ((DeepgramSTT, "deepgram"), (ElevenLabsScribeSTT, "elevenlabs"), (WhisperSTT, "whisper"),
+                      (MockSTT, "mock")):
+        if isinstance(stt, cls):
+            return name
+    return type(stt).__name__.lower()
+
+
 def build_stt(provider: str, *, api_key: str = "", model: str = "") -> STT:
     """Pick an STT adapter by provider name (``deepgram`` / ``elevenlabs`` / ``whisper`` / ``mock``).
 

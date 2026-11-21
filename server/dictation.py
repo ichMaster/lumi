@@ -25,6 +25,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from voice.stream_stt import MIC_RATE, UtteranceTracker
@@ -49,6 +50,10 @@ class DictationSetup:
     stt: Any
     stream_factory: Callable[[], Awaitable[Any]] | None = None
     lang: str = "uk"
+    # v5.1 (LUMI-341): one `stt` record per dictation in the media ledger (the audio seconds, never the words)
+    provider: str = ""
+    model: str = ""
+    ledger: Path | None = None
 
 
 class _Gone(Exception):
@@ -92,6 +97,7 @@ class _Run:
         self.chars = 0
         self.audio = 0
         self.pcm = bytearray()
+        self.failure: str | None = None  # v5.1: the type of the failure that ended it, for the media ledger
 
     async def send(self, message: dict[str, Any]) -> None:
         try:
@@ -112,7 +118,8 @@ class _Run:
             self.shown = ""
             await self.send({"type": "final", "text": text})
 
-    async def error(self, detail: str) -> str:
+    async def error(self, detail: str, *, kind: str = "Error") -> str:
+        self.failure = kind
         await self.send({"type": "error", "detail": detail})
         return "error"
 
@@ -160,7 +167,7 @@ class _Run:
                 try:
                     text = await asyncio.to_thread(self.setup.stt.recognize, audio, lang=self.setup.lang)
                 except Exception as exc:  # noqa: BLE001 — the type only: a message could quote the audio's words
-                    return await self.error(f"recognition failed ({type(exc).__name__})")
+                    return await self.error(f"recognition failed ({type(exc).__name__})", kind=type(exc).__name__)
                 await self.final(text)
             await self.send({"type": "done"})
             return "done"
@@ -168,14 +175,29 @@ class _Run:
             self.pcm = bytearray()
 
 
+def record_dictation(setup: DictationSetup, *, mode: str, audio_s: float, latency_ms: int, outcome: str,
+                     channel: str) -> None:
+    """v5.1 (LUMI-341): one ``stt`` record for a dictation that sent audio — its seconds, the provider and model, the
+    mode (``stream`` and ``batch`` are priced apart) — never the words. Nothing without a ledger or without audio."""
+    if setup.ledger is None or audio_s <= 0:
+        return
+    from core import ledgers
+
+    ledgers.append_media(setup.ledger, ledgers.media_record(
+        provider=setup.provider or "?", service="stt", model=setup.model, units={"audio_s": round(audio_s, 2)},
+        latency_ms=latency_ms, outcome=outcome, origin="turn", channel=channel, mode=mode))
+
+
 async def relay(receive: Receive, send: Send, setup: DictationSetup, *, clock: Callable[[], float] = time.monotonic,
-                max_s: float = MAX_S, idle_s: float = IDLE_S, finish_s: float = FINISH_S) -> str:
+                max_s: float = MAX_S, idle_s: float = IDLE_S, finish_s: float = FINISH_S,
+                channel: str = "window") -> str:
     """One dictation, start to end; returns how it ended — ``done``, ``cancel``, ``error`` or ``gone``.
 
     ``receive()`` gives the client's next frame (bytes: audio; str: a control message; ``None``: the client left);
     ``send(message)`` answers. The caps: ``max_s`` of audio (or of time) is a stop, ``idle_s`` without an audio frame
     is an error."""
     started = clock()
+    wall = time.monotonic()  # v5.1: the dictation's length for the media ledger (the injected clock stays the caps')
     stream = None
     if setup.stream_factory is not None:
         try:
@@ -201,14 +223,14 @@ async def relay(receive: Receive, send: Send, setup: DictationSetup, *, clock: C
             left = idle_s - (loop.time() - last_audio)
             done, _ = await asyncio.wait(waiting, timeout=max(0.0, left), return_when=asyncio.FIRST_COMPLETED)
             if not done:
-                outcome = await run.error(f"no audio for {idle_s:.0f} s")
+                outcome = await run.error(f"no audio for {idle_s:.0f} s", kind="Idle")
                 break
             if events is not None and events in done:  # the recognizer ended before the stop
                 exc = events.exception()
                 if isinstance(exc, _Gone):
                     raise exc
                 detail = f"the recognizer stopped ({type(exc).__name__})" if exc else "the recognizer stopped"
-                outcome = await run.error(detail)
+                outcome = await run.error(detail, kind=type(exc).__name__ if exc else "Stopped")
                 break
             if recv not in done:
                 continue
@@ -247,4 +269,8 @@ async def relay(receive: Receive, send: Send, setup: DictationSetup, *, clock: C
                 pass
         run.pcm = bytearray()
         log.info("dictation: %s, %.1f s of audio, %d chars, %s", mode, run.audio / BYTES_PER_S, run.chars, outcome)
+        # the audio was sent (and billed) whatever the end — only a recognizer failure is an error
+        record_dictation(setup, mode=mode, audio_s=run.audio / BYTES_PER_S,
+                         latency_ms=int((time.monotonic() - wall) * 1000),
+                         outcome=f"error:{run.failure}" if outcome == "error" else "ok", channel=channel)
     return outcome

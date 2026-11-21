@@ -105,6 +105,86 @@ def pricing_for(model: str) -> ModelPricing:
     return _DEFAULT_PRICING
 
 
+# --- v5.1 (LUMI-341): the paid units that aren't tokens (core/pricing.yaml `units:`) -------------------------
+@dataclass(frozen=True)
+class UnitPrice:
+    """USD per ``size`` units of ``per`` (``chars``, ``audio_s``, ``images``, ``requests``) for one provider · service,
+    optionally one model (matched as a prefix) and one mode (``stream`` / ``batch``)."""
+
+    provider: str
+    service: str
+    per: str
+    size: float
+    usd: float
+    model: str = ""
+    mode: str = ""
+
+
+def load_unit_prices(path: Path = PRICING_PATH) -> list[UnitPrice]:
+    """The ``units:`` rows of ``core/pricing.yaml``; a missing or malformed section → ``[]`` (every unit "not
+    priced"), never a crash. A malformed row is skipped."""
+    import logging
+
+    try:
+        import yaml
+
+        rows = (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}).get("units") or []
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("lumi.usage").warning("%s units unusable (%s) — every unit is not priced", path, exc)
+        return []
+    out: list[UnitPrice] = []
+    for row in rows if isinstance(rows, list) else []:
+        try:
+            out.append(UnitPrice(provider=str(row["provider"]).strip().lower(), service=str(row["service"]).strip(),
+                                 per=str(row["per"]).strip(), size=float(row["size"]), usd=float(row["usd"]),
+                                 model=str(row.get("model") or "").strip().lower(),
+                                 mode=str(row.get("mode") or "").strip().lower()))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+UNIT_PRICES = load_unit_prices()
+
+
+def unit_price(provider: str, service: str, model: str = "", mode: str = "",
+               prices: list[UnitPrice] | None = None) -> UnitPrice | None:
+    """The price row of a paid unit, or ``None`` — "not priced", never guessed. A row with a model matches a model
+    that starts with it (the longest wins); a row without one matches any model; a row with a mode matches only it."""
+    prov, mdl, md = (provider or "").strip().lower(), (model or "").strip().lower(), (mode or "").strip().lower()
+    best: UnitPrice | None = None
+    for row in UNIT_PRICES if prices is None else prices:
+        if row.provider != prov or row.service != service:
+            continue
+        if row.mode and row.mode != md:
+            continue
+        if row.model and not mdl.startswith(row.model):
+            continue
+        if best is None or len(row.model) > len(best.model) or (len(row.model) == len(best.model) and row.mode):
+            best = row
+    return best
+
+
+def media_cost(record: dict, prices: list[UnitPrice] | None = None) -> float | None:
+    """The estimated USD of one media-ledger record, or ``None`` when its unit is not priced. Only an ``ok`` record
+    costs (a failed call → ``0.0``); a web lookup adds its reported tokens at its model's token price."""
+    if str(record.get("outcome", "")) != "ok":
+        return 0.0
+    units = record.get("units") or {}
+    row = unit_price(str(record.get("provider", "")), str(record.get("service", "")), str(record.get("model", "")),
+                     str(record.get("mode", "")), prices)
+    if row is None or row.size <= 0:
+        return None
+    amount = units.get(row.per)
+    if not isinstance(amount, (int, float)):
+        return None
+    cost = float(amount) / row.size * row.usd
+    if record.get("service") == "search":
+        p = pricing_for(str(record.get("model", "")))
+        cost += (float(units.get("input") or 0) * p.input + float(units.get("output") or 0) * p.output) / 1_000_000
+    return cost
+
+
 # --- the per-session record ----------------------------------------------------------------------
 
 

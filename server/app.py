@@ -447,7 +447,8 @@ class _Service:
         self.voice_store = VoiceStore(voice.root) if voice is not None else None
         self.voicer = LineVoicer(outbox.path if outbox is not None else None, switch=self.voice_switch,
                                  store=self.voice_store, tts=voice.tts if voice is not None else None,
-                                 user_id=str(getattr(core, "user_id", "owner")), on_ready=self._voice_ready)
+                                 user_id=str(getattr(core, "user_id", "owner")), on_ready=self._voice_ready,
+                                 ledger=voice.ledger if voice is not None else None)  # v5.1: one `tts` record each
         self.thumbs_dir = thumbs_dir  # v4.2: the thumbnail cache (per user below it), outside her sandbox; or None
         self.actions_log = actions_log  # v4.5: the owner's action log (<data root>/actions.jsonl), or None
         self.session = session
@@ -1027,7 +1028,10 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
             return message["bytes"] if message.get("bytes") is not None else message.get("text")
 
         try:
-            await relay(receive, websocket.send_json, service.dictation)
+            # v5.1: the channel for the media ledger — the window's shell is the route's client
+            client = websocket.headers.get("x-lumi-client")
+            await relay(receive, websocket.send_json, service.dictation,
+                        channel=usage_origin.channel_of(client) if client else "window")
         finally:
             service.dictating = False
             try:

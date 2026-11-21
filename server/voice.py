@@ -13,7 +13,9 @@ Three pieces, all outside her sandbox (her file tools never see them):
   outbox keeps the order of the lines, and only one thread ever appends.
 
 A generation is one ElevenLabs call (``voice/tts.py``); a failure leaves the text everywhere and never touches the
-turn. The log gets one line per generation — its id, its length and its time, never the text or the key.
+turn. The log gets one line per generation — its id, its length and its time, never the text or the key — and
+(v5.1) the media ledger one ``tts`` record (the characters voiced, the model, the outcome, and the origin and channel
+of the work that made the line, captured when the line was queued: the worker thread doesn't inherit them).
 """
 
 from __future__ import annotations
@@ -31,6 +33,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from core import ledgers, usage_origin
 
 log = logging.getLogger("lumi.voice")
 
@@ -74,6 +78,7 @@ class VoiceSetup:
     root: Path
     switch_path: Path
     first: bool = False
+    ledger: Path | None = None  # v5.1: <data root>/media-ledger.jsonl — one `tts` record per generation
 
 
 class VoiceSwitch:
@@ -215,7 +220,8 @@ class LineVoicer:
 
     def __init__(self, outbox: Path | None, *, switch: VoiceSwitch | None = None, store: VoiceStore | None = None,
                  tts: Any = None, user_id: str = "owner", on_ready: Callable[[str, bool], None] | None = None,
-                 max_chars: int = VOICE_MAX_CHARS, timer: Callable[[], float] = time.monotonic) -> None:
+                 max_chars: int = VOICE_MAX_CHARS, timer: Callable[[], float] = time.monotonic,
+                 ledger: Path | None = None) -> None:
         self.outbox = outbox
         self.switch = switch
         self.store = store
@@ -224,6 +230,8 @@ class LineVoicer:
         self.on_ready = on_ready
         self.max_chars = max_chars
         self._timer = timer
+        self.ledger = ledger  # v5.1: the media ledger, or None (not recorded)
+        self._origins: dict[str, usage_origin.UsageOrigin] = {}  # voice id → the origin captured at queue time
         self._queue: deque[tuple[Any, ...]] = deque()
         self._cv = threading.Condition()
         self._busy = False
@@ -263,6 +271,7 @@ class LineVoicer:
                 self.write_locked(fn, args, {"voice": None})
                 self._report(voice_id, False)
                 return voice_id
+            self._origins[voice_id] = usage_origin.current()  # the worker thread won't see the turn's origin
             self._enqueue(("line", fn, args, voice_id, text, emotion))
         return voice_id
 
@@ -346,6 +355,7 @@ class LineVoicer:
         """One job written at once, in the caller — a line without its voice (and told so)."""
         if job[0] == "line":
             _, fn, args, voice_id, _, _ = job
+            self._origins.pop(voice_id, None)  # never voiced: nothing to record
             self._append(fn, args, {"voice": None})
             self._report(voice_id, False)
         else:
@@ -366,10 +376,16 @@ class LineVoicer:
         spoken = voice_text(text, self.max_chars)
         started = self._timer()
         ok = False
+        origin = self._origins.pop(voice_id, None)
         try:
             if not spoken:
                 raise ValueError("nothing to voice")
-            audio = self.tts.synth(spoken, emotion=emotion)
+            try:
+                audio = self.tts.synth(spoken, emotion=emotion)
+            except Exception as exc:
+                self._record(spoken, started, ledgers.error_outcome(exc), origin)
+                raise
+            self._record(spoken, started, "ok", origin)
             if not audio:
                 raise ValueError("no audio")
             self.store.write(self.user_id, voice_id, bytes(audio))
@@ -384,6 +400,17 @@ class LineVoicer:
             self._current = None
             self._append(fn, args, {"voice": f"{voice_id}.mp3" if ok else None})
         self._report(voice_id, ok)
+
+    def _record(self, spoken: str, started: float, outcome: str, origin: usage_origin.UsageOrigin | None) -> None:
+        """v5.1: one ``tts`` record for the call just made — the characters voiced, never the text. A line pushed
+        with no work around it (no origin) is housekeeping."""
+        if self.ledger is None:
+            return
+        origin = origin or usage_origin.UsageOrigin()
+        ledgers.append_media(self.ledger, ledgers.media_record(
+            provider="elevenlabs", service="tts", model=str(getattr(self.tts, "model", "") or ""),
+            units={"chars": len(spoken)}, latency_ms=int((self._timer() - started) * 1000), outcome=outcome,
+            origin=origin.origin or usage_origin.housekeeping("voice"), channel=origin.channel))
 
     def _report(self, voice_id: str, ok: bool) -> None:
         if self.on_ready is None:

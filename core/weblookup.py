@@ -86,6 +86,15 @@ def _extract_answer(data: dict) -> str:
     return text
 
 
+def usage_of(data: dict) -> dict[str, int] | None:
+    """v5.1: the tokens a Gemini answer reports (``usageMetadata``) as ``{input, output}``, or ``None`` without it."""
+    meta = data.get("usageMetadata") if isinstance(data, dict) else None
+    if not isinstance(meta, dict):
+        return None
+    out = {"input": meta.get("promptTokenCount"), "output": meta.get("candidatesTokenCount")}
+    return {k: int(v) for k, v in out.items() if isinstance(v, int)} or None
+
+
 def gemini_search(*, model: str = "gemini-2.5-flash", key: str | None = None,
                   timeout: float = 30.0) -> GeminiSearch:
     """The default ``GeminiSearch`` — a grounded answer via Gemini + Google Search. Reads
@@ -101,6 +110,7 @@ def gemini_search(*, model: str = "gemini-2.5-flash", key: str | None = None,
     def search(query: str, *, today: str) -> str:
         import os
 
+        search.last_usage = None  # v5.1: the tokens the answer reports, read by the media ledger's meter
         api_key = key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise WebLookupError("GEMINI_API_KEY is not set — web lookup needs a Gemini key.")
@@ -115,7 +125,9 @@ def gemini_search(*, model: str = "gemini-2.5-flash", key: str | None = None,
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fixed Gemini host
-                return _extract_answer(json.loads(resp.read()))
+                data = json.loads(resp.read())
+            search.last_usage = usage_of(data)
+            return _extract_answer(data)
         except urllib.error.HTTPError as exc:
             raise WebLookupError(
                 f"Gemini HTTP {exc.code}: {exc.read().decode('utf-8', 'ignore')[:200]}"

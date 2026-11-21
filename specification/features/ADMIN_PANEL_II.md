@@ -111,7 +111,7 @@ redesign.
 `channel`. A new ledger, `media-ledger.jsonl` in the data root, records the paid calls that are not model calls:
 
 ```
-{ts, provider, service, model, units: {chars | audio_s | images | requests, input, output}, latency_ms, outcome,
+{ts, provider, service, model, mode?, units: {chars | audio_s | images | requests, input?, output?}, latency_ms, outcome,
  origin, channel}
 ```
 
@@ -145,7 +145,8 @@ No message text, no prompt and no audio enter either ledger.
 - `outcome`: `ok`, `error:<ExceptionType>`, `refused:<guard>` (the sandbox, a cap, an off flag) or `not_found`.
 - `input` is the **one bounded line** the window's trace already shows (`tool_calls_view`: `key=value` pairs, cut at
   `TOOL_INPUT_CHARS`). The result text is never written; only its size.
-- `turn_id` joins a tool call to her reply in the history (v5.7).
+- `turn_id` joins a tool call to her reply in the history (v5.7). The core has no turn id, so it is the turn's `turn_ts` — the stamp both of its stored messages carry (empty for a tool call outside a reply, e.g. a thought's).
+- `mode` (`stream` / `batch`) is on a recognition only: Deepgram prices the two apart. A line voiced with no work around it (the outbound daemon's old way, a pushed line) is `housekeeping:voice`.
 
 ### The panel's rollups
 

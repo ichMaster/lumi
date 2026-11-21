@@ -30,3 +30,19 @@ cache:
   read: 0.10
   write_5m: 1.25
   write_1h: 2.0
+
+# v5.1 (LUMI-341): the paid units that aren't tokens — one row per provider · service (· model prefix, · mode), USD
+# per `size` units of `per` (chars, audio_s, images, requests). List prices as known on 2026-11-21 — check them
+# against each provider's page; a call with no matching row is shown "not priced", never guessed. Only an `ok`
+# record is priced. A web lookup's tokens are priced as its model's, on top of the request.
+units:
+  - {provider: elevenlabs, service: tts, model: eleven_flash, per: chars, size: 1000, usd: 0.05}
+  - {provider: elevenlabs, service: tts, model: eleven_turbo, per: chars, size: 1000, usd: 0.05}
+  - {provider: elevenlabs, service: tts, model: eleven_v4_turbo, per: chars, size: 1000, usd: 0.05}
+  - {provider: elevenlabs, service: tts, model: eleven_multilingual, per: chars, size: 1000, usd: 0.10}
+  - {provider: elevenlabs, service: tts, model: eleven_v3, per: chars, size: 1000, usd: 0.10}
+  - {provider: deepgram, service: stt, model: nova-3, mode: stream, per: audio_s, size: 60, usd: 0.0077}
+  - {provider: deepgram, service: stt, model: nova-3, mode: batch, per: audio_s, size: 60, usd: 0.0043}
+  - {provider: whisper, service: stt, per: audio_s, size: 60, usd: 0.0}          # local: no charge
+  - {provider: google, service: image, model: gemini-2.5-flash-image, per: images, size: 1, usd: 0.039}
+  - {provider: google, service: search, per: requests, size: 1, usd: 0.035}     # Grounding with Google Search

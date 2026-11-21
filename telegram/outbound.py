@@ -203,8 +203,12 @@ async def forward(outbox_path, sent_path, *, batch: int, voice_dir: Path,
                   send_photo: Callable[[dict], Awaitable[None]],
                   send_voice: Callable[[bytes, str], Awaitable[None]],
                   to_ogg: Callable[[bytes], bytes], caption_for: Callable[[dict], str],
-                  tts: Any = None, voice_mode: bool = False, log: Any = None) -> tuple[int, bool]:
+                  tts: Any = None, voice_mode: bool = False, log: Any = None,
+                  ledger: Path | None = None) -> tuple[int, bool]:
     """One pass over the new outbox records (v4.6) → ``(records handled, whether a send failed)``.
+
+    v5.1 (LUMI-341): an old record voiced here writes one ``tts`` record to ``ledger`` (the media ledger): the
+    characters voiced, the model, the outcome — origin ``housekeeping:voice``, channel ``telegram``; never the text.
 
     Per :func:`plan`: a stored voice file is converted (``to_ogg``) and sent with its caption — **never a TTS call**; a
     missing or unconvertible file degrades to text. An old record is voiced by ``tts`` (its ``speech`` before its
@@ -246,7 +250,7 @@ async def forward(outbox_path, sent_path, *, batch: int, voice_dir: Path,
                     await voice_and_words(ogg, group)
                     note("info", "sent the stored voice id=%s", last["id"])
             elif kind == "old":
-                ogg = to_ogg(tts.synth(last.get("speech") or last["text"], emotion=last.get("emotion")))
+                ogg = to_ogg(_voiced_old_way(tts, last, ledger))
                 await voice_and_words(ogg, group)
                 note("info", "voiced the old way id=%s", last["id"])
             elif kind == "text":
@@ -258,6 +262,30 @@ async def forward(outbox_path, sent_path, *, batch: int, voice_dir: Path,
         fifo.save_pointer(sent_path, last["id"])
         handled += len(group)
     return handled, False
+
+
+def _voiced_old_way(tts: Any, record: dict, ledger: Path | None) -> bytes:
+    """One TTS call for an old record (``speech`` before ``text``), recorded in the media ledger whatever its end."""
+    import time
+
+    spoken = record.get("speech") or record["text"]
+    started, outcome = time.monotonic(), "ok"
+    try:
+        return tts.synth(spoken, emotion=record.get("emotion"))
+    except Exception as exc:
+        outcome = f"error:{type(exc).__name__}"
+        raise
+    finally:
+        if ledger is not None:
+            try:
+                from core import ledgers
+
+                ledgers.append_media(ledger, ledgers.media_record(
+                    provider="elevenlabs", service="tts", model=str(getattr(tts, "model", "") or ""),
+                    units={"chars": len(spoken)}, latency_ms=int((time.monotonic() - started) * 1000),
+                    outcome=outcome, origin="housekeeping:voice", channel="telegram"))
+            except Exception:  # noqa: BLE001 — recording never stops a send
+                pass
 
 
 async def send_photo_record(bot, chats, record, *, emoji_map=None, fs_input=None, log=None) -> None:
@@ -381,6 +409,7 @@ def run() -> None:  # pragma: no cover - aiogram glue (network, no paid CI)
                 cfg.outbox_path, sent_path, batch=cfg.telegram_batch, voice_dir=voice_dir,
                 send_text=_send_text, send_photo=_send_photo, send_voice=_send_voice, to_ogg=mp3_to_ogg,
                 caption_for=lambda r: caption_for(r, emoji_map), tts=tts, voice_mode=cfg.telegram_voice, log=log,
+                ledger=cfg.data_root / "media-ledger.jsonl",  # v5.1: an old record's voice is recorded
             )
             await asyncio.sleep(3 if failed else 1)
 

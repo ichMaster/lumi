@@ -222,8 +222,10 @@ def voice_of(cfg):
 
         # bounded (review #1): while a line is voiced, every later outbox write waits behind it
         tts = ElevenLabsTTS(cfg.elevenlabs_api_key, cfg.voice_id, cfg.voice_model, timeout=TTS_TIMEOUT_S)
+    from core.ledgers import MEDIA_LEDGER
+
     return VoiceSetup(tts=tts, root=cfg.data_root / "voice", switch_path=cfg.data_root / "voice.json",
-                      first=bool(cfg.telegram_voice))
+                      first=bool(cfg.telegram_voice), ledger=cfg.data_root / MEDIA_LEDGER)
 
 
 def dictation_of(cfg):
@@ -249,7 +251,11 @@ def dictation_of(cfg):
         async def factory():
             return await DeepgramStream(key, url=url).open()
 
-    return DictationSetup(stt=stt, stream_factory=factory, lang=cfg.stt_lang)
+    from core.ledgers import MEDIA_LEDGER
+
+    return DictationSetup(stt=stt, stream_factory=factory, lang=cfg.stt_lang, provider=provider,
+                          model=str(getattr(stt, "model", "") or cfg.stt_model or ""),
+                          ledger=cfg.data_root / MEDIA_LEDGER)  # v5.1: one `stt` record per dictation
 
 
 VOICE_HOUSEKEEPING_S = 24 * 3600  # v4.6: the voice files' expiry — once at start, then daily

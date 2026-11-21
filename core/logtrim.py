@@ -21,7 +21,8 @@ LOG_RETENTION_DAYS = 10  # keep this many days of each log
 
 # The log files the TUI owns/shares in the state dir. outbox.jsonl is a message BUS (pointer-consumed),
 # NOT a log — never trimmed here.
-LOG_FILES = ("lumi.log", "mood.log", "cache-log.jsonl", "telegram-outbound.log")
+LOG_FILES = ("lumi.log", "mood.log", "cache-log.jsonl", "telegram-outbound.log",
+             "media-ledger.jsonl", "tools.jsonl")  # v5.1: the media and the tool ledgers (the panel keeps the rollups)
 
 _LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 _BLOCK_DATE = re.compile(r"^=====\s*(\d{4}-\d{2}-\d{2})")

@@ -11,6 +11,7 @@ Receive Telegram messages, consolidate a burst in an **in-memory** buffer, and f
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from core.stopsignal import sigterm_as_interrupt
@@ -65,7 +66,7 @@ class Inbound:
         return len(self._buffer)
 
 
-async def voice_to_text(bot, voice, stt, *, lang: str = "uk", log=None) -> str:
+async def voice_to_text(bot, voice, stt, *, lang: str = "uk", log=None, ledger: Path | None = None) -> str:
     """Download a Telegram **voice note** (OGG/Opus) and recognize it → text (``""`` on any failure).
 
     The inbound twin of the v0.13 outbound voice mode + the v0.26 dictator's mirror over Telegram: the
@@ -73,16 +74,46 @@ async def voice_to_text(bot, voice, stt, *, lang: str = "uk", log=None) -> str:
     transcript is forwarded to ``inbox`` exactly like a typed line. ``bot``/``stt`` are injected so this is
     testable with a fake bot (canned audio) + a ``MockSTT`` — no real Telegram, no real STT. Best-effort:
     a bad note returns ``""`` (dropped, the daemon advances the offset), never crashes.
+
+    v5.1 (LUMI-341): each recognition writes one ``stt`` record to ``ledger`` (the media ledger) — Telegram's own
+    duration of the note, the provider and model, the outcome; never the audio or the words. A note that fails to
+    download was never recognized, so it records nothing.
     """
     try:
         file = await bot.get_file(voice.file_id)
         downloaded = await bot.download_file(file.file_path)
         audio = downloaded.read() if hasattr(downloaded, "read") else bytes(downloaded)
+    except Exception as exc:  # noqa: BLE001 — best-effort; a bad note drops, never kills the daemon
+        if log is not None:
+            log.warning("voice download failed (dropped): %s", exc)
+        return ""
+    started, outcome = time.monotonic(), "ok"
+    try:
         return (stt.recognize(audio, lang=lang, content_type="audio/ogg") or "").strip()
     except Exception as exc:  # noqa: BLE001 — best-effort; a bad note drops, never kills the daemon
+        outcome = f"error:{type(exc).__name__}"
         if log is not None:
             log.warning("voice transcription failed (dropped): %s", exc)
         return ""
+    finally:
+        _record_note(ledger, stt, voice, outcome, int((time.monotonic() - started) * 1000))
+
+
+def _record_note(ledger: Path | None, stt: object, voice: object, outcome: str, latency_ms: int) -> None:
+    """One ``stt`` record for a recognized voice note (origin ``turn``, channel ``telegram``). Never raises."""
+    if ledger is None:
+        return
+    try:
+        from core import ledgers
+        from voice.stt import provider_of
+
+        duration = getattr(voice, "duration", None)
+        ledgers.append_media(ledger, ledgers.media_record(
+            provider=provider_of(stt), service="stt", model=str(getattr(stt, "model", "") or ""),
+            units={"audio_s": float(duration) if isinstance(duration, (int, float)) else None},
+            latency_ms=latency_ms, outcome=outcome, origin="turn", channel="telegram", mode="batch"))
+    except Exception:  # noqa: BLE001 — recording never stops the daemon
+        pass
 
 
 def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no paid CI)
@@ -92,6 +123,7 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
     from aiogram import Bot
 
     from core.config import load_config
+    from core.ledgers import MEDIA_LEDGER
 
     from . import get_logger
 
@@ -144,7 +176,8 @@ def run() -> None:  # pragma: no cover - aiogram long-poll glue (network, no pai
                 text = msg.text or ""
                 handled_voice = False
                 if not text and stt is not None and getattr(msg, "voice", None) and msg.from_user.id in allow:
-                    text = await voice_to_text(bot, msg.voice, stt, lang=cfg.stt_lang, log=log)
+                    text = await voice_to_text(bot, msg.voice, stt, lang=cfg.stt_lang, log=log,
+                                               ledger=cfg.data_root / MEDIA_LEDGER)  # v5.1
                     handled_voice = True
                     if text:
                         log.info("transcribed a voice message (update=%s) → %d chars", u.update_id, len(text))

@@ -27,6 +27,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from core import ledgers as _ledgers
 from core import usage_origin as _usage_origin
 from core.biorhythm import (
     Biorhythms,
@@ -225,8 +226,7 @@ TOOL_RESULT_CHARS = 160  # one line of the (already short-marked) result
 
 
 def _one_line(text: str, limit: int) -> str:
-    flat = " ".join(str(text).split())
-    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+    return _ledgers.one_line(text, limit)
 
 
 def tool_calls_view(calls: Iterable[tuple[str, dict, str]]) -> list[dict]:
@@ -235,8 +235,7 @@ def tool_calls_view(calls: Iterable[tuple[str, dict, str]]) -> list[dict]:
     ``…`` (an image or a recollection is already a short marker, :func:`_tool_trace_repr`)."""
     out: list[dict] = []
     for name, args, result in list(calls)[:TOOL_CALLS_MAX]:
-        pairs = " ".join(f"{k}={v}" for k, v in (args or {}).items())
-        out.append({"name": str(name), "input": _one_line(pairs, TOOL_INPUT_CHARS),
+        out.append({"name": str(name), "input": _ledgers.input_line(args, TOOL_INPUT_CHARS),
                     "result": _one_line(result or "", TOOL_RESULT_CHARS)})
     return out
 
@@ -567,6 +566,8 @@ class Core:
         cache_report_path: Path | None = None,
         cache_monitor: bool = False,
         voice_tags: str | None = None,  # v2.7.1: her palette (core/voice_tags.md) when her voice performs tags
+        media_ledger_path: Path | None = None,  # v5.1: <data root>/media-ledger.jsonl — her pictures, web lookups
+        tools_ledger_path: Path | None = None,  # v5.1: <data root>/tools.jsonl — every tool call
     ) -> None:
         self._llm = llm
         # v2.7.1: on (her palette text) → she may write ElevenLabs audio tags; they are split off the reply
@@ -721,6 +722,10 @@ class Core:
         # never imports the bridge or writes the outbox — it only calls this callable. None → not connected.
         self._telegram_sink = telegram_sink
         self._tool_log_path = tool_log_path
+        # v5.1 (LUMI-341): the paid calls that aren't model calls (a picture, a web lookup) and every tool call, one
+        # record each — never their text (core/ledgers.py). None → not recorded (tests, a bare core).
+        self._media_ledger_path = media_ledger_path
+        self._tools_ledger_path = tools_ledger_path
         self.last_tool_calls: list[tuple[str, dict, str]] = []  # (name, input, result) — reset each turn
         # v4.2: the sandbox paths of the pictures she made (generate_image) or sent (send_image) this turn — reset at
         # the start of every reply, kept whatever files.trace says; the server puts them on the outcome and her message
@@ -2092,7 +2097,7 @@ class Core:
             best = max(best, reading, key=len)
         return best, False
 
-    def _turn_tools(self) -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
+    def _turn_tools(self, turn_id: str = "") -> tuple[list[dict] | None, Callable[[str, dict], str] | None]:
         """Assemble this turn's bounded-loop tools + a **name-routing** executor — the v0.19/v0.20 file
         tools and the v0.21 wiki tools, offered together when both are on. ``(None, None)`` when neither
         is on (the turn is a single ``set_state`` call, unchanged). Resets the per-turn trace and wraps
@@ -2116,7 +2121,14 @@ class Core:
 
         def dispatch(name: str, tool_input: dict) -> str | dict:
             executor = routes.get(name)
-            result = executor(name, tool_input) if executor is not None else f"error: unknown tool {name!r}"
+            started = time.monotonic()
+            try:
+                result = executor(name, tool_input) if executor is not None else f"error: unknown tool {name!r}"
+            except Exception as exc:  # recorded, then raised as before (the loop degrades it)
+                self._record_tool(name, tool_input, _ledgers.error_outcome(exc), started, 0, turn_id)
+                raise
+            self._record_tool(name, tool_input, _ledgers.tool_outcome(result), started,
+                              _ledgers.result_chars(result), turn_id)
             if self._file_tool_trace:  # one trace point for every tool (file + wiki + image)
                 shown = _tool_trace_repr(result)  # an image result → a short marker, not the base64 dict
                 self.last_tool_calls.append((name, dict(tool_input or {}), shown))
@@ -2124,6 +2136,25 @@ class Core:
             return result
 
         return tools, dispatch
+
+    def _record_tool(self, name: str, tool_input: dict | None, outcome: str, started: float, size: int,
+                     turn_id: str) -> None:
+        """v5.1 (LUMI-341): one ``tools.jsonl`` record — the tool, its outcome and duration, the size of its result
+        (never the result), the turn, the origin and the channel, and the trace's one bounded input line."""
+        if self._tools_ledger_path is None:
+            return
+        try:
+            cur = _usage_origin.current()
+            _ledgers.append_tool(self._tools_ledger_path, _ledgers.ToolRecord(
+                ts=self._clock().isoformat(timespec="seconds"), tool=str(name), outcome=outcome,
+                ms=int((time.monotonic() - started) * 1000), result_chars=int(size), turn_id=turn_id,
+                session_id=self._active_session_id, origin=cur.origin, channel=cur.channel,
+                input=_ledgers.input_line(tool_input if isinstance(tool_input, dict) else {}, TOOL_INPUT_CHARS)))
+        except Exception:  # noqa: BLE001 — recording never breaks a turn
+            _usage_log.warning("tool ledger record failed", exc_info=True)
+
+    def _ledger_ts(self) -> str:
+        return self._clock().isoformat(timespec="seconds")
 
     def _image_tool_args(self) -> tuple[list[dict] | None, Callable[[str, dict], str | dict] | None]:
         """The (tools, **raw** executor) for the v0.22 vision tool ``view_image``; ``(None, None)`` off.
@@ -2163,6 +2194,9 @@ class Core:
 
         gen = self._image_gen if self._image_gen is not None else gemini_image_gen(model=self._image_model,
                                                                                   key=self._gemini_api_key or None)
+        # v5.1: each generation leaves one `image` record in the media ledger (never the prompt)
+        gen = _ledgers.metered_image_gen(gen, path=self._media_ledger_path, model=self._image_model,
+                                         ts=self._ledger_ts)
         root = self._files_dir / self._user_id
         root.mkdir(parents=True, exist_ok=True)
         maker = ImageMaker(root, image_gen=gen, size=self._image_size)
@@ -2480,6 +2514,9 @@ class Core:
 
         search = self._web_search if self._web_search is not None else gemini_search(model=self._web_lookup_model,
                                                                                     key=self._gemini_api_key or None)
+        # v5.1: each lookup leaves one `search` record in the media ledger (never the query or the answer)
+        search = _ledgers.metered_search(search, path=self._media_ledger_path, model=self._web_lookup_model,
+                                         ts=self._ledger_ts)
         web = WebLookupTools(
             search=search, today=self._clock().strftime("%Y-%m-%d"),
             max_chars=self._web_lookup_max_chars, max_calls=self._web_lookup_max_calls,
@@ -2709,7 +2746,7 @@ class Core:
         # silently absorbed by the GeminiClient degrade). The probes that actually worked well never
         # offered tools either. Automatic RAG memory (_recall_block, injected above) is untouched —
         # only the model-INITIATED tool call is off for this register.
-        tools, tool_executor = (None, None) if register == "voice" else self._turn_tools()
+        tools, tool_executor = (None, None) if register == "voice" else self._turn_tools(turn_id=turn_ts)
         self.last_tool_calls = []  # keep the per-turn trace consistent when the register skips _turn_tools()
         _pre_ms = int((time.monotonic() - _t0) * 1000)  # S0: PRE — RAG embed+search, compaction, prompt build
         _t_llm = time.monotonic()
@@ -3751,6 +3788,8 @@ def build_core(
         image_signal_path=(cfg.store_path.parent / "image.txt") if cfg.image else None,
         telegram_sink=telegram_sink,
         tool_log_path=(cfg.store_path.parent / "tool-log.jsonl") if cfg.file_tool_trace else None,
+        media_ledger_path=cfg.store_path.parent / _ledgers.MEDIA_LEDGER,  # v5.1: always on, trimmed to 10 days
+        tools_ledger_path=cfg.store_path.parent / _ledgers.TOOLS_LEDGER,
         cache_log_path=(cfg.store_path.parent / "cache-log.jsonl") if cfg.cache_monitor else None,
         cache_report_path=(cfg.store_path.parent / "cache-report.md") if cfg.cache_monitor else None,
         cache_monitor=cfg.cache_monitor,
