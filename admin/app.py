@@ -25,7 +25,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from admin import containers as ct
@@ -33,6 +33,7 @@ from admin import edit as ed
 from admin import guard as gd
 from admin import health as hl
 from admin import readers as rd
+from admin import usage as us
 from admin.alerts import Alerts
 from admin.audit import AUDIT_FILE, Audit
 from admin.registry import AdminConfig
@@ -71,8 +72,9 @@ def _str(payload: Any, key: str) -> str | None:
 def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRunner, *,
                http: hl.Http = hl.urllib_http, clock: Callable[[], datetime] = lambda: datetime.now().astimezone(),
                background: bool = True, proc: Path = Path("/proc"), audit: Audit | None = None,
-               alerts: Alerts | None = None) -> FastAPI:
+               alerts: Alerts | None = None, rollups: us.Rollups | None = None) -> FastAPI:
     audit = audit or Audit(cfg.home / AUDIT_FILE, clock=clock)
+    rollups = rollups or us.Rollups(cfg.home, cfg.instances, clock=clock)  # v5.1: the usage + tool rollups
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
         task = asyncio.create_task(health.loop()) if background else None
@@ -355,6 +357,54 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
     @app.get("/api/usage", dependencies=guarded)
     def usage(instance: str, days: int = Query(default=7, ge=1, le=31)) -> dict:
         return rd.usage(instance_or_404(instance), now=clock(), days=days)
+
+    # --- v5.1: the agent's usage and tools (LUMI-342) -------------------------------------------------------------
+
+    def agent_or_404(agent_id: str) -> list[rd.Instance]:
+        agent = cfg.agent(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail=f"unknown agent {agent_id!r}")
+        return [i for i in cfg.instances if i.name in agent.instances]
+
+    def agent_instance_or_404(agent_id: str, name: str) -> list[rd.Instance]:
+        insts = [i for i in agent_or_404(agent_id) if i.name == name]
+        if not insts:
+            raise HTTPException(status_code=404, detail=f"{name!r} doesn't run the agent {agent_id!r}")
+        return insts
+
+    def range_or_422(name: str) -> str:
+        if name != "month" and name not in us.RANGES:
+            raise HTTPException(status_code=422, detail=f"range must be one of {', '.join([*us.RANGES, 'month'])}")
+        return name
+
+    @app.get("/api/agents", dependencies=guarded)
+    def agents() -> dict:
+        return {"agents": [{"id": a.id, "name": a.name, "instances": list(a.instances)} for a in cfg.agent_list()]}
+
+    @app.get("/api/agents/{agent}/usage", dependencies=guarded)
+    def agent_usage(agent: str, range: str = "30d") -> dict:  # noqa: A002 — the query's own name
+        insts = agent_or_404(agent)
+        return us.usage_view(rollups, insts, range_name=range_or_422(range), keyed=us.keyed_providers(insts))
+
+    @app.get("/api/agents/{agent}/usage.csv", dependencies=guarded)
+    def agent_usage_csv(agent: str, range: str = "30d") -> PlainTextResponse:  # noqa: A002
+        text = us.usage_csv(rollups, agent_or_404(agent), range_name=range_or_422(range))
+        return PlainTextResponse(text, media_type="text/csv", headers={
+            "Content-Disposition": f'attachment; filename="{agent}-usage-{range}.csv"'})
+
+    @app.get("/api/agents/{agent}/tools", dependencies=guarded)
+    def agent_tools(agent: str, range: str = "30d", tool: str | None = None) -> dict:  # noqa: A002
+        return us.tools_view(rollups, agent_or_404(agent), range_name=range_or_422(range), tool=tool)
+
+    @app.get("/api/agents/{agent}/{instance}/usage", dependencies=guarded)
+    def agent_instance_usage(agent: str, instance: str, range: str = "30d") -> dict:  # noqa: A002
+        insts = agent_instance_or_404(agent, instance)
+        return us.usage_view(rollups, insts, range_name=range_or_422(range), keyed=us.keyed_providers(insts))
+
+    @app.get("/api/agents/{agent}/{instance}/tools", dependencies=guarded)
+    def agent_instance_tools(agent: str, instance: str, range: str = "30d", tool: str | None = None) -> dict:  # noqa: A002
+        return us.tools_view(rollups, agent_instance_or_404(agent, instance), range_name=range_or_422(range),
+                             tool=tool)
 
     @app.get("/api/logs", dependencies=guarded)
     def logs(instance: str, source: str = "lumi", level: str = "", q: str = "",

@@ -59,3 +59,34 @@ def test_the_environment_wins(tmp_path):
     cfg = rg.load(_home(tmp_path, token=None),
                   environ={"LUMI_ADMIN_TOKEN": "e" * 40, "LUMI_ADMIN_HOST": "192.168.1.197", "LUMI_ADMIN_PORT": "9000"})
     assert (cfg.token, cfg.host, cfg.port) == ("e" * 40, "192.168.1.197", 9000)
+
+
+# --- v5.1 (LUMI-342): the agents map ---------------------------------------------------------------------------------
+
+
+def test_v5_1_without_an_agents_map_one_agent_lili_runs_every_instance(tmp_path):
+    cfg = rg.load(_home(tmp_path), environ={})
+    agents = cfg.agent_list()
+    assert [(a.id, a.name, a.instances) for a in agents] == [("lili", "Lili", ("prod", "dev"))]
+    assert cfg.agent("lili") == agents[0] and cfg.agent("ada") is None
+
+
+def test_v5_1_an_agents_map_is_read(tmp_path):
+    cfg = rg.load(_home(tmp_path, GOOD + "agents:\n  lili: {name: Lili, instances: [prod]}\n"
+                        "  ada: {name: Ada, instances: [dev]}\n"), environ={})
+    assert [(a.id, a.name, a.instances) for a in cfg.agent_list()] == [("lili", "Lili", ("prod",)),
+                                                                        ("ada", "Ada", ("dev",))]
+
+
+@pytest.mark.parametrize("block, why", [
+    ("agents: []\n", "agents must be a mapping"),
+    ("agents:\n  Lili: {name: Lili, instances: [prod]}\n", "an id is lowercase"),
+    ("agents:\n  lili: {instances: [prod]}\n", "agents.lili.name"),
+    ("agents:\n  lili: {name: Lili, instances: [staging]}\n", "staging is not a configured instance"),
+    ("agents:\n  lili: {name: Lili, instances: [prod]}\n  ada: {name: Ada, instances: [prod]}\n",
+     "prod already runs lili"),
+])
+def test_v5_1_a_bad_agents_map_refuses_naming_the_key(tmp_path, block, why):
+    with pytest.raises(rg.AdminConfigError) as err:
+        rg.load(_home(tmp_path, GOOD + block), environ={})
+    assert why in str(err.value)

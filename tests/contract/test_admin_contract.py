@@ -45,6 +45,10 @@ CALLS = [
     ("POST", "/api/promote/apply", {"keys": ["memory.window"], "hashes": "@prod"}),
     ("POST", "/api/promote/apply", {"keys": ["memory.window"], "hashes": "@prod", "confirm": "prod"}),
     ("GET", "/api/audit", None), ("GET", "/api/alerts", None),
+    # v5.1 (LUMI-342) — the agent's usage and tools
+    ("GET", "/api/agents", None), ("GET", "/api/agents/lili/usage?range=30d", None),
+    ("GET", "/api/agents/lili/usage.csv?range=month", None), ("GET", "/api/agents/lili/tools?range=7d&tool=x", None),
+    ("GET", "/api/agents/lili/prod/usage", None), ("GET", "/api/agents/lili/dev/tools", None),
 ]
 
 
@@ -80,7 +84,12 @@ def test_1_every_api_route_needs_the_token(world):
                  "/api/history/{instance}/{ts}/preview": "/api/history/dev/20990101-000000Z/preview",
                  "/api/sections/{instance}/{name}": "/api/sections/dev/schedule",
                  "/api/sections/{instance}/{name}/preview": "/api/sections/dev/schedule/preview",
-                 "/api/sections/{instance}/{name}/apply": "/api/sections/dev/schedule/apply"}
+                 "/api/sections/{instance}/{name}/apply": "/api/sections/dev/schedule/apply",
+                 "/api/agents/{agent}/usage": "/api/agents/lili/usage",
+                 "/api/agents/{agent}/usage.csv": "/api/agents/lili/usage.csv",
+                 "/api/agents/{agent}/tools": "/api/agents/lili/tools",
+                 "/api/agents/{agent}/{instance}/usage": "/api/agents/lili/prod/usage",
+                 "/api/agents/{agent}/{instance}/tools": "/api/agents/lili/dev/tools"}
     assert {templates.get(r, r) for r in api_routes} <= called  # a new route must join CALLS (and this contract)
     for method, path, body in CALLS:
         for headers in ({}, {"Authorization": "Bearer wrong"}, {"Authorization": "Basic x"},

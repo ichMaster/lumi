@@ -325,3 +325,49 @@ def test_the_alerts_status_says_why_they_are_off(conf):
     client, *_ = conf
     status = client.get("/api/alerts", headers=AUTH).json()
     assert status["on"] is False and "chat_id" in status["why"]
+
+
+# --- v5.1 (LUMI-342): the agent's usage and tools ----------------------------------------------------------------
+
+
+def test_v5_1_the_agents_and_their_usage_and_tools(world):
+    client, *_ = world
+    assert client.get("/api/agents", headers=AUTH).json() == {
+        "agents": [{"id": "lili", "name": "Lili", "instances": ["prod", "dev"]}]}
+    usage = client.get("/api/agents/lili/usage?range=7d", headers=AUTH).json()
+    assert usage["instances"] == ["prod", "dev"] and set(usage["by_instance"]) == {"prod", "dev"}
+    assert usage["total"] > 0 and usage["turns"] == 4  # two owner replies today on each instance (the fixture)
+    keyed = {p["provider"]: p["keyed"] for p in usage["providers"]}
+    assert keyed == {"google": True}  # prod has a Gemini key; the fixture's calls are all Gemini
+    assert client.get("/api/agents/lili/tools?range=30d", headers=AUTH).json()["tools"] == []
+    one = client.get("/api/agents/lili/prod/usage?range=month", headers=AUTH).json()
+    assert one["instances"] == ["prod"] and one["month"]["elapsed"] == 10
+    csv = client.get("/api/agents/lili/usage.csv?range=7d", headers=AUTH)
+    assert csv.status_code == 200 and csv.headers["content-type"].startswith("text/csv")
+    assert csv.text.splitlines()[0].startswith("day,instance,provider")
+
+
+@pytest.mark.parametrize("path, status", [
+    ("/api/agents/ada/usage", 404), ("/api/agents/lili/staging/usage", 404), ("/api/agents/lili/usage?range=week", 422),
+])
+def test_v5_1_an_unknown_agent_instance_or_range_is_refused(world, path, status):
+    client, *_ = world
+    assert client.get(path, headers=AUTH).status_code == status
+
+
+def test_v5_1_an_instance_outside_the_agent_is_a_404(tmp_path):
+    from dataclasses import replace
+
+    from admin.app import create_app
+    from admin.registry import Agent
+
+    app, cfg, runner, servers, health = build_world(tmp_path)
+    cfg = replace(cfg, agents=(Agent("lili", "Lili", ("prod",)),))
+    client = TestClient(create_app(cfg, runner, health, http=servers, background=False))
+    assert client.get("/api/agents/lili/prod/tools", headers=AUTH).status_code == 200
+    assert client.get("/api/agents/lili/dev/tools", headers=AUTH).status_code == 404
+
+
+def test_v5_1_the_v2_10_usage_route_still_answers(world):
+    client, *_ = world
+    assert client.get("/api/usage?instance=prod", headers=AUTH).json()["turns_today"] == 2

@@ -16,6 +16,7 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real Docker
     from admin.app import create_app
     from admin.containers import DockerRunner
     from admin.registry import load
+    from admin.usage import Rollups
     from core.envguard import in_container
     from server.__main__ import bind_problem
 
@@ -26,9 +27,17 @@ def main() -> None:  # pragma: no cover - process glue (uvicorn, the real Docker
     sender = TelegramSender(cfg.alerts.token, cfg.alerts.chat_id) if cfg.alerts.off_reason is None else None
     alerts = Alerts(cfg.alerts, sender, redact=lambda name, text: rd.redactor(cfg.instance(name))(text)
                     if cfg.instance(name) else text)
+    rollups = Rollups(cfg.home, cfg.instances)  # v5.1: closes each finished day's usage after a health run
+
+    def after_run(latest: dict) -> None:
+        try:
+            alerts.observe(latest)
+        finally:
+            rollups.run()  # never raises
+
     health = hl.HealthRunner(list(cfg.instances), cfg.home / "health.jsonl",
-                             services=lambda inst: runner.list(inst.name), on_run=alerts.observe)
-    app = create_app(cfg, runner, health, alerts=alerts)
+                             services=lambda inst: runner.list(inst.name), on_run=after_run)
+    app = create_app(cfg, runner, health, alerts=alerts, rollups=rollups)
     import uvicorn
 
     print(f"Lumi admin on {cfg.host}:{cfg.port} — instances: {', '.join(i.name for i in cfg.instances)}",

@@ -3,7 +3,8 @@
 The admin folder (``LUMI_ADMIN_HOME``; on the box ``~/lumi/admin``, mounted at ``/admin``) holds:
 
 - ``admin.yaml`` — the registry: each instance's folder (mounted read-only), server URL and compose project
-  (**only the box's two, prod and dev**), and where the panel listens;
+  (**only the box's two, prod and dev**), where the panel listens, and (v5.1) the ``agents`` map — each agent's id,
+  its display name and the instances that run it (by default one agent, ``lili``, named "Lili", on every instance);
 - ``secrets.yaml`` (``0600``) — ``admin.token``, the panel's own token (32+ characters), and (v2.11)
   ``alerts.telegram_token``, the **admin bot's** own BotFather token — never her prod or dev bot;
 - ``health.jsonl`` / ``audit.jsonl`` — the health history and the audit log the panel writes.
@@ -17,12 +18,15 @@ default); without the chat id or the bot token, alerts are off and the page says
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from admin.readers import Instance
 
 INSTANCES = ("prod", "dev")
+AGENT_ID = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+DEFAULT_AGENT = ("lili", "Lili")
 MIN_TOKEN = 32
 DEFAULT_PORT = 8767
 HOME_ENV = "LUMI_ADMIN_HOME"
@@ -55,6 +59,16 @@ class AlertsConfig:
 
 
 @dataclass(frozen=True)
+class Agent:
+    """v5.1: an agent the panel shows in its Agent area — its id (in the API's paths), its display name, its
+    instances. An instance runs one agent."""
+
+    id: str
+    name: str
+    instances: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class AdminConfig:
     home: Path
     token: str = field(repr=False)
@@ -63,9 +77,18 @@ class AdminConfig:
     port: int
     alerts: AlertsConfig = AlertsConfig()
     agent_lock: Path | None = None  # v2.11: the deploy agent's lock, mounted read-only (LUMI_AGENT_LOCK)
+    agents: tuple[Agent, ...] = ()  # v5.1: empty → the default agent on every instance (:meth:`agent_list`)
 
     def instance(self, name: str) -> Instance | None:
         return next((i for i in self.instances if i.name == name), None)
+
+    def agent_list(self) -> tuple[Agent, ...]:
+        if self.agents:
+            return self.agents
+        return (Agent(DEFAULT_AGENT[0], DEFAULT_AGENT[1], tuple(i.name for i in self.instances)),)
+
+    def agent(self, agent_id: str) -> Agent | None:
+        return next((a for a in self.agent_list() if a.id == agent_id), None)
 
 
 def _yaml(path: Path) -> dict:
@@ -128,11 +151,51 @@ def load(home: Path | None = None, environ: dict | None = None) -> AdminConfig:
                         f"runs without a token of {MIN_TOKEN}+ characters "
                         "(python3 -c \"import secrets; print(secrets.token_urlsafe(32))\")")
     alerts = _alerts(data.get("alerts"), secrets.get("alerts"), problems)
+    agents = _agents(data.get("agents"), [i.name for i in instances], problems)
     if problems:
         raise AdminConfigError(f"Lumi admin — refusing to start ({home}):\n" + "\n".join(f"  • {p}" for p in problems))
     lock = (environ.get(LOCK_ENV) or "").strip()
     return AdminConfig(home=home, token=token, instances=tuple(instances), host=host, port=port, alerts=alerts,
-                       agent_lock=Path(lock) if lock else None)
+                       agent_lock=Path(lock) if lock else None, agents=agents)
+
+
+def _agents(block: object, instances: list[str], problems: list[str]) -> tuple[Agent, ...]:
+    """``admin.yaml`` ``agents: {<id>: {name, instances}}`` (v5.1); absent → ``()`` (the default agent)."""
+    if block is None:
+        return ()
+    if not isinstance(block, dict) or not block:
+        problems.append("admin.yaml: agents must be a mapping of <id>: {name, instances}")
+        return ()
+    out: list[Agent] = []
+    taken: dict[str, str] = {}
+    for agent_id, spec in block.items():
+        where = f"admin.yaml: agents.{agent_id}"
+        if not isinstance(agent_id, str) or not AGENT_ID.match(agent_id):
+            problems.append(f"{where} — an id is lowercase letters, digits, - or _ (e.g. lili)")
+            continue
+        if not isinstance(spec, dict):
+            problems.append(f"{where} must be a mapping of name, instances")
+            continue
+        name, names = spec.get("name"), spec.get("instances")
+        if not isinstance(name, str) or not name.strip():
+            problems.append(f"{where}.name — the name the panel shows (e.g. Lili)")
+            continue
+        if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+            problems.append(f"{where}.instances — a list of the instances that run it (e.g. [prod, dev])")
+            continue
+        bad = [n for n in names if n not in instances]
+        if bad:
+            problems.append(f"{where}.instances — {', '.join(bad)} is not a configured instance")
+            continue
+        twice = [n for n in names if n in taken]
+        if twice:
+            problems.append(f"{where}.instances — {', '.join(twice)} already runs {taken[twice[0]]}; an instance "
+                            "runs one agent")
+            continue
+        for n in names:
+            taken[n] = agent_id
+        out.append(Agent(agent_id, name.strip(), tuple(names)))
+    return tuple(out)
 
 
 def _alerts(block: object, secret: object, problems: list[str]) -> AlertsConfig:
