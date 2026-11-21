@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="height:calc(100vh - 86px);display:flex;flex-direction:column;font-size:13px">
+<div style="flex:none;display:flex;flex-direction:column;gap:9px;padding:12px 24px 10px;border-bottom:1px solid var(--color-divider)">
+<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+<sc-for list="{{ srcGroups }}" as="g" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+<span style="font:500 10.5px var(--mono);padding:0 5px;margin-right:2px;border-radius:3px;background:{{ g.instBg }};color:{{ g.instFg }}">{{ g.name }}</span>
+<sc-for list="{{ g.chips }}" as="c" hint-placeholder-count="4"><button onClick="{{ c.toggle }}" aria-pressed="{{ c.on }}" style="height:24px;padding:0 8px;border-radius:4px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};font:11.5px var(--mono);cursor:pointer;white-space:nowrap" style-hover="border-color:var(--color-neutral-500)">{{ c.label }}</button></sc-for>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div class="seg" role="radiogroup" aria-label="Range"><sc-for list="{{ ranges }}" as="r" hint-placeholder-count="4"><label class="seg-opt" style="padding:4px 9px;font-size:12px"><input type="radio" name="log-range" checked="{{ r.on }}" onChange="{{ r.pick }}">{{ r.label }}</label></sc-for></div>
+<div class="seg" role="radiogroup" aria-label="Level"><sc-for list="{{ levels }}" as="r" hint-placeholder-count="4"><label class="seg-opt" style="padding:4px 9px;font:11.5px var(--mono)"><input type="radio" name="log-level" checked="{{ r.on }}" onChange="{{ r.pick }}"><span style="width:3px;height:11px;border-radius:1px;background:{{ r.c }}"></span>{{ r.label }}</label></sc-for></div>
+<input class="input" value="{{ logger }}" onChange="{{ setLogger }}" placeholder="logger, e.g. lumi.tools" aria-label="Logger" style="width:150px;min-height:28px;padding:3px 8px;font:12px var(--mono)">
+<div style="position:relative;flex:1;min-width:220px;max-width:420px">
+<i class="ph ph-magnifying-glass" style="position:absolute;left:9px;top:7px;color:var(--color-neutral-500)"></i>
+<input class="input" value="{{ q }}" onChange="{{ setQ }}" placeholder="text or regex" aria-label="Search" style="min-height:28px;padding:3px 64px 3px 28px;font:12px var(--mono)">
+<button onClick="{{ toggleRegex }}" aria-pressed="{{ regex }}" title="Regex" style="position:absolute;right:4px;top:4px;height:20px;padding:0 6px;border-radius:3px;border:1px solid {{ regexBd }};background:{{ regexBg }};color:{{ regexFg }};font:11px var(--mono);cursor:pointer">.*</button>
+</div>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400);white-space:nowrap">{{ countText }}</span>
+<div style="margin-left:auto;display:flex;gap:8px">
+<button class="btn btn-secondary" onClick="{{ toggleLive }}" style="padding:4px 10px;font-size:12px;color:{{ liveFg }};border-color:{{ liveBd }}"><span style="width:7px;height:7px;border-radius:50%;background:{{ liveDot }}"></span>{{ liveLabel }}</button>
+<button class="btn btn-secondary" onClick="{{ download }}" style="padding:4px 10px;font-size:12px"><i class="ph ph-download-simple"></i>Download</button>
+</div>
+</div>
+</div>
+
+<div style="flex:1;min-height:0;position:relative">
+<div style="position:absolute;inset:0;overflow:auto;padding:6px 0 48px;font:12px/20px var(--mono)">
+<div style="display:flex;align-items:center;gap:10px;padding:6px 24px 6px 36px;font:10.5px var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Friday · 2026-11-20<span style="flex:1;height:1px;background:linear-gradient(to right,var(--color-divider),transparent)"></span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="20">
+<sc-if value="{{ r.isGap }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;padding:0 24px 0 106px;height:22px;color:var(--color-neutral-500);font-size:11px"><i class="ph ph-dots-three"></i>{{ r.gap }} lines hidden<span style="flex:1;height:0;border-top:1px dashed var(--color-neutral-800)"></span></div></sc-if>
+<sc-if value="{{ r.isLine }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:22px 62px 3px 62px 84px 108px minmax(0,1fr);gap:0 8px;align-items:start;padding:0 24px 0 8px;background:{{ r.bg }}" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+<button onClick="{{ r.link }}" title="Copy a link to this line" aria-label="Link to line" style="height:20px;padding:0;border:0;background:none;color:var(--color-neutral-600);cursor:pointer;font:inherit" style-hover="color:var(--color-accent)"><i class="ph ph-link-simple"></i></button>
+<span style="color:var(--color-neutral-500)">{{ r.t }}</span>
+<span style="align-self:stretch;margin:3px 0;border-radius:1px;background:{{ r.mark }}"></span>
+<span style="color:{{ r.lvlC }}">{{ r.lvl }}</span>
+<span style="color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.src }}</span>
+<span style="color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.lg }}</span>
+<span style="white-space:pre-wrap;word-break:break-word;color:{{ r.msgC }}"><sc-for list="{{ r.parts }}" as="x" hint-placeholder-count="1"><span style="background:{{ x.bg }};border-radius:2px">{{ x.t }}</span></sc-for><sc-if value="{{ r.hasTb }}" hint-placeholder-val="{{ false }}"> <button onClick="{{ r.toggleTb }}" style="display:inline-flex;align-items:center;gap:3px;height:17px;padding:0 6px;border-radius:3px;border:1px solid color-mix(in srgb,var(--bad) 35%,transparent);background:none;color:var(--bad);font:11px var(--mono);cursor:pointer;vertical-align:1px"><i class="ph ph-caret-{{ r.tbCaret }}"></i>traceback · {{ r.tbN }} lines</button></sc-if></span>
+</div>
+<sc-if value="{{ r.tbOpen }}" hint-placeholder-val="{{ false }}"><div style="margin:2px 24px 6px 203px;padding:4px 10px;border-left:2px solid var(--bad);border-radius:0 4px 4px 0;background:color-mix(in srgb,var(--bad) 6%,transparent);white-space:pre;overflow-x:auto;color:var(--color-neutral-300)">{{ r.tbText }}</div></sc-if>
+</sc-if>
+</sc-for>
+<sc-if value="{{ live }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:8px;padding:6px 24px 0 106px;color:var(--color-neutral-500);font-size:11.5px"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>following {{ followText }} — new lines appear here</div></sc-if>
+</div>
+<sc-if value="{{ paused }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ toLive }}" style="position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:15px;border:1px solid var(--color-accent);background:var(--color-surface);color:var(--color-text);box-shadow:var(--shadow-md);font-family:inherit;font-size:12.5px;cursor:pointer"><i class="ph ph-pause" style="color:var(--color-accent)"></i>Paused — 23 new lines<span style="color:var(--color-accent);display:flex;align-items:center;gap:4px">Jump to live<i class="ph ph-arrow-down"></i></span></button>
+</sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: null, level: 'DEBUG', open: { 8: true }, q: null, regex: true, live: null, logger: '', range: '24h' };
+  L = [
+    ['05:06:12', 'INFO', 'lumi', 'lumi.server', 'up — v4.7.0, owner token, space on'],
+    ['05:06:12', 'INFO', 'lumi', 'lumi.schedule', 'loaded 9 rows (4 authored, 2 changed here, 3 added here)'],
+    ['05:06:13', 'INFO', 'tg-in', 'lumi.telegram', 'inbound polling started (offset 88412)'],
+    ['07:10:00', 'DEBUG', 'lumi', 'lumi.schedule', 'morning-touch is off — skipped'],
+    ['07:12:41', 'INFO', 'mood', 'lumi.mood', 'resolved the day — «Тиха зосередженість; хочеться глибини, а не шуму.»'],
+    ['08:30:00', 'INFO', 'lumi', 'lumi.schedule', 'fired catchup (between 08:30-23:30 every 3h)'],
+    ['08:30:02', 'DEBUG', 'lumi', 'lumi.tools', 'news_search q="птахи нічна навігація" → 6 results, 412 ms'],
+    ['08:30:14', 'WARNING', 'lumi', 'lumi.llm', 'gemini: timeout after 30 s — asking once more'],
+    ['08:30:29', 'ERROR', 'lumi', 'lumi.tools', 'web_lookup failed: TimeoutError', 'Traceback (most recent call last):\n  File "/app/lumi/tools/web.py", line 88, in web_lookup\n    resp = await client.generate(prompt, timeout=15)\n  File "/app/lumi/llm/gemini.py", line 141, in generate\n    raise TimeoutError(f"gemini: no answer in {timeout} s")\nTimeoutError: gemini: no answer in 15 s'],
+    ['08:30:31', 'INFO', 'lumi', 'lumi.think', 'catchup done — silent, 2 tools, $0.031'],
+    ['11:30:00', 'INFO', 'lumi', 'lumi.schedule', 'fired catchup (between 08:30-23:30 every 3h)'],
+    ['11:30:22', 'INFO', 'lumi', 'lumi.think', 'catchup done — shown, 1 tool, $0.024'],
+    ['14:30:00', 'INFO', 'lumi', 'lumi.schedule', 'fired catchup (between 08:30-23:30 every 3h)'],
+    ['14:30:09', 'WARNING', 'lumi', 'lumi.llm', 'anthropic: 529 overloaded — retry in 2 s'],
+    ['14:30:19', 'INFO', 'lumi', 'lumi.think', 'catchup done — silent, 0 tools, $0.019'],
+    ['15:15:00', 'INFO', 'mood', 'lumi.mood', 'biorhythms — physical 0.42 ↑, emotional 0.81 →, intellectual −0.12 ↓'],
+    ['21:14:03', 'INFO', 'lumi', 'lumi.turn', 'in window «Як пройшов твій день?»'],
+    ['21:14:03', 'DEBUG', 'lumi', 'lumi.prompt', 'system 29 KB, cache read 18 900, write 0'],
+    ['21:14:12', 'INFO', 'lumi', 'lumi.tools', 'journal_read date=2026-11-19 ok 12 ms'],
+    ['21:14:21', 'INFO', 'lumi', 'lumi.turn', 'reply 🥰 tender, 9.8 s (PRE 0.4 / MODEL 8.9 / POST 0.5)'],
+    ['21:16:40', 'INFO', 'tg-in', 'lumi.telegram', 'in telegram «Покажи, що намалювала.»'],
+    ['21:16:49', 'INFO', 'lumi', 'lumi.tools', 'send_image path=art/window.png ok 640 ms'],
+    ['21:16:50', 'INFO', 'lumi', 'lumi.turn', 'reply 😏 playful, 9.1 s (PRE 0.3 / MODEL 8.2 / POST 0.6)'],
+    ['21:16:51', 'WARNING', 'tg-out', 'lumi.telegram', 'outbound: retry 1/3 after 429 (retry_after 4)'],
+    ['21:30:00', 'INFO', 'lumi', 'lumi.schedule', 'muse-silent armed — 15 min after you go quiet'],
+    ['21:34:02', 'DEBUG', 'lumi', 'lumi.server', 'GET /v1/state 200 3 ms'],
+    ['21:39:58', 'DEBUG', 'lumi', 'lumi.server', 'GET /admin/health 200 5 ms']
+  ];
+  renderVals() {
+    const p = this.props, s = this.state, inst = p.instance || 'prod';
+    const demo = p.demo || 'live';
+    const q = s.q !== null ? s.q : (demo === 'match' ? 'timeout|TimeoutError' : '');
+    const live = s.live !== null ? s.live : demo !== 'paused';
+    const sel = s.sel || { [inst + ':lumi']: true, [inst + ':mood']: true, [inst + ':tg-in']: true };
+    const tag = (n) => n === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : n === 'dev' ? { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' } : { instBg: 'var(--color-accent-900)', instFg: 'var(--color-accent-300)' };
+    const chip = (key, label) => { const on = !!sel[key]; return { label, on, bd: on ? 'var(--color-accent)' : 'var(--color-divider)', bg: on ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'transparent', fg: on ? 'var(--color-text)' : 'var(--color-neutral-400)', toggle: () => this.setState({ sel: Object.assign({}, sel, { [key]: !on }) }) }; };
+    const srcGroups = ['prod', 'dev'].map(n => Object.assign({ name: n, chips: [['lumi', 'lumi.log'], ['mood', 'mood.log'], ['tg-in', 'telegram-in'], ['tg-out', 'telegram-out'], ['ctr', 'containers']].map(c => chip(n + ':' + c[0], c[1])) }, tag(n)))
+      .concat([Object.assign({ name: 'box', chips: [chip('box:panel', 'panel.log'), chip('box:deploy', 'deploy-agent.log')] }, tag('box'))]);
+    const LV = ['DEBUG', 'INFO', 'WARNING', 'ERROR'];
+    const minLv = LV.indexOf(s.level);
+    const LC = { DEBUG: 'var(--color-neutral-700)', INFO: 'var(--color-neutral-500)', WARNING: 'var(--warn)', ERROR: 'var(--bad)' };
+    let re = null;
+    if (q) { try { re = new RegExp(s.regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'); } catch (e) { re = null; } }
+    const lines = this.L.map((l, i) => ({ i, l })).filter(({ l }) => LV.indexOf(l[1]) >= minLv && sel[inst + ':' + l[2]] && (!s.logger || l[3].indexOf(s.logger) === 0));
+    const hit = lines.map(({ l }) => !!(re && (re.lastIndex = 0, re.test(l[4] + (l[5] || '')))));
+    const show = lines.map((_, k) => !re || hit.slice(Math.max(0, k - 2), k + 3).some(Boolean));
+    const rows = [];
+    let gap = 0;
+    lines.forEach(({ l, i }, k) => {
+      if (!show[k]) { gap++; return; }
+      if (gap) { rows.push({ isGap: true, isLine: false, gap }); gap = 0; }
+      let parts = [{ t: l[4], bg: 'transparent' }];
+      if (re && hit[k]) {
+        parts = []; let last = 0; re.lastIndex = 0; let m;
+        while ((m = re.exec(l[4])) && m[0]) { parts.push({ t: l[4].slice(last, m.index), bg: 'transparent' }, { t: m[0], bg: 'color-mix(in srgb, var(--color-accent) 38%, transparent)' }); last = m.index + m[0].length; }
+        parts.push({ t: l[4].slice(last), bg: 'transparent' });
+      }
+      const open = !!s.open[i] || (re && hit[k] && !!l[5]);
+      rows.push({
+        isGap: false, isLine: true, t: l[0], lvl: l[1], lvlC: l[1] === 'WARNING' ? 'var(--warn)' : l[1] === 'ERROR' ? 'var(--bad)' : 'var(--color-neutral-500)', mark: LC[l[1]],
+        src: inst + '/' + l[2], lg: l[3], parts, msgC: re && !hit[k] ? 'var(--color-neutral-400)' : 'var(--color-text)',
+        bg: re && hit[k] ? 'color-mix(in srgb, var(--color-accent) 7%, transparent)' : l[1] === 'ERROR' ? 'color-mix(in srgb, var(--bad) 5%, transparent)' : 'transparent',
+        hasTb: !!l[5], tbN: l[5] ? l[5].split('\n').length : 0, tbText: l[5] || '', tbOpen: !!l[5] && open, tbCaret: open ? 'down' : 'right',
+        toggleTb: () => this.setState({ open: Object.assign({}, s.open, { [i]: !open }) }),
+        link: () => p.toast && p.toast('Link copied — /logs?src=' + inst + '-' + l[2] + '&at=2026-11-20T' + l[0])
+      });
+    });
+    if (gap) rows.push({ isGap: true, isLine: false, gap });
+    const nMatch = hit.filter(Boolean).length;
+    return {
+      srcGroups, rows, q, regex: s.regex, logger: s.logger,
+      regexBd: s.regex ? 'var(--color-accent)' : 'var(--color-divider)', regexBg: s.regex ? 'color-mix(in srgb, var(--color-accent) 16%, transparent)' : 'transparent', regexFg: s.regex ? 'var(--color-text)' : 'var(--color-neutral-400)',
+      setQ: e => this.setState({ q: e.target.value }), setLogger: e => this.setState({ logger: e.target.value }), toggleRegex: () => this.setState({ regex: !s.regex }),
+      ranges: [['1h', '1 h'], ['6h', '6 h'], ['24h', '24 h'], ['custom', 'Custom…']].map(r => ({ label: r[1], on: s.range === r[0], pick: () => this.setState({ range: r[0] }) })),
+      levels: LV.map(v => ({ label: v === 'WARNING' ? 'WARN' : v, c: LC[v], on: s.level === v, pick: () => this.setState({ level: v }) })),
+      countText: re ? nMatch + ' match' + (nMatch === 1 ? '' : 'es') + ' · ±2 lines' : lines.length + ' lines',
+      live, paused: !live, liveLabel: live ? 'Live' : 'Paused', liveDot: live ? 'var(--ok)' : 'var(--color-neutral-500)', liveFg: live ? 'var(--color-text)' : 'var(--color-neutral-400)', liveBd: live ? 'color-mix(in srgb, var(--ok) 50%, transparent)' : 'var(--color-divider)',
+      toggleLive: () => this.setState({ live: !live }), toLive: () => this.setState({ live: true }),
+      followText: Object.keys(sel).filter(k => sel[k]).length + ' sources',
+      download: () => p.toast && p.toast('Downloaded ' + lines.length + ' lines — lumi-' + inst + '-2026-11-20.log')
+    };
+  }
+}
+</script>
+</body>
+</html>

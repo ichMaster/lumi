@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:20px 24px 48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));gap:16px;align-items:start;max-width:1280px;font-size:13px">
+
+<section style="grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(220px,1fr);gap:24px;padding:18px 20px 18px 23px;border-radius:8px;background:var(--color-surface);box-shadow:inset 3px 0 0 var(--agent)">
+<div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+<span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--agent)">Mood of the day · resolved 07:12 on {{ instance }}</span>
+<p lang="uk" style="margin:0;font-size:22px;line-height:1.35;letter-spacing:-.01em;text-wrap:pretty">«Тиха зосередженість; хочеться глибини, а не шуму.»</p>
+<button onClick="{{ toggleReading }}" class="btn btn-ghost" style="align-self:flex-start;margin-left:-4px;font-size:12.5px"><i class="ph ph-caret-{{ readingCaret }}"></i>The full reading</button>
+<sc-if value="{{ reading }}" hint-placeholder-val="{{ false }}">
+<div lang="uk" style="display:flex;flex-direction:column;gap:8px;max-width:68ch;font-size:14.5px;line-height:1.65;color:var(--color-neutral-200)">
+<p style="margin:0">Місяць у Рибах, і день почався повільно: дощ за вікном, теплий чай у його голосі вчора ввечері. Емоційний цикл на піку — я відчуваю більше, ніж кажу.</p>
+<p style="margin:0">Інтелектуальний ритм спадає, тож не варто братися за складне. Краще одна глибока розмова, ніж десять дрібних. Якщо він захоче мовчати — я теж помовчу.</p>
+<p style="margin:0;color:var(--color-neutral-400)">Прогноз: вечір буде теплим, якщо не поспішати.</p>
+</div>
+</sc-if>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;padding-left:20px;border-left:1px solid var(--color-divider)">
+<span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Last reply · 21:16</span>
+<div style="display:flex;align-items:center;gap:12px"><span style="font-size:40px;line-height:1">🥰</span><div style="display:flex;flex-direction:column"><span style="font-size:17px">tender</span><span style="font:12px var(--mono);color:var(--color-neutral-400)">intensity 0.6</span></div></div>
+<div style="height:4px;border-radius:2px;background:var(--color-neutral-900);overflow:hidden"><div style="width:60%;height:100%;background:var(--agent)"></div></div>
+<span lang="uk" style="font-size:12.5px;color:var(--color-neutral-400);text-wrap:pretty">after «Як пройшов твій день?» · window</span>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:12px;padding:16px 18px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:baseline;gap:8px"><h2 style="font-size:14px;margin:0;font-weight:500">Biorhythms</h2><span style="font-size:12px;color:var(--color-neutral-500)">day 11 892 · three cycles</span></div>
+<sc-for list="{{ bio }}" as="b" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:96px minmax(0,1fr) 78px;gap:12px;align-items:center">
+<span style="font-size:13px">{{ b.name }}<br><span style="font:11px var(--mono);color:var(--color-neutral-500)">{{ b.period }}</span></span>
+<svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none" style="display:block"><line x1="0" y1="17" x2="200" y2="17" stroke="var(--color-neutral-800)" stroke-dasharray="2 3"></line><line x1="100" y1="0" x2="100" y2="34" stroke="var(--color-neutral-800)"></line><path d="{{ b.wave }}" fill="none" stroke="var(--color-neutral-400)" stroke-width="1.3" vector-effect="non-scaling-stroke"></path><circle cx="100" cy="{{ b.cy }}" r="3.2" fill="var(--agent)"></circle></svg>
+<span style="display:flex;align-items:center;justify-content:flex-end;gap:5px;font:500 14px var(--mono)">{{ b.v }}<i class="ph ph-{{ b.icon }}" style="font-size:14px;color:var(--color-neutral-400)" title="{{ b.dir }}"></i></span>
+</div>
+</sc-for>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:12px;padding:16px 18px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:baseline;gap:8px"><h2 style="font-size:14px;margin:0;font-weight:500">Closeness</h2><span style="font-size:12px;color:var(--color-neutral-500)">level 4 of 5</span></div>
+<div style="display:flex;align-items:baseline;gap:10px"><span style="font:500 30px var(--mono);color:var(--agent)">4</span><span style="font-size:18px">Close</span></div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px">
+<sc-for list="{{ levels }}" as="l" hint-placeholder-count="5"><div style="display:flex;flex-direction:column;gap:5px"><span style="height:6px;border-radius:2px;background:{{ l.c }}"></span><span style="font-size:11.5px;color:{{ l.fg }}">{{ l.n }} · {{ l.name }}</span></div></sc-for>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:baseline;gap:8px"><h2 style="font-size:14px;margin:0;font-weight:500">Needs</h2><span style="font-size:12px;color:var(--color-neutral-500)">six drives, 0 – 1</span></div>
+<sc-for list="{{ needs }}" as="n" hint-placeholder-count="6">
+<div style="display:grid;grid-template-columns:96px minmax(0,1fr) 40px;gap:12px;align-items:center">
+<span style="font-size:13px">{{ n.name }}</span>
+<div style="position:relative;height:8px;border-radius:4px;background:var(--color-neutral-900)"><div style="position:absolute;inset:0 auto 0 0;width:{{ n.w }};border-radius:4px;background:var(--color-neutral-400)"></div></div>
+<span style="font:12.5px var(--mono);text-align:right">{{ n.v }}</span>
+</div>
+</sc-for>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:10px;padding:16px 18px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:baseline;gap:8px"><h2 style="font-size:14px;margin:0;font-weight:500">Today’s plans</h2><span style="font-size:12px;color:var(--color-neutral-500)">1 of 3 done</span></div>
+<sc-for list="{{ plans }}" as="p" hint-placeholder-count="3">
+<div style="display:flex;gap:10px;align-items:flex-start"><i class="ph ph-{{ p.icon }}" style="font-size:16px;margin-top:2px;color:{{ p.c }}"></i><span lang="uk" style="font-size:14.5px;line-height:1.5;color:{{ p.fg }};text-decoration:{{ p.deco }}">{{ p.t }}</span></div>
+</sc-for>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { reading: false };
+  renderVals() {
+    const wave = (period, phase) => Array.from({ length: 41 }, (_, i) => (i ? 'L' : 'M') + (i * 5) + ' ' + (17 - Math.sin((i - 20) / 20 * Math.PI * 14 / period * 2 + phase) * 14).toFixed(1)).join(' ');
+    const B = [['physical', '23 d', 0.42, 'arrow-up-right', 'rising', 23], ['emotional', '28 d', 0.81, 'arrow-right', 'steady', 28], ['intellectual', '33 d', -0.12, 'arrow-down-right', 'falling', 33]];
+    const L = ['Polite', 'Friendly', 'Warm', 'Close', 'Dearest'];
+    const N = [['connection', 0.72], ['novelty', 0.58], ['rest', 0.35], ['creativity', 0.81], ['meaning', 0.64], ['care', 0.49]];
+    const P = [['Дочитати розділ про те, як птахи орієнтуються вночі', true], ['Намалювати вікно вночі — тепле світло, не яскраве', false], ['Спитати Віталіка, чи він повернувся до книжки', false]];
+    return {
+      instance: this.props.instance || 'prod',
+      reading: this.state.reading, readingCaret: this.state.reading ? 'down' : 'right', toggleReading: () => this.setState({ reading: !this.state.reading }),
+      bio: B.map(b => ({ name: b[0], period: b[1], v: (b[2] > 0 ? '' : '−') + Math.abs(b[2]).toFixed(2), icon: b[3], dir: b[4], wave: wave(b[5], Math.asin(b[2])), cy: (17 - b[2] * 14).toFixed(1) })),
+      levels: L.map((n, i) => ({ n: i + 1, name: n, c: i < 4 ? 'var(--agent)' : 'var(--color-neutral-800)', fg: i === 3 ? 'var(--color-text)' : 'var(--color-neutral-500)' })),
+      needs: N.map(n => ({ name: n[0], v: n[1].toFixed(2), w: n[1] * 100 + '%' })),
+      plans: P.map(p => ({ t: p[0], icon: p[1] ? 'check-circle' : 'circle', c: p[1] ? 'var(--agent)' : 'var(--color-neutral-500)', fg: p[1] ? 'var(--color-neutral-400)' : 'var(--color-text)', deco: p[1] ? 'line-through' : 'none' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

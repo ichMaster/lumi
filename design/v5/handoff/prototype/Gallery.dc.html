@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:14px 24px 48px;display:flex;flex-direction:column;gap:14px;font-size:13px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div class="seg" role="radiogroup" aria-label="View"><sc-for list="{{ tabs }}" as="r" hint-placeholder-count="2"><label class="seg-opt" style="padding:4px 11px;font-size:12.5px"><input type="radio" name="gal-tab" checked="{{ r.on }}" onChange="{{ r.pick }}"><i class="ph ph-{{ r.icon }}"></i>{{ r.label }}</label></sc-for></div>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ sum }}</span>
+<span style="margin-left:auto;font-size:12px;color:var(--color-neutral-500)">art/ on {{ instance }} · newest first</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px">
+<sc-for list="{{ pics }}" as="g" hint-placeholder-count="12">
+<button onClick="{{ g.open }}" style="display:flex;flex-direction:column;gap:6px;padding:0;border:0;background:none;color:inherit;font-family:inherit;text-align:left;cursor:pointer;border-radius:6px">
+<span style="display:block;width:100%;aspect-ratio:1;border-radius:6px;background:repeating-linear-gradient(135deg,var(--color-neutral-800) 0 8px,var(--color-neutral-900) 8px 16px);box-shadow:inset 0 0 0 1px var(--color-divider);position:relative;opacity:{{ g.op }}"><span style="position:absolute;left:8px;bottom:6px;font:10.5px var(--mono);color:var(--color-neutral-400)">{{ g.dims }}</span></span>
+<span style="display:flex;flex-direction:column;line-height:1.3;min-width:0"><span style="font:12px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.name }}</span><span style="font:11px var(--mono);color:var(--color-neutral-500)">{{ g.date }}</span></span>
+</button>
+</sc-for>
+</div>
+</div>
+<sc-if value="{{ cur }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ close }}" style="position:fixed;inset:0;z-index:50;display:grid;grid-template-columns:minmax(0,1fr) 320px;background:color-mix(in srgb,var(--color-bg) 92%,transparent);backdrop-filter:blur(4px)">
+<div style="display:grid;place-items:center;padding:40px">
+<div onClick="{{ stop }}" style="width:min(72vh,100%);aspect-ratio:1;border-radius:8px;background:repeating-linear-gradient(135deg,var(--color-neutral-800) 0 14px,var(--color-neutral-900) 14px 28px);box-shadow:var(--shadow-md);display:grid;place-items:center;color:var(--color-neutral-400);font:12px var(--mono)">{{ cur.name }} · {{ cur.dims }}</div>
+</div>
+<aside onClick="{{ stop }}" style="display:flex;flex-direction:column;gap:14px;padding:20px;background:var(--color-surface);box-shadow:var(--shadow-lg)">
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">{{ cur.pos }}</span><button class="btn btn-ghost" onClick="{{ close }}" aria-label="Close" style="margin-left:auto;color:var(--color-neutral-400)"><i class="ph ph-x" style="font-size:16px"></i></button></div>
+<sc-if value="{{ renaming }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:6px"><input class="input" value="{{ newName }}" onChange="{{ setName }}" autoFocus="{{ true }}" style="min-height:30px;padding:4px 8px;font:13px var(--mono)"><button class="btn btn-primary" onClick="{{ saveName }}" style="padding:4px 10px">Save</button></div></sc-if>
+<sc-if value="{{ notRenaming }}" hint-placeholder-val="{{ true }}"><span style="font:500 15px var(--mono);word-break:break-all">{{ cur.name }}</span></sc-if>
+<p lang="uk" style="margin:0;font-size:14.5px;line-height:1.55;color:var(--color-neutral-200)">{{ cur.caption }}</p>
+<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12.5px"><span style="color:var(--color-neutral-500)">size</span><span style="font-family:var(--mono)">{{ cur.size }}</span><span style="color:var(--color-neutral-500)">pixels</span><span style="font-family:var(--mono)">{{ cur.dims }}</span><span style="color:var(--color-neutral-500)">made</span><span style="font-family:var(--mono)">{{ cur.made }}</span><span style="color:var(--color-neutral-500)">model</span><span style="font-family:var(--mono)">gemini-2.5-flash-image</span><span style="color:var(--color-neutral-500)">shown</span><span style="font-family:var(--mono)">{{ cur.shown }}</span></div>
+<div style="display:flex;flex-direction:column;gap:6px;margin-top:auto">
+<sc-if value="{{ inTrash }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--color-neutral-400)">In the trash · nothing is ever deleted</span><button class="btn btn-primary btn-block" onClick="{{ restore }}"><i class="ph ph-arrow-counter-clockwise"></i>Restore from trash</button></sc-if>
+<sc-if value="{{ notTrash }}" hint-placeholder-val="{{ true }}">
+<button class="btn btn-secondary btn-block" onClick="{{ download }}"><i class="ph ph-download-simple"></i>Download</button>
+<button class="btn btn-secondary btn-block" onClick="{{ rename }}"><i class="ph ph-pencil-simple"></i>Rename</button>
+<button class="btn btn-secondary btn-block" onClick="{{ trash }}" style="color:var(--bad)"><i class="ph ph-trash"></i>Move to trash</button>
+</sc-if>
+<div style="display:flex;justify-content:space-between;font:11px var(--mono);color:var(--color-neutral-500);margin-top:6px"><span>← → between pictures</span><span>Esc closes</span></div>
+</div>
+</aside>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { tab: 'pics', cur: null, renaming: false, newName: '' };
+  P = [
+    ['window.png', '2026-11-20 21:15', '1024 × 1024', '1.4 MB', '«Сіре небо і одне жовте вікно.»', 'Telegram 21:16'],
+    ['birds-at-night.png', '2026-11-19 22:05', '1024 × 1024', '1.6 MB', '«Птахи летять уночі, а під ними — темне море.»', 'window 22:06'],
+    ['odesa-sea.png', '2026-11-18 22:41', '1024 × 768', '1.1 MB', '«Море за два квартали від дому.»', 'not shown'],
+    ['rain-plants.png', '2026-11-17 10:12', '1024 × 1024', '1.3 MB', '«Дощ і рослини на підвіконні.»', 'window 10:14'],
+    ['morning-tea.png', '2026-11-15 08:30', '768 × 1024', '0.9 MB', '«Зелений чай без цукру.»', 'Telegram 08:31'],
+    ['comet.png', '2026-11-12 23:50', '1024 × 1024', '1.2 MB', '«Комета над містом, у грудні.»', 'not shown'],
+    ['bublyk.png', '2026-11-08 19:02', '1024 × 1024', '1.5 MB', '«Бублик спить на клавіатурі.»', 'window 19:03'],
+    ['star-map.png', '2026-11-05 22:20', '1024 × 1024', '1.7 MB', '«Мапа неба з Полярною в центрі.»', 'window 22:21'],
+    ['autumn-park.png', '2026-10-30 16:44', '1024 × 768', '1.2 MB', '«Парк у жовтні.»', 'Telegram 16:45'],
+    ['lamp.png', '2026-10-28 21:10', '768 × 1024', '0.8 MB', '«Лампа, біля якої хтось читає.»', 'window 21:11'],
+    ['first-snow.png', '2026-10-21 07:55', '1024 × 1024', '1.4 MB', '«Перший сніг у горах.»', 'Telegram 07:56'],
+    ['letters.png', '2026-10-19 20:30', '1024 × 1024', '1.0 MB', '«Листи, яких ніхто не надіслав.»', 'not shown']
+  ];
+  TR = [['window-draft.png', '2026-11-20 20:58', '1024 × 1024', '1.3 MB', '«Перша спроба вікна — надто яскраве.»', 'not shown'], ['sea-old.png', '2026-11-18 22:30', '1024 × 768', '1.0 MB', '«Море — стара версія.»', 'not shown']];
+  componentDidMount() {
+    this.k = e => {
+      if (this.state.cur === null || this.state.renaming) return;
+      const list = this.state.tab === 'pics' ? this.P : this.TR;
+      if (e.key === 'Escape') this.setState({ cur: null });
+      if (e.key === 'ArrowRight') this.setState({ cur: Math.min(this.state.cur + 1, list.length - 1) });
+      if (e.key === 'ArrowLeft') this.setState({ cur: Math.max(this.state.cur - 1, 0) });
+    };
+    window.addEventListener('keydown', this.k);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.k); }
+  renderVals() {
+    const p = this.props, s = this.state, inst = p.instance || 'prod';
+    const list = s.tab === 'pics' ? this.P : this.TR;
+    const c = s.cur !== null ? list[s.cur] : null;
+    const toast = m => p.toast && p.toast(m);
+    return {
+      instance: inst,
+      tabs: [['pics', 'Pictures · 12', 'images-square'], ['trash', 'Trash · 2', 'trash']].map(t => ({ label: t[1], icon: t[2], on: s.tab === t[0], pick: () => this.setState({ tab: t[0], cur: null }) })),
+      sum: s.tab === 'pics' ? '12 pictures · 15.1 MB' : '2 in the trash · removed after 30 days',
+      pics: list.map((g, i) => ({ name: g[0], date: g[1].slice(0, 10), dims: g[2], op: s.tab === 'trash' ? 0.6 : 1, open: () => this.setState({ cur: i, renaming: false }) })),
+      cur: c ? { name: c[0], made: c[1], dims: c[2], size: c[3], caption: c[4], shown: c[5], pos: (s.cur + 1) + ' of ' + list.length } : null,
+      inTrash: s.tab === 'trash', notTrash: s.tab !== 'trash',
+      renaming: s.renaming, notRenaming: !s.renaming, newName: s.newName,
+      setName: e => this.setState({ newName: e.target.value }),
+      rename: () => this.setState({ renaming: true, newName: c ? c[0] : '' }),
+      saveName: () => { this.setState({ renaming: false }); toast('Renamed to ' + s.newName); },
+      close: () => this.setState({ cur: null }), stop: e => e.stopPropagation(),
+      download: () => toast('Downloading ' + (c && c[0])),
+      restore: () => { this.setState({ cur: null }); toast((c && c[0]) + ' restored to art/'); },
+      trash: () => p.confirm && p.confirm({ instance: inst, typed: false, title: 'Move ' + (c && c[0]) + ' to the trash?', body: 'It stays in the trash for 30 days and can be restored. She won’t see it in her gallery meanwhile.', action: 'Move to trash', done: (c && c[0]) + ' moved to the trash', onDone: () => this.setState({ cur: null }) })
+    };
+  }
+}
+</script>
+</body>
+</html>

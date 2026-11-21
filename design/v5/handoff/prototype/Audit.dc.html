@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 40px;display:flex;flex-direction:column;gap:14px;font-size:13px">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border-radius:8px;background:{{ chain.bg }}">
+<i class="ph ph-{{ chain.icon }}" style="font-size:18px;color:{{ chain.c }}"></i>
+<div style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13.5px">{{ chain.title }}</span><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ chain.meta }}</span></div>
+<button class="btn btn-secondary" onClick="{{ verify }}" style="margin-left:auto;padding:4px 10px;font-size:12.5px"><i class="ph ph-link"></i>Verify the chain</button>
+<button class="btn btn-secondary" onClick="{{ exportIt }}" style="padding:4px 10px;font-size:12.5px"><i class="ph ph-download-simple"></i>Export · JSONL</button>
+</div>
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<sc-for list="{{ sources }}" as="c" hint-placeholder-count="5"><button onClick="{{ c.toggle }}" aria-pressed="{{ c.on }}" style="display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:4px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap"><i class="ph ph-{{ c.icon }}"></i>{{ c.label }}</button></sc-for>
+<span style="width:1px;height:18px;background:var(--color-divider);margin:0 4px"></span>
+<div class="seg" role="radiogroup" aria-label="Result"><label class="seg-opt" style="padding:4px 9px;font-size:12px"><input type="radio" name="aud-res" checked="{{ true }}">any result</label><label class="seg-opt" style="padding:4px 9px;font-size:12px"><input type="radio" name="aud-res">refused or failed</label></div>
+<div style="position:relative;flex:1;min-width:200px;max-width:340px"><i class="ph ph-magnifying-glass" style="position:absolute;left:9px;top:7px;color:var(--color-neutral-500)"></i><input class="input" placeholder="action, target or client" style="min-height:28px;padding:3px 8px 3px 28px;font-size:12.5px"></div>
+<span style="margin-left:auto;font:11.5px var(--mono);color:var(--color-neutral-400)">{{ count }}</span>
+</div>
+<div style="display:flex;flex-direction:column;overflow-x:auto">
+<div style="display:grid;min-width:960px;grid-template-columns:118px 116px 48px 58px minmax(110px,0.8fr) minmax(220px,1.6fr) 76px 16px;gap:12px;padding:0 10px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>When</span><span>Source</span><span>Inst.</span><span>Agent</span><span>Action</span><span>Target</span><span>Result</span><span></span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+<div style="min-width:960px;display:flex;flex-direction:column;border-radius:4px;background-color:{{ r.bg }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom">
+<button onClick="{{ r.toggle }}" style="display:grid;min-width:960px;grid-template-columns:118px 116px 48px 58px minmax(110px,0.8fr) minmax(220px,1.6fr) 76px 16px;gap:12px;align-items:center;min-height:34px;padding:3px 10px;border:0;background:none;color:inherit;font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+<span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ r.when }}</span>
+<span style="display:flex;align-items:center;gap:6px;color:var(--color-neutral-300)"><i class="ph ph-{{ r.icon }}" style="color:var(--color-neutral-400)"></i>{{ r.src }}</span>
+<span style="justify-self:start;font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:{{ r.instBg }};color:{{ r.instFg }}">{{ r.inst }}</span>
+<span style="font-size:12px;color:var(--agent)">{{ r.agent }}</span>
+<span style="font-family:var(--mono);font-size:12px">{{ r.action }}</span>
+<span style="min-width:0;font-family:var(--mono);font-size:12px;color:var(--color-neutral-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.target }}</span>
+<span style="font-size:12px;color:{{ r.resC }}">{{ r.res }}</span>
+<i class="ph ph-caret-{{ r.caret }}" style="color:var(--color-neutral-500)"></i>
+</button>
+<sc-if value="{{ r.open }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,300px);gap:16px;padding:4px 10px 14px 140px">
+<div style="display:flex;flex-direction:column;padding:8px 0;border-radius:6px;background:var(--color-bg);font:12px/20px var(--mono)">
+<sc-for list="{{ r.diff }}" as="d" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:18px minmax(0,1fr);padding:0 10px;white-space:pre-wrap;background:{{ d.bg }};color:{{ d.c }}"><span>{{ d.sign }}</span><span>{{ d.t }}</span></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+<sc-for list="{{ r.meta }}" as="m" hint-placeholder-count="4"><div style="display:flex;flex-direction:column"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)">{{ m.k }}</span><span style="font-family:var(--mono);color:var(--color-neutral-200);word-break:break-all">{{ m.v }}</span></div></sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { open: { 6: true }, off: {}, verified: false };
+  renderVals() {
+    const p = this.props, s = this.state;
+    const broken = p.demo === 'broken';
+    const SRC = { panel: ['panel', 'browser'], agent: ['deploy agent', 'robot'], outside: ['outside change', 'file-dashed'], window: ['window', 'app-window'], docker: ['docker', 'cube'] };
+    const tag = (n) => n === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : n === 'dev' ? { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' } : { instBg: 'transparent', instFg: 'var(--color-neutral-500)' };
+    const RES = { done: 'var(--color-neutral-300)', refused: 'var(--warn)', failed: 'var(--bad)', '—': 'var(--color-neutral-500)' };
+    const E = [
+      ['11-20 21:41', 'panel', 'dev', '', 'acknowledge', 'alert · model: 3 failures in the last hour', 'done', [], [['client', 'Safari 18 · Mac · 192.168.1.14'], ['line', '4 812'], ['hash', '9f3c…a1e0']]],
+      ['11-20 21:05', 'panel', 'dev', 'Lili', 'probe model', 'claude-sonnet-5 · 1 call', 'failed', [], [['client', 'Safari 18 · Mac · 192.168.1.14'], ['error', 'gemini timeout after 30 s'], ['line', '4 811']]],
+      ['11-20 19:41', 'agent', 'dev', '', 'start', 'sha-6b80895', 'done', [], [['line', '4 809']]],
+      ['11-20 19:38', 'agent', 'dev', '', 'archive', 'data-20261120-1938-sha-1c2e004.tar.gz', 'done', [], [['size', '388 MB'], ['line', '4 808']]],
+      ['11-20 05:06', 'agent', 'prod', '', 'confirm', 'v4.7.0 · archive data-20261120-0505-v4.6.0.tar.gz', 'done', [[' ', 'image: lumi:v4.6.0 → lumi:v4.7.0'], [' ', 'checks green 60 s after start'], [' ', 'archive kept 30 days']], [['line', '4 801']]],
+      ['11-20 05:05', 'docker', 'prod', '', 'recreate', 'lumi-prod-server', '—', [], [['line', '4 800']]],
+      ['11-19 22:14', 'outside', 'dev', '', 'settings.yaml', 'thoughts.quiet_hours 1-8 → 1-7', 'done', [[' ', 'thoughts:'], [' ', '  enabled: true'], ['-', '  quiet_hours: 1-8'], ['+', '  quiet_hours: 1-7'], [' ', '  max_per_day: 14']], [['seen by', 'the panel’s file watch'], ['file', '/srv/lumi/dev/settings.yaml'], ['line', '4 797'], ['hash', '41b2…07cd']]],
+      ['11-19 21:52', 'docker', 'dev', '', 'die', 'lumi-dev-server · exit 137 · OOM killed', '—', [], [['line', '4 795']]],
+      ['11-19 21:30', 'window', 'prod', 'Lili', 'correct fact', '«Колись жив біля моря.» → «Виріс біля моря, в Одесі.»', 'done', [['-', '«Колись жив біля моря.» · 0.6'], ['+', '«Виріс біля моря, в Одесі.» · 0.8'], [' ', 'old version kept as obsolete']], [['line', '4 794']]],
+      ['11-19 18:12', 'panel', 'prod', 'Lili', 'edit fact', '«Не любить, коли його поспішають з рішеннями.»', 'refused', [], [['reason', 'a turn was running — try again in a moment'], ['client', 'Safari 18 · Mac'], ['line', '4 790']]],
+      ['11-17 23:02', 'panel', 'prod', '', 'settings', 'thoughts.max_per_day 12 → 14', 'done', [['-', '  max_per_day: 12'], ['+', '  max_per_day: 14']], [['client', 'Safari 18 · Mac · 192.168.1.14'], ['line', '4 702']]]
+    ];
+    const rows = E.map((e, i) => {
+      const open = !!s.open[i];
+      return Object.assign({
+        when: e[0], src: SRC[e[1]][0], icon: SRC[e[1]][1], inst: e[2], agent: e[3] || '—', action: e[4], target: e[5], res: e[6], resC: RES[e[6]], open, caret: open ? 'down' : 'right',
+        bg: open ? 'color-mix(in srgb, var(--color-text) 3%, transparent)' : 'transparent',
+        diff: (e[7].length ? e[7] : [[' ', 'no diff for this entry']]).map(d => ({ sign: d[0], t: d[1], c: d[0] === '+' ? 'var(--ok)' : d[0] === '-' ? 'var(--bad)' : 'var(--color-neutral-400)', bg: d[0] === '+' ? 'color-mix(in srgb, var(--ok) 9%, transparent)' : d[0] === '-' ? 'color-mix(in srgb, var(--bad) 9%, transparent)' : 'transparent' })),
+        meta: e[8].map(m => ({ k: m[0], v: m[1] })),
+        toggle: () => this.setState({ open: Object.assign({}, s.open, { [i]: !open }) })
+      }, tag(e[2]));
+    }).filter((r, i) => !s.off[E[i][1]]);
+    return {
+      chain: broken
+        ? { icon: 'link-break', c: 'var(--bad)', bg: 'color-mix(in srgb, var(--bad) 10%, var(--color-surface))', title: 'The chain is broken at line 4 790', meta: 'line 4 790’s hash doesn’t match line 4 789 · 22 lines after it can’t be trusted · checked 21:40' }
+        : { icon: 'seal-check', c: 'var(--ok)', bg: 'var(--color-surface)', title: 'The chain is intact', meta: (s.verified ? 'verified just now' : 'verified 21:40') + ' · 4 812 entries since 2026-07-30 · last hash 9f3c…a1e0' },
+      verify: () => { this.setState({ verified: true }); p.toast && p.toast(broken ? 'Verified — still broken at line 4 790' : 'Verified — 4 812 entries, the chain is intact'); },
+      exportIt: () => p.toast && p.toast('Exported 4 812 entries — audit-2026-11-20.jsonl'),
+      sources: Object.keys(SRC).map(k => { const on = !s.off[k]; return { label: SRC[k][0], icon: SRC[k][1], on, bd: on ? 'var(--color-accent)' : 'var(--color-divider)', bg: on ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent', fg: on ? 'var(--color-text)' : 'var(--color-neutral-400)', toggle: () => this.setState({ off: Object.assign({}, s.off, { [k]: on }) }) }; }),
+      count: rows.length + ' of 4 812 · newest first', rows
+    };
+  }
+}
+</script>
+</body>
+</html>

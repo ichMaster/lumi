@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 48px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;font-size:13px;max-width:1440px">
+<div style="flex:1 1 700px;display:flex;flex-direction:column;gap:14px;min-width:0">
+<div style="display:flex;flex-direction:column;overflow-x:auto">
+<div style="min-width:760px;display:grid;grid-template-columns:40px minmax(0,1.5fr) minmax(0,1.2fr) 70px 100px 130px;gap:12px;padding:0 10px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>On</span><span>Row · directive</span><span>Trigger</span><span>Shown</span><span>Origin</span><span>Last firing</span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+<div style="min-width:760px;display:grid;grid-template-columns:40px minmax(0,1.5fr) minmax(0,1.2fr) 70px 100px 130px;gap:12px;align-items:center;min-height:44px;padding:5px 10px;border-radius:4px;background-color:{{ r.bg }};box-shadow:inset 2px 0 0 {{ r.edge }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom" style-hover="background-color:color-mix(in srgb,var(--color-text) 4%,transparent)">
+<button role="switch" aria-checked="{{ r.on }}" onClick="{{ r.toggle }}" aria-label="On" style="width:30px;height:17px;border-radius:9px;border:0;padding:2px;background:{{ r.trk }};cursor:pointer;display:flex;justify-content:{{ r.jc }}"><span style="width:13px;height:13px;border-radius:50%;background:{{ r.knob }}"></span></button>
+<button onClick="{{ r.pick }}" style="display:flex;flex-direction:column;gap:1px;min-width:0;padding:0;border:0;background:none;color:inherit;font-family:inherit;text-align:left;cursor:pointer"><span style="font:500 12.5px var(--mono);color:{{ r.fg }}">{{ r.name }}</span><span lang="uk" style="font-size:12.5px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">{{ r.dir }}</span></button>
+<span style="font-size:12.5px;color:{{ r.fg }}">{{ r.trigger }}</span>
+<span style="display:flex;align-items:center;gap:4px;font-size:12px;color:{{ r.shC }}"><i class="ph ph-{{ r.shIcon }}"></i>{{ r.shown }}</span>
+<span style="justify-self:start;font-size:11px;padding:0 6px;border-radius:3px;background:{{ r.orBg }};color:{{ r.orFg }}">{{ r.origin }}</span>
+<span style="display:flex;flex-direction:column;font:11.5px var(--mono);color:var(--color-neutral-400)"><span>{{ r.last }}</span><span style="color:{{ r.outC }}">{{ r.out }}</span></span>
+</div>
+</sc-for>
+<button class="btn btn-ghost" onClick="{{ addRow }}" style="align-self:flex-start;margin-top:6px;font-size:12.5px"><i class="ph ph-plus"></i>Add a row</button>
+</div>
+
+<section style="display:flex;flex-direction:column;gap:12px;padding:16px 18px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:center;gap:10px"><span style="font:500 14px var(--mono)">{{ f.name }}</span><span style="font-size:11px;padding:0 6px;border-radius:3px;background:{{ f.orBg }};color:{{ f.orFg }}">{{ f.origin }}</span><button class="btn btn-ghost" onClick="{{ resetRow }}" style="margin-left:auto;font-size:12px;color:var(--color-neutral-400)"><i class="ph ph-arrow-counter-clockwise"></i>Reset to authored</button></div>
+<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(220px,0.9fr);gap:18px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div class="field"><label>Directive</label><textarea class="input" lang="uk" value="{{ f.dir }}" onChange="{{ setDir }}" style="min-height:64px;font-size:14px;line-height:1.5"></textarea></div>
+<div class="field"><label>Trigger</label><div class="seg" role="radiogroup" aria-label="Trigger kind" style="display:flex"><sc-for list="{{ kinds }}" as="k" hint-placeholder-count="3"><label class="seg-opt" style="flex:1;justify-content:center;padding:6px 8px;font-size:12px"><input type="radio" name="sch-kind" checked="{{ k.on }}" onChange="{{ k.pick }}">{{ k.label }}</label></sc-for></div></div>
+<sc-if value="{{ kind.every }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"><div class="field"><label>Every (h)</label><input class="input" value="{{ every }}" onChange="{{ setEvery }}" style="font-family:var(--mono)"></div><div class="field"><label>Between</label><input class="input" type="time" value="{{ from }}" onChange="{{ setFrom }}" style="font-family:var(--mono)"></div><div class="field"><label>and</label><input class="input" type="time" value="23:30" style="font-family:var(--mono)"></div></div></sc-if>
+<sc-if value="{{ kind.quiet }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label>Minutes after you go quiet</label><input class="input" value="15" style="font-family:var(--mono)"></div><div class="field"><label>Only once per quiet spell</label><select class="input"><option>yes</option><option>no</option></select></div></div></sc-if>
+<sc-if value="{{ kind.at }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:1fr 1.4fr;gap:10px"><div class="field"><label>At</label><input class="input" type="time" value="07:10" style="font-family:var(--mono)"></div><div class="field"><label>Days</label><div style="display:flex;gap:3px"><span class="tag tag-accent">Mon</span><span class="tag tag-accent">Tue</span><span class="tag tag-accent">Wed</span><span class="tag tag-accent">Thu</span><span class="tag tag-accent">Fri</span><span class="tag tag-outline">Sat</span><span class="tag tag-outline">Sun</span></div></div></div></sc-if>
+<div style="display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:end">
+<div class="field"><label>Topic <span style="color:var(--color-neutral-500)">· optional</span></label><input class="input" lang="uk" value="{{ f.topic }}" style="font-size:13px"></div>
+<label style="display:flex;align-items:center;gap:7px;height:36px;font-size:13px;cursor:pointer"><input type="checkbox" checked="{{ f.shownOn }}" style="accent-color:var(--color-accent)">Shown</label>
+<label style="display:flex;align-items:center;gap:7px;height:36px;font-size:13px;cursor:pointer"><input type="checkbox" checked="{{ f.on }}" style="accent-color:var(--color-accent)">On</label>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:6px;background:var(--color-bg)">
+<span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Next five firings · live</span>
+<span style="font-size:12.5px;color:var(--color-neutral-300)">{{ triggerWords }}</span>
+<sc-for list="{{ next5 }}" as="n" hint-placeholder-count="5"><div style="display:flex;justify-content:space-between;font:12.5px var(--mono);padding:3px 0;color:{{ n.c }}"><span>{{ n.day }}</span><span>{{ n.t }}</span></div></sc-for>
+<span style="font-size:11.5px;color:var(--color-neutral-500);margin-top:4px">Quiet hours 01:00–08:00 and the daily caps apply.</span>
+</div>
+</div>
+<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-secondary" onClick="{{ toggleYaml }}"><i class="ph ph-code"></i>Advanced · YAML</button><button class="btn btn-primary" onClick="{{ saveRow }}" style="color:{{ saveC }};border-color:{{ saveC }}"><i class="ph ph-check"></i>Save row</button></div>
+<sc-if value="{{ yaml }}" hint-placeholder-val="{{ false }}"><textarea class="input" lang="uk" style="min-height:200px;font:12.5px/1.6 var(--mono)" value="{{ yamlText }}" onChange="{{ noop }}"></textarea></sc-if>
+</section>
+</div>
+
+<aside style="flex:1 1 260px;max-width:360px;display:flex;flex-direction:column;gap:12px;position:sticky;top:16px">
+<section style="display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:center;gap:10px"><span style="font-size:13.5px;font-weight:500">The scheduler</span><button role="switch" aria-checked="{{ sched }}" onClick="{{ toggleSched }}" style="margin-left:auto;width:34px;height:19px;border-radius:10px;border:0;padding:2px;background:{{ schedTrk }};cursor:pointer;display:flex;justify-content:{{ schedJc }}"><span style="width:15px;height:15px;border-radius:50%;background:{{ schedKnob }}"></span></button></div>
+<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--warn)"><i class="ph ph-warning"></i>catchup didn’t fire at 17:30 and 20:30</span>
+<div style="display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:12.5px"><span style="color:var(--color-neutral-400)">quiet hours</span><span style="font-family:var(--mono)">01:00–08:00</span><span style="color:var(--color-neutral-400)">thoughts per day</span><span style="font-family:var(--mono)">9 / 14</span><span style="color:var(--color-neutral-400)">shown per day</span><span style="font-family:var(--mono)">2 / 6</span><span style="color:var(--color-neutral-400)">min gap between shown</span><span style="font-family:var(--mono)">45 min</span></div>
+</section>
+<section style="display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<span style="font-size:13.5px;font-weight:500;margin-bottom:2px">Next up</span>
+<sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px;font-size:12.5px;padding:3px 0"><span style="font-family:var(--mono);color:var(--color-neutral-400)">{{ u.t }}</span><span style="font-family:var(--mono)">{{ u.row }}</span></div></sc-for>
+</section>
+</aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: 2, on: {}, kind: 'every', every: '3', from: '08:30', yaml: false, sched: true, dir: null };
+  R = [
+    ['muse-silent', 'think seeds', 'quiet', '15 min after you go quiet', false, true, 'authored', 'today 21:31', 'silent thought'],
+    ['muse-aloud', 'Скажи вголос одну думку, якщо вона тепла.', 'quiet', '55 min after you go quiet', true, true, 'authored', 'today 19:02', 'shown'],
+    ['catchup', 'свіжі новини цікаві Віталіку', 'every', 'every 3 h between 08:30 and 23:30', true, true, 'changed here', 'today 14:30', 'shown · then missed 2'],
+    ['morning-touch', 'prompt', 'at', 'at 07:10 on weekdays', true, false, 'added here', '11-14 07:10', 'shown'],
+    ['night-journal', 'Запиши день у щоденник — коротко, як є.', 'at', 'at 23:40 every day', false, true, 'added here', '11-19 23:40', 'silent · journal_write'],
+    ['room-check', 'the room’s rule', 'every', 'every 30 min while the room is open', false, true, 'authored', 'today 16:30', 'silent']
+  ];
+  renderVals() {
+    const p = this.props, s = this.state, inst = p.instance || 'prod';
+    const OR = { authored: ['var(--color-neutral-800)', 'var(--color-neutral-200)'], 'changed here': ['var(--color-accent-900)', 'var(--color-accent-300)'], 'added here': ['color-mix(in srgb, var(--agent) 18%, transparent)', 'var(--agent)'] };
+    const rows = this.R.map((r, i) => {
+      const on = s.on[i] !== undefined ? s.on[i] : r[5];
+      return {
+        name: r[0], dir: r[1], trigger: r[3], shown: r[4] ? 'shown' : 'silent', shIcon: r[4] ? 'speaker-high' : 'eye-slash', shC: r[4] ? 'var(--color-text)' : 'var(--color-neutral-500)',
+        origin: r[6], orBg: OR[r[6]][0], orFg: OR[r[6]][1], last: r[7], out: r[8], outC: r[8].indexOf('missed') > -1 ? 'var(--warn)' : 'var(--color-neutral-500)',
+        on, fg: on ? 'var(--color-text)' : 'var(--color-neutral-500)', trk: on ? 'var(--color-accent-700)' : 'var(--color-neutral-800)', knob: on ? 'var(--color-accent-200)' : 'var(--color-neutral-500)', jc: on ? 'flex-end' : 'flex-start',
+        bg: i === s.sel ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent', edge: i === s.sel ? 'var(--color-accent)' : 'transparent',
+        toggle: () => this.setState({ on: Object.assign({}, s.on, { [i]: !on }) }),
+        pick: () => this.setState({ sel: i, kind: r[2], dir: null })
+      };
+    });
+    const r = this.R[s.sel];
+    const ev = Math.max(1, parseFloat(s.every) || 3);
+    const [fh, fm] = (s.from || '08:30').split(':').map(Number);
+    const times = []; for (let m = fh * 60 + fm; m <= 23 * 60 + 30; m += ev * 60) times.push(m);
+    const fmt = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const now = 21 * 60 + 40;
+    let next5 = [];
+    if (s.kind === 'every') {
+      const today = times.filter(m => m > now).map(m => ({ day: 'today', t: fmt(m) }));
+      const tom = times.map(m => ({ day: 'Fri 11-21', t: fmt(m) }));
+      const sat = times.map(m => ({ day: 'Sat 11-22', t: fmt(m) }));
+      next5 = today.concat(tom, sat).slice(0, 5);
+    } else if (s.kind === 'at') next5 = [['Fri 11-21', '07:10'], ['Mon 11-24', '07:10'], ['Tue 11-25', '07:10'], ['Wed 11-26', '07:10'], ['Thu 11-27', '07:10']].map(x => ({ day: x[0], t: x[1] }));
+    else next5 = [['after a quiet spell', '+15 min'], ['e.g. today', '≈ 21:55'], ['skipped', 'during 01:00–08:00'], ['', ''], ['', '']].slice(0, 3).map(x => ({ day: x[0], t: x[1] }));
+    next5 = next5.map(n => Object.assign(n, { c: 'var(--color-text)' }));
+    const words = s.kind === 'every' ? 'every ' + ev + ' h between ' + fmt(fh * 60 + fm) + ' and 23:30' : s.kind === 'at' ? 'at 07:10 on weekdays' : '15 min after you go quiet';
+    return {
+      rows,
+      f: { name: r[0], dir: s.dir !== null ? s.dir : r[1], topic: r[0] === 'catchup' ? 'новини, наука, птахи' : '', shownOn: r[4], on: r[5], origin: r[6], orBg: OR[r[6]][0], orFg: OR[r[6]][1] },
+      setDir: e => this.setState({ dir: e.target.value }),
+      kinds: [['every', 'every N h'], ['quiet', 'after you go quiet'], ['at', 'at a time']].map(k => ({ label: k[1], on: s.kind === k[0], pick: () => this.setState({ kind: k[0] }) })),
+      kind: { every: s.kind === 'every', quiet: s.kind === 'quiet', at: s.kind === 'at' },
+      every: s.every, from: s.from, setEvery: e => this.setState({ every: e.target.value }), setFrom: e => this.setState({ from: e.target.value }),
+      next5, triggerWords: words,
+      saveC: inst === 'prod' ? 'var(--bad)' : 'var(--color-accent)',
+      saveRow: () => p.confirm && p.confirm({ instance: inst, typed: false, title: 'Save ' + r[0] + ' on ' + inst + '?', body: 'Her timetable is rewritten; the next firing is recalculated. No restart.', diff: [{ k: r[0] + '.trigger', from: r[3], to: words }], action: 'Save', done: r[0] + ' saved — next firing ' + (next5[0] ? next5[0].day + ' ' + next5[0].t : '—') }),
+      resetRow: () => p.toast && p.toast(r[0] + ' reset to the authored version'),
+      addRow: () => p.toast && p.toast('New row — fill in the directive and the trigger'),
+      yaml: s.yaml, toggleYaml: () => this.setState({ yaml: !s.yaml }), noop: () => {},
+      yamlText: '# schedule.yaml on ' + inst + ' — edits here replace the form\n- name: catchup\n  directive: "свіжі новини цікаві Віталіку"\n  trigger: { every: 3h, between: "08:30-23:30" }\n  topic: "новини, наука, птахи"\n  shown: true\n  on: true\n- name: muse-silent\n  directive: think_seeds\n  trigger: { after_quiet: 15m }\n  shown: false\n',
+      sched: s.sched, toggleSched: () => this.setState({ sched: !s.sched }),
+      schedTrk: s.sched ? 'var(--color-accent-700)' : 'var(--color-neutral-800)', schedKnob: s.sched ? 'var(--color-accent-200)' : 'var(--color-neutral-500)', schedJc: s.sched ? 'flex-end' : 'flex-start',
+      upcoming: [['23:30', 'catchup'], ['23:40', 'night-journal'], ['on quiet', 'muse-silent · +15 min'], ['on quiet', 'muse-aloud · +55 min'], ['Fri 08:30', 'catchup']].map(u => ({ t: u[0], row: u[1] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

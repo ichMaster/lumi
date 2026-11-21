@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="display:flex;flex-direction:column;min-height:calc(100vh - 86px);font-size:13px">
+<div style="flex:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid var(--color-divider)">
+<div style="display:flex;align-items:center;gap:2px;height:30px;padding:0 6px;border:1px solid var(--color-divider);border-radius:6px;font:12.5px var(--mono);min-width:0">
+<i class="ph ph-folder-simple" style="color:var(--color-neutral-400);margin-right:4px"></i>
+<sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="2"><button onClick="{{ c.go }}" style="padding:2px 4px;border:0;border-radius:3px;background:none;color:{{ c.fg }};font:inherit;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 7%,transparent)">{{ c.t }}</button><span style="color:var(--color-neutral-600)">/</span></sc-for>
+</div>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-500)">{{ sum }}</span>
+<div style="margin-left:auto;display:flex;gap:8px">
+<button class="btn btn-secondary" onClick="{{ toggleTrash }}" style="padding:4px 10px;font-size:12.5px;color:{{ trashFg }};border-color:{{ trashBd }}"><i class="ph ph-trash"></i>Trash · 1</button>
+<button class="btn btn-primary" onClick="{{ upload }}" style="padding:4px 10px;font-size:12.5px"><i class="ph ph-upload-simple"></i>Upload</button>
+</div>
+</div>
+<div style="flex:1;display:flex;flex-wrap:wrap;align-items:stretch">
+<div style="flex:1 1 420px;min-width:0;padding:8px 16px 24px 24px;border-right:1px solid var(--color-divider);display:flex;flex-direction:column">
+<div style="display:grid;grid-template-columns:20px minmax(140px,1fr) 64px 104px 64px;gap:10px;padding:6px 8px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span></span><span>Name</span><span style="text-align:right">Size</span><span>Modified</span><span></span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="7">
+<div style="display:grid;grid-template-columns:20px minmax(140px,1fr) 64px 104px 64px;gap:10px;align-items:center;min-height:32px;padding:2px 8px;border-radius:4px;background-color:{{ r.bg }};box-shadow:inset 2px 0 0 {{ r.edge }}" style-hover="background-color:color-mix(in srgb,var(--color-text) 5%,transparent)">
+<i class="ph ph-{{ r.icon }}" style="font-size:15px;color:{{ r.ic }}"></i>
+<sc-if value="{{ r.renaming }}" hint-placeholder-val="{{ false }}"><input class="input" value="{{ newName }}" onChange="{{ setName }}" onKeyDown="{{ nameKey }}" autoFocus="{{ true }}" style="min-height:26px;padding:2px 6px;font:12.5px var(--mono)"></sc-if>
+<sc-if value="{{ r.notRenaming }}" hint-placeholder-val="{{ true }}"><button onClick="{{ r.open }}" style="min-width:0;padding:0;border:0;background:none;color:inherit;font:12.5px var(--mono);text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</button></sc-if>
+<span style="font:12px var(--mono);text-align:right;color:var(--color-neutral-400)">{{ r.size }}</span>
+<span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ r.mod }}</span>
+<span style="display:flex;justify-content:flex-end;gap:0">
+<sc-if value="{{ r.isTrash }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" onClick="{{ r.restore }}" style="padding:2px 5px;font-size:12px">Restore</button></sc-if>
+<sc-if value="{{ r.actions }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" onClick="{{ r.rename }}" title="Rename" style="padding:2px 4px;color:var(--color-neutral-400)"><i class="ph ph-pencil-simple"></i></button><button class="btn btn-ghost" onClick="{{ r.trash }}" title="Move to trash" style="padding:2px 4px;color:var(--color-neutral-400)"><i class="ph ph-trash"></i></button></sc-if>
+</span>
+</div>
+</sc-for>
+</div>
+<article style="flex:1.2 1 460px;padding:20px 32px 48px;display:flex;flex-direction:column;gap:12px;min-width:0">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font:500 13px var(--mono)">{{ file.path }}</span><span style="font:11.5px var(--mono);color:var(--color-neutral-500)">{{ file.meta }}</span><div style="margin-left:auto;display:flex;gap:6px"><button class="btn btn-secondary" onClick="{{ download }}" style="padding:3px 9px;font-size:12px"><i class="ph ph-download-simple"></i>Download</button></div></div>
+<div lang="uk" style="display:flex;flex-direction:column;gap:10px;max-width:66ch;padding-top:6px">
+<sc-for list="{{ blocks }}" as="b" hint-placeholder-count="8">
+<sc-if value="{{ b.h1 }}" hint-placeholder-val="{{ false }}"><h1 style="font-size:24px;margin:4px 0 2px">{{ b.t }}</h1></sc-if>
+<sc-if value="{{ b.h2 }}" hint-placeholder-val="{{ false }}"><h2 style="font-size:17px;margin:10px 0 0">{{ b.t }}</h2></sc-if>
+<sc-if value="{{ b.p }}" hint-placeholder-val="{{ true }}"><p style="margin:0;font-size:15px;line-height:1.7;text-wrap:pretty">{{ b.t }}</p></sc-if>
+<sc-if value="{{ b.li }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:16px minmax(0,1fr);font-size:15px;line-height:1.7"><span style="color:var(--agent)">•</span><span>{{ b.t }}</span></div></sc-if>
+<sc-if value="{{ b.q }}" hint-placeholder-val="{{ false }}"><blockquote style="margin:0;padding:2px 0 2px 14px;border-left:2px solid color-mix(in srgb,var(--agent) 50%,transparent);font-size:15px;line-height:1.7;color:var(--color-neutral-300)">{{ b.t }}</blockquote></sc-if>
+</sc-for>
+</div>
+</article>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { trash: false, sel: 1, renaming: null, newName: '', gone: {} };
+  F = [['drafts', 'folder', '3 items', '11-19 23:10'], ['birds.md', 'md', '2.1 KB', '11-20 13:20'], ['books.md', 'md', '4.8 KB', '11-19 21:45'], ['odesa.md', 'md', '0.9 KB', '11-18 22:41'], ['plants.md', 'md', '1.2 KB', '11-17 10:12'], ['words-i-like.md', 'md', '3.3 KB', '11-12 20:04'], ['questions.md', 'md', '1.7 KB', '11-02 22:58']];
+  MD = '# Птахи вночі\nНотатки з 2026-11-20 — після розмови з Віталіком.\n## Компас\n- Криптохром у сітківці відгукується на світло й магнітне поле.\n- Молоді птахи в планетарії вчаться знаходити центр обертання неба.\n- Старші летять навіть під хмарами — значить, компасів у них кілька.\n## Що мене зачепило\n> Птахи, можливо, бачать північ так, як ми бачимо колір.\nЯкщо це правда, то для них небо ніколи не буває порожнім. Навіть уночі в ньому є напрямок.\n## Питання на неділю\n- Чи відчувають птахи, що летять додому, — чи просто летять?\n- Що він бачив над морем в Одесі, коли був малим?';
+  renderVals() {
+    const p = this.props, s = this.state, inst = p.instance || 'prod';
+    const toast = m => p.toast && p.toast(m);
+    const list = s.trash ? [['window-notes-old.md', 'md', '0.6 KB', 'deleted 11-18']] : this.F.filter(f => !s.gone[f[0]]);
+    const rows = list.map((f, i) => {
+      const on = !s.trash && s.sel === i, folder = f[1] === 'folder';
+      return {
+        name: folder ? f[0] + '/' : f[0], icon: folder ? 'folder-simple' : 'file-text', ic: folder ? 'var(--color-neutral-300)' : 'var(--color-neutral-500)', size: f[2], mod: f[3],
+        bg: on ? 'color-mix(in srgb, var(--agent) 10%, transparent)' : 'transparent', edge: on ? 'var(--agent)' : 'transparent',
+        renaming: s.renaming === i, notRenaming: s.renaming !== i, isTrash: s.trash, actions: !s.trash && !folder,
+        open: () => folder ? toast('drafts/ — 3 items') : this.setState({ sel: i }),
+        rename: () => this.setState({ renaming: i, newName: f[0] }),
+        restore: () => toast(f[0] + ' restored to notes/'),
+        trash: () => p.confirm && p.confirm({ instance: inst, typed: false, title: 'Move ' + f[0] + ' to the trash?', body: 'It stays in the trash for 30 days and can be restored. She can’t read it meanwhile.', action: 'Move to trash', done: f[0] + ' moved to the trash', onDone: () => this.setState({ gone: Object.assign({}, s.gone, { [f[0]]: true }), sel: 1 }) })
+      };
+    });
+    const blocks = this.MD.split('\n').map(l => l.startsWith('# ') ? { h1: true, t: l.slice(2) } : l.startsWith('## ') ? { h2: true, t: l.slice(3) } : l.startsWith('- ') ? { li: true, t: l.slice(2) } : l.startsWith('> ') ? { q: true, t: l.slice(2) } : { p: true, t: l });
+    const f = list[s.sel] || this.F[1];
+    return {
+      crumbs: [['lili', 'var(--color-neutral-400)'], ['notes', 'var(--color-text)']].map(c => ({ t: c[0], fg: c[1], go: () => toast('lili/ — notes, art, journal, letters') })).concat(s.trash ? [{ t: '.trash', fg: 'var(--color-text)', go: () => {} }] : []),
+      sum: s.trash ? '1 item · kept 30 days' : list.length + ' items · 15.0 KB',
+      trashFg: s.trash ? 'var(--color-text)' : 'var(--color-neutral-300)', trashBd: s.trash ? 'var(--color-accent)' : 'var(--color-divider)',
+      toggleTrash: () => this.setState({ trash: !s.trash }),
+      upload: () => toast('Uploaded letter-draft.md to notes/'),
+      rows, blocks, newName: s.newName,
+      setName: e => this.setState({ newName: e.target.value }),
+      nameKey: e => { if (e.key === 'Enter') { this.setState({ renaming: null }); toast('Renamed to ' + s.newName); } if (e.key === 'Escape') this.setState({ renaming: null }); },
+      file: { path: 'notes/birds.md', meta: '2.1 KB · modified 2026-11-20 13:20 by her' },
+      download: () => toast('Downloading birds.md')
+    };
+  }
+}
+</script>
+</body>
+</html>

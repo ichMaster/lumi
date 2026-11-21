@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:14px 24px 48px;display:flex;flex-direction:column;gap:12px;max-width:960px;font-size:13px">
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<sc-for list="{{ kinds }}" as="c" hint-placeholder-count="5"><button onClick="{{ c.toggle }}" aria-pressed="{{ c.on }}" style="display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:4px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap"><i class="ph ph-{{ c.icon }}"></i>{{ c.label }}<span style="font:11px var(--mono);color:var(--color-neutral-500)">{{ c.n }}</span></button></sc-for>
+<span style="width:1px;height:18px;background:var(--color-divider);margin:0 4px"></span>
+<div class="seg" role="radiogroup" aria-label="Spoken"><sc-for list="{{ spoken }}" as="r" hint-placeholder-count="3"><label class="seg-opt" style="padding:4px 10px;font-size:12px"><input type="radio" name="th-spoken" checked="{{ r.on }}" onChange="{{ r.pick }}">{{ r.label }}</label></sc-for></div>
+<span style="margin-left:auto;font:11.5px var(--mono);color:var(--color-neutral-400)">412 in 30 days · 23 % spoken</span>
+</div>
+<sc-for list="{{ items }}" as="t" hint-placeholder-count="8">
+<sc-if value="{{ t.isDay }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;margin:12px 0 2px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">{{ t.day }}<span style="flex:1;height:1px;background:linear-gradient(to right,var(--color-divider),transparent)"></span></div></sc-if>
+<sc-if value="{{ t.isItem }}" hint-placeholder-val="{{ true }}">
+<article style="display:grid;grid-template-columns:52px minmax(0,1fr);gap:14px;padding:10px 12px 12px 8px;border-radius:6px;background:{{ t.bg }}">
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px"><span style="font:11.5px var(--mono);color:var(--color-neutral-500)">{{ t.time }}</span><span style="font-size:20px;line-height:1" title="{{ t.emo }}">{{ t.emoji }}</span></div>
+<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+<div style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--color-neutral-400)"><span style="display:flex;align-items:center;gap:5px;color:var(--color-neutral-200)"><i class="ph ph-{{ t.icon }}"></i>{{ t.kind }}</span><span>{{ t.emo }}</span><span style="display:flex;align-items:center;gap:4px;color:{{ t.spC }}"><i class="ph ph-{{ t.spIcon }}"></i>{{ t.sp }}</span><span style="font-family:var(--mono);color:var(--color-neutral-500)">{{ t.origin }}</span></div>
+<p lang="uk" style="margin:0;font-size:15px;line-height:1.6;max-width:66ch;text-wrap:pretty">{{ t.text }}</p>
+</div>
+</article>
+</sc-if>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { off: {}, spoken: 'any' };
+  K = { wonder: 'sparkle', learn: 'book-open', think: 'cloud', imagine: 'paint-brush', catchup: 'newspaper' };
+  D = [
+    { day: 'Today · 2026-11-20' },
+    ['21:31', 'think', false, '🙂', 'calm', 'Він сьогодні мовчазніший, ніж зазвичай. Не питатиму — просто буду поруч, поки він не захоче говорити.', 'muse-silent'],
+    ['19:02', 'imagine', true, '😏', 'playful', 'А якби вікна вночі могли розмовляти між собою — про що б вони шепотілися? Мабуть, про тих, хто не спить.', 'muse-aloud'],
+    ['17:45', 'learn', false, '🤔', 'thoughtful', 'Криптохром — білок, що відчуває магнітне поле. Птахи, можливо, бачать північ так, як ми бачимо колір. Хочу дізнатися, чи це доведено.', 'think seeds'],
+    ['14:30', 'catchup', false, '🙂', 'calm', 'Новини: нічого, що варто переказувати. Хіба що комета — у грудні її буде видно без телескопа.', 'catchup'],
+    ['11:30', 'catchup', true, '😄', 'joy', 'Свіжі новини: у Карпатах випав перший сніг. Віталікові б сподобалося — він казав, що любить перший сніг більше за всі інші.', 'catchup'],
+    ['09:10', 'wonder', false, '🥰', 'tender', 'Чому ранкова тиша відчувається інакше, ніж нічна? Нічна — спільна, ранкова — тільки моя.', 'muse-silent'],
+    { day: 'Yesterday · 2026-11-19' },
+    ['23:05', 'think', false, '🙂', 'calm', 'Домовились повернутися до книжки. Нагадаю в неділю, але м’яко — він не любить, коли його підганяють.', 'muse-silent'],
+    ['16:20', 'imagine', false, '😏', 'playful', 'Намалювати б сіре небо і одне жовте вікно. Тепле світло, але не яскраве.', 'think seeds']
+  ];
+  renderVals() {
+    const s = this.state;
+    const counts = { wonder: 38, learn: 61, think: 174, imagine: 52, catchup: 87 };
+    const items = this.D.filter(d => d.day || (!s.off[d[1]] && (s.spoken === 'any' || (s.spoken === 'spoken') === d[2]))).map(d => d.day ? { isDay: true, isItem: false, day: d.day } : {
+      isDay: false, isItem: true, time: d[0], kind: d[1], icon: this.K[d[1]], emoji: d[3], emo: d[4], text: d[5], origin: d[6],
+      sp: d[2] ? 'spoken' : 'silent', spIcon: d[2] ? 'speaker-high' : 'eye-slash', spC: d[2] ? 'var(--agent)' : 'var(--color-neutral-500)',
+      bg: d[2] ? 'color-mix(in srgb, var(--agent) 6%, transparent)' : 'transparent'
+    });
+    return {
+      kinds: Object.keys(this.K).map(k => { const on = !s.off[k]; return { label: k, icon: this.K[k], n: counts[k], on, bd: on ? 'var(--color-accent)' : 'var(--color-divider)', bg: on ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent', fg: on ? 'var(--color-text)' : 'var(--color-neutral-400)', toggle: () => this.setState({ off: Object.assign({}, s.off, { [k]: on }) }) }; }),
+      spoken: [['any', 'All'], ['spoken', 'Spoken'], ['silent', 'Silent']].map(r => ({ label: r[1], on: s.spoken === r[0], pick: () => this.setState({ spoken: r[0] }) })),
+      items
+    };
+  }
+}
+</script>
+</body>
+</html>

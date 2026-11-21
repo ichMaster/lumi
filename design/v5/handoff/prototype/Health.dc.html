@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 40px;display:flex;flex-direction:column;gap:16px;font-size:13px">
+<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+<div class="seg" role="radiogroup" aria-label="Range">
+<sc-for list="{{ ranges }}" as="r" hint-placeholder-count="3"><label class="seg-opt" style="padding:5px 11px;font-size:12.5px"><input type="radio" name="health-range" checked="{{ r.on }}" onChange="{{ r.pick }}">{{ r.label }}</label></sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:12px;font-size:11.5px;color:var(--color-neutral-400);flex-wrap:wrap">
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:color-mix(in srgb,var(--ok) 45%,transparent)"></span>green</span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:var(--warn)"></span>amber</span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:var(--bad)"></span>red</span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:var(--color-neutral-700)"></span>off</span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;box-shadow:inset 0 0 0 1px var(--color-neutral-600)"></span>no data</span>
+</div>
+<span style="margin-left:auto;font:11.5px var(--mono);color:var(--color-neutral-500);white-space:nowrap">next refresh in 48 s</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(560px,100%),1fr));gap:16px;align-items:start">
+<sc-for list="{{ panels }}" as="p" hint-placeholder-count="2">
+<section style="background:var(--color-surface);border-radius:8px;box-shadow:inset 3px 0 0 {{ p.edge }};padding:12px 14px 8px 17px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<span style="font:500 12px var(--mono);padding:1px 7px;border-radius:4px;background:{{ p.instBg }};color:{{ p.instFg }}">{{ p.name }}</span>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ p.version }}</span>
+<span style="font-size:12px;color:var(--color-neutral-300)">{{ p.summary }}</span>
+<div style="margin-left:auto;display:flex;align-items:baseline;gap:6px"><span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">uptime {{ rangeLabel }}</span><span style="font:500 17px var(--mono)">{{ p.uptime }}</span></div>
+</div>
+<div style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:6px;background:var(--color-neutral-900)">
+<i class="ph ph-{{ p.probeIcon }}" style="font-size:15px;color:{{ p.probeColor }}"></i>
+<span style="flex:1;min-width:0;font-size:12px;color:var(--color-neutral-300);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.probeText }}</span>
+<button class="btn btn-secondary" onClick="{{ p.probe }}" disabled="{{ p.probing }}" style="padding:3px 9px;font-size:12px;flex:none"><i class="ph ph-lightning"></i>Probe the model<span style="font-size:11px;color:var(--color-neutral-400)">· costs 1 call</span></button>
+</div>
+<div style="display:grid;grid-template-columns:10px minmax(0,1fr) minmax(150px,200px) 58px;gap:10px;padding:4px 0 2px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span></span><span>Check · detail</span><span style="display:flex;justify-content:space-between"><span>{{ axisFrom }}</span><span>now</span></span><span style="text-align:right">uptime</span></div>
+<sc-for list="{{ p.rows }}" as="r" hint-placeholder-count="13">
+<div style="display:grid;grid-template-columns:10px minmax(0,1fr) minmax(150px,200px) 58px;gap:10px;align-items:center;padding:6px 0;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 8%,transparent) 48px,color-mix(in srgb,var(--color-text) 8%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:top">
+<span title="{{ r.st }}" style="width:9px;height:9px;border-radius:50%;background:{{ r.dot }}"></span>
+<div style="min-width:0;display:flex;flex-direction:column;line-height:1.35"><span style="font:500 12.5px var(--mono)">{{ r.name }}</span><span style="font-size:12px;color:{{ r.detailColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.detail }}</span></div>
+<div style="display:flex;flex-direction:column;gap:3px;min-width:0"><div style="display:flex;gap:1px;height:13px"><sc-for list="{{ r.segs }}" as="s" hint-placeholder-count="48"><span title="{{ s.t }}" style="flex:1;border-radius:1px;background:{{ s.c }};box-shadow:{{ s.sh }}"></span></sc-for></div><span style="font:10.5px var(--mono);color:var(--color-neutral-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.threshold }}</span></div>
+<span style="font:12px var(--mono);text-align:right;color:{{ r.upColor }}">{{ r.up }}</span>
+</div>
+</sc-for>
+</section>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { range: '24h', probing: null, probed: {} };
+  componentWillUnmount() { clearTimeout(this.t); }
+  renderVals() {
+    const R = this.state.range;
+    const ri = { '24h': 0, '7d': 1, '30d': 2 }[R];
+    const C = { ok: 'color-mix(in srgb, var(--ok) 45%, transparent)', warn: 'var(--warn)', bad: 'var(--bad)', off: 'var(--color-neutral-700)' };
+    const D = { ok: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--bad)', off: 'var(--off)' };
+    const segMin = [30, 210, 900][ri];
+    const strip = (spans, gaps) => Array.from({ length: 48 }, (_, i) => {
+      let st = 'ok';
+      (spans || []).forEach(([a, b, s]) => { if (i >= a && i <= b) st = s; });
+      if ((gaps || []).some(([a, b]) => i >= a && i <= b)) st = 'gap';
+      return { t: st === 'gap' ? 'no data' : st, c: st === 'gap' ? 'transparent' : C[st], sh: st === 'gap' ? 'inset 0 0 0 1px var(--color-neutral-700)' : 'none' };
+    });
+    const up = (segs) => {
+      const live = segs.filter(s => s.t !== 'no data' && s.t !== 'off');
+      if (!live.length) return '—';
+      const bad = live.filter(s => s.t === 'bad').length * 0.25;
+      return (100 - bad / live.length * 100).toFixed(2) + ' %';
+    };
+    const P = {
+      prod: [
+        ['server', 'ok', 'answers in 42 ms', 'red if no answer in 5 s'],
+        ['state', 'ok', 'state.json written 1 min ago', 'amber > 10 min · red > 1 h'],
+        ['mood', 'ok', 'the day resolved at 07:12', 'amber if unresolved by 09:00'],
+        ['model', 'ok', 'last call 21:16 · 8.9 s · claude-opus-4-8', 'red after 3 failures in 1 h'],
+        ['telegram', 'ok', 'inbound polling · outbound queue 0', 'red if a daemon is down', [[], [], [[18, 18, 'bad']]]],
+        ['scheduler', 'warn', 'the newest firing 6 h 20 min ago', 'amber > 4 h · red > 12 h', [[[35, 47, 'warn']], [[46, 47, 'warn']], [[47, 47, 'warn']]]],
+        ['disk', 'ok', '61 % free · 305 GB', 'amber < 20 % · red < 10 %'],
+        ['marker', 'ok', 'deploy marker v4.7.0 matches the image', 'red on mismatch', [[], [], [[11, 11, 'bad']]]],
+        ['deploy agent', 'ok', 'heartbeat 40 s ago', 'amber > 5 min'],
+        ['archive', 'ok', 'last archive 05:05 · 412 MB', 'amber > 26 h'],
+        ['image drift', 'ok', 'running image = tagged v4.7.0', 'amber on drift'],
+        ['room', 'off', 'the room is off on prod', 'enable in Settings → room', [[[0, 47, 'off']], [[0, 47, 'off']], [[0, 47, 'off']]]],
+        ['voice', 'ok', 'ElevenLabs 210 ms · Deepgram 180 ms', 'amber > 2 s']
+      ],
+      dev: [
+        ['server', 'ok', 'answers in 51 ms', 'red if no answer in 5 s', [[[0, 0, 'bad']], [[41, 41, 'bad']], [[22, 22, 'bad'], [46, 46, 'bad']]]],
+        ['state', 'ok', 'state.json written 2 min ago', 'amber > 10 min · red > 1 h', [[[0, 1, 'warn']], [[41, 41, 'warn']], [[46, 46, 'warn']]]],
+        ['mood', 'ok', 'the day resolved at 07:14', 'amber if unresolved by 09:00', [[], [], [[30, 31, 'warn']]]],
+        ['model', 'warn', '3 failures in the last hour — gemini timeout', 'red after 3 failures in 1 h', [[[44, 47, 'warn']], [[47, 47, 'warn']], [[30, 31, 'bad'], [47, 47, 'warn']]]],
+        ['telegram', 'ok', 'inbound polling · outbound queue 0', 'red if a daemon is down'],
+        ['scheduler', 'ok', 'the newest firing 18 min ago', 'amber > 4 h · red > 12 h'],
+        ['disk', 'ok', '61 % free · 305 GB', 'amber < 20 % · red < 10 %'],
+        ['marker', 'ok', 'deploy marker sha-6b80895 matches', 'red on mismatch'],
+        ['deploy agent', 'ok', 'heartbeat 40 s ago', 'amber > 5 min'],
+        ['archive', 'ok', 'last archive 19:38 · 388 MB', 'amber > 26 h'],
+        ['image drift', 'ok', 'running image = tagged sha-6b80895', 'amber on drift'],
+        ['room', 'ok', 'Agora room · 2 participants', 'amber if silent > 1 h'],
+        ['voice', 'ok', 'ElevenLabs 230 ms · Deepgram 190 ms', 'amber > 2 s']
+      ]
+    };
+    const gaps = { prod: [[], [[46, 46]], []], dev: [[[43, 43]], [[47, 47]], [[12, 15]]] };
+    const tag = (n) => n === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' };
+    const UP = { prod: ['100 %', '100 %', '99.93 %'], dev: ['99.51 %', '98.90 %', '97.10 %'] };
+    const probeLast = { prod: 'Last probe 18:02 — answered in 7.4 s · claude-opus-4-8', dev: 'Last probe 21:05 — failed: gemini timeout after 30 s' };
+    const panels = ['prod', 'dev'].map(n => {
+      const rows = P[n].map(r => {
+        const segs = strip(r[4] ? r[4][ri] : [], gaps[n][ri]);
+        return { name: r[0], st: r[1], dot: D[r[1]], detail: r[2], detailColor: r[1] === 'warn' ? 'var(--warn)' : r[1] === 'bad' ? 'var(--bad)' : 'var(--color-neutral-400)', threshold: r[3], segs, up: r[1] === 'off' ? '—' : up(segs), upColor: 'var(--color-neutral-300)' };
+      });
+      const cnt = s => rows.filter(r => r.st === s).length;
+      const pr = this.state.probed[n], probing = this.state.probing === n;
+      return Object.assign({
+        name: n, edge: n === 'prod' ? 'var(--bad)' : 'var(--color-neutral-600)', version: n === 'prod' ? 'v4.7.0' : 'sha-6b80895',
+        summary: [cnt('ok') + ' green', cnt('warn') && cnt('warn') + ' amber', cnt('bad') && cnt('bad') + ' red', cnt('off') && cnt('off') + ' off'].filter(Boolean).join(' · '),
+        uptime: UP[n][ri], rows, probing,
+        probeText: probing ? 'Probing the model — one real call…' : pr || probeLast[n],
+        probeIcon: probing ? 'circle-notch' : (pr || probeLast[n]).indexOf('failed') > -1 ? 'x-circle' : 'check-circle',
+        probeColor: probing ? 'var(--color-neutral-400)' : (pr || probeLast[n]).indexOf('failed') > -1 ? 'var(--bad)' : 'var(--ok)',
+        probe: () => {
+          this.setState({ probing: n });
+          this.t = setTimeout(() => {
+            const txt = n === 'prod' ? 'Probed 21:40 — answered in 6.8 s · claude-opus-4-8 · $0.009' : 'Probed 21:40 — answered in 4.1 s · claude-sonnet-5 · $0.004';
+            this.setState({ probing: null, probed: Object.assign({}, this.state.probed, { [n]: txt }) });
+            this.props.toast && this.props.toast(n + ': the model answered — 1 call spent');
+          }, 1300);
+        }
+      }, tag(n));
+    });
+    return {
+      ranges: [['24h', '24 h'], ['7d', '7 d'], ['30d', '30 d']].map(r => ({ label: r[1], on: R === r[0], pick: () => this.setState({ range: r[0] }) })),
+      rangeLabel: { '24h': '24 h', '7d': '7 d', '30d': '30 d' }[R],
+      axisFrom: { '24h': '24 h ago', '7d': '7 d ago', '30d': '30 d ago' }[R] + ' · ' + (segMin >= 60 ? segMin / 60 + ' h' : segMin + ' min') + ' a cell',
+      panels
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+{
+  "app": { "name": "lumi admin", "host": "slate-server · 192.168.1.197" },
+  "signin": {
+    "title": "Sign in to the panel",
+    "token": "Panel token",
+    "placeholder": "paste the token",
+    "submit": "Sign in",
+    "refused": "The token was refused. It lives in ~/lumi/admin/secrets.yaml on the box (admin.token).",
+    "note": "The token stays in this tab’s session. The panel never holds {agent}’s own token."
+  },
+  "nav": {
+    "overview": "Overview", "server": "Server", "agent": "Agent",
+    "groups": { "operations": "Operations", "configuration": "Configuration", "audit": "Audit", "her": "Her", "howSheRuns": "How she runs", "memory": "Memory" },
+    "views": {
+      "health": "Health", "incidents": "Incidents", "containers": "Containers", "logs": "Logs", "alerts": "Alerts",
+      "settings": "Settings", "secrets": "Secrets", "configHistory": "Config history", "promote": "Promote", "audit": "Audit",
+      "state": "State", "history": "History", "summaries": "Summaries", "facts": "Facts", "thoughts": "Thoughts", "gallery": "Gallery", "journal": "Journal", "files": "Files",
+      "usage": "Usage", "tools": "Tools", "schedule": "Schedule", "models": "Models", "texts": "Texts", "prompt": "Prompt"
+    },
+    "agentPicker": { "secondAgent": "Second agent", "secondAgentNote": "appears here in the next version, with its own color" },
+    "signOut": "Sign out",
+    "keys": { "instance": "P / D instance", "view": "J / K view" }
+  },
+  "switcher": { "label": "Instance", "prod": "prod", "dev": "dev", "both": "This view shows prod and dev side by side", "follows": "This view follows the instance switcher" },
+  "strip": {
+    "attention": "Needs attention", "quiet": "All quiet",
+    "summary": "{alerts} alerts firing · {incidents} open incidents",
+    "kinds": { "alert": "alert", "incident": "incident", "panel": "panel" }
+  },
+  "state": { "ok": "green", "warn": "amber", "bad": "red", "off": "off", "gap": "no data" },
+  "common": {
+    "loading": "Loading {view} from {instance}…",
+    "unreachable": { "title": "Can’t reach {instance}’s server", "body": "{view} needs an answer from {instance}’s server, and it isn’t answering. The rest of the panel still works.", "retry": "Retry now", "retryIn": "retrying in {s} s", "lastAnswer": "last answer {time} ({ago} ago)" },
+    "confirm": { "typeToConfirm": "Type {word} to confirm", "cancel": "Cancel" },
+    "estimate": "≈ {value}", "notPriced": "not priced", "noKey": "no key",
+    "download": "Download", "export": "Export", "save": "Save", "discard": "Discard", "apply": "Apply", "reset": "Reset", "close": "Close"
+  },
+  "overview": {
+    "box": "The box", "load": "Load", "memory": "Memory", "disk": "Disk", "docker": "Docker",
+    "instances": "Instances", "agents": "Agents", "checksRefresh": "checks refresh every minute",
+    "metrics": { "incidents": "Incidents", "alerts": "Alerts", "checks": "Checks", "containers": "Containers" },
+    "moodOfTheDay": "Mood of the day", "lastReply": "Last reply", "openConversation": "Open the conversation",
+    "secondAgent": "A second agent appears here",
+    "secondAgentNote": "Next version. It gets the same card, its own area in the rail and a color of its own — never a state color.",
+    "last24h": "Last 24 hours", "last24hNote": "incidents, alerts, deploys and changes",
+    "month": "{month} · all agents", "toDate": "to date", "forecast": "forecast"
+  },
+  "health": { "range": { "24h": "24 h", "7d": "7 d", "30d": "30 d" }, "uptime": "uptime", "probe": "Probe the model", "probeCost": "costs 1 call", "probing": "Probing the model — one real call…", "nextRefresh": "next refresh in {s} s" },
+  "incidents": { "columns": ["Inst.", "Started", "Duration", "Red checks", "First detail", "Alerts"], "ongoing": "ongoing", "recovered": "recovered", "logsAround": "Logs around {time} · ±5 min", "containerEvents": "Container events", "alertsSent": "Alerts it sent" },
+  "containers": { "columns": ["Container", "State", "Health", "Uptime", "Restarts", "Last exit", "Image", "CPU · 24 h", "Memory · used / limit"], "oom": "OOM killed", "start": "Start", "stop": "Stop", "restart": "Restart" },
+  "logs": { "levels": ["DEBUG", "INFO", "WARN", "ERROR"], "search": "text or regex", "logger": "logger, e.g. lumi.tools", "live": "Live", "paused": "Paused — {n} new lines", "jumpToLive": "Jump to live", "traceback": "traceback · {n} lines", "linesHidden": "{n} lines hidden", "linkCopied": "Link copied", "matches": "{n} matches · ±2 lines" },
+  "alerts": { "firing": "Firing", "rules": "Rules", "history": "History", "acknowledge": "Acknowledge", "snooze": "Snooze", "snooze1h": "1 hour", "snoozeMorning": "Until the morning", "mute": "Mute rule", "newRule": "New rule", "kinds": ["check", "log", "usage", "container", "schedule"], "severity": ["info", "warning", "critical"], "sent": "sent", "held": "held", "quietNote": "Held during quiet hours and sent at 08:00 as one message. Critical rules ignore quiet hours." },
+  "settings": { "needsRestart": "needs a restart", "changedOutside": "changed outside", "default": "default {value}", "resetToDefault": "Reset to default", "review": "Review the diff and apply", "pending": "{n} changes not applied" },
+  "secrets": { "set": "set", "unset": "unset", "rotate": "Rotate", "clear": "Clear", "note": "Values are written to secrets.yaml and never sent back to this page — only whether a secret is set and its last four characters." },
+  "configHistory": { "rollback": "Roll back to #{id}", "current": "Current" },
+  "promote": { "intro": "{n} settings differ. Pick what goes to prod.", "imagesNote": "Images are promoted by the deploy agent, not here.", "action": "Review and promote to prod" },
+  "audit": { "sources": ["panel", "deploy agent", "outside change", "window", "docker"], "results": ["done", "refused", "failed"], "verify": "Verify the chain", "intact": "The chain is intact", "broken": "The chain is broken at line {n}", "export": "Export · JSONL" },
+  "agentState": { "moodOfTheDay": "Mood of the day", "fullReading": "The full reading", "biorhythms": "Biorhythms", "closeness": "Closeness", "needs": "Needs", "plans": "Today’s plans", "lastReply": "Last reply" },
+  "history": { "search": "search the conversation", "jumpTo": "Jump to", "loadEarlier": "Load earlier", "owner": "Owner", "tools": "{n} tools", "failed": "{n} failed", "noResults": "Nothing matches «{q}»" },
+  "summaries": { "tiers": ["running digest", "session", "day", "week", "facts digest"], "room": "the room’s digests", "covers": "covers {what}", "written": "written {time}", "detailed": "The detailed summary" },
+  "facts": { "add": "Add a fact", "correct": "Correct the fact", "obsolete": "Obsolete", "restore": "Restore", "pin": "Pin in the identity core", "unpin": "Unpin", "showObsolete": "Show obsolete", "keepsOld": "The current version is kept as obsolete and shown on request. Nothing is deleted.", "refused": "Refused — she is in the middle of a turn. Try again in a moment.", "tryAgain": "Try again" },
+  "thoughts": { "kinds": ["wonder", "learn", "think", "imagine", "catchup"], "spoken": "spoken", "silent": "silent" },
+  "gallery": { "pictures": "Pictures", "trash": "Trash", "rename": "Rename", "moveToTrash": "Move to trash", "restore": "Restore from trash", "trashNote": "In the trash · nothing is ever deleted" },
+  "journal": { "title": "{agent}’s journal", "mood": "Mood", "biorhythms": "Biorhythms", "forecast": "Forecast" },
+  "files": { "upload": "Upload", "trash": "Trash", "rename": "Rename", "moveToTrash": "Move to trash", "restore": "Restore" },
+  "usage": { "ranges": ["7 days", "30 days", "90 days", "{month}"], "toDate": "To date", "forecast": "Forecast", "previous": "{month}", "costPerDay": "Cost per day", "by": "By {what}", "cache": "Prompt cache", "saved": "saved ≈ {value} this month", "latency": "Turn latency", "slowest": "The slowest calls", "csv": "Export CSV" },
+  "tools": { "columns": ["Tool", "Calls", "Failed", "Rate", "Median", "p95", "Last error", "Used by"], "perDay": "calls per day", "slowestFailed": "Slowest and failed calls" },
+  "schedule": { "columns": ["On", "Row · directive", "Trigger", "Shown", "Origin", "Last firing"], "origins": ["authored", "changed here", "added here"], "triggers": ["every N h", "after you go quiet", "at a time"], "next5": "Next five firings · live", "advanced": "Advanced · YAML", "scheduler": "The scheduler", "resetAuthored": "Reset to authored", "addRow": "Add a row" },
+  "models": { "profiles": "Profiles", "columns": ["Role", "Provider", "Running now", "Settings say"], "switched": "switched until the restart", "save": "Save", "now": "Now, until restart", "noKey": "no key — set {secret} in Secrets" },
+  "texts": { "release": "release", "changedHere": "changed here", "drifted": "drifted", "tokens": "≈ {n} tokens in the prompt", "delta": "{sign}{n} since the release", "diff": "Diff before saving", "resetRelease": "Reset to the release", "copyTo": "Copy to {instance}", "patch": "Download as a patch", "checkPassed": "check passed — {n} sections, no unknown placeholders" },
+  "prompt": { "counts": ["input", "cache read", "cache write", "output", "system"], "copyAll": "Copy the whole prompt", "copySystem": "Copy the system part", "copied": "Copied — {size}", "cacheSplit": "cache split — everything above is read from the cache", "noTurn": "No turn yet since the restart" }
+}

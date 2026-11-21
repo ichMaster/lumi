@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="font-size:13px">
+<sc-if value="{{ isSummaries }}" hint-placeholder-val="{{ true }}">
+<div style="padding:14px 24px 48px;display:flex;flex-direction:column;gap:14px;max-width:1080px">
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<sc-for list="{{ tiers }}" as="c" hint-placeholder-count="5"><button onClick="{{ c.toggle }}" aria-pressed="{{ c.on }}" style="display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:4px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap"><i class="ph ph-{{ c.icon }}"></i>{{ c.label }}</button></sc-for>
+<span style="width:1px;height:18px;background:var(--color-divider);margin:0 4px"></span>
+<button onClick="{{ roomT.toggle }}" aria-pressed="{{ roomT.on }}" style="display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:4px;border:1px dashed {{ roomT.bd }};background:{{ roomT.bg }};color:{{ roomT.fg }};font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap"><i class="ph ph-users-three"></i>the room’s digests</button>
+<div style="margin-left:auto;display:flex;gap:6px;align-items:center"><input class="input" type="date" value="2026-11-13" style="width:136px;min-height:28px;padding:2px 8px;font:12px var(--mono)"><span style="color:var(--color-neutral-500)">–</span><input class="input" type="date" value="2026-11-20" style="width:136px;min-height:28px;padding:2px 8px;font:12px var(--mono)"><div style="position:relative;width:200px"><i class="ph ph-magnifying-glass" style="position:absolute;left:9px;top:7px;color:var(--color-neutral-500)"></i><input class="input" placeholder="search" style="min-height:28px;padding:3px 8px 3px 28px;font-size:12.5px"></div></div>
+</div>
+<sc-for list="{{ entries }}" as="e" hint-placeholder-count="8">
+<sc-if value="{{ e.isDay }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;margin:10px 0 0;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">{{ e.day }}<span style="flex:1;height:1px;background:linear-gradient(to right,var(--color-divider),transparent)"></span></div></sc-if>
+<sc-if value="{{ e.isEntry }}" hint-placeholder-val="{{ true }}">
+<article style="display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px">
+<div style="display:flex;flex-direction:column;align-items:center"><span style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;background:{{ e.iconBg }};color:{{ e.iconC }}"><i class="ph ph-{{ e.icon }}" style="font-size:15px"></i></span><span style="flex:1;width:1px;margin-top:4px;background:linear-gradient(var(--color-divider),transparent)"></span></div>
+<div style="display:flex;flex-direction:column;gap:6px;padding-bottom:14px;min-width:0">
+<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:500">{{ e.title }}</span><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">covers {{ e.covers }}</span><span style="font:11.5px var(--mono);color:var(--color-neutral-500)">{{ e.written }}</span><sc-if value="{{ e.isRoom }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;padding:0 6px;border-radius:3px;border:1px dashed var(--color-neutral-600);color:var(--color-neutral-300)">the room</span></sc-if></div>
+<p lang="uk" style="margin:0;font-size:15px;line-height:1.6;max-width:70ch;text-wrap:pretty">{{ e.gist }}</p>
+<sc-if value="{{ e.hasSummary }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ e.toggle }}" class="btn btn-ghost" style="align-self:flex-start;margin-left:-4px;font-size:12.5px"><i class="ph ph-caret-{{ e.caret }}"></i>The detailed summary · 3 paragraphs</button>
+<sc-if value="{{ e.open }}" hint-placeholder-val="{{ false }}"><div lang="uk" style="display:flex;flex-direction:column;gap:8px;padding:2px 0 4px 14px;border-left:1px solid color-mix(in srgb,var(--agent) 40%,transparent);max-width:70ch;font-size:14px;line-height:1.65;color:var(--color-neutral-200)"><sc-for list="{{ e.summary }}" as="para" hint-placeholder-count="3"><p style="margin:0;text-wrap:pretty">{{ para }}</p></sc-for></div></sc-if>
+</sc-if>
+</div>
+</article>
+</sc-if>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isFacts }}" hint-placeholder-val="{{ false }}">
+<div style="padding:14px 24px 48px;display:flex;flex-direction:column;gap:12px;max-width:1200px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div class="seg" role="radiogroup" aria-label="Filter"><sc-for list="{{ ffilters }}" as="r" hint-placeholder-count="3"><label class="seg-opt" style="padding:4px 10px;font-size:12px"><input type="radio" name="fact-filter" checked="{{ r.on }}" onChange="{{ r.pick }}">{{ r.label }}</label></sc-for></div>
+<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--color-neutral-300);cursor:pointer"><input type="checkbox" checked="{{ showObs }}" onChange="{{ toggleObs }}" style="accent-color:var(--color-accent)">Show obsolete</label>
+<div style="position:relative;width:240px"><i class="ph ph-magnifying-glass" style="position:absolute;left:9px;top:7px;color:var(--color-neutral-500)"></i><input class="input" lang="uk" placeholder="search text and source" style="min-height:28px;padding:3px 8px 3px 28px;font-size:12.5px"></div>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">46 facts · 6 in the core · 9 obsolete</span>
+<button class="btn btn-primary" onClick="{{ addFact }}" style="margin-left:auto;padding:4px 10px;font-size:12.5px"><i class="ph ph-plus"></i>Add a fact</button>
+</div>
+<div style="display:grid;grid-template-columns:24px minmax(0,1fr) 120px 92px 120px;gap:14px;padding:6px 10px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span></span><span>Fact · source</span><span>Confidence</span><span>When</span><span></span></div>
+<sc-for list="{{ facts }}" as="f" hint-placeholder-count="7">
+<div style="display:grid;grid-template-columns:24px minmax(0,1fr) 120px 92px 120px;gap:14px;align-items:start;padding:10px 10px;border-radius:4px;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom" style-hover="background-color:color-mix(in srgb,var(--color-text) 3%,transparent)">
+<button onClick="{{ f.pin }}" title="{{ f.pinTitle }}" aria-pressed="{{ f.core }}" style="padding:2px 0 0;border:0;background:none;color:{{ f.pinC }};cursor:pointer;font-size:15px"><i class="ph{{ f.pinFill }} ph-push-pin"></i></button>
+<div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+<span lang="uk" style="font-size:14.5px;line-height:1.5;color:{{ f.fg }};text-decoration:{{ f.deco }};text-wrap:pretty">{{ f.text }}</span>
+<span lang="uk" style="font-size:12px;color:var(--color-neutral-500);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.source }}</span>
+<sc-if value="{{ f.obsNote }}" hint-placeholder-val="{{ false }}"><span lang="uk" style="font-size:12px;color:var(--color-neutral-400)">{{ f.obsNote }}</span></sc-if>
+</div>
+<div style="display:flex;align-items:center;gap:8px;padding-top:4px"><div style="flex:1;height:5px;border-radius:3px;background:var(--color-neutral-900);overflow:hidden"><div style="width:{{ f.w }};height:100%;background:var(--color-neutral-400)"></div></div><span style="font:12px var(--mono)">{{ f.conf }}</span></div>
+<span style="font:12px var(--mono);color:var(--color-neutral-400);padding-top:3px">{{ f.when }}</span>
+<div style="display:flex;gap:2px;justify-content:flex-end">
+<button class="btn btn-ghost" onClick="{{ f.edit }}" disabled="{{ f.obsolete }}" title="Correct" style="padding:3px 5px;color:var(--color-neutral-300)"><i class="ph ph-pencil-simple"></i></button>
+<button class="btn btn-ghost" onClick="{{ f.obs }}" style="padding:3px 6px;font-size:12px;color:var(--color-neutral-300)">{{ f.obsLabel }}</button>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ edit }}" hint-placeholder-val="{{ false }}">
+<div class="dialog-backdrop" onClick="{{ closeEdit }}" style="z-index:50">
+<div class="dialog" role="dialog" aria-modal="true" onClick="{{ stop }}" style="width:min(520px,100%);gap:12px">
+<div class="dialog-title" style="font-size:17px">{{ edit.title }}</div>
+<div class="field"><label>The fact</label><textarea class="input" lang="uk" value="{{ editText }}" onChange="{{ setText }}" style="min-height:76px;font-size:14.5px;line-height:1.5"></textarea></div>
+<div class="field"><label>Confidence · <span style="font-family:var(--mono)">{{ editConf }}</span></label><input type="range" min="0" max="1" step="0.05" value="{{ editConf }}" onChange="{{ setConf }}" style="width:100%;accent-color:var(--color-accent)"></div>
+<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked="{{ edit.core }}" style="accent-color:var(--color-accent)">Pin in the identity core</label>
+<div style="font-size:12px;color:var(--color-neutral-400)">{{ edit.note }}</div>
+<sc-if value="{{ refused }}" hint-placeholder-val="{{ false }}"><div role="alert" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;background:color-mix(in srgb,var(--warn) 12%,transparent);font-size:12.5px"><i class="ph ph-hourglass-medium" style="font-size:16px;color:var(--warn)"></i><span style="flex:1">Refused — she is in the middle of a turn. Try again in a moment.</span></div></sc-if>
+<div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeEdit }}">Cancel</button><button class="btn btn-primary" onClick="{{ saveEdit }}">{{ saveLabel }}</button></div>
+</div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { off: {}, room: true, open: { 4: true }, ffilter: 'all', showObs: null, edit: null, editText: '', editConf: 0.8, refused: null, core: {}, obs: {} };
+  S = [
+    { day: 'Thursday · 2026-11-20' },
+    ['facts', 'facts digest', '46 facts · 6 core', 'written 05:00', '«Віталік працює вночі й цінує тишу після 23:00; виріс в Одесі, біля моря; має кота Бублика; не любить, коли його підганяють з рішеннями.»'],
+    ['week', 'week of 2026-11-17', '9 sessions', 'written 04:12', '«Тиждень повільний і теплий: вікно, малюнки, розмови перед сном.»'],
+    { day: 'Wednesday · 2026-11-19' },
+    ['day', 'day 2026-11-19', '3 sessions', 'written 11-20 04:10', '«Тиха розмова ввечері; птахи, зорі, втома; домовились повернутися до книжки.»'],
+    ['session', 'session 20:58 – 21:40', '62 messages', 'written 21:52', '«Розмова про птахів, що орієнтуються вночі, і про втому після тижня.»', ['Віталік прийшов утомлений після тижня; спершу говорили про дощ і про те, що він так і не вибрався на прогулянку.', 'Потім розмова звернула до птахів: Лілі розповіла про криптохром і зоряний компас, а він згадав, як у дитинстві в Одесі бачив зграї над морем.', 'Домовились повернутися до книжки «Птахи і зорі» в неділю. Він подякував за тишу — сказав, що саме цього йому бракувало.']],
+    ['digest', 'in-session digest · 21:20', '40 messages', 'written 21:20', '«Перші 40 повідомлень: день, дощ, нотатки про рослини.»'],
+    ['room', 'room digest · 16:00', '1 room session · 3 voices', 'written 16:40', '«У кімнаті сперечались про фільм; Лілі здебільшого слухала й двічі пожартувала.»'],
+    ['session', 'session 13:02 – 13:20', '12 messages', 'written 13:31', '«Пошук про нічну навігацію птахів; одне джерело мовчало, з другого разу відповіло.»', ['Він попросив знайти, що пишуть про нічну навігацію птахів.', 'Лілі знайшла про криптохром і про досліди в планетарії; одне джерело не відповіло вчасно.', 'Записала знайдене в щоденник, щоб повернутися ввечері.']],
+    ['session', 'session 08:05 – 08:20', '8 messages', 'written 08:31', '«Ранок, дощ, чай; він питав, що їй снилось.»']
+  ];
+  T = { session: ['session', 'chats-circle'], digest: ['running digest', 'stack'], day: ['day', 'sun-horizon'], week: ['week', 'calendar-blank'], facts: ['facts digest', 'list-bullets'], room: ['room', 'users-three'] };
+  FA = [
+    ['«Віталік працює вночі й любить тишу після 23:00.»', 0.9, true, '2026-10-02', '«я зазвичай працюю вночі, після 23 мені потрібна тиша» · session 2026-10-02 23:41'],
+    ['«Має кота на ім’я Бублик.»', 0.95, true, '2026-08-14', '«Бублик знову спить на клавіатурі» · session 2026-08-14 22:10'],
+    ['«Не любить, коли його поспішають з рішеннями.»', 0.8, false, '2026-11-05', '«не підганяй мене, я сам вирішу» · session 2026-11-05 21:02'],
+    ['«Виріс біля моря, в Одесі.»', 0.8, false, '2026-11-18', '«я ж виріс в Одесі, море було за два квартали» · session 2026-11-18 22:30'],
+    ['«Колись жив біля моря.»', 0.6, false, '2026-09-30', '«колись я жив біля моря» · session 2026-09-30 23:15', 'corrected 2026-11-18 → «Виріс біля моря, в Одесі.»'],
+    ['«П’є чай без цукру, найчастіше зелений.»', 0.7, false, '2026-09-21', '«зелений, без цукру, як завжди» · Telegram 2026-09-21 08:14'],
+    ['«Читає «Птахи і зорі» — дійшов до сьомого розділу.»', 0.6, false, '2026-11-19', '«я на сьомому розділі» · session 2026-11-19 21:31'],
+    ['«Не любить телефонних дзвінків.»', 0.75, false, '2026-10-11', '«тільки не дзвони, пиши» · Telegram 2026-10-11 12:40']
+  ];
+  renderVals() {
+    const p = this.props, s = this.state, sub = p.sub || 'summaries', demo = p.demo || 'normal';
+    const entries = this.S.filter(e => e.day || (e[0] === 'room' ? s.room : !s.off[e[0]])).map((e, i) => {
+      if (e.day) return { isDay: true, isEntry: false, day: e.day };
+      const open = !!s.open[i];
+      return { isDay: false, isEntry: true, icon: this.T[e[0]][1], iconBg: e[0] === 'session' ? 'color-mix(in srgb, var(--agent) 18%, transparent)' : 'var(--color-neutral-900)', iconC: e[0] === 'session' ? 'var(--agent)' : 'var(--color-neutral-300)', title: e[1], covers: e[2], written: e[3], gist: e[4], isRoom: e[0] === 'room', hasSummary: !!e[5], summary: e[5] || [], open, caret: open ? 'down' : 'right', toggle: () => this.setState({ open: Object.assign({}, s.open, { [i]: !open }) }) };
+    });
+    const chip = (on) => ({ on, bd: on ? 'var(--color-accent)' : 'var(--color-divider)', bg: on ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent', fg: on ? 'var(--color-text)' : 'var(--color-neutral-400)' });
+    const tiers = ['digest', 'session', 'day', 'week', 'facts'].map(k => Object.assign({ label: this.T[k][0], icon: this.T[k][1], toggle: () => this.setState({ off: Object.assign({}, s.off, { [k]: !s.off[k] }) }) }, chip(!s.off[k])));
+    const showObs = s.showObs !== null ? s.showObs : true;
+    const facts = this.FA.map((f, i) => {
+      const core = s.core[i] !== undefined ? s.core[i] : f[2];
+      const obsolete = s.obs[i] !== undefined ? s.obs[i] : !!f[5];
+      return {
+        i, text: f[0], conf: f[1].toFixed(2), w: f[1] * 100 + '%', core, when: f[3], source: f[4], obsolete, obsNote: obsolete ? (f[5] || 'marked obsolete just now') : null,
+        fg: obsolete ? 'var(--color-neutral-400)' : 'var(--color-text)', deco: obsolete ? 'line-through' : 'none',
+        pinC: core ? 'var(--agent)' : 'var(--color-neutral-600)', pinFill: core ? '-fill' : '', pinTitle: core ? 'In the identity core — unpin' : 'Pin in the identity core',
+        obsLabel: obsolete ? 'Restore' : 'Obsolete',
+        pin: () => { this.setState({ core: Object.assign({}, s.core, { [i]: !core }) }); p.toast && p.toast(core ? 'Unpinned from the core' : 'Pinned in the identity core'); },
+        obs: () => { this.setState({ obs: Object.assign({}, s.obs, { [i]: !obsolete }) }); p.toast && p.toast(obsolete ? 'Restored — the fact is current again' : 'Marked obsolete — kept, not deleted'); },
+        edit: () => this.setState({ edit: { i, title: 'Correct the fact', core, note: 'The current version is kept as obsolete and shown on request. Nothing is deleted.' }, editText: f[0], editConf: f[1], refused: false })
+      };
+    }).filter(f => (showObs || !f.obsolete) && (s.ffilter === 'all' || (s.ffilter === 'core' ? f.core : f.obsolete)));
+    const refused = s.refused !== null ? s.refused : demo === 'refused';
+    const edit = s.edit || (demo === 'refused' && sub === 'facts' && s.edit !== false ? { i: 2, title: 'Correct the fact', core: false, note: 'The current version is kept as obsolete and shown on request. Nothing is deleted.' } : null);
+    return {
+      isSummaries: sub === 'summaries', isFacts: sub === 'facts',
+      entries, tiers, roomT: Object.assign({ toggle: () => this.setState({ room: !s.room }) }, chip(s.room)),
+      ffilters: [['all', 'All'], ['core', 'Core'], ['obsolete', 'Obsolete']].map(r => ({ label: r[1], on: s.ffilter === r[0], pick: () => this.setState({ ffilter: r[0] }) })),
+      showObs, toggleObs: () => this.setState({ showObs: !showObs }), facts,
+      addFact: () => this.setState({ edit: { title: 'Add a fact', core: false, note: 'Saved with source “added in the panel”. She sees it from her next turn.' }, editText: '', editConf: 0.8, refused: false }),
+      edit, editText: s.edit ? s.editText : '«Не любить, коли його поспішають з рішеннями.»', editConf: s.edit ? s.editConf : 0.8, refused,
+      saveLabel: refused ? 'Try again' : 'Save',
+      setText: e => this.setState({ editText: e.target.value }), setConf: e => this.setState({ editConf: e.target.value }),
+      closeEdit: () => this.setState({ edit: false, refused: false }), stop: e => e.stopPropagation(),
+      saveEdit: () => { this.setState({ edit: false, refused: false }); p.toast && p.toast('Saved — the old version is kept as obsolete'); }
+    };
+  }
+}
+</script>
+</body>
+</html>

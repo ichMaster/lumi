@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 48px;display:flex;flex-direction:column;gap:16px;font-size:13px;max-width:1400px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div class="seg" role="radiogroup" aria-label="Range"><label class="seg-opt" style="padding:4px 10px;font-size:12.5px"><input type="radio" name="tool-range">7 days</label><label class="seg-opt" style="padding:4px 10px;font-size:12.5px"><input type="radio" name="tool-range" checked="{{ true }}">30 days</label><label class="seg-opt" style="padding:4px 10px;font-size:12.5px"><input type="radio" name="tool-range">90 days</label></div>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">9 tools · 511 calls · 5 failed · on {{ instance }}</span>
+</div>
+<div style="overflow-x:auto"><div style="min-width:980px;display:flex;flex-direction:column">
+<div style="display:grid;grid-template-columns:150px 70px 70px 80px 80px 80px minmax(0,1fr) 200px;gap:12px;padding:0 10px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>Tool</span><span style="text-align:right">Calls</span><span style="text-align:right">Failed</span><span style="text-align:right">Rate</span><span style="text-align:right">Median</span><span style="text-align:right">p95</span><span>Last error</span><span>Used by</span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="9">
+<button onClick="{{ r.pick }}" style="display:grid;grid-template-columns:150px 70px 70px 80px 80px 80px minmax(0,1fr) 200px;gap:12px;align-items:center;min-height:34px;padding:3px 10px;border:0;border-radius:4px;background-color:{{ r.bg }};box-shadow:inset 2px 0 0 {{ r.edge }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;color:inherit;font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer" style-hover="background-color:color-mix(in srgb,var(--color-text) 5%,transparent)">
+<span style="font:500 12.5px var(--mono)">{{ r.name }}</span>
+<span style="font-family:var(--mono);text-align:right">{{ r.calls }}</span>
+<span style="font-family:var(--mono);text-align:right;color:{{ r.failC }}">{{ r.failed }}</span>
+<span style="font-family:var(--mono);text-align:right;color:{{ r.failC }}">{{ r.rate }}</span>
+<span style="font-family:var(--mono);text-align:right">{{ r.med }}</span>
+<span style="font-family:var(--mono);text-align:right;color:var(--color-neutral-300)">{{ r.p95 }}</span>
+<span style="font-family:var(--mono);color:{{ r.errC }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.err }}</span>
+<span style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ r.origins }}" as="o" hint-placeholder-count="2"><span style="font-size:11px;padding:0 6px;border-radius:3px;background:var(--color-neutral-800);color:var(--color-neutral-200)">{{ o }}</span></sc-for></span>
+</button>
+</sc-for>
+</div></div>
+
+<section style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px">
+<div style="display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:baseline;gap:10px"><h3 style="font:500 13.5px var(--mono);margin:0">{{ sel.name }}</h3><span style="font-size:12px;color:var(--color-neutral-400)">calls per day</span><span style="margin-left:auto;display:flex;gap:10px;font:10.5px var(--mono);color:var(--color-neutral-500)"><span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2px;background:var(--color-neutral-500)"></span>ok</span><span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2px;background:var(--bad)"></span>failed</span></span></div>
+<div style="height:120px;display:flex;align-items:flex-end;gap:3px;background-image:linear-gradient(var(--color-neutral-900) 1px,transparent 1px);background-size:100% 40px">
+<sc-for list="{{ sel.days }}" as="d" hint-placeholder-count="30"><div title="{{ d.t }}" style="flex:1;height:100%;display:flex;flex-direction:column-reverse;gap:1px"><span style="height:{{ d.ok }};border-radius:1px;background:var(--color-neutral-500)"></span><span style="height:{{ d.bad }};border-radius:1px;background:var(--bad)"></span></div></sc-for>
+</div>
+<div style="display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--color-neutral-500)"><span>10-22</span><span>11-06</span><span>11-20</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<h3 style="font-size:13.5px;margin:0 0 6px;font-weight:500">Slowest and failed calls · {{ sel.name }}</h3>
+<sc-for list="{{ sel.calls }}" as="c" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:78px minmax(0,1fr) 60px;gap:10px;align-items:baseline;padding:5px 0;font-size:12.5px;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 8%,transparent) 48px,color-mix(in srgb,var(--color-text) 8%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom"><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ c.t }}</span><span style="display:flex;flex-direction:column;min-width:0"><span lang="uk" style="font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.input }}</span><span style="font:11px var(--mono);color:{{ c.c }}">{{ c.res }}</span></span><span style="font:500 12.5px var(--mono);text-align:right">{{ c.d }}</span></div></sc-for>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: 2 };
+  T = [
+    ['read_file', 212, 0, '38 ms', '120 ms', '—', ['her turns', 'thoughts']],
+    ['journal_read', 64, 0, '12 ms', '40 ms', '—', ['her turns']],
+    ['search_files', 96, 1, '64 ms', '310 ms', 'FileNotFoundError · 11-11', ['her turns', 'thoughts']],
+    ['web_lookup', 41, 3, '4.1 s', '15.0 s', 'TimeoutError · 11-20 08:30', ['her turns', 'thoughts', 'the room']],
+    ['news_search', 33, 0, '410 ms', '1.2 s', '—', ['thoughts']],
+    ['wiki_search', 27, 0, '220 ms', '640 ms', '—', ['her turns', 'the room']],
+    ['journal_write', 18, 0, '31 ms', '70 ms', '—', ['her turns', 'thoughts']],
+    ['send_image', 11, 0, '640 ms', '1.1 s', '—', ['her turns']],
+    ['generate_image', 9, 0, '11.2 s', '14.8 s', '—', ['her turns', 'thoughts']]
+  ];
+  renderVals() {
+    const s = this.state;
+    const rows = this.T.map((t, i) => ({
+      name: t[0], calls: t[1], failed: t[2], rate: (t[2] / t[1] * 100).toFixed(1) + ' %', failC: t[2] ? (t[2] / t[1] > 0.05 ? 'var(--bad)' : 'var(--warn)') : 'var(--color-neutral-500)',
+      med: t[3], p95: t[4], err: t[5], errC: t[2] ? 'var(--color-neutral-200)' : 'var(--color-neutral-600)', origins: t[6],
+      bg: i === s.sel ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent', edge: i === s.sel ? 'var(--color-accent)' : 'transparent',
+      pick: () => this.setState({ sel: i })
+    }));
+    const t = this.T[s.sel];
+    let x = 3 + s.sel; const r = () => (x = (x * 9301 + 49297) % 233280) / 233280;
+    const avg = t[1] / 30;
+    const counts = Array.from({ length: 30 }, () => Math.round(avg * (0.3 + r() * 1.4)));
+    const fails = Array(30).fill(0);
+    for (let k = 0; k < t[2]; k++) fails[[29, 23, 9, 16][k % 4]]++;
+    const mx = Math.max(6, ...counts.map((c, i) => c + fails[i]));
+    const CALLS = {
+      web_lookup: [['11-20 08:30', 'q="cryptochrome bird magnetoreception"', 'TimeoutError after 15 s', 'var(--bad)', '15.0 s'], ['11-14 08:31', 'q="комета грудень 2026"', 'TimeoutError after 15 s', 'var(--bad)', '15.0 s'], ['11-07 11:30', 'q="перший сніг Карпати"', 'TimeoutError after 15 s', 'var(--bad)', '15.0 s'], ['11-20 13:06', 'q="cryptochrome bird magnetoreception" (retry)', 'ok · 3 sources', 'var(--color-neutral-400)', '3.9 s'], ['11-12 23:48', 'q="як птахи бачать зорі"', 'ok · 4 sources', 'var(--color-neutral-400)', '3.4 s']]
+    };
+    const calls = (CALLS[t[0]] || [['11-19 21:44', t[0] + ' …', 'ok', 'var(--color-neutral-400)', t[4]], ['11-17 10:12', t[0] + ' …', 'ok', 'var(--color-neutral-400)', t[3]]]).map(c => ({ t: c[0], input: c[1], res: c[2], c: c[3], d: c[4] }));
+    return {
+      instance: this.props.instance || 'prod', rows,
+      sel: { name: t[0], calls, days: counts.map((c, i) => ({ ok: (c / mx * 100) + '%', bad: (fails[i] / mx * 100) + '%', t: c + ' ok' + (fails[i] ? ' · ' + fails[i] + ' failed' : '') })) }
+    };
+  }
+}
+</script>
+</body>
+</html>

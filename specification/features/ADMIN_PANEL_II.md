@@ -16,8 +16,9 @@ operations first (the owner's choice), then Лілі in the panel:
 | v5.9 | agent | Лілі in the panel II: thoughts, gallery, journal and files | 5.9.0 |
 | v5.10 | agent | Edits of her files from the panel (the v4.5 actions) | 5.10.0 |
 
-A design pass in Claude Design comes before v5.1. The brief is [design/v5/BRIEF.md](../../design/v5/BRIEF.md)
-(English only, pasted into Claude Design as it is). The handoff goes into `design/v5/handoff/` and is folded into this document and the ROADMAP before `/generate-issues v5.1`.
+The design was made in Claude Design from [design/v5/BRIEF.md](../../design/v5/BRIEF.md) (English only). Its handoff
+is in [design/v5/handoff/](../../design/v5/handoff/README.md) (2026-11-21); the brief's last section lists what the
+design changed and added, what was corrected after the export, and what each phase still has to handle.
 
 The phases, their tasks, DoD and tests are in [ROADMAP.md](../ROADMAP.md) §v5. This document holds the design they
 share: what exists, the rules, the two areas, the new records, the page map, the decisions and the open questions.
@@ -277,13 +278,15 @@ One stream, `~/lumi/admin/audit.jsonl`, with a `source` on every entry, and the 
 ## v5.7–v5.10 — Лілі in the panel
 
 - **State (v5.7)** shows what the window's State view (v4.4) shows: the mood of the day and its resolution, the
-  biorhythms, the closeness level, the needs, the plans, the today block, the last reply's emotion and intensity
-  (the emoji and the caption). The portrait stays in the window: the face pack lives beside the client, and no face
+  biorhythms and the hormonal cycle, the theme of the day, the closeness level, the last reply's emotion and
+  intensity (the emoji and the caption). The needs and the plans appear once v6.5–v6.8 build them; until then each
+  shows the window's "Arrives in a later version". The portrait stays in the window: the face pack lives beside the client, and no face
   asset crosses the network (the v2.12 rule).
 - **History (v5.7):** a new server route, `GET /v1/history`, owner only (the room's token 403), read-only,
   user-scoped, bounded (a page of at most 100 messages, a cursor, a day, a text search over the last 90 days), never
   the turn lock. Each message: who, when, the text, the emotion and intensity, the conversation move (v1.1), the
-  channel, and for her replies the turn's tools from `tools.jsonl`. Her hidden reasoning is not there (it is never
+  channel (a new additive field on `Message`, written from the client id's prefix and by the Telegram inbox; older
+  messages have none), and for her replies the turn's tools from `tools.jsonl`. Her hidden reasoning is not there (it is never
   persisted, v2.6). The room's lines are not there (they are the space's, v3).
 - **Memory (v5.8):**
   - **The summaries**, `GET /v1/summaries`: the in-session compaction digests (`SessionDigest`), each session's

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 40px;display:flex;flex-direction:column;gap:18px;font-size:13px">
+<div style="overflow-x:auto">
+<div style="min-width:1040px;display:flex;flex-direction:column">
+<div style="display:grid;grid-template-columns:minmax(190px,1.3fr) 92px 84px 72px 64px 120px 104px minmax(130px,1fr) minmax(150px,1fr) 28px;gap:12px;padding:0 10px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>Container</span><span>State</span><span>Health</span><span>Uptime</span><span>Restarts</span><span>Last exit</span><span>Image</span><span>CPU · 24 h</span><span>Memory · used / limit</span><span></span></div>
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:8px;padding:12px 10px 4px"><span style="font:500 10.5px var(--mono);padding:0 6px;border-radius:3px;background:{{ g.instBg }};color:{{ g.instFg }}">{{ g.name }}</span><span style="font-size:11.5px;color:var(--color-neutral-500)">{{ g.sub }}</span></div>
+<sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+<button onClick="{{ r.open }}" style="display:grid;grid-template-columns:minmax(190px,1.3fr) 92px 84px 72px 64px 120px 104px minmax(130px,1fr) minmax(150px,1fr) 28px;gap:12px;align-items:center;min-height:40px;padding:4px 10px;border:0;border-radius:4px;background-color:{{ r.bg }};box-shadow:inset 2px 0 0 {{ r.edge }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;color:inherit;font-family:inherit;font-size:13px;text-align:left;cursor:pointer" style-hover="background-color:color-mix(in srgb,var(--color-text) 5%,transparent)">
+<span style="font:500 12.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+<span style="display:flex;align-items:center;gap:6px;font-size:12.5px"><span style="width:8px;height:8px;border-radius:50%;background:{{ r.stC }}"></span>{{ r.state }}</span>
+<span style="font-size:12.5px;color:{{ r.hC }}">{{ r.health }}</span>
+<span style="font:12px var(--mono);color:var(--color-neutral-300)">{{ r.uptime }}</span>
+<span style="font:12px var(--mono);color:{{ r.rsC }}">{{ r.restarts }}</span>
+<span style="font:12px var(--mono);color:{{ r.exC }};white-space:nowrap">{{ r.exit }}</span>
+<span style="justify-self:start;font:11.5px var(--mono);padding:1px 6px;border-radius:3px;background:var(--color-neutral-900);color:var(--color-neutral-300);white-space:nowrap">{{ r.image }}</span>
+<span style="display:flex;align-items:center;gap:8px;min-width:0"><svg width="80" height="20" viewBox="0 0 80 20" style="flex:none"><path d="{{ r.cpuSpark }}" fill="none" stroke="var(--color-neutral-400)" stroke-width="1.2"></path></svg><span style="font:12px var(--mono)">{{ r.cpu }}</span></span>
+<span style="display:flex;align-items:center;gap:8px;min-width:0"><svg width="80" height="20" viewBox="0 0 80 20" style="flex:none"><path d="{{ r.memSpark }}" fill="none" stroke="var(--color-neutral-400)" stroke-width="1.2"></path><line x1="0" y1="2" x2="80" y2="2" stroke="var(--color-neutral-700)" stroke-dasharray="2 2"></line></svg><span style="font:12px var(--mono);white-space:nowrap">{{ r.mem }}</span></span>
+<i class="ph ph-caret-right" style="color:var(--color-neutral-500)"></i>
+</button>
+</sc-for>
+</sc-for>
+</div>
+</div>
+
+<sc-if value="{{ sel }}" hint-placeholder-val="{{ true }}">
+<section style="display:flex;flex-direction:column;gap:14px;padding:16px 18px 18px 21px;border-radius:8px;background:var(--color-surface);box-shadow:inset 3px 0 0 {{ sel.edge }}">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<span style="font:500 11px var(--mono);padding:1px 6px;border-radius:3px;background:{{ sel.instBg }};color:{{ sel.instFg }}">{{ sel.inst }}</span>
+<h2 style="font:500 18px var(--mono);margin:0">{{ sel.name }}</h2>
+<span style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--color-neutral-300)"><span style="width:8px;height:8px;border-radius:50%;background:{{ sel.stC }}"></span>{{ sel.state }} · {{ sel.health }} · up {{ sel.uptime }}</span>
+<div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+<div class="seg" role="radiogroup" aria-label="Range"><sc-for list="{{ ranges }}" as="r" hint-placeholder-count="2"><label class="seg-opt" style="padding:4px 10px;font-size:12px"><input type="radio" name="ct-range" checked="{{ r.on }}" onChange="{{ r.pick }}">{{ r.label }}</label></sc-for></div>
+<button class="btn btn-secondary" disabled="{{ true }}" style="padding:5px 10px;font-size:12.5px"><i class="ph ph-play"></i>Start</button>
+<button class="btn btn-secondary" onClick="{{ stopIt }}" style="padding:5px 10px;font-size:12.5px"><i class="ph ph-stop"></i>Stop</button>
+<button class="btn btn-primary" onClick="{{ restartIt }}" style="padding:5px 10px;font-size:12.5px;color:{{ sel.actC }};border-color:{{ sel.actC }}"><i class="ph ph-arrow-clockwise"></i>Restart</button>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px">
+<sc-for list="{{ charts }}" as="c" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:6px;background:var(--color-bg)">
+<div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:12.5px;font-weight:500">{{ c.title }}</span><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ c.now }}</span><span style="margin-left:auto;display:flex;gap:10px;font:10.5px var(--mono);color:var(--color-neutral-500)"><span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:2px;background:var(--color-neutral-200)"></span>{{ c.a }}</span><span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:0;border-top:1.5px dashed var(--color-neutral-500)"></span>{{ c.b }}</span></span></div>
+<div style="position:relative">
+<svg width="100%" height="96" viewBox="0 0 300 96" preserveAspectRatio="none" style="display:block">
+<line x1="0" y1="24" x2="300" y2="24" stroke="var(--color-neutral-900)"></line><line x1="0" y1="48" x2="300" y2="48" stroke="var(--color-neutral-900)"></line><line x1="0" y1="72" x2="300" y2="72" stroke="var(--color-neutral-900)"></line>
+<path d="{{ c.band }}" fill="color-mix(in srgb,var(--color-neutral-400) 14%,transparent)"></path>
+<path d="{{ c.lineB }}" fill="none" stroke="var(--color-neutral-500)" stroke-width="1.3" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"></path>
+<path d="{{ c.lineA }}" fill="none" stroke="var(--color-neutral-200)" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+</svg>
+<span style="position:absolute;left:4px;top:0;font:10px var(--mono);color:var(--color-neutral-500)">{{ c.max }}</span>
+</div>
+<div style="display:flex;justify-content:space-between;font:10px var(--mono);color:var(--color-neutral-500)"><span>{{ c.from }}</span><span>{{ c.mid }}</span><span>now</span></div>
+</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 18px;font-size:12px">
+<sc-for list="{{ sel.facts }}" as="f" hint-placeholder-count="6"><div style="display:flex;flex-direction:column"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)">{{ f.k }}</span><span style="font-family:var(--mono);color:var(--color-neutral-200)">{{ f.v }}</span></div></sc-for>
+</div>
+</section>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: null, range: '24h' };
+  series(seed, n, base, amp, spikes) {
+    let x = seed;
+    const r = () => (x = (x * 9301 + 49297) % 233280) / 233280;
+    return Array.from({ length: n }, (_, i) => Math.max(0, base + (r() - 0.5) * amp + ((spikes || {})[i] || 0)));
+  }
+  path(a, w, h, max) {
+    return a.map((v, i) => (i ? 'L' : 'M') + (i * w / (a.length - 1)).toFixed(1) + ' ' + (h - 2 - Math.min(v / max, 1) * (h - 4)).toFixed(1)).join(' ');
+  }
+  band(lo, hi, w, h, max) {
+    const y = v => (h - 2 - Math.min(v / max, 1) * (h - 4)).toFixed(1);
+    const xs = i => (i * w / (lo.length - 1)).toFixed(1);
+    return 'M' + hi.map((v, i) => xs(i) + ' ' + y(v)).join(' L') + ' L' + lo.map((v, i) => i).reverse().map(i => xs(i) + ' ' + y(lo[i])).join(' L') + ' Z';
+  }
+  renderVals() {
+    const p = this.props;
+    const tag = (n) => n === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : n === 'dev' ? { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' } : { instBg: 'var(--color-accent-900)', instFg: 'var(--color-accent-300)' };
+    const D = [
+      ['prod', 'lumi-prod-server', '3 d 4 h', 0, '—', 'v4.7.0', 3, 1.21, 4, 'GB', 11],
+      ['prod', 'lumi-prod-telegram-inbound', '3 d 4 h', 0, '—', 'v4.7.0', 0.4, 92, 256, 'MB', 12],
+      ['prod', 'lumi-prod-telegram-outbound', '3 d 4 h', 0, '—', 'v4.7.0', 0.2, 81, 256, 'MB', 13],
+      ['dev', 'lumi-dev-server', '2 h', 2, '137 · OOM killed', 'sha-6b80895', 1, 0.98, 2, 'GB', 21],
+      ['dev', 'lumi-dev-telegram-inbound', '2 h', 0, '0', 'sha-6b80895', 0.3, 88, 256, 'MB', 22],
+      ['dev', 'lumi-dev-telegram-outbound', '2 h', 0, '0', 'sha-6b80895', 0.1, 79, 256, 'MB', 23],
+      ['box', 'lumi-panel', '12 d', 0, '—', 'panel-1.4.0', 0.6, 64, 256, 'MB', 31]
+    ];
+    const selIdx = this.state.sel !== null ? this.state.sel : (p.demo === 'list' ? -1 : 0);
+    const rows = D.map((d, i) => {
+      const on = selIdx === i;
+      return Object.assign({
+        i, inst: d[0], name: d[1], state: 'running', stC: 'var(--ok)', health: 'healthy', hC: 'var(--color-neutral-300)', uptime: d[2],
+        restarts: String(d[3]), rsC: d[3] ? 'var(--warn)' : 'var(--color-neutral-300)', exit: d[4], exC: d[4].indexOf('OOM') > -1 ? 'var(--bad)' : 'var(--color-neutral-400)', image: d[5],
+        cpu: d[6] + ' %', mem: d[7] + ' / ' + d[8] + ' ' + d[9],
+        cpuSpark: this.path(this.series(d[10], 30, d[6], d[6] * 0.8, { 18: d[6] * 1.5 }), 80, 20, Math.max(d[6] * 2.5, 1)),
+        memSpark: this.path(this.series(d[10] + 5, 30, d[7], d[7] * 0.08), 80, 20, d[8]),
+        bg: on ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent', edge: on ? 'var(--color-accent)' : 'transparent',
+        open: () => this.setState({ sel: on ? -1 : i })
+      }, tag(d[0]));
+    });
+    const groups = [
+      Object.assign({ name: 'prod', sub: '3 running · v4.7.0', rows: rows.filter(r => r.inst === 'prod') }, tag('prod')),
+      Object.assign({ name: 'dev', sub: '3 running · sha-6b80895 · 2 restarts today', rows: rows.filter(r => r.inst === 'dev') }, tag('dev')),
+      Object.assign({ name: 'box', sub: 'the panel itself', rows: rows.filter(r => r.inst === 'box') }, tag('box'))
+    ];
+    let sel = null, charts = [];
+    if (selIdx >= 0) {
+      const d = D[selIdx], r = rows[selIdx];
+      const is7 = this.state.range === '7d', n = 72, s = d[10];
+      const cpu = this.series(s, n, d[6], d[6] * 0.6, is7 ? { 40: d[6] * 2 } : { 50: d[6] * 2.2, 51: d[6] * 1.4 });
+      const lo = cpu.map(v => v * 0.6), hi = cpu.map(v => v * 1.5);
+      const cmax = Math.max(...hi) * 1.1;
+      const mem = this.series(s + 1, n, d[7], d[7] * 0.06).map((v, i) => v * (0.92 + i / n * 0.1));
+      const rx = this.series(s + 2, n, 40, 50, { 30: 120, 31: 80 }), tx = this.series(s + 3, n, 18, 20);
+      const rd = this.series(s + 4, n, 0.6, 0.8, { 10: 6 }), wr = this.series(s + 5, n, 1.2, 1.0, { 60: 4 });
+      const flat = Array(n).fill(d[8]);
+      charts = [
+        { title: 'CPU', now: d[6] + ' % now · p95 ' + (d[6] * 2.1).toFixed(1) + ' %', a: 'median', b: '', max: cmax.toFixed(1) + ' %', lineA: this.path(cpu, 300, 96, cmax), lineB: '', band: this.band(lo, hi, 300, 96, cmax) },
+        { title: 'Memory', now: d[7] + ' / ' + d[8] + ' ' + d[9], a: 'used', b: 'limit', max: d[8] + ' ' + d[9], lineA: this.path(mem, 300, 96, d[8] * 1.02), lineB: this.path(flat, 300, 96, d[8] * 1.02), band: '' },
+        { title: 'Network', now: 'rx 41 KB/s · tx 17 KB/s', a: 'rx', b: 'tx', max: '160 KB/s', lineA: this.path(rx, 300, 96, 170), lineB: this.path(tx, 300, 96, 170), band: '' },
+        { title: 'Disk I/O', now: 'read 0.4 · write 1.1 MB/s', a: 'write', b: 'read', max: '7 MB/s', lineA: this.path(wr, 300, 96, 7), lineB: this.path(rd, 300, 96, 7), band: '' }
+      ].map(c => Object.assign(c, { from: is7 ? '7 d ago' : '24 h ago', mid: is7 ? '3.5 d' : '12 h' }));
+      charts[0].b = 'p5–p95';
+      sel = Object.assign({}, r, {
+        edge: d[0] === 'prod' ? 'var(--bad)' : 'var(--color-neutral-600)', actC: d[0] === 'prod' ? 'var(--bad)' : 'var(--color-accent)',
+        facts: [{ k: 'image', v: d[5] }, { k: 'created', v: d[0] === 'dev' ? '2026-11-20 19:40' : d[0] === 'prod' ? '2026-11-20 05:05' : '2026-11-08 10:12' }, { k: 'restart policy', v: 'unless-stopped' }, { k: 'restarts', v: String(d[3]) }, { k: 'last exit', v: d[4] }, { k: 'OOM kills · 30 d', v: d[1] === 'lumi-dev-server' ? '2' : '0' }, { k: 'memory limit', v: d[8] + ' ' + d[9] }, { k: 'ports', v: d[1].indexOf('server') > -1 ? (d[0] === 'prod' ? '192.168.1.197:8765' : '192.168.1.197:8766') : d[0] === 'box' ? '192.168.1.197:8767' : '—' }]
+      });
+    }
+    const ask = (verb) => () => {
+      if (!sel || !p.confirm) return;
+      p.confirm({
+        instance: sel.inst === 'box' ? 'dev' : sel.inst, title: verb + ' ' + sel.name + '?',
+        body: verb === 'Restart' ? 'The container stops for about 20 s. A turn in progress finishes first; Telegram messages wait in the queue.' : 'The container stays stopped until you start it. Her checks turn red and alerts fire.',
+        action: verb, done: verb === 'Restart' ? sel.name + ' restarted — healthy after 18 s' : sel.name + ' stopped'
+      });
+    };
+    return {
+      groups, sel, charts,
+      ranges: [['24h', '24 h'], ['7d', '7 d']].map(x => ({ label: x[1], on: this.state.range === x[0], pick: () => this.setState({ range: x[0] }) })),
+      restartIt: ask('Restart'), stopIt: ask('Stop')
+    };
+  }
+}
+</script>
+</body>
+</html>

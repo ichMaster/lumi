@@ -197,7 +197,7 @@ side rail with the two areas and their groups is the expected answer, but not re
 
 **Overview:** prod `v4.7.0`, up 3 d 4 h, today $1.84 and 37 turns, no incidents; dev `sha-6b80895`, up 2 h,
 today $0.21 and 4 turns, one firing alert ("model: 3 failures in the last hour"). The box: load 0.42, memory 5.1 /
-16 GB, disk 61 % free. Her mood: «Тиха зосередженість; хочеться глибини, а не шуму.» The last emotion: 🤍 tender.
+16 GB, disk 61 % free. Her mood: «Тиха зосередженість; хочеться глибини, а не шуму.» The last emotion: 🥰 tender.
 
 **Usage, November:** to date $41.30, forecast $62.10, October $55.70. By provider: Anthropic $33.90, Google $3.10,
 ElevenLabs $3.80, Deepgram $0.50. By origin: her turns $29.40, scheduled thoughts $6.20, the room $2.10, housekeeping
@@ -234,10 +234,10 @@ go quiet, shown, on); `catchup` (every 3 h between 08:30 and 23:30, «свіжі
 
 **History:**
 - 21:14 · window · Owner: «Як пройшов твій день?»
-- 21:14 · 🤍 tender · Лілі: «Тихо. Я довго читала про те, як птахи орієнтуються вночі, — і думала про тебе.» ·
+- 21:14 · 🥰 tender · Lili: «Тихо. Я довго читала про те, як птахи орієнтуються вночі, — і думала про тебе.» ·
   tools: `journal_read date=2026-11-19` ok 12 ms
 - 21:16 · Telegram · Owner: «Покажи, що намалювала.»
-- 21:16 · 🙂 playful · Лілі: «Ось — сіре небо і одне жовте вікно.» · tools: `send_image path=art/window.png` ok
+- 21:16 · 😏 playful · Lili: «Ось — сіре небо і одне жовте вікно.» · tools: `send_image path=art/window.png` ok
 
 **Summaries (2026-11-19):**
 - session 20:58–21:40 · gist «Розмова про птахів, що орієнтуються вночі, і про втому після тижня.» · summary (3
@@ -265,3 +265,83 @@ blocks; the cache split after the facts digest; 14 messages.
 
 For **State, Thoughts, Gallery and Journal**, use the sample content of the v4 brief
 ([design/v4/BRIEF.md](../v4/BRIEF.md) §Sample content).
+
+## The design (2026-11-21)
+The owner made it in Claude Design. Its handoff bundle is in [handoff/](handoff/README.md):
+
+- [handoff/README.md](handoff/README.md) — the spec: the shell (the attention strip, the rail with the two areas and
+  the agent picker, the header with the instance switcher), the shared states, each view's measurements, states and
+  behaviour, the keyboard, the client state, the tokens and the icons.
+- `handoff/tokens/` — `nocturne.css` (the Nocturne token sheet and its component classes), `tokens.css` (the panel's
+  additions: the state, agent, provider, chart and diff colors, the sizes, the light theme) and `strings.json` (every
+  UI string, English, grouped by view).
+- `handoff/prototype/*.dc.html` — the shell (`Lumi Admin.dc.html`), one prototype per view and the components sheet.
+  They are a reference only (the design tool's runtime, `support.js`); serve the folder over http to view them.
+
+**Deviations the design made from the brief** (kept unless the owner says otherwise):
+- **The look** is the Nocturne design system made denser, not the window's flat v2.12 style: radii of 4, 6 and 8 px,
+  Inter, rules that fade at their ends, outlined primary buttons. Going back to zero radius and the system font is a
+  change of the tokens (`--radius-*`, `--font-*`), not of the views.
+- **The icons** are Phosphor (regular weight) instead of Lucide, inlined as SVG in production.
+
+**Added by the design beyond the brief:**
+- **The box on the Overview:** the kernel, the cores, the uptime, the load, the memory, the disk and the running
+  containers, read by the panel from the host (`/proc`, `statvfs`, the Docker API with GET only). v5.2.
+- **A back-test in the alert rule editor:** "In the last 7 days this would have fired N times", computed from what is
+  stored (the hourly health rollup, the logs' 10 days, the usage rollups). v5.3.
+- **Alerts held in the quiet hours** are sent as one message when the quiet hours end (the design writes 08:00, the
+  end of its sample rule's quiet hours). Critical rules ignore the quiet hours. v5.3.
+- **Deep links:** the view, the instance and the filters in the URL hash, and a link per log line.
+
+**Corrected after the export** (the English interface of v4.8, and things the code doesn't have):
+- **Her name in the interface is "Lili"** (v4.8): the agent picker and its initial tile "L", the crumb
+  "Lili · Her · …", the History's speaker, the alert rules' scope chips, the audit's agent column, the Overview's agent
+  card, the Usage note, the Journal's kicker "Lili's journal" and the sign-in note. Her own texts keep «Лілі» where she
+  or the owner wrote it: a summary, the canon, a message.
+- **The closeness levels have English names** since v4.8 (`core/commands.py` `CLOSENESS_NAMES`, the window's
+  `strings.en.json` `closeness`): Polite, Friendly, Warm, Close, Dearest. The State view drew the Ukrainian names and
+  two lines with no data behind them ("since 2026-10-24" and "Toward 5: 38 of 60 warm days"), which are removed. The
+  closeness block inside the Prompt and Texts views stays Ukrainian, because it is her prompt.
+- **An emotion is one of the nine of the enum, with her own emoji** (`core/emoji.md`). The design used "curious",
+  "neutral" and "glad", which are not emotions she can have, and emoji that are not in her map (🤍, 🤓, 😌). They now
+  read 🤔 thoughtful, 🙂 calm, 😄 joy, 🥰 tender, 😏 playful.
+- **The box, the ports and the files are the real ones:** `slate-server · 192.168.1.197`, the panel on `:8767`, prod's
+  server on `:8765` and dev's on `:8766`, the `/v1/…` routes (there is no `/admin/state`), the panel's token in
+  `~/lumi/admin/secrets.yaml` (`admin.token`) and the secrets in `secrets.yaml` (not `secrets.env`).
+- **The gallery's trash** said "removed for good in 28 days". Nothing is ever deleted (v4.5), and the line now says so.
+
+**Still to handle when implementing:**
+- **Nothing loads from the network.** The prototype loads Inter from Google Fonts and the Phosphor icon font from
+  unpkg. The panel inlines the icons as SVG and uses the system font stack (it has Cyrillic) unless the owner wants
+  Inter, in which case its font files ship in `admin/static/`.
+- **State (v5.7)** shows what the window's State view shows:
+  - add the theme of the day (its English name and scene from the window's `themes`) and the hormonal cycle (a fourth
+    row, as in the window);
+  - "resolved 07:12" is the mood's made-at time, which the window already shows;
+  - Needs and Today's plans have no data until v6.5–v6.8 build them; until then each shows the window's line
+    "Arrives in a later version."
+- **History (v5.7):**
+  - a message carries no channel today (`Message` has the role, the text, the time, the emotion, the intensity and the
+    move). The channel (window, Telegram, TUI) is a new additive field, written from the client id's prefix
+    (`X-Lumi-Client`) and by the Telegram inbox; older messages show none;
+  - the search is a case-insensitive substring search over the last 30 days by default, and all time on "Search all
+    time", one page at a time.
+- **Summaries (v5.8):** a `ShortSummary` keeps no time span and no message count. "session 20:58 – 21:40 · covers 62
+  messages" comes from that session's messages (the first and last time, the count).
+- **Facts (v5.8):**
+  - a fact's source line is its stored `meta`; no quote of the owner's words is kept;
+  - "corrected 2026-11-18 → «…»" needs the correction to link the obsolete row to its replacement (a new additive
+    field), or the audit's entry for it.
+- **Thoughts (v5.9):** a `Thought` keeps its kind, emotion, `spoken` and `seeds`, not the schedule row that fired it.
+  The origin line shows the seeds, and the row's name only once the scheduler records it.
+- **Gallery (v5.9):** the route gives a picture's name, size, dimensions and time. The model comes from the v5.1 media
+  ledger (an `image` row), "shown" from the `send_image` rows of `tools.jsonl`; a caption appears only if one is
+  recorded.
+- **Schedule (v5.5):**
+  - the form's three trigger kinds cover `every` (with its optional `between` window), `idle` and `at` (with the
+    days); `cron` is edited in "Advanced · YAML";
+  - the scheduler's side panel shows the settings that exist: the quiet hours (`thoughts.quiet_hours`), the day cap
+    (`scheduler.day_cap`) and the spoken ratio (`thoughts.spoken_ratio`). "Shown per day" and "min gap" are not
+    settings.
+- **The sample content** in the prototypes is illustrative: prod there runs `v4.7.0` and the Anthropic models, while
+  prod today runs `v4.8.1` with the `gemini` profile.

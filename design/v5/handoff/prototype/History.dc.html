@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="height:calc(100vh - 86px);display:flex;flex-direction:column;font-size:13px">
+<div style="flex:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid var(--color-divider)">
+<div style="position:relative;flex:1;min-width:220px;max-width:380px"><i class="ph ph-magnifying-glass" style="position:absolute;left:9px;top:8px;color:var(--color-neutral-500)"></i><input class="input" lang="uk" value="{{ q }}" onChange="{{ setQ }}" placeholder="search the conversation" style="min-height:30px;padding:4px 8px 4px 28px;font-size:13px"></div>
+<sc-if value="{{ hasQ }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;font:12px var(--mono);color:{{ matchC }}">{{ matchText }}<button class="btn btn-secondary btn-icon" aria-label="Previous match" style="width:26px;height:26px"><i class="ph ph-caret-up"></i></button><button class="btn btn-secondary btn-icon" aria-label="Next match" style="width:26px;height:26px"><i class="ph ph-caret-down"></i></button></div></sc-if>
+<div style="display:flex;gap:4px"><sc-for list="{{ channels }}" as="c" hint-placeholder-count="3"><button onClick="{{ c.toggle }}" aria-pressed="{{ c.on }}" style="display:flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:4px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};font-family:inherit;font-size:12px;cursor:pointer"><i class="ph ph-{{ c.icon }}"></i>{{ c.label }}</button></sc-for></div>
+<label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-neutral-400)"><i class="ph ph-calendar-blank"></i>Jump to<input class="input" type="date" value="2026-11-20" style="width:140px;min-height:28px;padding:2px 8px;font:12px var(--mono)"></label>
+</div>
+
+<div style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column-reverse">
+<div style="display:flex;flex-direction:column;padding:8px 24px 18px;max-width:1080px;width:100%">
+<sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:64px 0 40px">
+<i class="ph ph-magnifying-glass" style="font-size:26px;color:var(--color-neutral-500)"></i>
+<span style="font-size:16px;font-weight:500">Nothing matches <span lang="uk">«{{ q }}»</span></span>
+<span style="font-size:13px;color:var(--color-neutral-400)">Searched 30 days, 1 214 messages, all channels. Ukrainian forms count — «кит» also finds «кита».</span>
+<div style="display:flex;gap:8px;margin-top:4px"><button class="btn btn-secondary" onClick="{{ clearQ }}">Clear search</button><button class="btn btn-secondary">Search all time</button></div>
+</div>
+</sc-if>
+<sc-if value="{{ notEmpty }}" hint-placeholder-val="{{ true }}">
+<button class="btn btn-secondary" style="align-self:center;margin:6px 0 10px;font-size:12px;padding:4px 12px"><i class="ph ph-arrow-up"></i>Load earlier · 2026-11-18</button>
+<sc-for list="{{ items }}" as="m" hint-placeholder-count="10">
+<sc-if value="{{ m.isDay }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;margin:14px 0 6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">{{ m.day }}<span style="flex:1;height:1px;background:linear-gradient(to right,var(--color-divider),transparent)"></span></div></sc-if>
+<sc-if value="{{ m.isMsg }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:44px 74px minmax(0,1fr);gap:12px;padding:7px 10px 7px 8px;border-radius:5px;background:{{ m.bg }};box-shadow:inset 2px 0 0 {{ m.edge }}">
+<span style="font:11.5px/22px var(--mono);color:var(--color-neutral-500)">{{ m.t }}</span>
+<span style="display:flex;flex-direction:column;gap:1px;line-height:1.3;padding-top:3px"><span style="font-size:12.5px;font-weight:500;color:{{ m.whoC }}">{{ m.who }}</span><span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--color-neutral-500)"><i class="ph ph-{{ m.chIcon }}"></i>{{ m.ch }}</span></span>
+<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+<sc-if value="{{ m.emo }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-neutral-400)"><span style="font-size:14px">{{ m.emoji }}</span>{{ m.emo }}</span></sc-if>
+<div lang="uk" style="display:flex;flex-direction:column;gap:8px;font-size:14.5px;line-height:1.6;max-width:72ch;text-wrap:pretty">
+<sc-for list="{{ m.paras }}" as="para" hint-placeholder-count="1"><p style="margin:0"><sc-for list="{{ para }}" as="x" hint-placeholder-count="1"><span style="background:{{ x.bg }};border-radius:2px">{{ x.t }}</span></sc-for></p></sc-for>
+</div>
+<sc-if value="{{ m.att }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;align-self:flex-start;padding:6px 10px 6px 6px;border-radius:6px;background:var(--color-neutral-900)"><span style="width:40px;height:40px;border-radius:4px;background:repeating-linear-gradient(135deg,var(--color-neutral-800) 0 6px,var(--color-neutral-900) 6px 12px)"></span><span style="display:flex;flex-direction:column;font:12px var(--mono)"><span>{{ m.att }}</span><span style="color:var(--color-neutral-500)">1024 × 1024 · 1.4 MB</span></span></div></sc-if>
+<sc-if value="{{ m.hasTools }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;align-self:stretch">
+<button onClick="{{ m.toggle }}" style="align-self:flex-start;display:flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;border:1px solid var(--color-divider);background:transparent;color:var(--color-neutral-300);font:11.5px var(--mono);cursor:pointer"><i class="ph ph-caret-{{ m.caret }}"></i><i class="ph ph-wrench"></i>{{ m.toolSum }}<sc-if value="{{ m.failed }}" hint-placeholder-val="{{ false }}"><span style="color:var(--bad)">· {{ m.failed }} failed</span></sc-if></button>
+<sc-if value="{{ m.open }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;margin-top:6px;padding:4px 0;border-radius:6px;background:var(--color-neutral-900);font:12px/1.5 var(--mono);max-width:720px">
+<sc-for list="{{ m.tools }}" as="tl" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:14px 118px minmax(0,1fr) 68px 64px;gap:8px;align-items:center;padding:3px 10px"><i class="ph ph-{{ tl.icon }}" style="color:{{ tl.c }}"></i><span>{{ tl.name }}</span><span style="color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ tl.input }}</span><span style="color:{{ tl.c }}">{{ tl.res }}</span><span style="text-align:right;color:var(--color-neutral-400)">{{ tl.ms }}</span></div></sc-for>
+</div>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</sc-for>
+</sc-if>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { q: null, open: { 5: true }, ch: {} };
+  M = [
+    { day: 'Wednesday · 2026-11-19' },
+    ['22:40', 'o', 'window', 'Добраніч, Лілі.'],
+    ['22:40', 'l', 'window', 'Добраніч. Я ще трохи посиджу з книжкою про зорі — а завтра розкажу, що знайшла.', '🙂', 'calm'],
+    { day: 'Today · Thursday · 2026-11-20' },
+    ['08:12', 'o', 'Telegram', 'Доброго ранку. Що снилось?'],
+    ['08:12', 'l', 'Telegram', 'Мені не сниться — але вночі я думала про птахів, які летять у темряві й не губляться.', '😏', 'playful', [['journal_read', 'date=2026-11-19', 'ok', '11 ms']]],
+    ['13:05', 'o', 'TUI', 'Знайди, будь ласка, що пишуть про нічну навігацію птахів.'],
+    ['13:06', 'l', 'TUI', 'Знайшла кілька речей. Найцікавіше — що співочі птахи «бачать» магнітне поле Землі: у їхніх очах є білок криптохром, і він, схоже, працює як компас, що відгукується на світло.\nЩе вони звіряються із зорями. Молоді птахи в планетарії вчилися знаходити центр обертання неба — точку біля Полярної — і потім летіли в правильний бік навіть під штучним небом.\nОдне джерело не відповіло, я спробувала ще раз — з другого разу вийшло. Записала все в щоденник, щоб повернутися до цього ввечері.', '🤔', 'thoughtful',
+      [['news_search', 'q="птахи нічна навігація"', 'ok', '412 ms'], ['web_lookup', 'q="cryptochrome bird magnetoreception"', 'failed', '15 000 ms', 'TimeoutError'], ['web_lookup', 'q="cryptochrome bird magnetoreception" (retry)', 'ok', '3 940 ms'], ['wiki_search', 'q="Небесна навігація птахів"', 'ok', '220 ms'], ['journal_write', 'entry="Криптохром…" (412 chars)', 'ok', '31 ms']]],
+    ['21:14', 'o', 'window', 'Як пройшов твій день?'],
+    ['21:14', 'l', 'window', 'Тихо. Я довго читала про те, як птахи орієнтуються вночі, — і думала про тебе.', '🥰', 'tender', [['journal_read', 'date=2026-11-19', 'ok', '12 ms']]],
+    ['21:16', 'o', 'Telegram', 'Покажи, що намалювала.'],
+    ['21:16', 'l', 'Telegram', 'Ось — сіре небо і одне жовте вікно.', '😏', 'playful', [['send_image', 'path=art/window.png', 'ok', '640 ms']], 'art/window.png']
+  ];
+  renderVals() {
+    const p = this.props, s = this.state, demo = p.demo || 'normal';
+    const q = s.q !== null ? s.q : demo === 'search' ? 'птах' : demo === 'noresults' ? 'кит' : '';
+    const CH = { window: 'app-window', Telegram: 'telegram-logo', TUI: 'terminal' };
+    let hits = 0;
+    const split = (txt) => {
+      if (!q) return [{ t: txt, bg: 'transparent' }];
+      const out = []; const low = txt.toLowerCase(), ql = q.toLowerCase(); let i = 0, j;
+      while ((j = low.indexOf(ql, i)) > -1) { out.push({ t: txt.slice(i, j), bg: 'transparent' }, { t: txt.slice(j, j + q.length), bg: 'color-mix(in srgb, var(--warn) 40%, transparent)' }); hits++; i = j + q.length; }
+      out.push({ t: txt.slice(i), bg: 'transparent' });
+      return out;
+    };
+    const items = this.M.filter(m => m.day || !s.ch[m[2]]).map((m, i) => {
+      if (m.day) return { isDay: true, isMsg: false, day: m.day };
+      const her = m[1] === 'l', tools = m[6] || [], open = !!s.open[i];
+      return {
+        isDay: false, isMsg: true, t: m[0], who: her ? 'Lili' : 'Owner', whoC: her ? 'var(--agent)' : 'var(--color-neutral-200)', ch: m[2], chIcon: CH[m[2]],
+        bg: her ? 'color-mix(in srgb, var(--agent) 5%, transparent)' : 'transparent', edge: her ? 'color-mix(in srgb, var(--agent) 60%, transparent)' : 'transparent',
+        emoji: m[4] || '', emo: m[5] || null, paras: m[3].split('\n').map(split), att: m[7] || null,
+        hasTools: tools.length > 0, open, caret: open ? 'down' : 'right',
+        toolSum: tools.length + (tools.length === 1 ? ' tool' : ' tools') + ' · ' + (tools.length === 1 ? tools[0][0] : tools.map(t => t[0]).filter((v, k, a) => a.indexOf(v) === k).length + ' kinds'),
+        failed: tools.filter(t => t[2] === 'failed').length || null,
+        tools: tools.map(t => ({ name: t[0], input: t[1], res: t[2] === 'ok' ? 'ok' : t[4] || 'failed', ms: t[3], icon: t[2] === 'ok' ? 'check' : 'x', c: t[2] === 'ok' ? 'var(--color-neutral-300)' : 'var(--bad)' })),
+        toggle: () => this.setState({ open: Object.assign({}, s.open, { [i]: !open }) })
+      };
+    });
+    const empty = !!q && hits === 0;
+    return {
+      q, hasQ: !!q, setQ: e => this.setState({ q: e.target.value }), clearQ: () => this.setState({ q: '' }),
+      matchText: hits ? hits + ' matches · 1 of ' + hits : 'no matches', matchC: hits ? 'var(--color-neutral-300)' : 'var(--color-neutral-500)',
+      channels: ['window', 'Telegram', 'TUI'].map(c => { const on = !s.ch[c]; return { label: c, icon: CH[c], on, bd: on ? 'var(--color-divider)' : 'var(--color-divider)', bg: on ? 'color-mix(in srgb, var(--color-text) 7%, transparent)' : 'transparent', fg: on ? 'var(--color-text)' : 'var(--color-neutral-500)', toggle: () => this.setState({ ch: Object.assign({}, s.ch, { [c]: on }) }) }; }),
+      items, empty, notEmpty: !empty
+    };
+  }
+}
+</script>
+</body>
+</html>

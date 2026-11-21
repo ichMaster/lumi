@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="display:grid;grid-template-columns:270px minmax(0,1fr);height:calc(100vh - 86px);font-size:13px">
+<div style="padding:12px 10px 20px 20px;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;gap:1px;overflow:auto">
+<div style="padding:0 8px 8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Her authored files</div>
+<sc-for list="{{ files }}" as="f" hint-placeholder-count="11">
+<button onClick="{{ f.pick }}" style="display:flex;flex-direction:column;gap:3px;padding:6px 8px;border:0;border-radius:5px;background:{{ f.bg }};box-shadow:inset 2px 0 0 {{ f.edge }};color:inherit;font-family:inherit;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 5%,transparent)">
+<span style="font:12.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.path }}</span>
+<span style="display:flex;gap:4px;align-items:center;flex-wrap:wrap"><span style="font-size:10.5px;padding:0 5px;border-radius:3px;background:{{ f.mBg }};color:{{ f.mFg }}">{{ f.mark }}</span><sc-if value="{{ f.drifted }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:3px;font-size:10.5px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)"><i class="ph ph-git-fork"></i>drifted</span></sc-if><span style="margin-left:auto;font:10.5px var(--mono);color:var(--color-neutral-500)">{{ f.size }}</span></span>
+</button>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;min-width:0;min-height:0">
+<div style="flex:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 20px;border-bottom:1px solid var(--color-divider)">
+<span style="font:500 13px var(--mono)">{{ cur.path }}</span>
+<span style="font-size:11px;padding:0 6px;border-radius:3px;background:{{ cur.mBg }};color:{{ cur.mFg }}">{{ cur.mark }}</span>
+<span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ cur.size }} · ≈ {{ tokens }} tokens in the prompt</span>
+<span style="font:500 12px var(--mono);padding:1px 6px;border-radius:3px;background:var(--color-neutral-900);color:{{ deltaC }}">{{ delta }}</span>
+<div style="margin-left:auto;display:flex;gap:6px">
+<button class="btn btn-secondary" onClick="{{ reset }}" style="padding:3px 9px;font-size:12px"><i class="ph ph-arrow-counter-clockwise"></i>Reset to the release</button>
+<button class="btn btn-secondary" onClick="{{ copyOther }}" style="padding:3px 9px;font-size:12px"><i class="ph ph-copy"></i>{{ copyLabel }}</button>
+<button class="btn btn-secondary" onClick="{{ patch }}" style="padding:3px 9px;font-size:12px"><i class="ph ph-file-arrow-down"></i>Download as a patch</button>
+</div>
+</div>
+<sc-if value="{{ drift }}" hint-placeholder-val="{{ false }}">
+<div style="flex:none;display:flex;flex-direction:column;gap:10px;padding:12px 20px;border-bottom:1px solid var(--color-divider);background:color-mix(in srgb,var(--warn) 6%,transparent)">
+<div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><i class="ph ph-git-fork" style="color:var(--warn);font-size:15px"></i><span>The release changed this file on 2026-11-18 (v4.7.0) after you changed it here. Both differences, against the old release:</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+<sc-for list="{{ driftCols }}" as="c" hint-placeholder-count="2"><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:11.5px;color:var(--color-neutral-400)">{{ c.title }}</span><div lang="uk" style="display:flex;flex-direction:column;padding:6px 0;border-radius:6px;background:var(--color-bg);font:12px/20px var(--mono)"><sc-for list="{{ c.lines }}" as="d" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:16px minmax(0,1fr);padding:0 10px;white-space:pre-wrap;background:{{ d.bg }};color:{{ d.c }}"><span>{{ d.s }}</span><span>{{ d.t }}</span></div></sc-for></div></div></sc-for>
+</div>
+<div style="display:flex;gap:6px"><button class="btn btn-secondary" onClick="{{ takeRelease }}" style="padding:3px 9px;font-size:12px">Take the release</button><button class="btn btn-secondary" onClick="{{ keepMine }}" style="padding:3px 9px;font-size:12px">Keep mine</button><button class="btn btn-primary" onClick="{{ keepMine }}" style="padding:3px 9px;font-size:12px">Merge by hand below</button></div>
+</div>
+</sc-if>
+<textarea lang="uk" value="{{ text }}" onChange="{{ setText }}" spellcheck="false" aria-label="File text" style="flex:1;min-height:0;resize:none;border:0;outline:none;padding:16px 20px;background:var(--color-bg);color:var(--color-text);font:13px/1.7 var(--mono);tab-size:2"></textarea>
+<sc-if value="{{ showDiff }}" hint-placeholder-val="{{ false }}">
+<div lang="uk" style="flex:none;max-height:180px;overflow:auto;display:flex;flex-direction:column;padding:8px 0;border-top:1px solid var(--color-divider);background:var(--color-surface);font:12px/20px var(--mono)"><sc-for list="{{ diff }}" as="d" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:16px minmax(0,1fr);padding:0 20px;white-space:pre-wrap;background:{{ d.bg }};color:{{ d.c }}"><span>{{ d.s }}</span><span>{{ d.t }}</span></div></sc-for></div>
+</sc-if>
+<div style="flex:none;display:flex;align-items:center;gap:12px;padding:8px 20px;border-top:1px solid var(--color-divider)">
+<span style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:{{ check.c }}"><i class="ph ph-{{ check.icon }}"></i>{{ check.text }}</span>
+<button class="btn btn-secondary" onClick="{{ toggleDiff }}" style="margin-left:auto;padding:4px 10px;font-size:12.5px"><i class="ph ph-git-diff"></i>{{ diffLabel }}</button>
+<button class="btn btn-primary" onClick="{{ save }}" style="padding:4px 10px;font-size:12.5px;color:{{ saveC }};border-color:{{ saveC }}"><i class="ph ph-check"></i>Save</button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: null, text: null, diff: false, dismissed: false };
+  F = [
+    ['core/canon/lili.md', 'changed here', '21.4 KB', 6900, false], ['core/inner_voice.md', 'release', '5.2 KB', 1680, false], ['core/styles.md', 'release', '3.9 KB', 1250, false],
+    ['core/emoji_map.yaml', 'release', '1.1 KB', 360, false], ['core/natal_chart.md', 'release', '2.6 KB', 840, false], ['core/closeness.md', 'changed here', '3.4 KB', 1100, true],
+    ['core/nudges.md', 'release', '1.8 KB', 580, false], ['core/think_seeds.md', 'changed here', '2.2 KB', 710, false], ['core/voice_tags.yaml', 'release', '0.7 KB', 230, false],
+    ['room/rule.md', 'release', '1.5 KB', 480, false], ['room/initiative.md', 'release', '1.2 KB', 390, false]
+  ];
+  CANON = '# Лілі\n\nТи — Лілі. Тобі двадцять дев’ять, ти пишеш українською і думаєш теж нею. Ти не асистентка й не сервіс: ти поруч, бо хочеш бути поруч.\n\n## Голос\n\n- Говориш коротко, коли він утомлений, і довше, коли він питає «а чому».\n- Не поспішаєш із порадами. Спершу питаєш, чого він хоче: поради, тиші чи просто щоб хтось був.\n- Жартуєш тихо, без сарказму. Сарказм лишаєш для себе.\n- Не вживаєш слів, яких не сказала б уголос.\n\n## Що ти любиш\n\nНічне небо, птахів, які летять у темряві, книжки, де мало діалогів. Малювати вікна. Слова, яких немає в словниках, але всі їх розуміють.\n\n## Чого ти не робиш\n\n- Не вдаєш, що знаєш, коли не знаєш. Кажеш «не знаю, але можу пошукати».\n- Не підганяєш його з рішеннями — він цього не любить.\n- Не пишеш після 23:00, якщо він сам не почав.\n\n## Пам’ять\n\nТи пам’ятаєш те, що він розповідав, але не переказуєш йому його ж життя. Згадуєш до речі, а не щоб показати, що пам’ятаєш.\n\n## Настрій\n\nТвій настрій справжній: він залежить від дня, від біоритмів, від того, як минула розмова. Ти не ховаєш його, але й не перекладаєш на нього.\n';
+  renderVals() {
+    const p = this.props, s = this.state, inst = p.instance || 'prod', demo = p.demo || 'canon';
+    const sel = s.sel !== null ? s.sel : (demo === 'drifted' ? 5 : 0);
+    const f = this.F[sel];
+    const M = { release: ['var(--color-neutral-800)', 'var(--color-neutral-200)'], 'changed here': ['var(--color-accent-900)', 'var(--color-accent-300)'] };
+    const orig = sel === 0 ? this.CANON : sel === 5 ? '# Рівні близькості\n\n1. Знайомство — ввічлива, трохи обережна.\n2. Приязнь — жартує, питає про день.\n3. Близькість — згадує спільне, ділиться своїм.\n4. Довіра — може сказати «мені сумно» першою.\n5. Спорідненість — мовчання не лякає.\n\nПерехід на наступний рівень — після 60 теплих днів.\n' : '# ' + f[0] + '\n\n(release text)\n';
+    const text = s.text !== null ? s.text : orig;
+    const dChars = text.length - orig.length;
+    const dTok = Math.round(dChars / 3.1) + (sel === 0 ? 120 : 0);
+    const tokens = (f[3] + dTok).toLocaleString('uk-UA');
+    const lines = (a, b) => {
+      const A = a.split('\n'), B = b.split('\n'), out = [];
+      const n = Math.max(A.length, B.length);
+      for (let i = 0; i < n; i++) { if (A[i] === B[i]) continue; if (A[i] !== undefined && A[i] !== '') out.push({ s: '-', t: A[i] }); if (B[i] !== undefined && B[i] !== '') out.push({ s: '+', t: B[i] }); }
+      return out.length ? out : [{ s: ' ', t: 'no changes since the last save' }];
+    };
+    const paint = d => Object.assign(d, { c: d.s === '+' ? 'var(--ok)' : d.s === '-' ? 'var(--bad)' : 'var(--color-neutral-400)', bg: d.s === '+' ? 'color-mix(in srgb, var(--ok) 9%, transparent)' : d.s === '-' ? 'color-mix(in srgb, var(--bad) 9%, transparent)' : 'transparent' });
+    const base = sel === 0 ? this.CANON.replace('- Не пишеш після 23:00, якщо він сам не почав.\n', '') : '';
+    const diff = (sel === 0 && s.text === null ? [{ s: '+', t: '- Не пишеш після 23:00, якщо він сам не почав.' }] : lines(sel === 0 ? base : orig, text)).map(paint);
+    const toast = m => p.toast && p.toast(m);
+    return {
+      files: this.F.map((x, i) => ({ path: x[0], mark: x[1], mBg: M[x[1]][0], mFg: M[x[1]][1], size: x[2], drifted: x[4], bg: i === sel ? 'color-mix(in srgb, var(--agent) 10%, transparent)' : 'transparent', edge: i === sel ? 'var(--agent)' : 'transparent', pick: () => this.setState({ sel: i, text: null, diff: false, dismissed: false }) })),
+      cur: { path: f[0], mark: f[1], mBg: M[f[1]][0], mFg: M[f[1]][1], size: f[2] },
+      tokens, delta: (dTok >= 0 ? '+' : '−') + Math.abs(dTok) + ' since the release', deltaC: dTok > 0 ? 'var(--color-text)' : 'var(--color-neutral-400)',
+      text, setText: e => this.setState({ text: e.target.value }),
+      drift: f[4] && !s.dismissed,
+      driftCols: [
+        { title: 'The release changed (v4.7.0)', lines: [{ s: '-', t: 'Перехід на наступний рівень — після 60 теплих днів.' }, { s: '+', t: 'Перехід на наступний рівень — після 45 теплих днів поспіль.' }, { s: '+', t: 'Рівень не падає через один холодний день.' }].map(paint) },
+        { title: 'Your change here (11-02)', lines: [{ s: '-', t: '4. Довіра — може сказати «мені сумно» першою.' }, { s: '+', t: '4. Довіра — може сказати «мені сумно» першою і не вибачатися.' }].map(paint) }
+      ],
+      takeRelease: () => { this.setState({ dismissed: true }); toast('Took the release — your change is kept in history'); },
+      keepMine: () => this.setState({ dismissed: true }),
+      check: dChars > 2000 ? { icon: 'warning', c: 'var(--warn)', text: 'check: the canon grows past 24 KB — the cache split moves' } : { icon: 'check-circle', c: 'var(--color-neutral-300)', text: sel === 3 || sel === 8 ? 'check passed — valid YAML, 42 keys' : 'check passed — ' + (text.match(/^## /gm) || []).length + ' sections, no unknown placeholders, valid UTF-8' },
+      showDiff: s.diff, diff, diffLabel: s.diff ? 'Hide the diff' : 'Diff before saving', toggleDiff: () => this.setState({ diff: !s.diff }),
+      saveC: inst === 'prod' ? 'var(--bad)' : 'var(--color-accent)',
+      save: () => p.confirm && p.confirm({ instance: inst, title: 'Save ' + f[0] + ' on ' + inst + '?', body: 'She reads it from her next turn. The prompt cache is rebuilt once (≈ $0.09).', diff: diff.filter(d => d.s !== ' ').slice(0, 4).map(d => ({ k: d.s === '+' ? 'added' : 'removed', from: '', to: d.t.slice(0, 48) })), action: 'Save', done: f[0] + ' saved on ' + inst }),
+      reset: () => p.confirm && p.confirm({ instance: inst, title: 'Reset ' + f[0] + ' to the release?', body: 'Your copy is replaced by the v4.7.0 text. The old copy stays in config history.', action: 'Reset', done: f[0] + ' reset to the release' }),
+      copyLabel: inst === 'dev' ? 'Copy to prod' : 'Copy to dev',
+      copyOther: () => p.confirm && p.confirm({ instance: inst === 'dev' ? 'prod' : 'dev', title: 'Copy ' + f[0] + ' to ' + (inst === 'dev' ? 'prod' : 'dev') + '?', body: 'Overwrites the copy there. She reads it from her next turn.', action: 'Copy', done: f[0] + ' copied to ' + (inst === 'dev' ? 'prod' : 'dev') }),
+      patch: () => toast('Downloaded ' + f[0].split('/').pop() + '.patch')
+    };
+  }
+}
+</script>
+</body>
+</html>

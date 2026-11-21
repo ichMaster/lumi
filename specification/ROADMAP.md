@@ -2096,7 +2096,7 @@ the tool descriptions unchanged.
 
 ## v5 — The admin panel II: the server and the agent
 
-**Status:** 🔲 Planned — the design brief is written ([design/v5/BRIEF.md](../design/v5/BRIEF.md)); v5.1 waits for the Claude Design pass.
+**Status:** 🔲 Planned — the design is in [design/v5/handoff/](../design/v5/handoff/README.md) (2026-11-21); next `/generate-issues v5.1`.
 
 The v2.10–v2.11 panel (`lumi-admin` on the box, port 8767) watches and configures both instances: eight health
 checks, the containers' start / stop / restart, a 7-day usage table, a log tail, the settings editor with history and
@@ -2111,9 +2111,10 @@ texts (the canon and the other `core/*.md`) edited per instance, and the last tu
 about the owner, read and corrected (v5.8); her thoughts, gallery, journal and files (v5.9); the window's edits of her
 files (v5.10). The owner placed it as v5 on 2026-11-20, and the later versions moved up by one.
 
-The concept, the new records and the open questions are in [ADMIN_PANEL_II.md](features/ADMIN_PANEL_II.md). **A
-Claude Design pass on the whole panel comes before v5.1**: the brief is [design/v5/BRIEF.md](../design/v5/BRIEF.md),
-and its handoff is folded into the spec before `/generate-issues v5.1`.
+The concept, the new records and the open questions are in [ADMIN_PANEL_II.md](features/ADMIN_PANEL_II.md). **The
+design** was made in Claude Design from [design/v5/BRIEF.md](../design/v5/BRIEF.md); its handoff is in
+[design/v5/handoff/](../design/v5/handoff/README.md) (2026-11-21), and the brief's last section lists what each phase
+still has to handle.
 
 **Invariants of v5:**
 - **The server and the agent are separate** in the page, the API and the registry. The server: the box, the

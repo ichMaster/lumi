@@ -1,0 +1,94 @@
+/* Lumi admin v5 — tokens.
+   Base: the Nocturne token sheet (styles.css) — ground, surface, text, accent, the 100–900 ramps,
+   spacing, radii, shadows. This file adds only what the panel needs on top: state colors,
+   instance and agent colors, provider colors, type sizes for a dense console, and the light theme.
+   Rules: color means state only; prod is red wherever it appears; an agent's color is never a state color. */
+
+:root {
+  color-scheme: dark;
+
+  /* — state (green / amber / red / off) — */
+  --ok:   oklch(0.76 0.14 152);
+  --warn: oklch(0.82 0.13 80);
+  --bad:  oklch(0.70 0.17 25);
+  --off:  #75798c;                                   /* = neutral-600 */
+  --ok-cell: color-mix(in srgb, var(--ok) 45%, transparent); /* green cells in timeline strips stay quiet */
+  --state-tint: 10%;                                 /* attention strip / banners: color-mix(var(--warn) 10%, bg) */
+
+  /* — instances — */
+  --prod: var(--bad);                                /* the switcher, a card's edge, a confirmation */
+  --prod-tag-bg: color-mix(in srgb, var(--bad) 18%, transparent);
+  --dev: var(--color-neutral-200);
+  --dev-tag-bg: var(--color-neutral-800);
+  --box-tag-bg: var(--color-accent-900);
+  --box-tag-fg: var(--color-accent-300);
+
+  /* — agents (never a state color) — */
+  --agent:   oklch(0.78 0.11 330);                   /* Lili — orchid */
+  --agent-2: oklch(0.80 0.08 210);                   /* the second agent's slot — cyan */
+  --agent-tint: color-mix(in srgb, var(--agent) 15%, transparent);
+
+  /* — providers (muted, categorical) — */
+  --provider-anthropic:  var(--color-accent-500);
+  --provider-google:     var(--color-neutral-400);
+  --provider-elevenlabs: var(--color-accent-700);
+  --provider-deepgram:   var(--color-neutral-600);
+  --provider-openai:     var(--color-accent-300);
+
+  /* — charts — */
+  --chart-line: var(--color-neutral-200);
+  --chart-line-2: var(--color-neutral-500);          /* dashed */
+  --chart-band: color-mix(in srgb, var(--color-neutral-400) 16%, transparent);
+  --chart-grid: var(--color-neutral-900);
+  --chart-gap: var(--color-neutral-700);             /* outline of a no-data cell */
+
+  /* — diff — */
+  --diff-add: var(--ok);   --diff-add-bg: color-mix(in srgb, var(--ok) 9%, transparent);
+  --diff-del: var(--bad);  --diff-del-bg: color-mix(in srgb, var(--bad) 9%, transparent);
+  --match-bg: color-mix(in srgb, var(--color-accent) 38%, transparent);   /* log regex match */
+  --search-bg: color-mix(in srgb, var(--warn) 40%, transparent);          /* history search */
+
+  /* — type (Inter + system mono) — */
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --fs-label: 10.5px;   /* uppercase, .08em tracking, neutral-500 */
+  --fs-meta: 11.5px;
+  --fs-ui: 13px;        /* tables, controls */
+  --fs-title: 17px;     /* view title */
+  --fs-read: 15px;      /* her content: history, summaries, thoughts */
+  --fs-journal: 16px;   /* journal entries, 1.7 line height */
+  --lh-ui: 1.45;
+  --lh-read: 1.6;
+
+  /* — layout — */
+  --rail-w: 236px;
+  --strip-h: 32px;
+  --header-h: 52px;
+  --row-h: 34px;        /* dense table row */
+  --log-row-h: 20px;
+  --rule-fade: 48px;    /* Nocturne: rules fade to transparent over 48px a side */
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f3f5fe;
+  --color-surface: #e8ebf8;
+  --color-text: #292b31;
+  --color-accent: #6658b5;
+  --color-divider: color-mix(in srgb, #292b31 15%, transparent);
+  /* ramps flipped so "dark steps for fills, light steps for text" keeps working */
+  --color-neutral-100: #292b31; --color-neutral-200: #3f424d; --color-neutral-300: #4b4f5c;
+  --color-neutral-400: #595d6c; --color-neutral-500: #6a6e80; --color-neutral-600: #9397ab;
+  --color-neutral-700: #b2b6ca; --color-neutral-800: #d5d9ea; --color-neutral-900: #e2e5f3;
+  --color-accent-100: #2b2741; --color-accent-200: #423a6a; --color-accent-300: #5d5294;
+  --color-accent-400: #6c60b8; --color-accent-500: #796cbf; --color-accent-600: #968ae0;
+  --color-accent-700: #b5abfc; --color-accent-800: #dcd8fd; --color-accent-900: #ebe9fe;
+  --ok: oklch(0.52 0.13 152);
+  --warn: oklch(0.58 0.13 70);
+  --bad: oklch(0.54 0.19 25);
+  --off: #8a8ea2;
+  --agent: oklch(0.52 0.15 330);
+  --agent-2: oklch(0.55 0.09 210);
+  --shadow-sm: 0 0 0 1px #cfd3e5;
+  --shadow-md: 0 0 0 1px #b2b6ca, 0 6px 18px rgba(41,43,49,.12);
+  --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(41,43,49,.18);
+}

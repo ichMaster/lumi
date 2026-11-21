@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<style>
+body{margin:0;background:var(--color-bg);overflow:hidden}
+:root{color-scheme:dark;--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}
+[data-theme="light"]{color-scheme:light;--color-bg:#f3f5fe;--color-surface:#e8ebf8;--color-text:#292b31;--color-accent:#6658b5;--color-divider:color-mix(in srgb,#292b31 15%,transparent);--color-neutral-100:#292b31;--color-neutral-200:#3f424d;--color-neutral-300:#4b4f5c;--color-neutral-400:#595d6c;--color-neutral-500:#6a6e80;--color-neutral-600:#9397ab;--color-neutral-700:#b2b6ca;--color-neutral-800:#d5d9ea;--color-neutral-900:#e2e5f3;--color-accent-100:#2b2741;--color-accent-200:#423a6a;--color-accent-300:#5d5294;--color-accent-400:#6c60b8;--color-accent-500:#796cbf;--color-accent-600:#968ae0;--color-accent-700:#b5abfc;--color-accent-800:#dcd8fd;--color-accent-900:#ebe9fe;--ok:oklch(0.52 0.13 152);--warn:oklch(0.58 0.13 70);--bad:oklch(0.54 0.19 25);--off:#8a8ea2;--agent:oklch(0.52 0.15 330);--agent-2:oklch(0.55 0.09 210);--shadow-sm:0 0 0 1px #cfd3e5;--shadow-md:0 0 0 1px #b2b6ca,0 6px 18px rgba(41,43,49,.12);--shadow-lg:0 0 0 1px #9397ab,0 16px 40px rgba(41,43,49,.18)}
+a{color:var(--color-accent)}a:hover{color:var(--color-accent-300)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--color-neutral-800);border-radius:5px;border:2px solid var(--color-bg)}::-webkit-scrollbar-track{background:transparent}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="height:100vh;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:13px;line-height:1.45;overflow:hidden">
+
+<sc-if value="{{ signedOut }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;display:grid;place-items:center;padding:24px;background:radial-gradient(800px 400px at 20% 0%,color-mix(in srgb,var(--color-accent) 10%,transparent),transparent)">
+<form onSubmit="{{ signIn }}" style="width:min(380px,100%);display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:18px;font-weight:500;letter-spacing:-.01em">lumi</span><span style="font-size:13px;color:var(--color-neutral-400)">admin</span></div>
+<div><h1 style="font-size:24px;margin:0 0 4px">Sign in to the panel</h1><div style="font:12px var(--mono);color:var(--color-neutral-400)">slate-server · 192.168.1.197:8767 · home network</div></div>
+<div class="field"><label>Panel token</label><input class="input" type="password" autoFocus="{{ true }}" value="{{ token }}" onChange="{{ onToken }}" placeholder="paste the token" style="font-family:var(--mono)"></div>
+<sc-if value="{{ tokenErr }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--bad)"><i class="ph ph-warning-circle" style="font-size:15px;margin-top:1px"></i><span>The token was refused. It lives in <code style="font-family:var(--mono)">~/lumi/admin/secrets.yaml</code> on the box (<code style="font-family:var(--mono)">admin.token</code>).</span></div></sc-if>
+<button class="btn btn-primary btn-block" type="submit" style="height:36px">Sign in</button>
+<div style="font-size:12px;color:var(--color-neutral-500);text-wrap:pretty">The token stays in this tab’s session. The panel never holds Lili’s own token.</div>
+</form>
+</div>
+</sc-if>
+
+<sc-if value="{{ signedIn }}" hint-placeholder-val="{{ true }}">
+<div style="flex:none;display:flex;align-items:center;gap:10px;height:32px;padding:0 12px 0 14px;background:{{ strip.bg }};border-bottom:1px solid var(--color-divider);font-size:12px;overflow:hidden">
+<span style="flex:none;display:flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;color:{{ strip.labelColor }}"><i class="ph ph-{{ strip.icon }}" style="font-size:14px"></i>{{ strip.label }}</span>
+<div style="display:flex;gap:6px;min-width:0;overflow:hidden">
+<sc-for list="{{ strip.items }}" as="s" hint-placeholder-count="1">
+<button onClick="{{ s.go }}" title="{{ s.title }}" style="flex:none;display:flex;align-items:center;gap:7px;height:22px;padding:0 8px;border:1px solid var(--color-divider);border-radius:4px;background:var(--color-bg);color:inherit;font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap" style-hover="background:var(--color-surface)">
+<span style="width:7px;height:7px;border-radius:50%;background:{{ s.color }}"></span>
+<span style="font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:{{ s.instBg }};color:{{ s.instFg }}">{{ s.inst }}</span>
+<span style="color:var(--color-neutral-400)">{{ s.kind }}</span>
+<span>{{ s.text }}</span>
+<span style="font-family:var(--mono);font-size:11px;color:var(--color-neutral-500)">{{ s.age }}</span>
+<i class="ph ph-arrow-right" style="color:var(--color-neutral-500)"></i>
+</button>
+</sc-for>
+</div>
+<span style="margin-left:auto;flex:none;font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--color-neutral-400)">{{ strip.summary }}</span>
+</div>
+
+<div style="flex:1;min-height:0;display:flex">
+<nav style="flex:none;width:236px;display:flex;flex-direction:column;border-right:1px solid var(--color-divider);background:color-mix(in srgb,var(--color-surface) 40%,var(--color-bg))">
+<div style="flex:none;display:flex;flex-direction:column;gap:1px;padding:14px 16px 10px">
+<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:16px;font-weight:500;letter-spacing:-.01em">lumi</span><span style="font-size:12.5px;color:var(--color-neutral-400)">admin</span><span style="margin-left:auto;font:10.5px var(--mono);color:var(--color-neutral-500)">v5</span></div>
+<div style="font:11px var(--mono);color:var(--color-neutral-500)">slate-server · 192.168.1.197</div>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:4px 10px 14px 12px">
+<sc-for list="{{ navTop }}" as="it" hint-placeholder-count="1">
+<button onClick="{{ it.go }}" style="display:flex;align-items:center;gap:9px;width:100%;height:28px;padding:0 8px 0 10px;border:0;border-radius:4px;background:{{ it.bg }};color:{{ it.fg }};font-family:inherit;font-size:13px;cursor:pointer;text-align:left;position:relative" style-hover="background:{{ it.hbg }}"><span style="position:absolute;left:-6px;top:7px;bottom:7px;width:2px;border-radius:1px;background:{{ it.mark }}"></span><i class="ph ph-{{ it.icon }}" style="font-size:15px;color:{{ it.ic }}"></i><span style="flex:1">{{ it.label }}</span><span style="font:10px var(--mono);color:var(--color-neutral-600)">G O</span></button>
+</sc-for>
+
+<div style="display:flex;align-items:center;gap:6px;margin:16px 0 2px;padding:0 10px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-400)"><i class="ph ph-hard-drives" style="font-size:13px"></i>Server</div>
+<sc-for list="{{ navServer }}" as="g" hint-placeholder-count="3">
+<div style="padding:9px 10px 3px;font-size:11px;color:var(--color-neutral-500)">{{ g.name }}</div>
+<sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+<button onClick="{{ it.go }}" style="display:flex;align-items:center;gap:9px;width:100%;height:27px;padding:0 8px 0 10px;border:0;border-radius:4px;background:{{ it.bg }};color:{{ it.fg }};font-family:inherit;font-size:13px;cursor:pointer;text-align:left;position:relative" style-hover="background:{{ it.hbg }}"><span style="position:absolute;left:-6px;top:7px;bottom:7px;width:2px;border-radius:1px;background:{{ it.mark }}"></span><i class="ph ph-{{ it.icon }}" style="font-size:15px;color:{{ it.ic }}"></i><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.label }}</span><sc-if value="{{ it.badge }}" hint-placeholder-val="{{ false }}"><span style="min-width:17px;height:17px;padding:0 5px;border-radius:9px;font:500 10.5px/17px var(--mono);text-align:center;background:{{ it.badgeBg }};color:{{ it.badgeFg }}">{{ it.badge }}</span></sc-if></button>
+</sc-for>
+</sc-for>
+
+<div style="margin:18px 0 0;padding:0 0 4px 8px;box-shadow:inset 2px 0 0 color-mix(in srgb,var(--agent) 45%,transparent);border-radius:1px">
+<div style="display:flex;align-items:center;gap:6px;margin:0 0 6px;padding:0 2px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--agent)"><i class="ph ph-user-circle" style="font-size:13px"></i>Agent</div>
+<div style="position:relative">
+<button onClick="{{ togglePicker }}" aria-expanded="{{ picker }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:6px 8px;border:1px solid color-mix(in srgb,var(--agent) 30%,transparent);border-radius:6px;background:color-mix(in srgb,var(--agent) 8%,transparent);color:inherit;font-family:inherit;cursor:pointer;text-align:left" style-hover="background:color-mix(in srgb,var(--agent) 14%,transparent)">
+<span style="flex:none;width:26px;height:26px;border-radius:6px;display:grid;place-items:center;background:color-mix(in srgb,var(--agent) 24%,transparent);color:var(--agent);font-weight:600;font-size:13px">L</span>
+<span style="flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25"><span style="font-size:13.5px;font-weight:500">Lili</span><span style="font-size:11px;color:var(--color-neutral-400)">1 agent · companion</span></span>
+<i class="ph ph-caret-up-down" style="color:var(--color-neutral-400)"></i>
+</button>
+<sc-if value="{{ picker }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);padding:4px;border-radius:8px;background:var(--color-surface);box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:2px">
+<button onClick="{{ togglePicker }}" style="display:flex;align-items:center;gap:9px;padding:6px;border:0;border-radius:5px;background:color-mix(in srgb,var(--agent) 12%,transparent);color:inherit;font-family:inherit;text-align:left;cursor:pointer"><span style="width:22px;height:22px;border-radius:5px;display:grid;place-items:center;background:color-mix(in srgb,var(--agent) 24%,transparent);color:var(--agent);font-weight:600;font-size:12px">L</span><span style="flex:1;font-size:13px">Lili</span><i class="ph ph-check" style="color:var(--agent)"></i></button>
+<div style="display:flex;align-items:center;gap:9px;padding:6px;border-radius:5px;color:var(--color-neutral-400)"><span style="width:22px;height:22px;border-radius:5px;display:grid;place-items:center;border:1px dashed var(--agent-2);color:var(--agent-2);font-size:12px"><i class="ph ph-plus"></i></span><span style="flex:1;display:flex;flex-direction:column;line-height:1.25"><span style="font-size:12.5px">Second agent</span><span style="font-size:11px;color:var(--color-neutral-500)">appears here in the next version, with its own color</span></span></div>
+</div>
+</sc-if>
+</div>
+<sc-for list="{{ navAgent }}" as="g" hint-placeholder-count="2">
+<div style="padding:10px 10px 3px;font-size:11px;color:var(--color-neutral-500)">{{ g.name }}</div>
+<sc-for list="{{ g.items }}" as="it" hint-placeholder-count="6">
+<sc-if value="{{ it.isHead }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:9px;height:25px;padding:0 10px;font-size:13px;color:var(--color-neutral-400)"><i class="ph ph-{{ it.icon }}" style="font-size:15px;color:var(--color-neutral-500)"></i>{{ it.label }}</div></sc-if>
+<sc-if value="{{ it.isLink }}" hint-placeholder-val="{{ true }}"><button onClick="{{ it.go }}" style="display:flex;align-items:center;gap:9px;width:100%;height:27px;padding:0 8px 0 {{ it.pad }};border:0;border-radius:4px;background:{{ it.bg }};color:{{ it.fg }};font-family:inherit;font-size:13px;cursor:pointer;text-align:left;position:relative" style-hover="background:{{ it.hbg }}"><span style="position:absolute;left:-6px;top:7px;bottom:7px;width:2px;border-radius:1px;background:{{ it.mark }}"></span><i class="ph ph-{{ it.icon }}" style="font-size:15px;color:{{ it.ic }}"></i><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.label }}</span></button></sc-if>
+</sc-for>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:none;display:flex;flex-direction:column;gap:8px;padding:10px 12px 12px;border-top:1px solid var(--color-divider);position:relative">
+<button onClick="{{ toggleDemo }}" style="display:flex;align-items:center;gap:7px;width:100%;height:28px;padding:0 8px;border:1px dashed var(--color-neutral-700);border-radius:5px;background:transparent;color:var(--color-neutral-400);font-family:inherit;font-size:11.5px;cursor:pointer;text-align:left" style-hover="color:var(--color-text);border-color:var(--color-neutral-500)"><i class="ph ph-flask" style="font-size:13px"></i><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Mockup state: {{ demoLabel }}</span><i class="ph ph-caret-up"></i></button>
+<sc-if value="{{ demoOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;z-index:30;left:12px;right:12px;bottom:calc(100% - 46px);transform:translateY(-100%);padding:4px;border-radius:8px;background:var(--color-surface);box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:1px">
+<div style="padding:4px 8px 3px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">States of {{ title }}</div>
+<sc-for list="{{ demoOpts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:0;border-radius:4px;background:{{ o.bg }};color:inherit;font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 7%,transparent)"><i class="ph ph-check" style="color:{{ o.check }}"></i>{{ o.label }}</button></sc-for>
+</div>
+</sc-if>
+<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;white-space:nowrap;color:var(--color-neutral-400)"><i class="ph ph-key" style="font-size:13px"></i><span style="font-family:var(--mono)">token ···a91f</span><button onClick="{{ signOut }}" title="Sign out" class="btn btn-ghost" style="margin-left:auto;padding:2px 4px;font-size:11.5px;white-space:nowrap;color:var(--color-neutral-400)"><i class="ph ph-sign-out"></i>Sign out</button></div>
+<div style="display:flex;gap:10px;font:10.5px var(--mono);white-space:nowrap;color:var(--color-neutral-500)"><span>P / D instance</span><span>J / K view</span><a href="Components.dc.html" style="margin-left:auto;color:var(--color-neutral-400)">components</a></div>
+</div>
+</nav>
+
+<main style="flex:1;min-width:0;display:flex;flex-direction:column;border-top:2px solid {{ prodEdge }}">
+<header style="flex:none;display:flex;align-items:center;gap:14px;height:52px;padding:0 20px 0 24px;border-bottom:1px solid var(--color-divider)">
+<div style="display:flex;flex-direction:column;min-width:0;line-height:1.2">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:{{ crumbColor }};white-space:nowrap">{{ crumb }}</div>
+<div style="font-size:17px;font-weight:500;letter-spacing:-.01em;white-space:nowrap">{{ title }}</div>
+</div>
+<div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex:none">
+<span title="{{ scopeLabel }}" style="display:flex;align-items:center;gap:6px;font:11px var(--mono);white-space:nowrap;color:var(--color-neutral-500)"><i class="ph ph-{{ scopeIcon }}" style="font-size:13px"></i>{{ updated }}</span>
+<div role="radiogroup" aria-label="Instance" style="display:flex;height:30px;border:1px solid var(--color-divider);border-radius:6px;overflow:hidden">
+<button role="radio" aria-checked="{{ sw.prodOn }}" onClick="{{ toProd }}" style="display:flex;align-items:center;gap:7px;padding:0 10px;border:0;background:{{ sw.prodBg }};box-shadow:{{ sw.prodRing }};color:{{ sw.prodFg }};font-family:inherit;font-size:12.5px;cursor:pointer"><span style="width:7px;height:7px;border-radius:50%;background:var(--bad)"></span><span style="font-weight:500">prod</span><span style="font:11px var(--mono);white-space:nowrap;color:var(--color-neutral-400)">v4.7.0</span></button>
+<button role="radio" aria-checked="{{ sw.devOn }}" onClick="{{ toDev }}" style="display:flex;align-items:center;gap:7px;padding:0 10px;border:0;border-left:1px solid var(--color-divider);background:{{ sw.devBg }};box-shadow:{{ sw.devRing }};color:{{ sw.devFg }};font-family:inherit;font-size:12.5px;cursor:pointer"><span style="width:7px;height:7px;border-radius:50%;border:1.5px solid var(--color-neutral-400)"></span><span style="font-weight:500">dev</span><span style="font:11px var(--mono);white-space:nowrap;color:var(--color-neutral-400)">sha-6b80895</span></button>
+</div>
+<button class="btn btn-secondary btn-icon" onClick="{{ toggleTheme }}" title="Theme" style="width:30px;height:30px"><i class="ph ph-{{ themeIcon }}" style="font-size:15px"></i></button>
+</div>
+</header>
+
+<div id="lumi-main-scroll" style="flex:1;min-height:0;overflow:auto;position:relative">
+<sc-if value="{{ ov.loading }}" hint-placeholder-val="{{ false }}">
+<div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px;max-width:1200px" aria-busy="true">
+<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-neutral-400)"><i class="ph ph-circle-notch" style="font-size:14px"></i>Loading {{ title }} from {{ instance }}…</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px"><div style="height:86px;border-radius:8px;background:var(--color-surface)"></div><div style="height:86px;border-radius:8px;background:var(--color-surface)"></div><div style="height:86px;border-radius:8px;background:var(--color-surface)"></div></div>
+<sc-for list="{{ skel }}" as="k" hint-placeholder-count="8"><div style="display:flex;gap:16px;align-items:center;height:26px"><div style="width:90px;height:9px;border-radius:3px;background:var(--color-neutral-900)"></div><div style="width:{{ k.w }};height:9px;border-radius:3px;background:var(--color-neutral-900)"></div><div style="margin-left:auto;width:60px;height:9px;border-radius:3px;background:var(--color-neutral-900)"></div></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ ov.unreachable }}" hint-placeholder-val="{{ false }}">
+<div style="padding:48px 24px;display:flex;flex-direction:column;gap:14px;max-width:620px">
+<div style="width:40px;height:40px;border-radius:8px;display:grid;place-items:center;background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)"><i class="ph ph-plugs" style="font-size:22px"></i></div>
+<h2 style="font-size:22px;margin:0">Can’t reach {{ instance }}’s server</h2>
+<div style="font-size:13.5px;color:var(--color-neutral-300);text-wrap:pretty">{{ title }} needs an answer from {{ instance }}’s server, and it isn’t answering. The rest of the panel still works.</div>
+<div style="font:12px/1.7 var(--mono);padding:10px 12px;border-radius:6px;background:var(--color-neutral-900);color:var(--color-neutral-300)">GET http://192.168.1.197:{{ port }}/v1/state — connection refused<br>last answer 21:34:02 (6 min ago) · retrying in 24 s</div>
+<div style="display:flex;gap:8px"><button class="btn btn-primary" onClick="{{ retry }}"><i class="ph ph-arrow-clockwise"></i>Retry now</button><button class="btn btn-secondary" onClick="{{ goContainers }}"><i class="ph ph-cube"></i>Containers</button><button class="btn btn-secondary" onClick="{{ goLogs }}"><i class="ph ph-scroll"></i>Logs</button></div>
+</div>
+</sc-if>
+<sc-if value="{{ ov.empty }}" hint-placeholder-val="{{ false }}">
+<div style="padding:64px 24px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:560px">
+<i class="ph ph-{{ empty.icon }}" style="font-size:28px;color:var(--color-neutral-500)"></i>
+<div style="font-size:17px;font-weight:500">{{ empty.title }}</div>
+<div style="font-size:13px;color:var(--color-neutral-400);text-wrap:pretty">{{ empty.sub }}</div>
+<button class="btn btn-secondary" onClick="{{ retry }}" style="margin-top:4px">{{ empty.action }}</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ v.overview }}" hint-placeholder-val="{{ true }}"><dc-import name="Overview" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.health }}" hint-placeholder-val="{{ false }}"><dc-import name="Health" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.incidents }}" hint-placeholder-val="{{ false }}"><dc-import name="Incidents" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.containers }}" hint-placeholder-val="{{ false }}"><dc-import name="Containers" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.logs }}" hint-placeholder-val="{{ false }}"><dc-import name="Logs" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,820px"></dc-import></sc-if>
+<sc-if value="{{ v.alerts }}" hint-placeholder-val="{{ false }}"><dc-import name="Alerts" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.config }}" hint-placeholder-val="{{ false }}"><dc-import name="Configuration" sub="{{ view }}" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.audit }}" hint-placeholder-val="{{ false }}"><dc-import name="Audit" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.state }}" hint-placeholder-val="{{ false }}"><dc-import name="State" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.history }}" hint-placeholder-val="{{ false }}"><dc-import name="History" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,820px"></dc-import></sc-if>
+<sc-if value="{{ v.memory }}" hint-placeholder-val="{{ false }}"><dc-import name="Memory" sub="{{ view }}" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.thoughts }}" hint-placeholder-val="{{ false }}"><dc-import name="Thoughts" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.gallery }}" hint-placeholder-val="{{ false }}"><dc-import name="Gallery" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.journal }}" hint-placeholder-val="{{ false }}"><dc-import name="Journal" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.files }}" hint-placeholder-val="{{ false }}"><dc-import name="Files" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.usage }}" hint-placeholder-val="{{ false }}"><dc-import name="Usage" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.tools }}" hint-placeholder-val="{{ false }}"><dc-import name="Tools" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.schedule }}" hint-placeholder-val="{{ false }}"><dc-import name="Schedule" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.models }}" hint-placeholder-val="{{ false }}"><dc-import name="Models" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{ v.texts }}" hint-placeholder-val="{{ false }}"><dc-import name="Texts" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,820px"></dc-import></sc-if>
+<sc-if value="{{ v.prompt }}" hint-placeholder-val="{{ false }}"><dc-import name="Prompt" instance="{{ instance }}" demo="{{ demoKey }}" go="{{ go }}" confirm="{{ askConfirm }}" toast="{{ showToast }}" hint-size="100%,860px"></dc-import></sc-if>
+</div>
+</main>
+</div>
+</sc-if>
+
+<sc-if value="{{ dlg }}" hint-placeholder-val="{{ false }}">
+<div class="dialog-backdrop" onClick="{{ closeDlg }}" style="z-index:60">
+<div class="dialog" role="dialog" aria-modal="true" onClick="{{ stop }}" style="width:min(500px,100%);gap:12px;box-shadow:var(--shadow-lg),inset 0 3px 0 {{ dlg.edge }}">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font:500 11px var(--mono);padding:2px 7px;border-radius:4px;background:{{ dlg.instBg }};color:{{ dlg.instFg }}">{{ dlg.instance }}</span>
+<div class="dialog-title" style="font-size:17px">{{ dlg.title }}</div>
+</div>
+<div class="dialog-body" style="font-size:13px;text-wrap:pretty">{{ dlg.body }}</div>
+<sc-if value="{{ dlg.hasDiff }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;border-radius:6px;background:var(--color-neutral-900);padding:8px 10px;font:12px/1.6 var(--mono)">
+<sc-for list="{{ dlg.diff }}" as="d" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:10px"><span style="color:var(--color-neutral-300);overflow:hidden;text-overflow:ellipsis">{{ d.k }}</span><span><span style="color:var(--bad);text-decoration:line-through">{{ d.from }}</span> → <span style="color:var(--ok)">{{ d.to }}</span></span></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ dlg.needsType }}" hint-placeholder-val="{{ false }}">
+<div class="field"><label>Type <b style="font-family:var(--mono);color:var(--bad);font-weight:500">prod</b> to confirm</label><input class="input" value="{{ typed }}" onChange="{{ onTyped }}" autoFocus="{{ true }}" placeholder="prod" style="font-family:var(--mono);border-color:color-mix(in srgb,var(--bad) 50%,transparent)"></div>
+</sc-if>
+<div class="dialog-actions"><button class="btn btn-secondary" onClick="{{ closeDlg }}">Cancel <span style="font:10.5px var(--mono);color:var(--color-neutral-500)">Esc</span></button><button class="btn btn-primary" disabled="{{ cannotConfirm }}" onClick="{{ doConfirm }}" style="color:{{ dlg.btn }};border-color:{{ dlg.btn }}">{{ dlg.action }}</button></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+<div role="status" style="position:fixed;z-index:70;right:20px;bottom:20px;display:flex;align-items:center;gap:10px;padding:9px 10px 9px 12px;border-radius:8px;background:var(--color-surface);box-shadow:var(--shadow-md);font-size:13px;max-width:440px">
+<i class="ph-fill ph-check-circle" style="font-size:16px;color:var(--ok)"></i><span style="text-wrap:pretty">{{ toast }}</span><button onClick="{{ hideToast }}" class="btn btn-ghost" style="padding:2px;color:var(--color-neutral-400)" aria-label="Dismiss"><i class="ph ph-x"></i></button>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark'|'light'&quot;},&quot;scenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;sample&quot;,&quot;green&quot;,&quot;devdown&quot;,&quot;prodalert&quot;,&quot;unreach&quot;],&quot;default&quot;:&quot;sample&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showSignIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { view: null, instance: 'prod', theme: null, signedIn: null, demo: {}, dlg: null, typed: '', toast: null, token: '', tokenErr: false, picker: false, demoOpen: false };
+
+  NAV = {
+    top: [{ id: 'overview', label: 'Overview', icon: 'squares-four' }],
+    server: [
+      { name: 'Operations', items: [
+        { id: 'health', label: 'Health', icon: 'heartbeat', both: true },
+        { id: 'incidents', label: 'Incidents', icon: 'warning-diamond' },
+        { id: 'containers', label: 'Containers', icon: 'cube', both: true },
+        { id: 'logs', label: 'Logs', icon: 'scroll' },
+        { id: 'alerts', label: 'Alerts', icon: 'bell-simple-ringing' }] },
+      { name: 'Configuration', items: [
+        { id: 'settings', label: 'Settings', icon: 'sliders-horizontal' },
+        { id: 'secrets', label: 'Secrets', icon: 'key' },
+        { id: 'confighistory', label: 'Config history', icon: 'clock-counter-clockwise' },
+        { id: 'promote', label: 'Promote', icon: 'arrow-fat-lines-up' }] },
+      { name: 'Audit', items: [{ id: 'audit', label: 'Audit', icon: 'fingerprint' }] }],
+    agent: [
+      { name: 'Her', items: [
+        { id: 'state', label: 'State', icon: 'gauge' },
+        { id: 'history', label: 'History', icon: 'chats-teardrop' },
+        { head: true, label: 'Memory', icon: 'brain' },
+        { id: 'summaries', label: 'Summaries', sub: true, group: 'Memory' },
+        { id: 'facts', label: 'Facts', sub: true, group: 'Memory' },
+        { id: 'thoughts', label: 'Thoughts', icon: 'cloud' },
+        { id: 'gallery', label: 'Gallery', icon: 'images-square' },
+        { id: 'journal', label: 'Journal', icon: 'book-open-text' },
+        { id: 'files', label: 'Files', icon: 'folder-simple' }] },
+      { name: 'How she runs', items: [
+        { id: 'usage', label: 'Usage', icon: 'chart-bar', both: true },
+        { id: 'tools', label: 'Tools', icon: 'wrench' },
+        { id: 'schedule', label: 'Schedule', icon: 'calendar-blank' },
+        { id: 'models', label: 'Models', icon: 'cpu' },
+        { id: 'texts', label: 'Texts', icon: 'text-aa' },
+        { id: 'prompt', label: 'Prompt', icon: 'terminal-window' }] }]
+  };
+
+  DEMO = {
+    overview: [['sample', 'Sample — dev alert firing'], ['green', 'Both green'], ['devdown', 'Dev down'], ['prodalert', 'Prod alert firing'], ['unreach', 'Can’t reach dev’s server']],
+    logs: [['live', 'Live tail'], ['paused', 'Scrolled up — paused'], ['match', 'Regex match with context']],
+    history: [['normal', 'Conversation'], ['search', 'Search with matches'], ['noresults', 'Search — no results']],
+    facts: [['normal', 'Facts'], ['refused', 'Edit refused — turn running']],
+    prompt: [['normal', 'Last turn'], ['none', 'No turn since restart']],
+    texts: [['canon', 'Canon — changed here'], ['drifted', 'Drifted file']],
+    audit: [['intact', 'Chain intact'], ['broken', 'Chain broken at line N']],
+    incidents: [['open', 'Incident opened'], ['list', 'List only']],
+    containers: [['open', 'Container opened'], ['list', 'List only']]
+  };
+
+  EMPTY = {
+    incidents: ['warning-diamond', 'No incidents in 30 days', 'The last one closed 2026-11-19 21:59 on dev.', 'Show 90 days'],
+    alerts: ['bell-simple', 'Nothing is firing', 'All 9 rules are quiet. The last alert was sent 2026-11-19 21:53.', 'Show history'],
+    audit: ['fingerprint', 'No entries match these filters', 'Try a wider range or another source.', 'Clear filters'],
+    summaries: ['brain', 'Nothing remembered in this range', 'Her first summary was written 2026-09-14.', 'Clear the range'],
+    facts: ['brain', 'No facts match', 'Search covers the text and the source line.', 'Clear search'],
+    thoughts: ['cloud', 'No thoughts match these filters', 'She has had 412 thoughts in 30 days.', 'Clear filters'],
+    gallery: ['images-square', 'No pictures yet', 'Her pictures appear here once she draws one.', 'Open Files'],
+    journal: ['book-open-text', 'No journal days yet', 'She writes an entry once a day starts.', 'Back'],
+    files: ['folder-simple', 'The trash is empty', 'Files moved to trash stay 30 days.', 'Back to files'],
+    tools: ['wrench', 'No tool calls in this range', 'Pick a wider range.', '30 days'],
+    schedule: ['calendar-blank', 'No rows in her timetable', 'Add a row, or reset to the authored timetable.', 'Reset to authored']
+  };
+
+  componentDidMount() {
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem('lumi-admin-mock') || '{}'); } catch (e) {}
+    this.setState({ view: s.view || 'overview', instance: s.instance || 'prod' });
+    this.onKey = (e) => {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) { if (e.key === 'Escape') this.setState({ dlg: null }); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'Escape') return this.setState({ dlg: null, picker: false, demoOpen: false });
+      if (this.state.dlg) return;
+      if (e.key === 'p') this.setInst('prod');
+      else if (e.key === 'd') this.setInst('dev');
+      else if (e.key === 'j' || e.key === 'k') {
+        const ids = this.allItems().map(i => i.id);
+        const i = ids.indexOf(this.state.view || 'overview');
+        this.go(ids[(i + (e.key === 'j' ? 1 : -1) + ids.length) % ids.length]);
+      }
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); clearTimeout(this.tt); }
+
+  save(p) {
+    try { const s = JSON.parse(localStorage.getItem('lumi-admin-mock') || '{}'); localStorage.setItem('lumi-admin-mock', JSON.stringify(Object.assign(s, p))); } catch (e) {}
+  }
+  allItems() {
+    const n = this.NAV;
+    return [].concat(n.top, ...n.server.map(g => g.items), ...n.agent.map(g => g.items)).filter(i => i.id);
+  }
+  go = (id) => {
+    this.setState({ view: id, picker: false, demoOpen: false });
+    this.save({ view: id });
+    const sc = document.getElementById('lumi-main-scroll');
+    if (sc) sc.scrollTop = 0;
+  };
+  setInst = (i) => { this.setState({ instance: i }); this.save({ instance: i }); };
+  showToast = (msg) => { clearTimeout(this.tt); this.setState({ toast: msg }); this.tt = setTimeout(() => this.setState({ toast: null }), 4200); };
+  askConfirm = (o) => this.setState({ dlg: o, typed: '' });
+
+  renderVals() {
+    const s = this.state, p = this.props;
+    const theme = s.theme || p.theme || 'dark';
+    const view = s.view || 'overview';
+    const signedOut = s.signedIn === false || (s.signedIn === null && !!p.showSignIn);
+    const all = this.allItems();
+    const cur = all.find(i => i.id === view) || all[0];
+    const sg = this.NAV.server.find(g => g.items.some(i => i.id === view));
+    const ag = this.NAV.agent.find(g => g.items.some(i => i.id === view));
+    const both = view === 'overview' || !!cur.both;
+
+    const demoOpts = [].concat(this.DEMO[view] || [['default', 'Default']], view === 'overview' ? [] : [['loading', 'Loading'], ['unreachable', 'Can’t reach the server']], this.EMPTY[view] ? [['empty', 'Empty']] : []);
+    const demoKey = s.demo[view] || (view === 'overview' ? (p.scenario || 'sample') : demoOpts[0][0]);
+    const sc = s.demo.overview || p.scenario || 'sample';
+    const ovKey = ['loading', 'unreachable', 'empty'].includes(demoKey) ? demoKey : null;
+
+    const B = ({ sample: { health: ['1', 'warn'], alerts: ['1', 'warn'] }, green: {}, devdown: { health: ['4', 'bad'], incidents: ['1', 'bad'], containers: ['1', 'bad'], alerts: ['1', 'bad'] }, prodalert: { health: ['1', 'warn'], alerts: ['2', 'warn'] }, unreach: { health: ['!', 'bad'] } })[sc] || {};
+    const mapItem = (it, agent) => {
+      const act = it.id === view, b = B[it.id], tone = agent ? 'var(--agent)' : 'var(--color-accent)';
+      return Object.assign({}, it, {
+        isHead: !!it.head, isLink: !it.head, go: () => this.go(it.id), pad: it.sub ? '30px' : '10px', icon: it.icon || 'dot-outline',
+        bg: act ? `color-mix(in srgb, ${tone} 15%, transparent)` : 'transparent',
+        hbg: act ? `color-mix(in srgb, ${tone} 20%, transparent)` : 'color-mix(in srgb, var(--color-text) 6%, transparent)',
+        fg: act ? 'var(--color-text)' : 'var(--color-neutral-300)', ic: act ? tone : 'var(--color-neutral-500)', mark: act ? tone : 'transparent',
+        badge: b ? b[0] : null, badgeBg: b ? `color-mix(in srgb, var(--${b[1]}) 22%, transparent)` : 'transparent', badgeFg: b ? `var(--${b[1]})` : 'inherit'
+      });
+    };
+
+    const tag = (inst) => inst === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' };
+    const SI = {
+      sample: [{ inst: 'dev', kind: 'alert', text: 'model: 3 failures in the last hour', age: '38 min', tone: 'warn', to: 'alerts' }],
+      green: [],
+      devdown: [{ inst: 'dev', kind: 'incident', text: 'server red — connection refused', age: 'ongoing 4 min', tone: 'bad', to: 'incidents' }, { inst: 'dev', kind: 'alert', text: 'server down', age: '4 min', tone: 'bad', to: 'alerts' }],
+      prodalert: [{ inst: 'prod', kind: 'alert', text: 'ERROR from lumi.tools — 3 in 10 min', age: '6 min', tone: 'warn', to: 'alerts' }, { inst: 'dev', kind: 'alert', text: 'model: 3 failures in the last hour', age: '38 min', tone: 'warn', to: 'alerts' }],
+      unreach: [{ inst: 'dev', kind: 'panel', text: 'can’t reach dev’s server', age: '6 min', tone: 'bad', to: 'health' }]
+    }[sc] || [];
+    const worst = SI.some(i => i.tone === 'bad') ? 'bad' : SI.length ? 'warn' : null;
+    const nAl = SI.filter(i => i.kind === 'alert').length, nIn = SI.filter(i => i.kind === 'incident').length;
+    const strip = {
+      items: SI.map(i => Object.assign({}, i, tag(i.inst), { color: `var(--${i.tone})`, go: () => this.go(i.to), title: 'Open ' + i.to })),
+      bg: worst ? `color-mix(in srgb, var(--${worst}) 10%, var(--color-bg))` : 'var(--color-bg)',
+      label: worst ? 'Needs attention' : 'All quiet', icon: worst ? 'bell-simple-ringing' : 'check-circle',
+      labelColor: worst ? `var(--${worst})` : 'var(--ok)',
+      summary: `${nAl} alert${nAl === 1 ? '' : 's'} firing · ${nIn} open incident${nIn === 1 ? '' : 's'}`
+    };
+
+    const prodOn = s.instance === 'prod';
+    const sw = {
+      prodOn, devOn: !prodOn,
+      prodBg: prodOn ? 'color-mix(in srgb, var(--bad) 15%, transparent)' : 'transparent', prodRing: prodOn ? 'inset 0 0 0 1px var(--bad)' : 'none', prodFg: prodOn ? 'var(--color-text)' : 'var(--color-neutral-400)',
+      devBg: !prodOn ? 'var(--color-neutral-800)' : 'transparent', devRing: !prodOn ? 'inset 0 0 0 1px var(--color-neutral-500)' : 'none', devFg: !prodOn ? 'var(--color-text)' : 'var(--color-neutral-400)'
+    };
+
+    const d = s.dlg;
+    const dlg = d ? Object.assign({}, d, tag(d.instance), {
+      edge: d.instance === 'prod' ? 'var(--bad)' : 'var(--color-neutral-600)', btn: d.instance === 'prod' ? 'var(--bad)' : 'var(--color-accent)',
+      needsType: d.instance === 'prod' && d.typed !== false, hasDiff: !!(d.diff && d.diff.length), diff: d.diff || []
+    }) : null;
+    const cannotConfirm = !!(dlg && dlg.needsType && s.typed.trim() !== 'prod');
+
+    const em = this.EMPTY[view] || [];
+    const unInst = both ? 'dev' : s.instance;
+
+    return {
+      theme, themeIcon: theme === 'dark' ? 'sun' : 'moon', signedOut, signedIn: !signedOut,
+      token: s.token, tokenErr: s.tokenErr,
+      onToken: e => this.setState({ token: e.target.value, tokenErr: false }),
+      signIn: e => { e.preventDefault(); if (!s.token.trim() || s.token.trim() === 'wrong') return this.setState({ tokenErr: true }); this.setState({ signedIn: true, token: '' }); },
+      signOut: () => this.setState({ signedIn: false }),
+      strip,
+      navTop: this.NAV.top.map(i => mapItem(i, false)),
+      navServer: this.NAV.server.map(g => ({ name: g.name, items: g.items.map(i => mapItem(i, false)) })),
+      navAgent: this.NAV.agent.map(g => ({ name: g.name, items: g.items.map(i => mapItem(i, true)) })),
+      picker: s.picker, togglePicker: () => this.setState({ picker: !s.picker }),
+      demoOpen: s.demoOpen, toggleDemo: () => this.setState({ demoOpen: !s.demoOpen }),
+      demoLabel: (demoOpts.find(o => o[0] === demoKey) || demoOpts[0])[1],
+      demoOpts: demoOpts.map(o => ({ label: o[1], bg: o[0] === demoKey ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent', check: o[0] === demoKey ? 'var(--color-accent)' : 'transparent', pick: () => this.setState({ demo: Object.assign({}, s.demo, { [view]: o[0] }), demoOpen: false }) })),
+      title: cur.label,
+      crumb: sg ? 'Server · ' + sg.name : ag ? 'Lili · ' + ag.name + (cur.group ? ' · ' + cur.group : '') : 'slate-server · everything at a glance',
+      crumbColor: ag ? 'var(--agent)' : 'var(--color-neutral-500)',
+      updated: view === 'logs' ? 'live' : view === 'health' || view === 'overview' ? '21:40:12 · 1 min' : '21:40:05',
+      scopeLabel: both ? 'This view shows prod and dev side by side' : 'This view follows the instance switcher',
+      scopeIcon: both ? 'columns' : 'arrows-clockwise',
+      prodEdge: !both && prodOn ? 'var(--bad)' : 'transparent',
+      sw, toProd: () => this.setInst('prod'), toDev: () => this.setInst('dev'),
+      toggleTheme: () => this.setState({ theme: theme === 'dark' ? 'light' : 'dark' }),
+      instance: s.instance, view, demoKey,
+      ov: { loading: ovKey === 'loading', unreachable: ovKey === 'unreachable', empty: ovKey === 'empty' },
+      skel: [62, 48, 70, 40, 55, 66, 38, 52].map(w => ({ w: w + '%' })),
+      port: unInst === 'prod' ? 8765 : 8766,
+      empty: { icon: em[0], title: em[1], sub: em[2], action: em[3] },
+      retry: () => this.setState({ demo: Object.assign({}, s.demo, { [view]: demoOpts[0][0] }) }),
+      goContainers: () => this.go('containers'), goLogs: () => this.go('logs'),
+      v: ovKey ? {} : {
+        overview: view === 'overview', health: view === 'health', incidents: view === 'incidents', containers: view === 'containers', logs: view === 'logs', alerts: view === 'alerts',
+        config: ['settings', 'secrets', 'confighistory', 'promote'].includes(view), audit: view === 'audit',
+        state: view === 'state', history: view === 'history', memory: view === 'summaries' || view === 'facts', thoughts: view === 'thoughts', gallery: view === 'gallery', journal: view === 'journal', files: view === 'files',
+        usage: view === 'usage', tools: view === 'tools', schedule: view === 'schedule', models: view === 'models', texts: view === 'texts', prompt: view === 'prompt'
+      },
+      go: this.go, askConfirm: this.askConfirm, showToast: this.showToast,
+      dlg, typed: s.typed, cannotConfirm,
+      onTyped: e => this.setState({ typed: e.target.value }),
+      closeDlg: () => this.setState({ dlg: null }), stop: e => e.stopPropagation(),
+      doConfirm: () => { const x = s.dlg; this.setState({ dlg: null }); if (x && x.onDone) x.onDone(); this.showToast((x && x.done) || 'Done'); },
+      toast: s.toast, hideToast: () => this.setState({ toast: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

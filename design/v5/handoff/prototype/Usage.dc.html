@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 48px;display:flex;flex-direction:column;gap:16px;font-size:13px;max-width:1400px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div class="seg" role="radiogroup" aria-label="Range"><sc-for list="{{ ranges }}" as="r" hint-placeholder-count="4"><label class="seg-opt" style="padding:4px 10px;font-size:12.5px"><input type="radio" name="use-range" checked="{{ r.on }}" onChange="{{ r.pick }}">{{ r.label }}</label></sc-for></div>
+<span style="font-size:12px;color:var(--color-neutral-500)">Lili · prod + dev · prices from the providers’ lists, 2026-11-01</span>
+<button class="btn btn-secondary" onClick="{{ csv }}" style="margin-left:auto;padding:4px 10px;font-size:12.5px"><i class="ph ph-file-csv"></i>Export CSV</button>
+</div>
+
+<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;border-radius:8px;overflow:hidden;background:var(--color-divider)">
+<sc-for list="{{ kpis }}" as="k" hint-placeholder-count="5"><div style="background:var(--color-surface);padding:12px 14px;display:flex;flex-direction:column;gap:2px"><span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">{{ k.k }}</span><span style="font:500 22px var(--mono)">{{ k.v }}</span><span style="font-size:11.5px;color:var(--color-neutral-400)">{{ k.sub }}</span></div></sc-for>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><h2 style="font-size:14px;margin:0;font-weight:500">Cost per day</h2>
+<sc-for list="{{ providers }}" as="p" hint-placeholder-count="5"><span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-neutral-300)"><span style="width:10px;height:10px;border-radius:2px;background:{{ p.c }};box-shadow:{{ p.sh }}"></span>{{ p.name }} <span style="font-family:var(--mono);color:var(--color-neutral-500)">{{ p.v }}</span></span></sc-for>
+<span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--color-neutral-400)"><span style="width:10px;height:10px;border-radius:2px;border:1px dashed var(--color-neutral-500)"></span>forecast</span>
+</div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px">
+<div style="display:flex;flex-direction:column;justify-content:space-between;height:150px;font:10.5px var(--mono);color:var(--color-neutral-500);text-align:right"><span>$4</span><span>$2</span><span>$0</span></div>
+<div style="position:relative;height:150px;display:flex;align-items:flex-end;gap:3px;background-image:linear-gradient(var(--color-neutral-900) 1px,transparent 1px);background-size:100% 75px">
+<sc-for list="{{ days }}" as="d" hint-placeholder-count="30"><div title="{{ d.title }}" style="flex:1;height:100%;display:flex;flex-direction:column-reverse;gap:1px"><sc-for list="{{ d.segs }}" as="s" hint-placeholder-count="3"><span style="height:{{ s.h }};border-radius:1px;background:{{ s.c }};box-shadow:{{ s.sh }}"></span></sc-for></div></sc-for>
+</div>
+<span></span>
+<div style="display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--color-neutral-500)"><span>11-01</span><span>11-05</span><span>11-10</span><span>11-15</span><span style="color:var(--color-text)">11-20 today</span><span>11-25</span><span>11-30</span></div>
+</div>
+</section>
+
+<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:12px">
+<sc-for list="{{ breakdowns }}" as="b" hint-placeholder-count="5">
+<div style="display:flex;flex-direction:column;gap:7px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px"><h3 style="font-size:13.5px;margin:0;font-weight:500">By {{ b.title }}</h3><span style="font-size:11.5px;color:var(--color-neutral-500)">{{ b.sub }}</span></div>
+<sc-for list="{{ b.rows }}" as="r" hint-placeholder-count="5">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 62px 36px;gap:8px;align-items:center;font-size:12.5px">
+<div style="display:flex;flex-direction:column;gap:3px;min-width:0"><span style="font-family:{{ r.ff }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ r.fg }}">{{ r.k }}</span><span style="height:4px;border-radius:2px;background:var(--color-neutral-900);overflow:hidden"><span style="display:block;height:100%;width:{{ r.w }};background:var(--color-neutral-400)"></span></span></div>
+<span style="font-family:var(--mono);text-align:right;color:{{ r.fg }}">{{ r.v }}</span>
+<span style="font:11px var(--mono);text-align:right;color:var(--color-neutral-500)">{{ r.pct }}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+<div style="display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<h3 style="font-size:13.5px;margin:0;font-weight:500">Prompt cache</h3>
+<div style="display:flex;align-items:center;gap:16px">
+<svg width="96" height="96" viewBox="0 0 36 36" style="flex:none;transform:rotate(-90deg)"><circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-neutral-900)" stroke-width="3.6"></circle><circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-neutral-300)" stroke-width="3.6" stroke-dasharray="71 29"></circle></svg>
+<div style="display:flex;flex-direction:column;gap:3px"><span style="font:500 24px var(--mono)">71 %</span><span style="font-size:12px;color:var(--color-neutral-400)">of input tokens read from cache</span><span style="font-size:12.5px">saved <span style="font-family:var(--mono)">≈ $38.40</span> this month</span><span style="font-size:11.5px;color:var(--color-neutral-500)">writes cost <span style="font-family:var(--mono)">$4.10</span> · counted in the total</span></div>
+</div>
+</div>
+</section>
+
+<section style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:12px">
+<div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3 style="font-size:13.5px;margin:0;font-weight:500">Turn latency</h3><span style="font:12px var(--mono);color:var(--color-neutral-300)">median 9.8 s · p95 21.4 s</span><span style="margin-left:auto;display:flex;gap:10px;font:10.5px var(--mono);color:var(--color-neutral-500)"><span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:2px;background:var(--color-neutral-200)"></span>median</span><span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:8px;background:color-mix(in srgb,var(--color-neutral-400) 18%,transparent)"></span>p25 – p95</span></span></div>
+<div style="position:relative"><svg width="100%" height="120" viewBox="0 0 600 120" preserveAspectRatio="none" style="display:block"><line x1="0" y1="40" x2="600" y2="40" stroke="var(--color-neutral-900)"></line><line x1="0" y1="80" x2="600" y2="80" stroke="var(--color-neutral-900)"></line><path d="{{ latBand }}" fill="color-mix(in srgb,var(--color-neutral-400) 18%,transparent)"></path><path d="{{ latLine }}" fill="none" stroke="var(--color-neutral-200)" stroke-width="1.6" vector-effect="non-scaling-stroke"></path></svg>
+<span style="position:absolute;left:4px;top:0;font:10px var(--mono);color:var(--color-neutral-500)">30 s</span><span style="position:absolute;left:{{ gapLeft }};top:46px;font:10.5px var(--mono);color:var(--color-neutral-500)">no data</span></div>
+<div style="display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--color-neutral-500)"><span>11-01</span><span>11-10</span><span>11-20</span></div>
+<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px"><span style="font-size:11.5px;color:var(--color-neutral-400)">Where the median turn goes</span><div style="display:flex;height:16px;border-radius:3px;overflow:hidden;font:10.5px/16px var(--mono)"><span style="width:4.1%;background:var(--color-neutral-600)"></span><span style="width:90.8%;background:var(--color-neutral-700);padding-left:6px;color:var(--color-neutral-100)">MODEL 8.9 s</span><span style="width:5.1%;background:var(--color-neutral-500)"></span></div><div style="display:flex;justify-content:space-between;font:11px var(--mono);color:var(--color-neutral-400)"><span>PRE 0.4 s</span><span>POST 0.5 s</span></div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:8px;background:var(--color-surface)">
+<h3 style="font-size:13.5px;margin:0 0 6px;font-weight:500">The slowest calls</h3>
+<sc-for list="{{ slow }}" as="s" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:78px minmax(0,1fr) 54px;gap:10px;align-items:baseline;padding:5px 0;font-size:12.5px;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 8%,transparent) 48px,color-mix(in srgb,var(--color-text) 8%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom"><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ s.t }}</span><span style="display:flex;flex-direction:column;min-width:0"><span>{{ s.kind }} <span style="font-family:var(--mono);color:var(--color-neutral-400)">{{ s.model }}</span></span><span style="font:11px var(--mono);color:{{ s.noteC }}">{{ s.note }}</span></span><span style="font:500 12.5px var(--mono);text-align:right">{{ s.d }}</span></div></sc-for>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { range: 'nov' };
+  renderVals() {
+    const p = this.props, s = this.state;
+    const PV = [['Anthropic', 'var(--color-accent-500)', 33.9], ['Google', 'var(--color-neutral-400)', 3.1], ['ElevenLabs', 'var(--color-accent-700)', 3.8], ['Deepgram', 'var(--color-neutral-600)', 0.5], ['OpenAI', 'transparent', 0]];
+    let x = 7; const r = () => (x = (x * 9301 + 49297) % 233280) / 233280;
+    const base = Array.from({ length: 20 }, (_, i) => 1.2 + r() * 1.5 + (i === 18 ? 1.1 : 0));
+    const tot = base.reduce((a, b) => a + b, 0);
+    const scale = 41.3 / tot;
+    const max = 4;
+    const days = Array.from({ length: 30 }, (_, i) => {
+      if (i >= 20) return { title: '11-' + String(i + 1).padStart(2, '0') + ' · forecast ≈ $2.08', segs: [{ h: (2.08 / max * 100) + '%', c: 'transparent', sh: 'inset 0 0 0 1px var(--color-neutral-700)' }] };
+      const d = base[i] * scale;
+      const parts = [0.821, 0.075, 0.092, 0.012].map(f => d * f);
+      return { title: '11-' + String(i + 1).padStart(2, '0') + ' · $' + d.toFixed(2), segs: parts.map((v, k) => ({ h: (v / max * 100).toFixed(2) + '%', c: PV[k][1], sh: 'none' })) };
+    });
+    const bd = (title, sub, rows, mono) => {
+      const t = rows.reduce((a, b) => a + (typeof b[1] === 'number' ? b[1] : 0), 0), mx = Math.max(...rows.map(r => typeof r[1] === 'number' ? r[1] : 0));
+      return { title, sub, rows: rows.map(r => typeof r[1] === 'number' ? { k: r[0], v: '$' + r[1].toFixed(2), w: (r[1] / mx * 100) + '%', pct: Math.round(r[1] / t * 100) + '%', ff: mono ? 'var(--mono)' : 'inherit', fg: 'var(--color-text)' } : { k: r[0], v: r[1], w: '0%', pct: '', ff: mono ? 'var(--mono)' : 'inherit', fg: 'var(--color-neutral-500)' }) };
+    };
+    const lat = Array.from({ length: 20 }, (_, i) => 8.6 + Math.sin(i / 2.4) * 1.2 + r() * 0.8);
+    const p95 = lat.map(v => v * 2.15 + r() * 1.5), p25 = lat.map(v => v * 0.7);
+    const X = i => (i * 600 / 29).toFixed(1), Y = v => (120 - v / 30 * 120).toFixed(1);
+    const seg = (a, b) => ({ m: 'M' + lat.slice(a, b).map((v, k) => X(a + k) + ' ' + Y(v)).join(' L'), band: 'M' + p95.slice(a, b).map((v, k) => X(a + k) + ' ' + Y(v)).join(' L') + ' L' + p25.slice(a, b).map((v, k) => [X(a + k), Y(v)]).reverse().map(q => q.join(' ')).join(' L') + ' Z' });
+    const s1 = seg(0, 11), s2 = seg(13, 20);
+    return {
+      ranges: [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['nov', 'November']].map(q => ({ label: q[1], on: s.range === q[0], pick: () => this.setState({ range: q[0] }) })),
+      kpis: [{ k: 'To date', v: '$41.30', sub: 'prod $39.60 · dev $1.70' }, { k: 'Forecast', v: '≈ $62.10', sub: 'by 11-30, at the last 7 days’ pace' }, { k: 'October', v: '$55.70', sub: 'same day last month: $37.90' }, { k: 'Turns', v: '1 046', sub: 'prod 981 · dev 65' }, { k: 'Per turn', v: '≈ $0.028', sub: 'her turns only' }],
+      providers: PV.map(q => ({ name: q[0], c: q[1], sh: q[2] ? 'none' : 'inset 0 0 0 1px var(--color-neutral-600)', v: q[2] ? '$' + q[2].toFixed(2) : 'no key' })),
+      days,
+      breakdowns: [
+        bd('model', 'running cost', [['claude-opus-4-8', 24.1], ['claude-sonnet-5', 7.9], ['claude-haiku-4-5', 1.9], ['gemini-2.5-flash', 2.2], ['gemini-2.5-flash-image', 0.9], ['eleven_multilingual_v2', 3.8], ['deepgram nova-3', 0.5], ['embeddings · local', 'not priced']], true),
+        bd('kind', '', [['reply', 25.2], ['think', 6.2], ['housekeeping', 3.6], ['voice', 4.3], ['mood', 1.1], ['pictures', 0.9]]),
+        bd('origin', '', [['her turns', 29.4], ['scheduled thoughts', 6.2], ['housekeeping', 3.6], ['the room', 2.1]]),
+        bd('channel', 'her turns and their voice', [['window', 18.2], ['Telegram', 10.4], ['TUI', 0.8], ['no channel · background', 11.9]])
+      ],
+      latLine: s1.m + ' ' + s2.m, latBand: s1.band + ' ' + s2.band, gapLeft: (11.5 / 29 * 100).toFixed(1) + '%',
+      slow: [
+        { t: '11-14 08:30', kind: 'web lookup', model: 'gemini-2.5-flash', note: 'timeout — asked once more', noteC: 'var(--bad)', d: '30.0 s' },
+        { t: '11-19 21:44', kind: 'reply', model: 'claude-opus-4-8', note: '24 310 in · 1 120 out · $0.21', noteC: 'var(--color-neutral-500)', d: '28.6 s' },
+        { t: '11-09 14:22', kind: 'reply', model: 'claude-opus-4-8', note: '529 overloaded, retried', noteC: 'var(--warn)', d: '26.1 s' },
+        { t: '11-17 10:12', kind: 'pictures', model: 'gemini-2.5-flash-image', note: '1024 × 1024 · $0.04', noteC: 'var(--color-neutral-500)', d: '14.8 s' },
+        { t: '11-20 13:06', kind: 'tool step', model: 'claude-sonnet-5', note: '5 tools · 1 failed', noteC: 'var(--color-neutral-500)', d: '12.2 s' }
+      ],
+      csv: () => p.toast && p.toast('Exported usage-2026-11.csv — 3 412 calls')
+    };
+  }
+}
+</script>
+</body>
+</html>

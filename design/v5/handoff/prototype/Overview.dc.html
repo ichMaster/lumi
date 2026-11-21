@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:20px 24px 40px;display:flex;flex-direction:column;gap:20px;max-width:1360px;font-size:13px">
+
+<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--color-divider);border-radius:8px;overflow:hidden">
+<div style="background:var(--color-surface);padding:12px 14px;display:flex;flex-direction:column;gap:2px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">The box</div>
+<div style="font-size:15px;font-weight:500">slate-server</div>
+<div style="font-size:11.5px;color:var(--color-neutral-400)">Linux 6.8 · 8 cores · up 41 d</div>
+</div>
+<div style="background:var(--color-surface);padding:12px 14px;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Load</div>
+<div style="display:flex;align-items:baseline;gap:8px"><span style="font:500 19px var(--mono)">0.42</span><span style="font:11.5px var(--mono);white-space:nowrap;color:var(--color-neutral-400)">0.38 · 0.35</span></div>
+<svg width="100%" height="18" viewBox="0 0 120 18" preserveAspectRatio="none" style="display:block"><path d="{{ loadSpark }}" fill="none" stroke="var(--color-neutral-400)" stroke-width="1.2" vector-effect="non-scaling-stroke"></path></svg>
+</div>
+<div style="background:var(--color-surface);padding:12px 14px;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Memory</div>
+<div style="display:flex;align-items:baseline;gap:6px"><span style="font:500 19px var(--mono)">5.1</span><span style="font:11.5px var(--mono);white-space:nowrap;color:var(--color-neutral-400)">/ 16 GB</span></div>
+<div style="height:5px;border-radius:3px;background:var(--color-neutral-900);overflow:hidden"><div style="width:32%;height:100%;background:var(--color-neutral-400)"></div></div>
+</div>
+<div style="background:var(--color-surface);padding:12px 14px;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Disk</div>
+<div style="display:flex;align-items:baseline;gap:6px;white-space:nowrap"><span style="font:500 19px var(--mono)">61 %</span><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">free of 500 GB</span></div>
+<div style="height:5px;border-radius:3px;background:var(--color-neutral-900);overflow:hidden"><div style="width:39%;height:100%;background:var(--color-neutral-400)"></div></div>
+</div>
+<div style="background:var(--color-surface);padding:12px 14px;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Docker</div>
+<div style="display:flex;align-items:baseline;gap:6px"><span style="font:500 19px var(--mono)">{{ box.running }}</span><span style="font:11.5px var(--mono);white-space:nowrap;color:var(--color-neutral-400)">/ 7 running</span></div>
+<div style="font-size:11.5px;color:{{ box.subColor }}">{{ box.sub }}</div>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:baseline;gap:10px"><h2 style="font-size:14px;margin:0;font-weight:500">Instances</h2><span style="font-size:12px;white-space:nowrap;color:var(--color-neutral-500)">checks refresh every minute</span></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(400px,100%),1fr));gap:14px">
+<sc-for list="{{ instances }}" as="c" hint-placeholder-count="2">
+<div style="background:var(--color-surface);border-radius:8px;box-shadow:inset 3px 0 0 {{ c.edge }};padding:14px 16px 14px 19px;display:flex;flex-direction:column;gap:13px">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="width:9px;height:9px;border-radius:50%;background:{{ c.dot }};box-shadow:0 0 0 3px {{ c.halo }}"></span>
+<span style="font:500 15px var(--mono);color:{{ c.nameColor }}">{{ c.name }}</span>
+<span style="font-size:12.5px;color:{{ c.stateColor }}">{{ c.state }}</span>
+<span style="margin-left:auto;font:11.5px var(--mono);padding:2px 7px;border-radius:4px;white-space:nowrap;background:var(--color-neutral-900);color:var(--color-neutral-300)">{{ c.version }}</span>
+<span style="font:11.5px var(--mono);white-space:nowrap;color:var(--color-neutral-400)">{{ c.uptime }}</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+<sc-for list="{{ c.metrics }}" as="m" hint-placeholder-count="4">
+<button onClick="{{ m.go }}" style="display:flex;flex-direction:column;gap:1px;padding:0;border:0;background:none;color:inherit;font-family:inherit;text-align:left;cursor:pointer;min-width:0">
+<span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)">{{ m.k }}</span>
+<span style="font:500 18px var(--mono);color:{{ m.color }}">{{ m.v }}</span>
+<span style="font-size:11.5px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.sub }}</span>
+</button>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:5px">
+<div style="display:flex;gap:3px"><sc-for list="{{ c.checks }}" as="k" hint-placeholder-count="13"><span title="{{ k.name }}" style="flex:1;height:6px;border-radius:2px;background:{{ k.color }}"></span></sc-for></div>
+<div style="display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--color-neutral-500)"><span>server</span><span>13 checks</span><span>voice</span></div>
+</div>
+<sc-if value="{{ c.banner }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:6px;background:{{ c.banner.bg }}">
+<i class="ph ph-{{ c.banner.icon }}" style="font-size:16px;color:{{ c.banner.color }};margin-top:1px"></i>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px"><span style="font-size:13px">{{ c.banner.title }}</span><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ c.banner.meta }}</span></div>
+<button class="btn btn-secondary" onClick="{{ c.banner.act }}" style="padding:4px 9px;font-size:12px;flex:none">{{ c.banner.action }}</button>
+</div>
+</sc-if>
+<div style="display:flex;gap:4px;margin-top:-2px">
+<button class="btn btn-ghost" onClick="{{ goHealth }}" style="font-size:12px;padding:2px 6px"><i class="ph ph-heartbeat"></i>Health</button>
+<button class="btn btn-ghost" onClick="{{ goContainers }}" style="font-size:12px;padding:2px 6px"><i class="ph ph-cube"></i>Containers</button>
+<button class="btn btn-ghost" onClick="{{ goLogs }}" style="font-size:12px;padding:2px 6px"><i class="ph ph-scroll"></i>Logs</button>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:baseline;gap:10px"><h2 style="font-size:14px;margin:0;font-weight:500">Agents</h2><span style="font-size:12px;color:var(--color-neutral-500)">today, since 00:00</span></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,280px);gap:14px">
+<div style="background:var(--color-surface);border-radius:8px;box-shadow:inset 3px 0 0 var(--agent);padding:14px 16px 16px 19px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:20px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="width:30px;height:30px;border-radius:7px;display:grid;place-items:center;background:color-mix(in srgb,var(--agent) 24%,transparent);color:var(--agent);font-weight:600;font-size:14px">L</span>
+<div style="display:flex;flex-direction:column;line-height:1.2"><span style="font-size:15px;font-weight:500">Lili</span><span style="font-size:11.5px;color:var(--color-neutral-400)">companion · Ukrainian</span></div>
+<button class="btn btn-ghost" onClick="{{ goState }}" style="margin-left:auto;font-size:12px;padding:2px 6px">State<i class="ph ph-arrow-right"></i></button>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--color-divider);border-radius:6px;overflow:hidden">
+<sc-for list="{{ agentInst }}" as="a" hint-placeholder-count="2">
+<div style="background:var(--color-surface);padding:9px 10px;display:flex;flex-direction:column;gap:2px">
+<span style="align-self:flex-start;font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:{{ a.instBg }};color:{{ a.instFg }}">{{ a.name }}</span>
+<span style="font:500 20px var(--mono);color:{{ a.costColor }}">{{ a.cost }}</span>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ a.turns }}</span>
+<span style="font-size:11px;color:var(--color-neutral-500)">{{ a.sub }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;padding-top:2px">
+<div style="display:flex;flex-direction:column;gap:5px">
+<span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Mood of the day · prod</span>
+<p lang="uk" style="margin:0;font-size:17px;line-height:1.45;letter-spacing:-.005em;text-wrap:pretty">«Тиха зосередженість; хочеться глибини, а не шуму.»</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:5px">
+<span style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Last reply</span>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:18px;line-height:1">🥰</span><span style="font-size:13.5px">tender</span><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">intensity 0.6 · 21:16 · Telegram</span></div>
+</div>
+<button class="btn btn-ghost" onClick="{{ goHistory }}" style="align-self:flex-start;font-size:12px;padding:2px 6px;margin-left:-6px"><i class="ph ph-chats-teardrop"></i>Open the conversation</button>
+</div>
+</div>
+<div style="border:1px dashed color-mix(in srgb,var(--agent-2) 45%,transparent);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+<span style="width:30px;height:30px;border-radius:7px;display:grid;place-items:center;border:1px dashed var(--agent-2);color:var(--agent-2)"><i class="ph ph-plus"></i></span>
+<span style="font-size:13.5px;font-weight:500">A second agent appears here</span>
+<span style="font-size:12px;color:var(--color-neutral-400);text-wrap:pretty">Next version. It gets the same card, its own area in the rail and a color of its own — never a state color.</span>
+</div>
+</div>
+</section>
+
+<section style="display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,280px);gap:14px;align-items:start">
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px"><h2 style="font-size:14px;margin:0;font-weight:500">Last 24 hours</h2><span style="font-size:12px;color:var(--color-neutral-500)">incidents, alerts, deploys and changes</span><button class="btn btn-ghost" onClick="{{ goAudit }}" style="margin-left:auto;font-size:12px;padding:2px 6px">Audit<i class="ph ph-arrow-right"></i></button></div>
+<div style="display:flex;flex-direction:column">
+<sc-for list="{{ events }}" as="e" hint-placeholder-count="6">
+<button onClick="{{ e.go }}" style="display:grid;grid-template-columns:88px 44px 18px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:32px;padding:4px 8px;border:0;background-color:transparent;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;color:inherit;font-family:inherit;font-size:13px;text-align:left;cursor:pointer;border-radius:3px" style-hover="background-color:color-mix(in srgb,var(--color-text) 4%,transparent)">
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ e.t }}</span>
+<span style="justify-self:start;font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:{{ e.instBg }};color:{{ e.instFg }}">{{ e.inst }}</span>
+<i class="ph ph-{{ e.icon }}" style="font-size:15px;color:var(--color-neutral-400)"></i>
+<span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.text }}</span>
+<span style="font:11.5px var(--mono);color:{{ e.resColor }}">{{ e.res }}</span>
+</button>
+</sc-for>
+</div>
+</div>
+<div style="background:var(--color-surface);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">November · all agents</div>
+<div style="display:flex;align-items:baseline;gap:8px"><span style="font:500 24px var(--mono)">$41.30</span><span style="font-size:12px;color:var(--color-neutral-400)">to date</span></div>
+<div style="display:flex;align-items:flex-end;gap:2px;height:38px">
+<sc-for list="{{ month }}" as="b" hint-placeholder-count="20"><span style="flex:1;height:{{ b.h }};border-radius:1px;background:{{ b.c }}"></span></sc-for>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+<div style="display:flex;flex-direction:column"><span style="color:var(--color-neutral-500)">forecast</span><span style="font:500 13.5px var(--mono)">≈ $62.10</span></div>
+<div style="display:flex;flex-direction:column"><span style="color:var(--color-neutral-500)">October</span><span style="font:500 13.5px var(--mono)">$55.70</span></div>
+</div>
+<button class="btn btn-ghost" onClick="{{ goUsage }}" style="align-self:flex-start;font-size:12px;padding:2px 6px;margin-left:-6px"><i class="ph ph-chart-bar"></i>Usage</button>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  spark(a, w, h) {
+    const mx = Math.max(...a), mn = Math.min(...a);
+    return a.map((v, i) => (i ? 'L' : 'M') + (i * w / (a.length - 1)).toFixed(1) + ' ' + (h - 2 - (v - mn) / ((mx - mn) || 1) * (h - 4)).toFixed(1)).join(' ');
+  }
+  renderVals() {
+    const sc = this.props.demo || 'sample';
+    const nav = (id) => () => this.props.go && this.props.go(id);
+    const toast = (m) => () => this.props.toast && this.props.toast(m);
+    const C = { ok: 'var(--ok)', warn: 'var(--warn)', bad: 'var(--bad)', off: 'var(--off)' };
+    const names = ['server', 'state', 'mood', 'model', 'telegram', 'scheduler', 'disk', 'marker', 'deploy agent', 'archive', 'image drift', 'room', 'voice'];
+    const checks = (over, all) => names.map(n => { const st = all || over[n] || 'ok'; return { name: n + ' — ' + st, color: C[st] }; });
+    const tag = (inst) => inst === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' };
+    const M = (k, v, sub, tone, to) => ({ k, v, sub, color: tone ? C[tone] : 'var(--color-text)', go: nav(to) });
+    const halo = (t) => `color-mix(in srgb, ${C[t]} 22%, transparent)`;
+
+    const prodAlert = sc === 'prodalert';
+    const prod = {
+      name: 'prod', nameColor: 'var(--bad)', edge: 'var(--bad)', dot: C.ok, halo: halo('ok'), state: 'up', stateColor: 'var(--ok)', version: 'v4.7.0', uptime: 'up 3 d 4 h',
+      metrics: [M('Incidents', '0', 'none in 30 d', null, 'incidents'), M('Alerts', prodAlert ? '1' : '0', prodAlert ? 'firing · lumi.tools' : 'none firing', prodAlert ? 'warn' : null, 'alerts'),
+        M('Checks', sc === 'green' ? '13/13' : '12/13', sc === 'green' ? 'all green' : 'scheduler amber', sc === 'green' ? null : 'warn', 'health'), M('Containers', '3/3', 'restarts 0', null, 'containers')],
+      checks: checks(sc === 'green' ? {} : { scheduler: 'warn' }),
+      banner: prodAlert ? { icon: 'bell-simple-ringing', color: C.warn, bg: 'color-mix(in srgb, var(--warn) 11%, transparent)', title: 'log — ERROR from lumi.tools, 3 times in 10 minutes', meta: 'warning · firing since 21:34 · web_lookup failed: TimeoutError', action: 'Acknowledge', act: toast('Acknowledged on prod — the alert stays visible until it clears') } : null
+    };
+    let dev = {
+      name: 'dev', nameColor: 'var(--color-neutral-200)', edge: 'var(--color-neutral-600)', dot: C.ok, halo: halo('ok'), state: 'up', stateColor: 'var(--ok)', version: 'sha-6b80895', uptime: 'up 2 h',
+      metrics: [M('Incidents', '0', 'last: yesterday 21:52', null, 'incidents'), M('Alerts', '1', 'firing · model', 'warn', 'alerts'), M('Checks', '12/13', 'model amber', 'warn', 'health'), M('Containers', '3/3', 'restarts 2', null, 'containers')],
+      checks: checks({ model: 'warn' }),
+      banner: { icon: 'bell-simple-ringing', color: C.warn, bg: 'color-mix(in srgb, var(--warn) 11%, transparent)', title: 'model: 3 failures in the last hour', meta: 'warning · firing since 21:02 · sent to Telegram', action: 'Acknowledge', act: toast('Acknowledged on dev — the alert stays visible until it clears') }
+    };
+    if (sc === 'green') dev = Object.assign(dev, { metrics: [M('Incidents', '0', 'last: yesterday 21:52', null, 'incidents'), M('Alerts', '0', 'none firing', null, 'alerts'), M('Checks', '13/13', 'all green', null, 'health'), M('Containers', '3/3', 'restarts 2', null, 'containers')], checks: checks({}), banner: null });
+    if (sc === 'devdown') dev = Object.assign(dev, {
+      dot: C.bad, halo: halo('bad'), state: 'down', stateColor: 'var(--bad)', uptime: 'down 4 min',
+      metrics: [M('Incidents', '1', 'ongoing · 4 min', 'bad', 'incidents'), M('Alerts', '1', 'firing · server down', 'bad', 'alerts'), M('Checks', '9/13', 'server, state, model, telegram', 'bad', 'health'), M('Containers', '2/3', 'server exited 137', 'bad', 'containers')],
+      checks: checks({ server: 'bad', state: 'bad', model: 'bad', telegram: 'bad', mood: 'off' }),
+      banner: { icon: 'warning-diamond', color: C.bad, bg: 'color-mix(in srgb, var(--bad) 11%, transparent)', title: 'server — connection refused', meta: 'incident open since 21:36 · restarting, attempt 2', action: 'Open incident', act: nav('incidents') }
+    });
+    if (sc === 'unreach') dev = Object.assign(dev, {
+      dot: C.off, halo: halo('off'), state: 'can’t reach', stateColor: 'var(--color-neutral-400)', uptime: 'last answer 6 min ago',
+      metrics: [M('Incidents', '—', 'unknown', null, 'incidents'), M('Alerts', '—', 'unknown', null, 'alerts'), M('Checks', '—', 'no answer', null, 'health'), M('Containers', '3/3', 'docker sees them up', null, 'containers')],
+      checks: checks({}, 'off'),
+      banner: { icon: 'plugs', color: 'var(--color-neutral-300)', bg: 'var(--color-neutral-900)', title: 'Can’t reach dev’s server', meta: 'GET :8766/v1/state · timed out · retrying every 30 s', action: 'Retry now', act: toast('Retrying dev… still no answer') }
+    });
+
+    const agentInst = [
+      Object.assign({ name: 'prod', cost: '$1.84', costColor: 'var(--color-text)', turns: '37 turns', sub: 'last reply 21:16' }, tag('prod')),
+      Object.assign({ name: 'dev', cost: sc === 'unreach' ? '—' : '$0.21', costColor: sc === 'unreach' ? 'var(--color-neutral-500)' : 'var(--color-text)', turns: sc === 'unreach' ? 'no answer' : '4 turns', sub: sc === 'devdown' ? 'server down · counts frozen' : sc === 'unreach' ? 'last known $0.21' : 'last reply 19:58' }, tag('dev'))
+    ];
+
+    const R = { done: ['done', 'var(--color-neutral-400)'], firing: ['firing', C.warn], error: ['error', C.bad], recovered: ['recovered 7 min', C.ok], sent: ['sent', 'var(--color-neutral-400)'] };
+    let ev = [
+      ['21:02', 'dev', 'bell-simple-ringing', 'Alert — model: 3 failures in the last hour', 'firing', 'alerts'],
+      ['19:41', 'dev', 'rocket-launch', 'Deploy agent — started sha-6b80895', 'done', 'audit'],
+      ['08:30', 'prod', 'wrench', 'web_lookup failed: TimeoutError', 'error', 'logs'],
+      ['05:06', 'prod', 'check-circle', 'Confirmed v4.7.0 · archive data-20261120-0505-v4.6.0.tar.gz', 'done', 'audit'],
+      ['yest. 22:14', 'dev', 'pencil-simple', 'Outside change — settings.yaml thoughts.quiet_hours 1-8 → 1-7', 'done', 'audit'],
+      ['yest. 21:53', 'dev', 'paper-plane-tilt', 'Alert sent — server down (Telegram)', 'sent', 'alerts'],
+      ['yest. 21:52', 'dev', 'warning-diamond', 'Incident — server red, connection refused', 'recovered', 'incidents']
+    ];
+    if (sc === 'green') ev = ev.slice(1);
+    if (sc === 'devdown') ev = [['21:36', 'dev', 'warning-diamond', 'Incident — server red, connection refused', 'firing', 'incidents']].concat(ev);
+    if (sc === 'prodalert') ev = [['21:34', 'prod', 'bell-simple-ringing', 'Alert — ERROR from lumi.tools, 3 times in 10 min', 'firing', 'alerts']].concat(ev);
+    const events = ev.map(e => Object.assign({ t: e[0], inst: e[1], icon: e[2], text: e[3], res: R[e[4]][0], resColor: R[e[4]][1], go: nav(e[5]) }, tag(e[1])));
+    if (sc === 'devdown') events[0].res = 'ongoing', events[0].resColor = C.bad;
+
+    const days = [1.2, 1.6, 1.4, 2.1, 1.9, 1.1, 1.3, 2.4, 2.0, 1.7, 1.5, 2.8, 2.2, 1.9, 2.6, 2.3, 1.8, 2.1, 3.4, 2.05];
+    const box = sc === 'devdown' ? { running: '6', sub: '1 restarting · lumi-dev-server', subColor: C.bad } : { running: '7', sub: '0 stopped · 0 restarting', subColor: 'var(--color-neutral-400)' };
+
+    return {
+      loadSpark: this.spark([0.31, 0.35, 0.33, 0.4, 0.52, 0.38, 0.36, 0.34, 0.41, 0.47, 0.39, 0.36, 0.35, 0.44, 0.42], 120, 18),
+      box, instances: [prod, dev], agentInst, events,
+      month: days.map((d, i) => ({ h: Math.round(d / 3.4 * 100) + '%', c: i === days.length - 1 ? 'var(--color-accent)' : 'var(--color-neutral-700)' })),
+      goHealth: nav('health'), goContainers: nav('containers'), goLogs: nav('logs'), goState: nav('state'), goHistory: nav('history'), goAudit: nav('audit'), goUsage: nav('usage')
+    };
+  }
+}
+</script>
+</body>
+</html>

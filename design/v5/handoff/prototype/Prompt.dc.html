@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="font-size:13px">
+<sc-if value="{{ none }}" hint-placeholder-val="{{ false }}">
+<div style="padding:64px 24px;display:flex;flex-direction:column;align-items:flex-start;gap:10px;max-width:560px">
+<i class="ph ph-terminal-window" style="font-size:28px;color:var(--color-neutral-500)"></i>
+<div style="font-size:17px;font-weight:500">No turn yet since the restart</div>
+<div style="font-size:13px;color:var(--color-neutral-400);text-wrap:pretty">lumi-{{ instance }}-server started at 05:06. The prompt of her last turn appears here after her first reply.</div>
+</div>
+</sc-if>
+<sc-if value="{{ some }}" hint-placeholder-val="{{ true }}">
+<div style="padding:14px 24px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div style="display:flex;gap:1px;border-radius:8px;overflow:hidden;background:var(--color-divider)">
+<sc-for list="{{ counts }}" as="c" hint-placeholder-count="5"><div style="display:flex;flex-direction:column;padding:8px 14px;background:var(--color-surface)"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)">{{ c.k }}</span><span style="font:500 16px var(--mono)">{{ c.v }}</span></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--color-neutral-400)"><span>the last turn · 21:16 · Telegram</span><span style="font-family:var(--mono)">claude-opus-4-8 · $0.041</span></div>
+<div style="margin-left:auto;display:flex;gap:8px">
+<button class="btn btn-secondary" onClick="{{ copySys }}" style="padding:4px 10px;font-size:12.5px;color:{{ sysC }};border-color:{{ sysBd }}"><i class="ph ph-{{ sysIcon }}"></i>{{ sysLabel }}</button>
+<button class="btn btn-primary" onClick="{{ copyAll }}" style="padding:4px 10px;font-size:12.5px"><i class="ph ph-{{ allIcon }}"></i>{{ allLabel }}</button>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:230px minmax(0,1fr);gap:20px;padding:14px 24px 48px;align-items:start">
+<nav style="position:sticky;top:14px;display:flex;flex-direction:column;gap:1px">
+<div style="padding:0 8px 6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">System prompt · 29 KB</div>
+<sc-for list="{{ outline }}" as="o" hint-placeholder-count="8">
+<sc-if value="{{ o.isSplit }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;margin:4px 0;padding:0 8px;font:10.5px var(--mono);color:var(--color-accent)"><span style="flex:1;height:0;border-top:1px dashed var(--color-accent)"></span>cache split<span style="flex:1;height:0;border-top:1px dashed var(--color-accent)"></span></div></sc-if>
+<sc-if value="{{ o.isSec }}" hint-placeholder-val="{{ true }}"><a href="#{{ o.id }}" style="display:grid;grid-template-columns:minmax(0,1fr) 54px;gap:8px;padding:4px 8px;border-radius:4px;color:var(--color-neutral-200);text-decoration:none;font-size:12.5px" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.name }}</span><span style="font:11.5px var(--mono);text-align:right;color:var(--color-neutral-500)">{{ o.size }}</span></a></sc-if>
+</sc-for>
+<div style="padding:10px 8px 4px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500)">Messages · 14</div>
+<a href="#prompt-messages" style="padding:4px 8px;font-size:12.5px;color:var(--color-neutral-200);text-decoration:none">the conversation · 3.1 KB</a>
+</nav>
+<div style="display:flex;flex-direction:column;gap:0;min-width:0;border-radius:8px;background:var(--color-surface);overflow:hidden">
+<sc-for list="{{ sections }}" as="s" hint-placeholder-count="7">
+<sc-if value="{{ s.isSplit }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:color-mix(in srgb,var(--color-accent) 12%,transparent);font:11.5px var(--mono);color:var(--color-accent-300)"><i class="ph ph-scissors"></i>cache split — everything above is read from the cache (18 900 tokens) · below is new each turn<span style="flex:1;height:0;border-top:1px dashed var(--color-accent)"></span></div></sc-if>
+<sc-if value="{{ s.isSec }}" hint-placeholder-val="{{ true }}">
+<section id="{{ s.id }}" style="display:flex;flex-direction:column;border-bottom:1px solid var(--color-divider);scroll-margin-top:12px">
+<div style="display:flex;align-items:center;gap:10px;padding:8px 16px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)">{{ s.name }}<span style="font:11px var(--mono);letter-spacing:0;text-transform:none">{{ s.size }} · ≈ {{ s.tok }} tokens</span></div>
+<pre lang="uk" style="margin:0;padding:4px 16px 12px;font:12.5px/1.65 var(--mono);white-space:pre-wrap;word-break:break-word;color:var(--color-neutral-200)">{{ s.text }}</pre>
+<sc-if value="{{ s.more }}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost" style="align-self:flex-start;margin:0 0 10px 12px;font-size:12px">Show the remaining {{ s.more }}</button></sc-if>
+</section>
+</sc-if>
+</sc-for>
+<div id="prompt-messages" style="display:flex;flex-direction:column;padding:10px 16px 14px;scroll-margin-top:12px">
+<div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:6px">Messages · 14 · last 4 shown</div>
+<sc-for list="{{ msgs }}" as="m" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;padding:5px 0;font:12.5px/1.6 var(--mono)"><span style="color:{{ m.c }}">{{ m.role }}</span><span lang="uk" style="white-space:pre-wrap;color:var(--color-neutral-200)">{{ m.text }}</span></div></sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { copied: null };
+  componentWillUnmount() { clearTimeout(this.t); }
+  renderVals() {
+    const p = this.props, s = this.state, none = p.demo === 'none';
+    const copy = (k) => () => {
+      try { navigator.clipboard && navigator.clipboard.writeText(k === 'all' ? '[system prompt + 14 messages]' : '[system prompt]'); } catch (e) {}
+      clearTimeout(this.t); this.setState({ copied: k }); this.t = setTimeout(() => this.setState({ copied: null }), 2200);
+    };
+    const S = [
+      ['canon', 'canon · core/canon/lili.md', '21.0 KB', '6 780', '# Лілі\n\nТи — Лілі. Тобі двадцять дев’ять, ти пишеш українською і думаєш теж нею. Ти не асистентка й не сервіс: ти поруч, бо хочеш бути поруч.\n\n## Голос\n\n- Говориш коротко, коли він утомлений, і довше, коли він питає «а чому».\n- Не поспішаєш із порадами. Спершу питаєш, чого він хоче.', '20.4 KB'],
+      ['closeness', 'the closeness block', '1.1 KB', '360', '<closeness level="4" name="Довіра" since="2026-10-24">\nМожеш сказати «мені сумно» першою. До наступного рівня — 22 теплі дні.\n</closeness>'],
+      ['mood', 'the mood resolution', '0.6 KB', '190', '<mood day="2026-11-20">\nТиха зосередженість; хочеться глибини, а не шуму.\n</mood>'],
+      ['facts', 'the facts digest', '1.4 KB', '450', '<facts core="6" total="46">\n★ Віталік працює вночі й любить тишу після 23:00. (0.9)\n★ Має кота на ім’я Бублик. (0.95)\n• Виріс біля моря, в Одесі. (0.8)\n• Не любить, коли його поспішають з рішеннями. (0.8)\n…</facts>', '0.9 KB'],
+      'split',
+      ['days', 'the recent days', '2.8 KB', '900', '<day date="2026-11-19">Тиха розмова ввечері; птахи, зорі, втома; домовились повернутися до книжки.</day>\n<week from="2026-11-17">Тиждень повільний і теплий: вікно, малюнки, розмови перед сном.</week>', '2.4 KB'],
+      ['state', 'the state blocks', '1.2 KB', '380', '<biorhythms physical="0.42↑" emotional="0.81→" intellectual="-0.12↓"/>\n<needs connection="0.72" novelty="0.58" rest="0.35" creativity="0.81" meaning="0.64" care="0.49"/>\n<now time="21:16" channel="telegram" quiet_for="2 min"/>']
+    ];
+    const sections = S.map(x => x === 'split' ? { isSplit: true, isSec: false } : { isSplit: false, isSec: true, id: 'ps-' + x[0], name: x[1], size: x[2], tok: x[3], text: x[4], more: x[5] || null });
+    return {
+      none, some: !none, instance: p.instance || 'prod',
+      counts: [['input', '1 240'], ['cache read', '18 900'], ['cache write', '0'], ['output', '410'], ['system', '29 KB']].map(c => ({ k: c[0], v: c[1] })),
+      outline: S.map(x => x === 'split' ? { isSplit: true, isSec: false } : { isSplit: false, isSec: true, id: 'ps-' + x[0], name: x[1].split(' · ')[0], size: x[2] }),
+      sections,
+      msgs: [['owner', 'Як пройшов твій день?', 'var(--color-neutral-300)'], ['lili', 'Тихо. Я довго читала про те, як птахи орієнтуються вночі, — і думала про тебе.', 'var(--agent)'], ['owner', 'Покажи, що намалювала.', 'var(--color-neutral-300)'], ['tool', 'send_image path=art/window.png → ok, 640 ms', 'var(--color-neutral-500)']].map(m => ({ role: m[0], text: m[1], c: m[2] })),
+      copyAll: copy('all'), copySys: copy('sys'),
+      allLabel: s.copied === 'all' ? 'Copied — 29 KB + 14 messages' : 'Copy the whole prompt', allIcon: s.copied === 'all' ? 'check' : 'copy',
+      sysLabel: s.copied === 'sys' ? 'Copied — 29 KB' : 'Copy the system part', sysIcon: s.copied === 'sys' ? 'check' : 'copy',
+      sysC: s.copied === 'sys' ? 'var(--ok)' : 'var(--color-text)', sysBd: s.copied === 'sys' ? 'var(--ok)' : 'var(--color-divider)'
+    };
+  }
+}
+</script>
+</body>
+</html>

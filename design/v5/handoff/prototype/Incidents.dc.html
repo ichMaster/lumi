@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 40px;display:flex;flex-direction:column;gap:18px;font-size:13px;max-width:1360px">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<div class="seg" role="radiogroup" aria-label="Instance">
+<sc-for list="{{ scopes }}" as="r" hint-placeholder-count="3"><label class="seg-opt" style="padding:5px 11px;font-size:12.5px"><input type="radio" name="inc-scope" checked="{{ r.on }}" onChange="{{ r.pick }}">{{ r.label }}</label></sc-for>
+</div>
+<div class="seg" role="radiogroup" aria-label="Range"><label class="seg-opt" style="padding:5px 11px;font-size:12.5px"><input type="radio" name="inc-range" checked="{{ true }}">30 d</label><label class="seg-opt" style="padding:5px 11px;font-size:12.5px"><input type="radio" name="inc-range">90 d</label></div>
+<span style="margin-left:auto;font:11.5px var(--mono);color:var(--color-neutral-400)">{{ summary }}</span>
+</div>
+
+<div style="display:flex;flex-direction:column">
+<div style="display:grid;grid-template-columns:54px 150px 96px minmax(120px,170px) minmax(0,1fr) 120px 16px;gap:12px;padding:0 10px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>Inst.</span><span>Started</span><span>Duration</span><span>Red checks</span><span>First detail</span><span>Alerts</span><span></span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+<button onClick="{{ r.open }}" style="display:grid;grid-template-columns:54px 150px 96px minmax(120px,170px) minmax(0,1fr) 120px 16px;gap:12px;align-items:center;min-height:36px;padding:5px 10px;border:0;border-radius:4px;background-color:{{ r.bg }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;color:inherit;font-family:inherit;font-size:13px;text-align:left;cursor:pointer" style-hover="background-color:color-mix(in srgb,var(--color-text) 5%,transparent)">
+<span style="justify-self:start;font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:{{ r.instBg }};color:{{ r.instFg }}">{{ r.inst }}</span>
+<span style="font:12px var(--mono);color:var(--color-neutral-300)">{{ r.start }}</span>
+<span style="font:12px var(--mono);color:{{ r.durColor }}">{{ r.dur }}</span>
+<span style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ r.checks }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;gap:4px;font:11.5px var(--mono);padding:0 6px;border-radius:3px;background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)">{{ k }}</span></sc-for></span>
+<span style="min-width:0;font:12px var(--mono);color:var(--color-neutral-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.detail }}</span>
+<span style="font-size:12px;color:var(--color-neutral-400)">{{ r.alerts }}</span>
+<i class="ph ph-caret-right" style="color:var(--color-neutral-500)"></i>
+</button>
+</sc-for>
+</div>
+
+<sc-if value="{{ isOpen }}" hint-placeholder-val="{{ true }}">
+<section style="display:flex;flex-direction:column;gap:14px;padding:16px 18px 18px 21px;border-radius:8px;background:var(--color-surface);box-shadow:inset 3px 0 0 var(--color-neutral-600)">
+<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+<div style="display:flex;align-items:center;gap:8px"><span style="font:500 11px var(--mono);padding:1px 6px;border-radius:3px;background:var(--color-neutral-800);color:var(--color-neutral-200)">dev</span><span style="font-size:12px;color:var(--ok);display:flex;align-items:center;gap:4px"><i class="ph ph-check-circle"></i>recovered</span></div>
+<h2 style="font-size:20px;margin:0">server red — connection refused</h2>
+<div style="font:12px var(--mono);color:var(--color-neutral-400)">2026-11-19 21:52:08 → 21:59:14 · 7 min 6 s · 1 restart (exit 137 · OOM killed)</div>
+</div>
+<div style="margin-left:auto;display:flex;gap:8px">
+<button class="btn btn-primary" onClick="{{ goLogs }}"><i class="ph ph-scroll"></i>Logs around 21:52 · ±5 min</button>
+<button class="btn btn-secondary" onClick="{{ goContainers }}"><i class="ph ph-cube"></i>lumi-dev-server</button>
+<button class="btn btn-secondary btn-icon" onClick="{{ close }}" aria-label="Close" style="width:32px;height:32px"><i class="ph ph-x"></i></button>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:6px;padding:12px 12px 8px;border-radius:6px;background:var(--color-bg)">
+<div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;font:10.5px var(--mono);color:var(--color-neutral-500)"><span></span><div style="display:flex;justify-content:space-between"><sc-for list="{{ ticks }}" as="t" hint-placeholder-count="8"><span>{{ t }}</span></sc-for></div></div>
+<sc-for list="{{ lanes }}" as="l" hint-placeholder-count="5">
+<div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;align-items:center;height:20px">
+<span style="font:12px var(--mono);color:var(--color-neutral-300)">{{ l.name }}</span>
+<div style="position:relative;height:10px;border-radius:2px;background:color-mix(in srgb,var(--ok) 35%,transparent)">
+<sc-for list="{{ l.bars }}" as="b" hint-placeholder-count="1"><span title="{{ b.t }}" style="position:absolute;top:0;bottom:0;left:{{ b.l }};width:{{ b.w }};border-radius:2px;background:{{ b.c }}"></span></sc-for>
+</div>
+</div>
+</sc-for>
+<div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;align-items:start;margin-top:4px">
+<span style="font:12px var(--mono);color:var(--color-neutral-300);padding-top:2px">events</span>
+<div style="position:relative;height:44px;border-top:1px dashed var(--color-neutral-800)">
+<sc-for list="{{ marks }}" as="m" hint-placeholder-count="5"><div title="{{ m.t }}" style="position:absolute;top:0;left:{{ m.l }};transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:2px"><span style="width:1px;height:8px;background:var(--color-neutral-500)"></span><i class="ph ph-{{ m.icon }}" style="font-size:14px;color:{{ m.c }}"></i><span style="font:10.5px var(--mono);color:var(--color-neutral-400);white-space:nowrap">{{ m.label }}</span></div></sc-for>
+</div>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:18px">
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:4px">Container events · lumi-dev-server</div>
+<sc-for list="{{ cevents }}" as="e" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:64px 92px minmax(0,1fr);gap:10px;padding:5px 0;font-size:12.5px;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 8%,transparent) 48px,color-mix(in srgb,var(--color-text) 8%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom"><span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ e.t }}</span><span style="font-family:var(--mono);color:{{ e.c }}">{{ e.ev }}</span><span style="color:var(--color-neutral-300)">{{ e.d }}</span></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:4px">Alerts it sent</div>
+<sc-for list="{{ asent }}" as="e" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;padding:5px 0;font-size:12.5px;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 8%,transparent) 48px,color-mix(in srgb,var(--color-text) 8%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom"><span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ e.t }}</span><span style="min-width:0">{{ e.rule }} <span style="color:var(--color-neutral-500)">· {{ e.sev }}</span></span><span style="font-size:12px;color:{{ e.c }}">{{ e.res }}</span></div></sc-for>
+</div>
+</div>
+</section>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { scope: 'both', open: null };
+  renderVals() {
+    const p = this.props;
+    const scope = this.state.scope;
+    const open = this.state.open !== null ? this.state.open : (p.demo === 'list' ? -1 : 0);
+    const tag = (n) => n === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' };
+    const all = [
+      ['dev', '2026-11-19 21:52', '7 min', ['server'], 'connection refused', '1 sent · 1 held'],
+      ['prod', '2026-11-12 03:10', '2 min', ['telegram'], 'outbound: 409 Conflict from api.telegram.org', 'held · quiet hours'],
+      ['dev', '2026-11-09 14:22', '41 min', ['model', 'mood'], 'anthropic: 529 overloaded', '2 sent'],
+      ['dev', '2026-11-03 19:05', '3 min', ['server'], 'exited 137 · OOM killed', '1 sent'],
+      ['prod', '2026-10-28 05:04', '1 min', ['marker'], 'deploy marker v4.6.0 ≠ running v4.5.2', 'held · during deploy']
+    ];
+    const rows = all.map((r, i) => Object.assign({ i, inst: r[0], start: r[1], dur: r[2], durColor: 'var(--color-neutral-300)', checks: r[3], detail: r[4], alerts: r[5], bg: open === i ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent', open: () => this.setState({ open: open === i ? -1 : i }) }, tag(r[0])))
+      .filter(r => scope === 'both' || r.inst === scope);
+    const pct = (hm) => { const [h, m, s] = hm.split(':').map(Number); return (((h * 60 + m + (s || 0) / 60) - (21 * 60 + 48)) / 14 * 100).toFixed(1) + '%'; };
+    const bar = (a, b, c, t) => ({ l: pct(a), w: (parseFloat(pct(b)) - parseFloat(pct(a))).toFixed(1) + '%', c, t });
+    return {
+      scopes: [['both', 'Both'], ['prod', 'prod'], ['dev', 'dev']].map(s => ({ label: s[1], on: scope === s[0], pick: () => this.setState({ scope: s[0] }) })),
+      summary: '5 incidents in 30 d · 54 min red in total · none open',
+      rows, isOpen: open === 0,
+      ticks: ['21:48', '21:50', '21:52', '21:54', '21:56', '21:58', '22:00', '22:02'],
+      lanes: [
+        { name: 'server', bars: [bar('21:52:08', '21:59:14', 'var(--bad)', 'red 21:52:08–21:59:14')] },
+        { name: 'state', bars: [bar('21:53:00', '21:59:30', 'var(--warn)', 'amber 21:53–21:59')] },
+        { name: 'model', bars: [bar('21:54:10', '21:58:40', 'var(--warn)', 'amber — no answer from the server')] },
+        { name: 'telegram', bars: [] },
+        { name: 'scheduler', bars: [] }
+      ],
+      marks: [
+        { l: pct('21:52:04'), icon: 'skull', c: 'var(--bad)', label: 'exit 137', t: '21:52:04 died — OOM killed' },
+        { l: pct('21:53:02'), icon: 'paper-plane-tilt', c: 'var(--color-neutral-300)', label: 'alert sent', t: '21:53:02 alert sent — Telegram' },
+        { l: pct('21:55:30'), icon: 'arrow-clockwise', c: 'var(--color-neutral-300)', label: 'loading index', t: 'memory index loading' },
+        { l: pct('21:58:51'), icon: 'check-circle', c: 'var(--ok)', label: 'healthy', t: '21:58:51 healthy' },
+        { l: pct('22:00:20'), icon: 'paper-plane-tilt', c: 'var(--color-neutral-300)', label: 'recovered', t: '21:59:20 recovery sent' }
+      ],
+      cevents: [
+        { t: '21:52:04', ev: 'die', c: 'var(--bad)', d: 'exit 137 · OOM killed · memory 2.00 / 2 GB at the end' },
+        { t: '21:52:05', ev: 'restart', c: 'var(--color-neutral-200)', d: 'policy unless-stopped · attempt 1' },
+        { t: '21:52:09', ev: 'start', c: 'var(--color-neutral-200)', d: 'health: starting — loading the memory index' },
+        { t: '21:58:51', ev: 'healthy', c: 'var(--ok)', d: 'first passing healthcheck after 6 min 42 s' }
+      ],
+      asent: [
+        { t: '21:53:02', rule: 'server red for 1 minute', sev: 'critical', res: 'sent · Telegram', c: 'var(--color-neutral-300)' },
+        { t: '21:53:04', rule: 'a restart, or OOM killed', sev: 'critical', res: 'held · grouped with the one above', c: 'var(--color-neutral-500)' },
+        { t: '21:59:20', rule: 'server recovered', sev: 'info', res: 'sent · Telegram', c: 'var(--color-neutral-300)' }
+      ],
+      goLogs: () => p.go && p.go('logs'), goContainers: () => p.go && p.go('containers'), close: () => this.setState({ open: -1 })
+    };
+  }
+}
+</script>
+</body>
+</html>

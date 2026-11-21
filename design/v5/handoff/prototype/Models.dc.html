@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 48px;display:flex;flex-direction:column;gap:18px;font-size:13px;max-width:1280px">
+<section style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:baseline;gap:10px"><h2 style="font-size:14px;margin:0;font-weight:500">Profiles</h2><span style="font-size:12px;color:var(--color-neutral-500)">a profile sets every role at once</span></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+<sc-for list="{{ profiles }}" as="p" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:8px;background:var(--color-surface);box-shadow:{{ p.ring }}">
+<div style="display:flex;align-items:center;gap:8px"><span style="font:500 14px var(--mono)">{{ p.name }}</span><sc-if value="{{ p.active }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;padding:0 6px;border-radius:3px;background:var(--color-accent-900);color:var(--color-accent-300)">active on {{ instance }}</span></sc-if></div>
+<span style="font-size:12px;color:var(--color-neutral-400);text-wrap:pretty">{{ p.desc }}</span>
+<div style="display:flex;gap:6px;margin-top:auto"><button class="btn btn-secondary" onClick="{{ p.save }}" disabled="{{ p.active }}" style="padding:3px 9px;font-size:12px">Save</button><button class="btn btn-secondary" onClick="{{ p.now }}" disabled="{{ p.active }}" style="padding:3px 9px;font-size:12px"><i class="ph ph-lightning"></i>Now, until restart</button></div>
+</div>
+</sc-for>
+</div>
+</section>
+<section style="display:flex;flex-direction:column">
+<div style="display:grid;grid-template-columns:130px 110px minmax(0,1fr) minmax(0,1fr) 90px;gap:12px;padding:0 10px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>Role</span><span>Provider</span><span>Running now</span><span>Settings say</span><span></span></div>
+<sc-for list="{{ roles }}" as="r" hint-placeholder-count="12">
+<div style="display:flex;flex-direction:column;border-radius:4px;background-color:{{ r.bg }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom">
+<div style="display:grid;grid-template-columns:130px 110px minmax(0,1fr) minmax(0,1fr) 90px;gap:12px;align-items:center;min-height:36px;padding:3px 10px">
+<span style="font-size:13px">{{ r.role }}</span>
+<span style="font-size:12.5px;color:var(--color-neutral-300)">{{ r.provider }}</span>
+<span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font:12.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.now }}</span><sc-if value="{{ r.differs }}" hint-placeholder-val="{{ false }}"><span style="flex:none;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0 6px;border-radius:3px;background:var(--color-accent-900);color:var(--color-accent-300)"><i class="ph ph-lightning"></i>switched until the restart</span></sc-if></span>
+<span style="font:12.5px var(--mono);color:{{ r.cfgC }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.cfg }}</span>
+<button class="btn btn-ghost" onClick="{{ r.toggle }}" style="justify-self:end;font-size:12px;padding:2px 6px">{{ r.btn }}<i class="ph ph-caret-{{ r.caret }}"></i></button>
+</div>
+<sc-if value="{{ r.open }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:2px;margin:0 10px 12px 262px;padding:6px;border-radius:6px;background:var(--color-bg)">
+<sc-for list="{{ r.options }}" as="o" hint-placeholder-count="4">
+<button onClick="{{ o.pick }}" disabled="{{ o.disabled }}" style="display:grid;grid-template-columns:18px 100px minmax(0,1fr) auto;gap:10px;align-items:center;padding:5px 8px;border:0;border-radius:4px;background:{{ o.bg }};color:{{ o.fg }};font-family:inherit;font-size:12.5px;text-align:left;cursor:{{ o.cursor }}" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><i class="ph ph-{{ o.icon }}" style="color:{{ o.ic }}"></i><span>{{ o.provider }}</span><span style="font-family:var(--mono)">{{ o.model }}</span><span style="font-size:11.5px;color:var(--color-neutral-500)">{{ o.note }}</span></button>
+</sc-for>
+<div style="display:flex;align-items:center;gap:8px;padding:8px 8px 2px"><span style="font-size:12px;color:var(--color-neutral-400)">{{ r.restartNote }}</span><button class="btn btn-secondary" onClick="{{ r.nowFn }}" style="margin-left:auto;padding:3px 10px;font-size:12px"><i class="ph ph-lightning"></i>Now, until restart</button><button class="btn btn-primary" onClick="{{ r.save }}" style="padding:3px 10px;font-size:12px;color:{{ saveC }};border-color:{{ saveC }}">Save</button></div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { open: null, pick: {} };
+  R = [
+    ['reply', 'Anthropic', 'claude-opus-4-8'], ['think', 'Anthropic', 'claude-sonnet-5'], ['mood', 'Anthropic', 'claude-sonnet-5'], ['housekeeping', 'Anthropic', 'claude-haiku-4-5-20251001'],
+    ['voice register', 'Anthropic', 'claude-sonnet-5'], ['tool step', 'Anthropic', 'claude-sonnet-5'], ['the room', 'Google', 'gemini-2.5-flash'], ['web lookup', 'Google', 'gemini-2.5-flash'],
+    ['pictures', 'Google', 'gemini-2.5-flash-image'], ['embeddings', 'local', 'bge-m3 · on the box'], ['voice', 'ElevenLabs', 'eleven_multilingual_v2'], ['recognition', 'Deepgram', 'nova-3']
+  ];
+  O = [['Anthropic', 'claude-opus-4-8', '$15 / $75 per M'], ['Anthropic', 'claude-sonnet-5', '$3 / $15 per M'], ['Anthropic', 'claude-haiku-4-5-20251001', '$1 / $5 per M'], ['Google', 'gemini-2.5-flash', '$0.30 / $2.50 per M'], ['OpenAI', 'gpt-5', 'no key — set OPENAI_API_KEY in Secrets', true]];
+  renderVals() {
+    const p = this.props, s = this.state, inst = p.instance || 'prod';
+    const toast = m => p.toast && p.toast(m);
+    const roles = this.R.map((r, i) => {
+      const now = inst === 'dev' && i === 0 ? 'claude-sonnet-5' : r[2];
+      const open = s.open === i, llm = i < 6;
+      const pk = s.pick[i] !== undefined ? s.pick[i] : this.O.findIndex(o => o[1] === now);
+      return {
+        role: r[0], provider: r[1], now, cfg: r[2], differs: now !== r[2], cfgC: now !== r[2] ? 'var(--color-text)' : 'var(--color-neutral-500)',
+        open, btn: 'Change', caret: open ? 'up' : 'down', bg: open ? 'color-mix(in srgb, var(--color-text) 3%, transparent)' : 'transparent',
+        toggle: () => this.setState({ open: open ? null : i }),
+        options: (llm ? this.O : [[r[1], r[2], 'the only option configured']]).map((o, k) => ({
+          provider: o[0], model: o[1], note: o[2], disabled: !!o[3], icon: o[3] ? 'prohibit' : (k === pk ? 'radio-button' : 'circle'), ic: o[3] ? 'var(--color-neutral-600)' : k === pk ? 'var(--color-accent)' : 'var(--color-neutral-500)',
+          bg: k === pk && !o[3] ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent', fg: o[3] ? 'var(--color-neutral-500)' : 'var(--color-text)', cursor: o[3] ? 'not-allowed' : 'pointer',
+          pick: () => !o[3] && this.setState({ pick: Object.assign({}, s.pick, { [i]: k }) })
+        })),
+        restartNote: 'Save writes settings.yaml and restarts lumi-' + inst + '-server (~20 s).',
+        nowFn: () => { this.setState({ open: null }); toast(r[0] + ' switched on ' + inst + ' until the next restart'); },
+        save: () => p.confirm && p.confirm({ instance: inst, title: 'Save ' + r[0] + ' on ' + inst + '?', body: 'Persisted in settings.yaml. lumi-' + inst + '-server restarts to pick it up.', diff: [{ k: 'models.' + r[0].replace(' ', '_'), from: r[2], to: (llm ? this.O[pk] : r)[llm ? 1 : 2] }], action: 'Save and restart', done: r[0] + ' saved on ' + inst + ' — server back in 19 s', onDone: () => this.setState({ open: null }) })
+      };
+    });
+    const PR = [['anthropic', 'Opus replies, Sonnet thinks, Haiku tidies. Google for the room, lookups and pictures.', true], ['gemini', 'Everything text on gemini-2.5-pro / flash. About 40 % cheaper; her voice drifts.', false], ['budget', 'Sonnet replies, Haiku for the rest; pictures off.', false]];
+    return {
+      instance: inst, roles, saveC: inst === 'prod' ? 'var(--bad)' : 'var(--color-accent)',
+      profiles: PR.map(x => ({ name: x[0], desc: x[1], active: x[2], ring: x[2] ? 'inset 0 0 0 1px var(--color-accent)' : 'none', save: () => p.confirm && p.confirm({ instance: inst, title: 'Switch ' + inst + ' to the ' + x[0] + ' profile?', body: 'Every role changes. Persisted; lumi-' + inst + '-server restarts.', action: 'Save and restart', done: inst + ' now runs the ' + x[0] + ' profile' }), now: () => toast(inst + ' runs ' + x[0] + ' until the next restart') }))
+    };
+  }
+}
+</script>
+</body>
+</html>

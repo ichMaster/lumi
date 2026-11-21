@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="font-size:13px">
+
+<sc-if value="{{ is.settings }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);min-height:calc(100vh - 86px)">
+<div style="padding:16px 10px 16px 24px;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;gap:1px">
+<div style="position:relative;margin-bottom:8px"><i class="ph ph-magnifying-glass" style="position:absolute;left:8px;top:8px;color:var(--color-neutral-500)"></i><input class="input" placeholder="Find a setting" style="min-height:30px;padding:4px 8px 4px 26px;font-size:12.5px"></div>
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="9"><button onClick="{{ g.pick }}" style="display:flex;align-items:center;justify-content:space-between;height:28px;padding:0 8px;border:0;border-radius:4px;background:{{ g.bg }};color:{{ g.fg }};font:12.5px var(--mono);cursor:pointer;text-align:left" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)">{{ g.name }}<span style="font-size:11px;color:var(--color-neutral-500)">{{ g.n }}</span></button></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;min-width:0">
+<div style="padding:16px 24px 8px;display:flex;align-items:baseline;gap:10px"><h2 style="font:500 16px var(--mono);margin:0">thoughts</h2><span style="font-size:12px;color:var(--color-neutral-400)">How she thinks between conversations · settings.yaml on {{ instance }}</span></div>
+<div style="padding:0 24px 100px;display:flex;flex-direction:column;overflow-x:auto">
+<div style="display:grid;min-width:640px;grid-template-columns:minmax(240px,1.3fr) minmax(180px,260px) minmax(140px,190px);gap:16px;padding:6px 0;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>Setting</span><span>Value</span><span>Default</span></div>
+<sc-for list="{{ fields }}" as="f" hint-placeholder-count="6">
+<div style="display:grid;min-width:640px;grid-template-columns:minmax(240px,1.3fr) minmax(180px,260px) minmax(140px,190px);gap:16px;align-items:start;padding:11px 0 11px 10px;margin-left:-10px;box-shadow:inset 2px 0 0 {{ f.edge }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom">
+<div style="display:flex;flex-direction:column;gap:3px;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font:500 12.5px var(--mono)">{{ f.key }}</span><sc-if value="{{ f.restart }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0 6px;border-radius:3px;background:var(--color-neutral-800);color:var(--color-neutral-200)"><i class="ph ph-arrow-clockwise"></i>needs a restart</span></sc-if><sc-if value="{{ f.outside }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;padding:0 6px;border-radius:3px;background:var(--color-accent-900);color:var(--color-accent-300)">changed outside · 11-19 22:14</span></sc-if></div><span style="font-size:12.5px;color:var(--color-neutral-400);text-wrap:pretty">{{ f.desc }}</span></div>
+<div>
+<sc-if value="{{ f.isBool }}" hint-placeholder-val="{{ false }}"><button role="switch" aria-checked="{{ f.on }}" onClick="{{ f.toggle }}" style="width:34px;height:19px;border-radius:10px;border:0;padding:2px;background:{{ f.trk }};cursor:pointer;display:flex;justify-content:{{ f.jc }}"><span style="width:15px;height:15px;border-radius:50%;background:{{ f.knob }}"></span></button></sc-if>
+<sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}"><input class="input" value="{{ f.v }}" onChange="{{ f.set }}" style="min-height:30px;padding:4px 8px;font:12.5px var(--mono)"></sc-if>
+</div>
+<div style="display:flex;flex-direction:column;gap:2px;font:12px var(--mono);color:var(--color-neutral-400)"><span>{{ f.def }}</span><sc-if value="{{ f.changed }}" hint-placeholder-val="{{ false }}"><button onClick="{{ f.reset }}" class="btn btn-ghost" style="align-self:flex-start;padding:0 2px;font-size:11.5px;margin-left:-2px">Reset to default</button></sc-if></div>
+</div>
+</sc-for>
+</div>
+<div style="position:sticky;bottom:0;display:flex;align-items:center;gap:12px;padding:10px 24px;border-top:1px solid var(--color-divider);background:color-mix(in srgb,var(--color-surface) 92%,transparent);backdrop-filter:blur(6px)">
+<span style="font-size:12.5px;color:{{ barColor }}">{{ barText }}</span>
+<button class="btn btn-secondary" onClick="{{ discard }}" disabled="{{ noChanges }}" style="margin-left:auto">Discard</button>
+<button class="btn btn-primary" onClick="{{ apply }}" disabled="{{ noChanges }}" style="color:{{ applyC }};border-color:{{ applyC }}"><i class="ph ph-git-diff"></i>Review the diff and apply</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ is.secrets }}" hint-placeholder-val="{{ false }}">
+<div style="padding:16px 24px 40px;display:flex;flex-direction:column;gap:12px;max-width:1100px;overflow-x:auto">
+<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:6px;background:var(--color-neutral-900);font-size:12.5px;color:var(--color-neutral-300)"><i class="ph ph-lock-key" style="font-size:16px;margin-top:1px"></i><span style="text-wrap:pretty">Values are written to <span style="font-family:var(--mono)">secrets.yaml</span> on {{ instance }} and never sent back to this page — only whether a secret is set and its last four characters.</span></div>
+<div style="display:grid;min-width:900px;grid-template-columns:minmax(180px,1.2fr) 90px 90px minmax(160px,1.3fr) 130px 210px;gap:12px;padding:6px 10px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>Name</span><span>State</span><span>Last 4</span><span>Used by</span><span>Changed</span><span></span></div>
+<sc-for list="{{ secrets }}" as="x" hint-placeholder-count="9">
+<div style="display:flex;flex-direction:column;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom">
+<div style="display:grid;min-width:900px;grid-template-columns:minmax(180px,1.2fr) 90px 90px minmax(160px,1.3fr) 130px 210px;gap:12px;align-items:center;min-height:38px;padding:3px 10px">
+<span style="font:500 12.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.name }}</span>
+<span style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:{{ x.stC }}"><i class="ph ph-{{ x.stIcon }}"></i>{{ x.state }}</span>
+<span style="font:12.5px var(--mono);color:var(--color-neutral-300)">{{ x.last4 }}</span>
+<span style="font-size:12.5px;color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.used }}</span>
+<span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ x.when }}</span>
+<div style="display:flex;gap:4px;justify-content:flex-end"><button class="btn btn-secondary" onClick="{{ x.edit }}" style="padding:3px 9px;font-size:12px">{{ x.setLabel }}</button><button class="btn btn-ghost" onClick="{{ x.clear }}" disabled="{{ x.unset }}" style="padding:3px 6px;font-size:12px;color:var(--color-neutral-400)">Clear</button></div>
+</div>
+<sc-if value="{{ x.editing }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:8px;padding:4px 10px 12px">
+<input class="input" type="password" placeholder="paste the new value" autoFocus="{{ true }}" style="max-width:380px;min-height:30px;padding:4px 8px;font:12.5px var(--mono)">
+<button class="btn btn-primary" onClick="{{ x.save }}" style="padding:4px 10px;font-size:12.5px">Save</button>
+<button class="btn btn-ghost" onClick="{{ x.cancel }}" style="font-size:12.5px;color:var(--color-neutral-400)">Cancel</button>
+<span style="font-size:12px;color:var(--color-neutral-500)">{{ x.note }}</span>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ is.confighistory }}" hint-placeholder-val="{{ false }}">
+<div style="padding:16px 24px 40px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));gap:20px;align-items:start">
+<div style="display:flex;flex-direction:column">
+<sc-for list="{{ versions }}" as="v" hint-placeholder-count="6">
+<button onClick="{{ v.pick }}" style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 10px;border:0;border-radius:5px;background-color:{{ v.bg }};box-shadow:inset 2px 0 0 {{ v.edge }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;color:inherit;font-family:inherit;text-align:left;cursor:pointer" style-hover="background-color:color-mix(in srgb,var(--color-text) 5%,transparent)">
+<span style="font:12px var(--mono);color:var(--color-neutral-400)">#{{ v.id }}</span>
+<span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ v.summary }}</span><span style="display:flex;gap:8px;font:11.5px var(--mono);color:var(--color-neutral-500)"><span>{{ v.when }}</span><span>{{ v.source }}</span></span></span>
+</button>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:8px;background:var(--color-surface);position:sticky;top:16px">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font:500 13px var(--mono)">#{{ ver.id }}</span><span style="font-size:13px">{{ ver.summary }}</span><button class="btn btn-primary" onClick="{{ rollback }}" disabled="{{ ver.current }}" style="margin-left:auto;padding:4px 10px;font-size:12.5px;color:{{ applyC }};border-color:{{ applyC }}"><i class="ph ph-arrow-counter-clockwise"></i>{{ rollbackLabel }}</button></div>
+<div style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ ver.when }} · {{ ver.source }} · settings.yaml</div>
+<div style="display:flex;flex-direction:column;padding:8px 0;border-radius:6px;background:var(--color-bg);font:12px/20px var(--mono);overflow-x:auto">
+<sc-for list="{{ ver.diff }}" as="d" hint-placeholder-count="8"><div style="display:grid;grid-template-columns:18px minmax(0,1fr);padding:0 10px;white-space:pre;background:{{ d.bg }};color:{{ d.c }}"><span>{{ d.sign }}</span><span>{{ d.t }}</span></div></sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ is.promote }}" hint-placeholder-val="{{ false }}">
+<div style="padding:16px 24px 40px;display:flex;flex-direction:column;gap:14px;max-width:1100px;overflow-x:auto">
+<div style="display:flex;align-items:center;gap:10px;font-size:13px"><span style="font:500 11px var(--mono);padding:1px 6px;border-radius:3px;background:var(--color-neutral-800);color:var(--color-neutral-200)">dev</span><i class="ph ph-arrow-right" style="color:var(--color-neutral-400)"></i><span style="font:500 11px var(--mono);padding:1px 6px;border-radius:3px;background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)">prod</span><span style="color:var(--color-neutral-400)">6 settings differ. Pick what goes to prod.</span><span style="margin-left:auto;font-size:12px;color:var(--color-neutral-500)">Images are promoted by the deploy agent, not here.</span></div>
+<div style="display:grid;min-width:720px;grid-template-columns:28px minmax(180px,1.2fr) minmax(120px,1fr) minmax(120px,1fr) 120px;gap:12px;padding:6px 10px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span></span><span>Setting</span><span>dev</span><span>prod now</span><span></span></div>
+<sc-for list="{{ promo }}" as="x" hint-placeholder-count="6">
+<label style="display:grid;min-width:720px;grid-template-columns:28px minmax(180px,1.2fr) minmax(120px,1fr) minmax(120px,1fr) 120px;gap:12px;align-items:center;min-height:36px;padding:3px 10px;border-radius:4px;background-color:{{ x.bg }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom;cursor:pointer">
+<input type="checkbox" checked="{{ x.on }}" onChange="{{ x.toggle }}" style="accent-color:var(--color-accent);width:15px;height:15px">
+<span style="font:500 12.5px var(--mono)">{{ x.key }}</span>
+<span style="font:12.5px var(--mono);color:var(--ok)">{{ x.dev }}</span>
+<span style="font:12.5px var(--mono);color:var(--color-neutral-400)">{{ x.prod }}</span>
+<span style="font-size:11.5px;color:var(--color-neutral-400)">{{ x.note }}</span>
+</label>
+</sc-for>
+<div style="display:flex;align-items:center;gap:12px;margin-top:4px"><span style="font-size:12.5px;color:var(--color-neutral-300)">{{ promoText }}</span><button class="btn btn-primary" onClick="{{ promote }}" disabled="{{ promoNone }}" style="margin-left:auto;color:var(--bad);border-color:var(--bad)"><i class="ph ph-arrow-fat-lines-up"></i>Review and promote to prod</button></div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { group: 'thoughts', vals: {}, editing: null, ver: 0, promo: { 0: true, 1: true } };
+  F = [
+    ['thoughts.enabled', 'bool', true, true, 'Let her think between conversations.'],
+    ['thoughts.quiet_hours', 'text', '1-8', '1-8', 'Hours when scheduled thoughts stay silent. Written as from-to, 24 h.'],
+    ['thoughts.max_per_day', 'text', '14', '12', 'Cap on scheduled thoughts in one day; the room’s turns don’t count.'],
+    ['thoughts.spoken_ratio', 'text', '0.35', '0.3', 'Share of thoughts she may say aloud rather than keep.'],
+    ['thoughts.model_role', 'text', 'think', 'think', 'Which model role thinks. See Models.', true],
+    ['thoughts.seed_file', 'text', 'core/think_seeds.md', 'core/think_seeds.md', 'Where the think seeds are read from.', true],
+    ['thoughts.catchup_topics', 'text', 'news, science, birds', 'news', 'Topics the catchup row looks into, comma-separated.']
+  ];
+  renderVals() {
+    const p = this.props, s = this.state, inst = p.instance || 'prod', sub = p.sub || 'settings';
+    const prodC = inst === 'prod' ? 'var(--bad)' : 'var(--color-accent)';
+    const toast = m => p.toast && p.toast(m);
+    const base = (f) => (inst === 'dev' && f[0] === 'thoughts.quiet_hours') ? '1-7' : f[2];
+    const fields = this.F.map(f => {
+      const orig = base(f), v = s.vals[f[0]] !== undefined ? s.vals[f[0]] : orig, changed = v !== orig, isBool = f[1] === 'bool';
+      return {
+        key: f[0], desc: f[4], restart: !!f[5], outside: inst === 'dev' && f[0] === 'thoughts.quiet_hours', isBool, isText: !isBool, v, on: !!v,
+        trk: v ? 'var(--color-accent-700)' : 'var(--color-neutral-800)', knob: v ? 'var(--color-accent-200)' : 'var(--color-neutral-500)', jc: v ? 'flex-end' : 'flex-start',
+        def: 'default ' + String(f[3]), changed: String(v) !== String(f[3]), edge: changed ? 'var(--color-accent)' : 'transparent',
+        toggle: () => this.setState({ vals: Object.assign({}, s.vals, { [f[0]]: !v }) }),
+        set: e => this.setState({ vals: Object.assign({}, s.vals, { [f[0]]: e.target.value }) }),
+        reset: () => this.setState({ vals: Object.assign({}, s.vals, { [f[0]]: f[3] }) })
+      };
+    });
+    const diff = this.F.filter(f => s.vals[f[0]] !== undefined && s.vals[f[0]] !== base(f)).map(f => ({ k: f[0], from: String(base(f)), to: String(s.vals[f[0]]), restart: !!f[5] }));
+    const nRestart = diff.filter(d => d.restart).length;
+    const G = [['server', 9], ['telegram', 7], ['thoughts', 7], ['mood', 5], ['memory', 8], ['voice', 6], ['room', 4], ['usage', 3], ['logging', 4]];
+    const SEC = [
+      ['ANTHROPIC_API_KEY', 'f3Qa', 'reply, think, mood, housekeeping', '2026-10-02'], ['GOOGLE_API_KEY', '91xz', 'the room, web lookup, pictures', '2026-09-20'],
+      ['ELEVENLABS_API_KEY', 'k2m0', 'voice', '2026-08-11'], ['DEEPGRAM_API_KEY', '7hh1', 'recognition', '2026-08-11'], ['OPENAI_API_KEY', null, 'nothing — OpenAI can’t be chosen in Models', null],
+      ['TELEGRAM_BOT_TOKEN', 'Aa9c', 'telegram-inbound, telegram-outbound', '2026-07-30'], ['TELEGRAM_OWNER_ID', '4471', 'telegram-inbound', '2026-07-30'],
+      ['LUMI_OWNER_TOKEN', 'd01e', 'the window, the TUI — never this panel', '2026-11-01'], ['AGORA_APP_CERT', null, 'the room (off on prod)', null]
+    ];
+    const secrets = SEC.map((x, i) => {
+      const set = !!x[1], ed = s.editing === i;
+      return {
+        name: x[0], state: set ? 'set' : 'unset', stC: set ? 'var(--color-text)' : 'var(--color-neutral-500)', stIcon: set ? 'check-circle' : 'circle-dashed',
+        last4: set ? '···' + x[1] : '—', used: x[2], when: x[3] || '—', unset: !set, setLabel: set ? 'Rotate' : 'Set', editing: ed,
+        note: x[0] === 'LUMI_OWNER_TOKEN' ? 'Rotating signs the window out until you paste the new token there.' : 'Restarts what uses it.',
+        edit: () => this.setState({ editing: ed ? null : i }), cancel: () => this.setState({ editing: null }),
+        save: () => { this.setState({ editing: null }); toast(x[0] + ' saved on ' + inst + ' — ends in ···' + (x[1] ? 'R7wq' : 'n2Lp')); },
+        clear: () => p.confirm && p.confirm({ instance: inst, title: 'Clear ' + x[0] + '?', body: 'It is removed from secrets.yaml on ' + inst + '. ' + x[2] + ' stop working until it is set again.', action: 'Clear', done: x[0] + ' cleared on ' + inst })
+      };
+    });
+    const V = [
+      ...(inst === 'dev' ? [[47, 'thoughts.quiet_hours 1-8 → 1-7', '2026-11-19 22:14', 'outside change', [[' ', 'thoughts:'], [' ', '  enabled: true'], ['-', '  quiet_hours: 1-8'], ['+', '  quiet_hours: 1-7'], [' ', '  max_per_day: 14']]]] : []),
+      [112, 'release v4.7.0 — 3 new defaults', '2026-11-20 05:06', 'deploy agent', [[' ', 'memory:'], ['+', '  digest_week: true'], ['+', '  digest_room: separate'], [' ', 'voice:'], ['+', '  register_model_role: voice_register']]],
+      [111, 'thoughts.max_per_day 12 → 14', '2026-11-17 23:02', 'panel · Safari, Mac', [[' ', 'thoughts:'], [' ', '  enabled: true'], [' ', '  quiet_hours: 1-8'], ['-', '  max_per_day: 12'], ['+', '  max_per_day: 14'], [' ', '  spoken_ratio: 0.35']]],
+      [110, 'voice.stability 0.5 → 0.45, catchup topics', '2026-11-12 09:40', 'panel · Safari, Mac', [[' ', 'voice:'], ['-', '  stability: 0.5'], ['+', '  stability: 0.45'], [' ', 'thoughts:'], ['-', '  catchup_topics: news'], ['+', '  catchup_topics: news, science, birds']]],
+      [109, 'rollback to #106', '2026-11-08 10:15', 'panel · Safari, Mac', [[' ', 'server:'], ['-', '  space: off'], ['+', '  space: on']]],
+      [108, 'server.space on → off', '2026-11-08 10:02', 'panel · iPhone', [[' ', 'server:'], ['-', '  space: on'], ['+', '  space: off']]]
+    ];
+    const vi = Math.min(s.ver, V.length - 1), cv = V[vi];
+    const versions = V.map((v, i) => ({ id: v[0], summary: v[1], when: v[2], source: v[3], bg: i === vi ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent', edge: i === vi ? 'var(--color-accent)' : 'transparent', pick: () => this.setState({ ver: i }) }));
+    const ver = { id: cv[0], summary: cv[1], when: cv[2], source: cv[3], current: vi === 0, diff: cv[4].map(d => ({ sign: d[0], t: d[1], c: d[0] === '+' ? 'var(--ok)' : d[0] === '-' ? 'var(--bad)' : 'var(--color-neutral-400)', bg: d[0] === '+' ? 'color-mix(in srgb, var(--ok) 9%, transparent)' : d[0] === '-' ? 'color-mix(in srgb, var(--bad) 9%, transparent)' : 'transparent' })) };
+    const PR = [['thoughts.quiet_hours', '1-7', '1-8', 'changed outside'], ['memory.digest_room', 'separate', 'inline', ''], ['models.reply', 'claude-sonnet-5', 'claude-opus-4-8', 'switched until restart on dev'], ['voice.stability', '0.42', '0.45', ''], ['room.enabled', 'true', 'false', 'needs a restart'], ['logging.level', 'DEBUG', 'INFO', 'dev only — usually not promoted']];
+    const promo = PR.map((x, i) => { const on = !!s.promo[i]; return { key: x[0], dev: x[1], prod: x[2], note: x[3], on, bg: on ? 'color-mix(in srgb, var(--color-accent) 8%, transparent)' : 'transparent', toggle: () => this.setState({ promo: Object.assign({}, s.promo, { [i]: !on }) }) }; });
+    const picked = PR.filter((_, i) => s.promo[i]);
+    return {
+      is: { settings: sub === 'settings', secrets: sub === 'secrets', confighistory: sub === 'confighistory', promote: sub === 'promote' },
+      instance: inst, applyC: prodC,
+      groups: G.map(g => ({ name: g[0], n: g[1], bg: s.group === g[0] ? 'color-mix(in srgb, var(--color-accent) 14%, transparent)' : 'transparent', fg: s.group === g[0] ? 'var(--color-text)' : 'var(--color-neutral-300)', pick: () => this.setState({ group: g[0] }) })),
+      fields, noChanges: !diff.length,
+      barText: diff.length ? diff.length + ' change' + (diff.length > 1 ? 's' : '') + ' not applied' + (nRestart ? ' · ' + nRestart + ' needs a restart of lumi-' + inst + '-server' : '') : 'No changes · applied values match settings.yaml on ' + inst,
+      barColor: diff.length ? 'var(--color-text)' : 'var(--color-neutral-500)',
+      discard: () => this.setState({ vals: {} }),
+      apply: () => p.confirm && p.confirm({ instance: inst, title: 'Apply ' + diff.length + ' change' + (diff.length > 1 ? 's' : '') + ' to ' + inst + '?', body: nRestart ? 'lumi-' + inst + '-server restarts after writing settings.yaml (about 20 s).' : 'Written to settings.yaml; no restart needed.', diff, action: 'Apply', done: 'Applied to ' + inst + ' — config history #113', onDone: () => this.setState({ vals: {} }) }),
+      secrets, versions, ver, rollbackLabel: vi === 0 ? 'Current' : 'Roll back to #' + cv[0],
+      rollback: () => p.confirm && p.confirm({ instance: inst, title: 'Roll back to #' + cv[0] + '?', body: 'settings.yaml on ' + inst + ' returns to how it was after #' + cv[0] + '. This is recorded as a new entry.', action: 'Roll back', done: 'Rolled back — config history #113' }),
+      promo, promoNone: !picked.length, promoText: picked.length + ' of 6 picked',
+      promote: () => p.confirm && p.confirm({ instance: 'prod', title: 'Promote ' + picked.length + ' settings to prod?', body: 'Written to settings.yaml on prod. Anything that needs a restart restarts lumi-prod-server.', diff: picked.map(x => ({ k: x[0], from: x[2], to: x[1] })), action: 'Promote', done: picked.length + ' settings promoted to prod' })
+    };
+  }
+}
+</script>
+</body>
+</html>

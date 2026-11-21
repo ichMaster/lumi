@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="design-system/styles.css">
+<script src="design-system/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>:root{--ok:oklch(0.76 0.14 152);--warn:oklch(0.82 0.13 80);--bad:oklch(0.70 0.17 25);--off:#75798c;--agent:oklch(0.78 0.11 330);--agent-2:oklch(0.80 0.08 210);--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}.btn,.seg-opt,.tag{white-space:nowrap}</style>
+</helmet>
+<div style="padding:16px 24px 48px;display:flex;flex-direction:column;gap:22px;font-size:13px;max-width:1360px">
+
+<section style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:baseline;gap:10px"><h2 style="font-size:14px;margin:0;font-weight:500">Firing</h2><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ firingCount }}</span></div>
+<sc-for list="{{ firing }}" as="f" hint-placeholder-count="1">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px 10px 15px;border-radius:8px;background:color-mix(in srgb,var(--warn) 9%,var(--color-surface));box-shadow:inset 3px 0 0 var(--warn)">
+<i class="ph ph-bell-simple-ringing" style="font-size:18px;color:var(--warn)"></i>
+<div style="flex:1;min-width:260px;display:flex;flex-direction:column;gap:1px">
+<div style="display:flex;align-items:center;gap:8px"><span style="font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:var(--color-neutral-800);color:var(--color-neutral-200)">dev</span><span style="font-size:13.5px">{{ f.title }}</span></div>
+<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">{{ f.meta }}</span>
+</div>
+<div style="display:flex;gap:6px;align-items:center;position:relative">
+<button class="btn btn-secondary" onClick="{{ f.ack }}" disabled="{{ f.acked }}" style="padding:4px 10px;font-size:12px"><i class="ph ph-check"></i>{{ f.ackLabel }}</button>
+<button class="btn btn-secondary" onClick="{{ toggleSnooze }}" style="padding:4px 10px;font-size:12px"><i class="ph ph-moon"></i>Snooze<i class="ph ph-caret-down"></i></button>
+<button class="btn btn-secondary" onClick="{{ f.mute }}" style="padding:4px 10px;font-size:12px"><i class="ph ph-bell-simple-slash"></i>Mute rule</button>
+<sc-if value="{{ snoozeOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;z-index:20;top:calc(100% + 4px);right:84px;width:220px;padding:4px;border-radius:8px;background:var(--color-surface);box-shadow:var(--shadow-md);display:flex;flex-direction:column">
+<button onClick="{{ snooze1 }}" style="display:flex;justify-content:space-between;padding:6px 8px;border:0;border-radius:4px;background:none;color:inherit;font-family:inherit;font-size:12.5px;cursor:pointer;text-align:left" style-hover="background:color-mix(in srgb,var(--color-text) 7%,transparent)">1 hour<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">until 22:41</span></button>
+<button onClick="{{ snoozeAm }}" style="display:flex;justify-content:space-between;padding:6px 8px;border:0;border-radius:4px;background:none;color:inherit;font-family:inherit;font-size:12.5px;cursor:pointer;text-align:left" style-hover="background:color-mix(in srgb,var(--color-text) 7%,transparent)">Until the morning<span style="font:11.5px var(--mono);color:var(--color-neutral-400)">08:00</span></button>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-for>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:4px;overflow-x:auto">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;min-width:920px"><h2 style="font-size:14px;margin:0;font-weight:500">Rules</h2><span style="font:11.5px var(--mono);color:var(--color-neutral-400)">8 on · 1 off</span><button class="btn btn-primary" onClick="{{ newRule }}" style="margin-left:auto;padding:4px 10px;font-size:12.5px"><i class="ph ph-plus"></i>New rule</button></div>
+<div style="display:grid;min-width:920px;grid-template-columns:40px 104px minmax(220px,1fr) 150px 84px 104px 150px 16px;gap:12px;padding:0 10px 6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-neutral-500)"><span>On</span><span>Kind</span><span>Condition</span><span>Scope</span><span>Severity</span><span>Quiet</span><span>Last fired</span><span></span></div>
+<sc-for list="{{ rules }}" as="r" hint-placeholder-count="9">
+<div style="display:grid;min-width:920px;grid-template-columns:40px 104px minmax(220px,1fr) 150px 84px 104px 150px 16px;gap:12px;align-items:center;min-height:36px;padding:3px 10px;border-radius:4px;background-color:{{ r.bg }};background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 9%,transparent) 48px,color-mix(in srgb,var(--color-text) 9%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom" style-hover="background-color:color-mix(in srgb,var(--color-text) 4%,transparent)">
+<button role="switch" aria-checked="{{ r.on }}" onClick="{{ r.toggle }}" aria-label="On" style="width:30px;height:17px;border-radius:9px;border:0;padding:2px;background:{{ r.trk }};cursor:pointer;display:flex;justify-content:{{ r.jc }}"><span style="width:13px;height:13px;border-radius:50%;background:{{ r.knob }}"></span></button>
+<span style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--color-neutral-300)"><i class="ph ph-{{ r.icon }}" style="font-size:14px;color:var(--color-neutral-400)"></i>{{ r.kind }}</span>
+<button onClick="{{ r.edit }}" style="min-width:0;padding:0;border:0;background:none;color:{{ r.fg }};font-family:inherit;font-size:13px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" style-hover="color:var(--color-accent)">{{ r.cond }}</button>
+<span style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ r.scope }}" as="c" hint-placeholder-count="2"><span style="font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:{{ c.bg }};color:{{ c.fg }}">{{ c.t }}</span></sc-for></span>
+<span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.sevC }}"></span>{{ r.sev }}</span>
+<span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ r.quiet }}</span>
+<span style="font:12px var(--mono);color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.last }}</span>
+<button onClick="{{ r.edit }}" aria-label="Edit" style="padding:0;border:0;background:none;color:var(--color-neutral-500);cursor:pointer"><i class="ph ph-pencil-simple"></i></button>
+</div>
+</sc-for>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:4px;overflow-x:auto">
+<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px"><h2 style="font-size:14px;margin:0;font-weight:500">History</h2><span style="font-size:12px;color:var(--color-neutral-500)">sent and held, and why</span></div>
+<sc-for list="{{ history }}" as="h" hint-placeholder-count="8">
+<div style="display:grid;min-width:820px;grid-template-columns:130px 48px minmax(200px,1fr) 70px minmax(160px,0.8fr) 90px;gap:12px;align-items:center;min-height:30px;padding:2px 10px;font-size:12.5px;background-image:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 8%,transparent) 48px,color-mix(in srgb,var(--color-text) 8%,transparent) calc(100% - 48px),transparent);background-size:100% 1px;background-repeat:no-repeat;background-position:bottom">
+<span style="font:12px var(--mono);color:var(--color-neutral-400)">{{ h.t }}</span>
+<span style="justify-self:start;font:500 10.5px var(--mono);padding:0 5px;border-radius:3px;background:{{ h.instBg }};color:{{ h.instFg }}">{{ h.inst }}</span>
+<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.rule }}</span>
+<span style="font:12px var(--mono);color:{{ h.resC }}">{{ h.res }}</span>
+<span style="color:var(--color-neutral-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.why }}</span>
+<span style="font-size:12px;color:var(--color-neutral-500)">{{ h.ch }}</span>
+</div>
+</sc-for>
+</section>
+</div>
+
+<sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closeEd }}" style="position:fixed;inset:0;z-index:40;background:color-mix(in srgb,var(--color-neutral-900) 45%,transparent)"></div>
+<aside role="dialog" aria-label="Rule editor" style="position:fixed;z-index:41;top:0;right:0;bottom:0;width:min(480px,100%);display:flex;flex-direction:column;background:var(--color-surface);box-shadow:var(--shadow-lg);font-size:13px">
+<div style="flex:none;display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--color-divider)"><span style="font-size:16px;font-weight:500">{{ edTitle }}</span><button class="btn btn-ghost" onClick="{{ closeEd }}" aria-label="Close" style="margin-left:auto;color:var(--color-neutral-400)"><i class="ph ph-x" style="font-size:16px"></i></button></div>
+<div style="flex:1;min-height:0;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+<div class="field"><label>Kind</label><div class="seg" role="radiogroup" aria-label="Kind" style="display:flex"><sc-for list="{{ kinds }}" as="k" hint-placeholder-count="5"><label class="seg-opt" style="flex:1;justify-content:center;padding:6px 6px;font-size:12px"><input type="radio" name="rule-kind" checked="{{ k.on }}" onChange="{{ k.pick }}"><i class="ph ph-{{ k.icon }}"></i>{{ k.label }}</label></sc-for></div></div>
+
+<sc-if value="{{ k.check }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="field"><label>Check</label><select class="input" name="check" value="{{ f.check }}" onChange="{{ setF }}"><option>server</option><option>state</option><option>mood</option><option>model</option><option>telegram</option><option>scheduler</option><option>disk</option><option>marker</option><option>deploy agent</option><option>archive</option><option>image drift</option><option>room</option><option>voice</option></select></div>
+<div class="field"><label>Turns</label><select class="input" name="cond" value="{{ f.cond }}" onChange="{{ setF }}"><option>red</option><option>amber or red</option><option>off</option></select></div>
+<div class="field"><label>For at least (min)</label><input class="input" name="forMin" value="{{ f.forMin }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+<div class="field"><label>Or failures in 1 h</label><input class="input" name="failures" value="{{ f.failures }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+</div>
+</sc-if>
+<sc-if value="{{ k.log }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px">
+<div class="field"><label>Logger</label><input class="input" name="logger" value="{{ f.logger }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+<div class="field"><label>Level at least</label><select class="input" name="level" value="{{ f.level }}" onChange="{{ setF }}"><option>WARNING</option><option>ERROR</option></select></div>
+</div>
+<div class="field"><label>Text or regex <span style="color:var(--color-neutral-500)">· optional</span></label><input class="input" name="text" value="{{ f.text }}" onChange="{{ setF }}" placeholder="e.g. TimeoutError|429" style="font-family:var(--mono)"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="field"><label>Times</label><input class="input" name="count" value="{{ f.count }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+<div class="field"><label>Within (min)</label><input class="input" name="window" value="{{ f.window }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+</div>
+</sc-if>
+<sc-if value="{{ k.usage }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px">
+<div class="field"><label>Measure</label><select class="input" name="measure" value="{{ f.measure }}" onChange="{{ setF }}"><option>today’s cost</option><option>the month’s forecast</option><option>one provider’s cost today</option><option>turns in an hour</option></select></div>
+<div class="field"><label>Over</label><input class="input" name="over" value="{{ f.over }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+</div>
+<div class="field"><label>Agent</label><div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--color-divider);border-radius:8px"><span style="width:18px;height:18px;border-radius:4px;display:grid;place-items:center;background:color-mix(in srgb,var(--agent) 24%,transparent);color:var(--agent);font-size:11px;font-weight:600">L</span>Lili · both instances summed</div></div>
+</sc-if>
+<sc-if value="{{ k.container }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px">
+<div class="field"><label>Event</label><select class="input" name="event" value="{{ f.event }}" onChange="{{ setF }}"><option>a restart, or OOM killed</option><option>OOM killed</option><option>exit non-zero</option><option>memory over % of the limit</option><option>CPU over %</option></select></div>
+<div class="field"><label>Threshold</label><input class="input" name="threshold" value="{{ f.threshold }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+</div>
+<div class="field"><label>Containers</label><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag tag-accent">server</span><span class="tag tag-accent">telegram-inbound</span><span class="tag tag-outline">telegram-outbound</span></div></div>
+</sc-if>
+<sc-if value="{{ k.schedule }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px">
+<div class="field"><label>Row</label><select class="input" name="row" value="{{ f.row }}" onChange="{{ setF }}"><option>any row</option><option>catchup</option><option>muse-silent</option><option>muse-aloud</option><option>morning-touch</option></select></div>
+<div class="field"><label>No firing in (h)</label><input class="input" name="hours" value="{{ f.hours }}" onChange="{{ setF }}" style="font-family:var(--mono)"></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label>Between</label><input class="input" type="time" value="08:00" style="font-family:var(--mono)"></div><div class="field"><label>and</label><input class="input" type="time" value="23:30" style="font-family:var(--mono)"></div></div>
+</sc-if>
+
+<div class="field"><label>Instances</label><div style="display:flex;gap:6px"><sc-for list="{{ instChips }}" as="c" hint-placeholder-count="2"><button onClick="{{ c.toggle }}" aria-pressed="{{ c.on }}" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:5px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};font:12px var(--mono);cursor:pointer"><i class="ph ph-{{ c.icon }}"></i>{{ c.t }}</button></sc-for></div></div>
+<div class="field"><label>Severity</label><div class="seg" role="radiogroup" aria-label="Severity"><sc-for list="{{ sevs }}" as="s" hint-placeholder-count="3"><label class="seg-opt" style="padding:5px 12px;font-size:12.5px"><input type="radio" name="rule-sev" checked="{{ s.on }}" onChange="{{ s.pick }}"><span style="width:7px;height:7px;border-radius:50%;background:{{ s.c }}"></span>{{ s.label }}</label></sc-for></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="field"><label>Quiet from</label><input class="input" type="time" value="01:00" style="font-family:var(--mono)"></div>
+<div class="field"><label>Quiet until</label><input class="input" type="time" value="08:00" style="font-family:var(--mono)"></div>
+</div>
+<div style="font-size:12px;color:var(--color-neutral-400);margin-top:-6px">Held during quiet hours and sent at 08:00 as one message. Critical rules ignore quiet hours.</div>
+<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:6px;background:var(--color-neutral-900)"><i class="ph ph-clock-counter-clockwise" style="font-size:15px;color:var(--color-neutral-400);margin-top:1px"></i><span style="font-size:12.5px;color:var(--color-neutral-300);text-wrap:pretty">{{ preview }}</span></div>
+</div>
+<div style="flex:none;display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--color-divider)">
+<button class="btn btn-ghost" onClick="{{ closeEd }}" style="color:var(--bad)"><i class="ph ph-trash"></i>Delete</button>
+<button class="btn btn-secondary" onClick="{{ closeEd }}" style="margin-left:auto">Cancel</button>
+<button class="btn btn-primary" onClick="{{ save }}"><i class="ph ph-check"></i>Save rule</button>
+</div>
+</aside>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { on: {}, editing: null, kind: 'log', f: {}, sev: 'warning', inst: { prod: true, dev: false }, acked: false, snoozeOpen: false };
+  R = [
+    ['check', 'model red, or 3 failures in 1 hour', ['prod', 'dev'], 'warning', '01:00–08:00', 'dev · today 21:02', true, { check: 'model', cond: 'red', forMin: '0', failures: '3' }],
+    ['check', 'server red for 1 minute', ['prod', 'dev'], 'critical', 'never', 'dev · 11-19 21:53', true, { check: 'server', cond: 'red', forMin: '1', failures: '—' }],
+    ['log', 'ERROR from lumi.tools, 3 times in 10 minutes', ['prod'], 'warning', '01:00–08:00', 'prod · 11-14 08:31', true, { logger: 'lumi.tools', level: 'ERROR', text: '', count: '3', window: '10' }],
+    ['usage', 'today’s cost over $5.00', ['Lili'], 'warning', '—', 'never', true, { measure: 'today’s cost', over: '$5.00' }],
+    ['usage', 'the month’s forecast over $80', ['Lili'], 'info', '—', 'never', true, { measure: 'the month’s forecast', over: '$80.00' }],
+    ['container', 'a restart, or OOM killed', ['prod', 'dev'], 'critical', 'never', 'dev · 11-19 21:52', true, { event: 'a restart, or OOM killed', threshold: '—' }],
+    ['container', 'memory over 85 % of the limit for 5 min', ['prod'], 'warning', '01:00–08:00', 'prod · 11-16 10:40', true, { event: 'memory over % of the limit', threshold: '85 % · 5 min' }],
+    ['schedule', 'no firing in 12 h between 08:00 and 23:30', ['Lili', 'prod'], 'warning', '—', 'prod · 11-02 20:10', true, { row: 'any row', hours: '12' }],
+    ['check', 'disk free under 15 %', ['box'], 'critical', 'never', 'never', false, { check: 'disk', cond: 'amber or red', forMin: '5', failures: '—' }]
+  ];
+  ICON = { check: 'heartbeat', log: 'scroll', usage: 'coins', container: 'cube', schedule: 'calendar-blank' };
+  renderVals() {
+    const p = this.props, s = this.state;
+    const toast = (m) => p.toast && p.toast(m);
+    const SEV = { critical: 'var(--bad)', warning: 'var(--warn)', info: 'var(--color-neutral-400)' };
+    const chipC = (t) => t === 'prod' ? { bg: 'color-mix(in srgb, var(--bad) 18%, transparent)', fg: 'var(--bad)' } : t === 'dev' ? { bg: 'var(--color-neutral-800)', fg: 'var(--color-neutral-200)' } : t === 'Lili' ? { bg: 'color-mix(in srgb, var(--agent) 20%, transparent)', fg: 'var(--agent)' } : { bg: 'var(--color-accent-900)', fg: 'var(--color-accent-300)' };
+    const open = (i) => () => { const r = this.R[i]; this.setState({ editing: { i }, kind: r[0], f: Object.assign({}, r[7]), sev: r[3], inst: { prod: r[2].includes('prod'), dev: r[2].includes('dev') } }); };
+    const rules = this.R.map((r, i) => {
+      const on = s.on[i] !== undefined ? s.on[i] : r[6];
+      return {
+        kind: r[0], icon: this.ICON[r[0]], cond: r[1], scope: r[2].map(t => Object.assign({ t }, chipC(t))), sev: r[3], sevC: SEV[r[3]], quiet: r[4], last: r[5], on,
+        fg: on ? 'var(--color-text)' : 'var(--color-neutral-500)', bg: s.editing && s.editing.i === i ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
+        trk: on ? 'var(--color-accent-700)' : 'var(--color-neutral-800)', knob: on ? 'var(--color-accent-200)' : 'var(--color-neutral-500)', jc: on ? 'flex-end' : 'flex-start',
+        toggle: () => { this.setState({ on: Object.assign({}, s.on, { [i]: !on }) }); toast('Rule ' + (on ? 'off' : 'on') + ' — ' + r[1]); }, edit: open(i)
+      };
+    });
+    const tag = (n) => n === 'prod' ? { instBg: 'color-mix(in srgb, var(--bad) 18%, transparent)', instFg: 'var(--bad)' } : { instBg: 'var(--color-neutral-800)', instFg: 'var(--color-neutral-200)' };
+    const H = [
+      ['today 21:02', 'dev', 'model red, or 3 failures in 1 hour', 'sent', '', 'Telegram'],
+      ['today 03:12', 'prod', 'ERROR from lumi.tools, 3 times in 10 min', 'held', 'quiet hours — sent with the 08:00 digest', 'Telegram'],
+      ['11-19 21:59', 'dev', 'server recovered', 'sent', '', 'Telegram'],
+      ['11-19 21:53', 'dev', 'a restart, or OOM killed', 'held', 'grouped with “server red” — same incident', '—'],
+      ['11-19 21:53', 'dev', 'server red for 1 minute', 'sent', '', 'Telegram'],
+      ['11-18 14:05', 'dev', 'model red, or 3 failures in 1 hour', 'held', 'snoozed until 15:00', '—'],
+      ['11-16 10:40', 'prod', 'memory over 85 % of the limit for 5 min', 'held', 'rule muted', '—'],
+      ['11-14 08:31', 'prod', 'ERROR from lumi.tools, 3 times in 10 min', 'sent', '', 'Telegram']
+    ];
+    const kinds = ['check', 'log', 'usage', 'container', 'schedule'];
+    const instChips = ['prod', 'dev'].map(n => {
+      const on = !!s.inst[n];
+      return { t: n, on, icon: on ? 'check-square' : 'square', bd: on ? (n === 'prod' ? 'var(--bad)' : 'var(--color-neutral-400)') : 'var(--color-divider)', bg: on ? (n === 'prod' ? 'color-mix(in srgb, var(--bad) 14%, transparent)' : 'var(--color-neutral-800)') : 'transparent', fg: on ? 'var(--color-text)' : 'var(--color-neutral-400)', toggle: () => this.setState({ inst: Object.assign({}, s.inst, { [n]: !on }) }) };
+    });
+    const ed = s.editing;
+    return {
+      firingCount: s.acked ? '1 firing · acknowledged' : '1 firing',
+      firing: [{ title: 'model: 3 failures in the last hour', meta: 'warning · firing since 21:02 (38 min) · sent 21:02 to Telegram · rule “model red, or 3 failures”', acked: s.acked, ackLabel: s.acked ? 'Acknowledged 21:41' : 'Acknowledge', ack: () => { this.setState({ acked: true }); toast('Acknowledged — it stays here until the check clears'); }, mute: () => toast('Rule muted — it still records, it doesn’t send') }],
+      snoozeOpen: s.snoozeOpen, toggleSnooze: () => this.setState({ snoozeOpen: !s.snoozeOpen }),
+      snooze1: () => { this.setState({ snoozeOpen: false }); toast('Snoozed for 1 hour — until 22:41'); },
+      snoozeAm: () => { this.setState({ snoozeOpen: false }); toast('Snoozed until the morning — 08:00'); },
+      rules,
+      history: H.map(h => Object.assign({ t: h[0], inst: h[1], rule: h[2], res: h[3], resC: h[3] === 'sent' ? 'var(--color-text)' : 'var(--color-neutral-400)', why: h[4] || '—', ch: h[5] }, tag(h[1]))),
+      editing: !!ed, edTitle: ed && ed.i !== undefined ? 'Edit rule' : 'New rule',
+      newRule: () => this.setState({ editing: {}, kind: 'log', f: { logger: 'lumi.', level: 'ERROR', text: '', count: '3', window: '10' }, sev: 'warning', inst: { prod: true, dev: false } }),
+      closeEd: () => this.setState({ editing: null }),
+      save: () => { this.setState({ editing: null }); toast('Rule saved — it applies from the next check'); },
+      kinds: kinds.map(k => ({ label: k, icon: this.ICON[k], on: s.kind === k, pick: () => this.setState({ kind: k }) })),
+      k: { check: s.kind === 'check', log: s.kind === 'log', usage: s.kind === 'usage', container: s.kind === 'container', schedule: s.kind === 'schedule' },
+      f: s.f, setF: e => this.setState({ f: Object.assign({}, s.f, { [e.target.name]: e.target.value }) }),
+      instChips,
+      sevs: ['info', 'warning', 'critical'].map(v => ({ label: v, c: SEV[v], on: s.sev === v, pick: () => this.setState({ sev: v }) })),
+      preview: s.kind === 'log' ? 'In the last 7 days this would have fired 2 times: 11-14 08:31 (sent) and today 03:12 (held — quiet hours).' : s.kind === 'usage' ? 'In the last 30 days this would not have fired — the highest day was $3.40 (11-19).' : 'In the last 7 days this would have fired once: 11-19 21:53 on dev.'
+    };
+  }
+}
+</script>
+</body>
+</html>
