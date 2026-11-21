@@ -197,7 +197,11 @@
       "theme": "theme {theme}",
       "profile": "profile {profile}",
       "latencyLine": "turn median {median} · p95 {p95} · model median {model}"
-    }
+    },
+    "monthSub": "estimated from the providers' list prices",
+    "forecastLine": "forecast ≈ {value}",
+    "previousLine": "{month} {value}",
+    "thisMonth": "this month"
   },
   "health": {
     "range": {
@@ -492,12 +496,49 @@
     "forecast": "Forecast",
     "previous": "{month}",
     "costPerDay": "Cost per day",
-    "by": "By {what}",
+    "by": {
+      "model": "By model",
+      "kind": "By kind",
+      "origin": "By origin",
+      "channel": "By channel"
+    },
     "cache": "Prompt cache",
     "saved": "saved ≈ {value} this month",
     "latency": "Turn latency",
     "slowest": "The slowest calls",
-    "csv": "Export CSV"
+    "csv": "Export CSV",
+    "range7d": "7 days",
+    "range30d": "30 days",
+    "range90d": "90 days",
+    "rangeMonth": "This month",
+    "pricingNote": "{agent} · {instances} · estimated from the providers' list prices",
+    "csvFailed": "The CSV couldn't be downloaded",
+    "emptyTitle": "No paid calls in this range",
+    "emptySub": "Calls appear here as the instances record them.",
+    "kpi": {
+      "toDate": "To date",
+      "forecast": "Forecast",
+      "forecastSub": "to the end of {month}",
+      "previousSub": "the previous month",
+      "turns": "Turns",
+      "turnsSub": "your turns in this range",
+      "perTurn": "Per turn",
+      "perTurnSub": "all her spending ÷ your turns",
+      "unpriced": "{n} calls not priced"
+    },
+    "forecastDay": "forecast ≈ {value}",
+    "noData": "no data",
+    "notPriced": "not priced",
+    "cacheHit": "{pct} % read from the cache",
+    "cacheHitSub": "of the prompt read from the cache",
+    "savedRange": "saved ≈ {value} in this range",
+    "latencySub": "median and p25–p95 per day · up to {max}",
+    "split": {
+      "pre": "PRE",
+      "model": "MODEL",
+      "post": "POST"
+    },
+    "rangeLabel": "Range"
   },
   "tools": {
     "columns": [
@@ -511,7 +552,28 @@
       "Used by"
     ],
     "perDay": "calls per day",
-    "slowestFailed": "Slowest and failed calls"
+    "slowestFailed": "Slowest and failed calls",
+    "note": "{agent} · {instances} · every tool call she made",
+    "emptyTitle": "No tool calls in this range",
+    "emptySub": "Her tool calls appear here as the instances record them.",
+    "col": {
+      "tool": "Tool",
+      "calls": "Calls",
+      "failed": "Failed",
+      "rate": "Rate",
+      "median": "Median",
+      "p95": "p95",
+      "lastError": "Last error",
+      "usedBy": "Used by"
+    },
+    "noError": "none",
+    "perDayOf": "{tool} · calls per day",
+    "ok": "ok",
+    "failed": "failed",
+    "failedN": "{n} failed",
+    "slowest": "The slowest calls",
+    "failedCalls": "The failed calls",
+    "pickHint": "Pick a tool to see its calls per day, its slowest and its failed calls."
   },
   "schedule": {
     "columns": [

@@ -17,6 +17,7 @@ const state = {
   token: sessionStorage.getItem(TOKEN_KEY) || "", view: "overview", instance: "dev", theme: "dark",
   instances: [], versions: {}, lastAction: null, data: { overview: null, health: null, alerts: null },
   lastOk: {}, nextRefresh: 0, loadedAt: null, agents: [DEFAULT_AGENT], agent: DEFAULT_AGENT.id, picker: false,
+  usageRange: "30d", toolsRange: "30d", tool: null,  // v5.1 LUMI-345: the Usage and Tools views' choices
 };
 let STRINGS = {};
 let dialogOpen = false;
@@ -82,10 +83,11 @@ const NAV = {
       { id: "audit", label: "nav.views.audit", icon: "fingerprint", both: true, section: "audit" }] }],
   agent: [
     { name: "nav.groups.howSheRuns", items: [
-      { id: "usage", label: "nav.views.usage", icon: "chart-bar", section: "usage" },
+      { id: "usage", label: "nav.views.usage", icon: "chart-bar", both: true, section: "usage" },
+      { id: "tools", label: "nav.views.tools", icon: "wrench", both: true, section: "tools" },
       { id: "schedule", label: "nav.views.scheduleModels", icon: "calendar-blank", section: "sections" }] }],
 };
-const BODY = { usage: "#usage-body", logs: "#log-lines" };  // a section with fixed controls renders into its body
+const BODY = { logs: "#log-lines" };  // a section with fixed controls renders into its body
 
 function navItems() {
   return [...NAV.top, ...NAV.server.flatMap((g) => g.items), ...NAV.agent.flatMap((g) => g.items)];
@@ -440,7 +442,7 @@ function setInstance(name) {
 
 const VIEWS = { overview: renderOverview, health: renderHealth, containers: renderServices, logs: renderLogs,
                 settings: renderSettings, secrets: renderSecrets, confighistory: renderHistory, promote: renderPromote, audit: renderAudit,
-                usage: renderUsage, schedule: renderSections };
+                usage: renderUsage, tools: renderTools, schedule: renderSections };
 
 async function renderView(loading) {
   const def = viewDef(state.view);
@@ -595,8 +597,9 @@ function instanceCard(inst, alerts) {
         t("nav.views.logs"))));
 }
 
-function agentCard(instances) {
+function agentCard(instances, month) {
   const name = agentName();
+  const monthCost = (n) => month && month.by_instance ? month.by_instance[n] : null;
   return el("div", { class: "agent-card" },
     el("div", { class: "agent-head" }, el("span", { class: "initial s30" }, name.slice(0, 1).toUpperCase()),
       el("div", { class: "names" }, el("span", { class: "n" }, name), el("span", { class: "r" }, t("nav.agentPicker.role"))),
@@ -604,8 +607,9 @@ function agentCard(instances) {
                      onclick: () => go("usage") }, t("nav.views.usage"), icon("arrow-right", 12))),
     el("div", { class: "agent-inst" }, instances.map((i) => el("div", {},
       el("span", { class: `inst-tag ${i.name === "prod" ? "prod" : ""}`.trim() }, i.name),
-      el("span", { class: "cost" }, usd((i.today || {}).cost)),
-      el("span", { class: "turns" }, t("overview.turns", { n: i.turns_today ?? 0 })),
+      el("span", { class: "cost" }, month ? usd(monthCost(i.name)) : usd((i.today || {}).cost)),
+      el("span", { class: "turns" }, (month ? t("overview.thisMonth") + " · " : "")
+        + t("overview.turns", { n: i.turns_today ?? 0 })),
       el("span", { class: "sub" }, i.last_turn_age_s == null ? t("overview.noTurn")
         : t("overview.lastTurn", { ago: t("common.ago", { t: dur(i.last_turn_age_s) }) }))))));
 }
@@ -618,6 +622,8 @@ async function renderOverview() {
     $("#overview").replaceChildren(emptyState("squares-four", t("overview.instances"), t("common.unreachable.never")));
     return;
   }
+  const usage = await api(`/api/agents/${state.agent}/usage?range=month`).catch(() => null);
+  const month = usage ? usage.month : null;
   $("#overview").replaceChildren(el("div", { class: "ov" },
     boxStrip(data.box, instances),
     el("section", {}, el("div", { class: "ov-head" }, el("h2", {}, t("overview.instances")),
@@ -625,9 +631,31 @@ async function renderOverview() {
       el("div", { class: "cards", style: "margin-top:10px" }, instances.map((i) => instanceCard(i, state.data.alerts)))),
     el("section", {}, el("div", { class: "ov-head" }, el("h2", {}, t("overview.agents")),
       el("span", { class: "sub" }, t("overview.today"))),
-      el("div", { class: "agents-row", style: "margin-top:10px" }, agentCard(instances),
+      el("div", { class: "agents-row", style: "margin-top:10px" }, agentCard(instances, month),
         el("div", { class: "agent-slot" }, el("span", { class: "initial s30 slot" }, icon("plus", 14)),
-          el("span", { class: "t" }, t("overview.secondAgent")), el("span", { class: "s" }, t("overview.secondAgentNote")))))));
+          el("span", { class: "t" }, t("overview.secondAgent")), el("span", { class: "s" }, t("overview.secondAgentNote"))))),
+    usage ? monthCard(usage) : ""));
+}
+
+// The month on the Overview (design: "<Month> · all agents"): to date, a bar per day so far, the forecast, the
+// previous month. Every agent's sum — one agent today.
+function monthCard(usage) {
+  const m = usage.month;
+  const days = (usage.per_day || []).filter((d) => !d.future);
+  const max = Math.max(0.0001, ...days.map((d) => d.total || 0));
+  const today = days.length ? days[days.length - 1].day : "";
+  return el("section", {}, el("div", { class: "ov-head" }, el("h2", {}, t("overview.month", { month: m.label })),
+    el("span", { class: "sub" }, t("overview.monthSub"))),
+    el("div", { class: "month-card" },
+      el("div", { class: "month-total" }, el("span", { class: "big" }, usd(m.to_date)),
+        el("span", { class: "small" }, t("overview.toDate"))),
+      el("div", { class: "month-bars", role: "img", "aria-label": t("usage.costPerDay") },
+        days.map((d) => el("span", { class: `${d.day === today ? "now" : ""} ${d.gap ? "gap" : ""}`.trim(),
+          style: `height:${d.gap ? 2 : Math.max(2, Math.round((d.total || 0) / max * 100))}%`,
+          title: `${d.day}: ${d.gap ? t("usage.noData") : usd(d.total)}` }))),
+      el("div", { class: "month-meta" },
+        el("span", {}, t("overview.forecastLine", { value: usd(m.forecast) })),
+        el("span", {}, t("overview.previousLine", { month: m.previous_label, value: usd(m.previous) })))));
 }
 
 // --- views carried over from v2.10–v2.11 (their look is restyled in LUMI-344 / LUMI-345) ------------------------
@@ -693,52 +721,275 @@ async function act(name, service, action) {
   setTimeout(renderServices, 1500);
 }
 
-async function renderUsage() {
-  const days = $("#usage-days").value;
-  const u = await api(`/api/usage?instance=${state.instance}&days=${days}`);
-  const perDay = Object.entries(u.per_day);
-  const max = Math.max(0.0001, ...perDay.map(([, b]) => b.cost));
-  // A fixed 600-wide viewBox scaled to the card: the bars share the width whatever the number of days, and only
-  // every k-th day is labelled so the labels never collide (live: 31 days of 36 px bars overflowed the card).
-  const VW = 600, hgt = 120, pad = 6;
-  const slot = (VW - 2 * pad) / Math.max(1, perDay.length);
-  const every = Math.max(1, Math.ceil(perDay.length / 8));
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${VW} ${hgt + 30}`);
-  svg.setAttribute("class", "chart");
-  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  perDay.forEach(([day, b], i) => {
-    const h = Math.max(b.cost > 0 ? 1 : 0, Math.round((b.cost / max) * hgt));
-    const r = document.createElementNS(SVG_NS, "rect");
-    Object.entries({ x: pad + i * slot + slot * 0.12, y: hgt - h + 5, width: slot * 0.76, height: h, class: "bar" })
-      .forEach(([k, v]) => r.setAttribute(k, v));
-    const tt = document.createElementNS(SVG_NS, "title"); tt.textContent = `${day}: ${usd(b.cost)}`;
-    r.append(tt);
-    svg.append(r);
-    if (i % every === 0 || i === perDay.length - 1) {
-      const label = document.createElementNS(SVG_NS, "text");
-      label.setAttribute("x", pad + i * slot + slot / 2); label.setAttribute("y", hgt + 24);
-      label.setAttribute("text-anchor", "middle"); label.textContent = day.slice(5);
-      svg.append(label);
-    }
+// --- v5.1 LUMI-345: the Usage and Tools views (both instances of the agent, summed) ----------------------------------
+const PROVIDERS = ["anthropic", "google", "elevenlabs", "deepgram", "openai", "deepseek", "minimax", "other"];
+const RANGES = ["7d", "30d", "90d", "month"];
+
+// A round axis maximum and its step for a money axis (gridlines every step).
+function niceScale(max) {
+  const steps = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500];
+  const step = steps.find((s) => max / s <= 5) || 1000;
+  return { step, top: Math.max(step, Math.ceil(max / step) * step) };
+}
+
+// The geometry of the stacked bars (pure): one column per day, its providers' segments bottom-up; a gap day and a
+// forecast day are marked, not drawn as data.
+function stackedBars(days, providers, width, height, top) {
+  const slot = width / Math.max(1, days.length);
+  return days.map((d, i) => {
+    const x = i * slot + slot * 0.14, w = slot * 0.72;
+    if (d.future) return { day: d.day, x, w, future: true, h: Math.round((d.forecast || 0) / top * height) };
+    if (d.gap) return { day: d.day, x, w, gap: true, segments: [] };
+    let y = height;
+    const segments = providers.filter((p) => (d.providers || {})[p] > 0).map((p) => {
+      const h = d.providers[p] / top * height;
+      y -= h;
+      return { provider: p, y, h, cost: d.providers[p] };
+    });
+    return { day: d.day, x, w, segments, total: d.total };
   });
-  const table = (title, rows) => el("div", { class: "card" }, el("h2", {}, title), el("table", {},
-    el("tr", {}, ["", "calls", "tokens", "cost"].map((x) => el("th", {}, x))),
-    Object.entries(rows).sort((a, b) => b[1].cost - a[1].cost).map(([k, b]) =>
-      el("tr", {}, el("td", {}, k), el("td", {}, String(b.calls)), el("td", {}, tokens(b)), el("td", {}, usd(b.cost))))));
-  const l = u.latency;
-  $("#usage-body").replaceChildren(el("div", { class: "grid" },
-    el("div", { class: "card" }, el("h2", {}, `cost per day — ${state.instance}`), svg,
-      el("p", { class: "muted" }, `total ${usd(u.total.cost)} · ${tokens(u.total)} tokens · cache hit `
-        + (u.cache_hit_ratio == null ? "—" : `${Math.round(u.cache_hit_ratio * 100)} %`))),
-    el("div", { class: "card" }, el("h2", {}, "turn latency"), el("dl", {},
-      el("dt", {}, "turns"), el("dd", {}, String(l.turns)),
-      el("dt", {}, "turn"), el("dd", {}, `median ${ms(l.turn_median_ms)} · p95 ${ms(l.turn_p95_ms)}`),
-      el("dt", {}, "PRE / MODEL / POST"), el("dd", {}, `${ms(l.pre_median_ms)} / ${ms(l.model_median_ms)} / `
-        + `${ms(l.post_median_ms)}`)),
-      el("h2", {}, "slowest calls"), el("table", {}, u.slowest.map((s) => el("tr", {},
-        el("td", {}, (s.ts || "").slice(5, 16)), el("td", {}, s.model || ""), el("td", {}, ms(s.latency_ms)))))),
-    table("per model", u.per_model), table("per kind", u.per_kind)));
+}
+
+// The line and the band of a series with gaps (pure): one path per run of days with data, so a gap stays a gap.
+function runPaths(points, key, width, height, top) {
+  const slot = width / Math.max(1, points.length);
+  const runs = [];
+  let cur = [];
+  points.forEach((p, i) => {
+    if (p.gap || p[key] == null) { if (cur.length) runs.push(cur); cur = []; return; }
+    cur.push([i * slot + slot / 2, height - Math.min(1, p[key] / top) * height]);
+  });
+  if (cur.length) runs.push(cur);
+  return runs.map((run) => run.map(([x, y], j) => `${j ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" "));
+}
+
+function bandPaths(points, lo, hi, width, height, top) {
+  const slot = width / Math.max(1, points.length);
+  const runs = [];
+  let cur = [];
+  points.forEach((p, i) => {
+    if (p.gap || p[lo] == null || p[hi] == null) { if (cur.length) runs.push(cur); cur = []; return; }
+    cur.push([i * slot + slot / 2, height - Math.min(1, p[lo] / top) * height, height - Math.min(1, p[hi] / top) * height]);
+  });
+  if (cur.length) runs.push(cur);
+  return runs.map((run) => {
+    const up = run.map(([x, , yh], j) => `${j ? "L" : "M"}${x.toFixed(1)} ${yh.toFixed(1)}`).join(" ");
+    const down = run.slice().reverse().map(([x, yl]) => `L${x.toFixed(1)} ${yl.toFixed(1)}`).join(" ");
+    return `${up} ${down} Z`;
+  });
+}
+
+function svgEl(tag, attrs = {}, ...children) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v !== undefined && v !== null) node.setAttribute(k, v);
+  for (const c of children) if (c) node.append(c);
+  return node;
+}
+
+function svgTitle(text) { const n = document.createElementNS(SVG_NS, "title"); n.textContent = text; return n; }
+
+function rangeSeg(group, current, onPick, monthLabel) {
+  return el("div", { class: "seg", role: "radiogroup", "aria-label": t("usage.rangeLabel") }, RANGES.map((r) => el("label", { class: "seg-opt" },
+    el("input", { type: "radio", name: `range-${group}`, value: r, ...(r === current ? { checked: "" } : {}),
+                  onchange: () => onPick(r) }),
+    r === "month" ? (monthLabel || t("usage.rangeMonth")) : t(`usage.range${r}`))));
+}
+
+function costChart(u) {
+  const W = 720, H = 150, AX = 44;
+  const days = u.per_day || [];
+  const max = Math.max(0.0001, ...days.map((d) => d.future ? d.forecast || 0 : d.total || 0));
+  const { step, top } = niceScale(max);
+  const providers = PROVIDERS.filter((p) => (u.providers || []).some((x) => x.provider === p));
+  const svg = svgEl("svg", { viewBox: `0 0 ${W + AX} ${H + 24}`, class: "u-chart", preserveAspectRatio: "none",
+                             role: "img", "aria-label": t("usage.costPerDay") });
+  for (let v = 0; v <= top + 1e-9; v += step) {
+    const y = H - v / top * H;
+    svg.append(svgEl("line", { x1: AX, x2: AX + W, y1: y, y2: y, class: "grid" }),
+      svgEl("text", { x: AX - 6, y: y + 4, "text-anchor": "end", class: "axis" }, document.createTextNode(usd(v))));
+  }
+  const g = svgEl("g", { transform: `translate(${AX},0)` });
+  const every = Math.max(1, Math.ceil(days.length / 10));
+  stackedBars(days, providers, W, H, top).forEach((b, i) => {
+    if (b.future) g.append(svgEl("rect", { x: b.x, y: H - b.h, width: b.w, height: Math.max(1, b.h), class: "forecast" },
+      svgTitle(`${b.day}: ${t("usage.forecastDay", { value: usd(days[i].forecast) })}`)));
+    else if (b.gap) g.append(svgEl("rect", { x: b.x, y: H - 3, width: b.w, height: 3, class: "gap" },
+      svgTitle(`${b.day}: ${t("usage.noData")}`)));
+    else b.segments.forEach((s) => g.append(svgEl("rect", { x: b.x, y: s.y, width: b.w, height: Math.max(0.5, s.h),
+      class: `prov prov-${s.provider}` }, svgTitle(`${b.day} · ${s.provider}: ${usd(s.cost)}`))));
+    if (i % every === 0 || i === days.length - 1) g.append(svgEl("text", { x: b.x + b.w / 2, y: H + 16,
+      "text-anchor": "middle", class: "axis" }, document.createTextNode(b.day.slice(5))));
+  });
+  svg.append(g);
+  const keyed = Object.fromEntries((u.providers || []).map((p) => [p.provider, p.keyed]));
+  const legend = el("div", { class: "u-legend" }, providers.map((p) => el("span", {},
+    el("i", { class: `prov-${p} ${keyed[p] === false ? "nokey" : ""}`.trim() }), p)),
+    days.some((d) => d.future) ? el("span", {}, el("i", { class: "forecast" }), t("usage.forecast")) : "");
+  return el("div", { class: "u-card u-wide" }, el("div", { class: "u-head" }, el("h3", {}, t("usage.costPerDay")),
+    legend), svg);
+}
+
+function barList(title, rows, { money = true } = {}) {
+  const max = Math.max(0.0001, ...rows.map((r) => r.cost));
+  return el("div", { class: "u-card" }, el("h3", {}, title),
+    rows.length ? el("div", { class: "u-bars" }, rows.slice(0, 8).map((r) => el("div", { class: "u-bar" },
+      el("span", { class: "k", title: r.key }, r.key),
+      el("span", { class: "v" }, r.unpriced && !r.cost ? t("usage.notPriced") : money ? usd(r.cost) : String(r.calls)),
+      el("span", { class: "p" }, `${Math.round(r.share * 100)} %`),
+      el("span", { class: "track" }, el("span", { style: `width:${Math.round(r.cost / max * 100)}%` })))))
+      : el("p", { class: "u-none" }, t("usage.noData")));
+}
+
+function cacheCard(c) {
+  const ratio = c.ratio || 0, R = 38, C = 2 * Math.PI * R;
+  const svg = svgEl("svg", { viewBox: "0 0 96 96", class: "u-donut", role: "img",
+                             "aria-label": t("usage.cacheHit", { pct: Math.round(ratio * 100) }) },
+    svgEl("circle", { cx: 48, cy: 48, r: R, class: "track" }),
+    svgEl("circle", { cx: 48, cy: 48, r: R, class: "fill", "stroke-dasharray": `${(ratio * C).toFixed(1)} ${C.toFixed(1)}`,
+                      transform: "rotate(-90 48 48)" }));
+  return el("div", { class: "u-card" }, el("h3", {}, t("usage.cache")), el("div", { class: "u-cache" }, svg,
+    el("div", {}, el("div", { class: "big" }, c.ratio == null ? "—" : `${Math.round(ratio * 100)} %`),
+      el("div", { class: "small" }, t("usage.cacheHitSub")),
+      el("div", { class: "small" }, t("usage.savedRange", { value: usd(c.saved) })))));
+}
+
+function latencyCard(u) {
+  const W = 360, H = 110;
+  const pts = u.latency || [];
+  const max = Math.max(1, ...pts.filter((p) => !p.gap).map((p) => p.p95 || p.median || 0));
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "u-chart", preserveAspectRatio: "none", role: "img",
+                             "aria-label": t("usage.latency") });
+  bandPaths(pts, "p25", "p95", W, H, max).forEach((d) => svg.append(svgEl("path", { d, class: "band" })));
+  runPaths(pts, "median", W, H, max).forEach((d) => svg.append(svgEl("path", { d, class: "line" })));
+  const slot = W / Math.max(1, pts.length);
+  pts.forEach((p, i) => { if (p.gap) svg.append(svgEl("rect", { x: i * slot, y: 0, width: slot, height: H, class: "nodata" },
+    svgTitle(`${p.day}: ${t("usage.noData")}`))); });
+  const s = u.latency_split || {};
+  const sum = (s.pre || 0) + (s.model || 0) + (s.post || 0) || 1;
+  return el("div", { class: "u-card" }, el("div", { class: "u-head" }, el("h3", {}, t("usage.latency")),
+    el("span", { class: "small" }, t("usage.latencySub", { max: ms(max) }))), svg,
+    el("div", { class: "u-split" }, ["pre", "model", "post"].map((k) => el("span", { class: k,
+      style: `flex:${Math.max(0.02, (s[k] || 0) / sum)}` }, `${t(`usage.split.${k}`)} ${ms(s[k])}`))));
+}
+
+function slowestCard(rows) {
+  return el("div", { class: "u-card" }, el("h3", {}, t("usage.slowest")),
+    rows.length ? el("div", { class: "u-rows" }, rows.map((r) => el("div", { class: "u-row" },
+      el("span", { class: "mono" }, String(r.ts || "").slice(5, 16).replace("T", " ")),
+      el("span", { class: `inst-tag ${r.instance === "prod" ? "prod" : ""}`.trim() }, r.instance),
+      el("span", { class: "mono" }, r.model || "?"), el("span", { class: "mono dim" }, r.origin || "—"),
+      el("span", { class: "mono" }, ms(r.latency_ms)))))
+      : el("p", { class: "u-none" }, t("usage.noData")));
+}
+
+async function downloadCsv(range) {
+  const resp = await fetch(`/api/agents/${state.agent}/usage.csv?range=${range}`,
+                           { headers: { Authorization: `Bearer ${state.token}` } });
+  if (!resp.ok) { showToast(t("usage.csvFailed")); return; }
+  const url = URL.createObjectURL(await resp.blob());
+  const a = el("a", { href: url, download: `${state.agent}-usage-${range}.csv` });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function renderUsage() {
+  const range = state.usageRange;
+  const u = await api(`/api/agents/${state.agent}/usage?range=${range}`);
+  if (state.view !== "usage") return;
+  const pick = (r) => { state.usageRange = r; renderView(true); };
+  const m = u.month;
+  const split = Object.entries(m.by_instance || {}).map(([n, v]) => `${n} ${usd(v)}`).join(" · ");
+  const kpi = (k, v, sub) => el("div", { class: "u-kpi" }, el("span", { class: "k" }, k), el("span", { class: "v" }, v),
+    el("span", { class: "s" }, sub || ""));
+  const toolbar = el("div", { class: "u-toolbar" }, rangeSeg("usage", range, pick, m.label),
+    el("span", { class: "u-note" }, t("usage.pricingNote", { agent: agentName(), instances: u.instances.join(" + ") })),
+    el("button", { class: "btn btn-secondary", type: "button", onclick: () => downloadCsv(range) },
+      icon("file-csv", 14), t("usage.csv")));
+  if (!u.calls) {
+    $("#usage").replaceChildren(el("div", { class: "u" }, toolbar,
+      emptyState("chart-bar", t("usage.emptyTitle"), t("usage.emptySub"))));
+    return;
+  }
+  $("#usage").replaceChildren(el("div", { class: "u" }, toolbar,
+    el("div", { class: "u-kpis" },
+      kpi(t("usage.kpi.toDate"), usd(m.to_date), split),
+      kpi(t("usage.kpi.forecast"), `≈ ${usd(m.forecast)}`, t("usage.kpi.forecastSub", { month: m.label })),
+      kpi(m.previous_label, usd(m.previous), t("usage.kpi.previousSub")),
+      kpi(t("usage.kpi.turns"), (u.turns || 0).toLocaleString("en-US"), t("usage.kpi.turnsSub")),
+      kpi(t("usage.kpi.perTurn"), u.per_turn == null ? "—" : `≈ ${usd(u.per_turn)}`,
+        u.unpriced ? t("usage.kpi.unpriced", { n: u.unpriced }) : t("usage.kpi.perTurnSub"))),
+    costChart(u),
+    el("div", { class: "u-grid" },
+      barList(t("usage.by.model"), u.by_model), barList(t("usage.by.kind"), u.by_kind),
+      barList(t("usage.by.origin"), u.by_origin), barList(t("usage.by.channel"), u.by_channel)),
+    el("div", { class: "u-grid" }, cacheCard(u.cache), latencyCard(u), slowestCard(u.slowest || []))));
+}
+
+function rateTone(rate, failed) { return !failed ? "" : rate > 0.05 ? "bad" : "warn"; }
+
+function toolDays(tool) {
+  const W = 720, H = 110;
+  const days = tool.per_day || [];
+  const max = Math.max(1, ...days.map((d) => d.ok + d.failed));
+  const slot = W / Math.max(1, days.length);
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H + 20}`, class: "u-chart", preserveAspectRatio: "none", role: "img",
+                             "aria-label": t("tools.perDay") });
+  const every = Math.max(1, Math.ceil(days.length / 10));
+  days.forEach((d, i) => {
+    const x = i * slot + slot * 0.14, w = slot * 0.72;
+    const ok = d.ok / max * H, bad = d.failed / max * H;
+    if (d.gap) svg.append(svgEl("rect", { x, y: H - 3, width: w, height: 3, class: "gap" }, svgTitle(`${d.day}: ${t("usage.noData")}`)));
+    if (ok) svg.append(svgEl("rect", { x, y: H - ok, width: w, height: ok, class: "ok" }, svgTitle(`${d.day}: ${d.ok}`)));
+    if (bad) svg.append(svgEl("rect", { x, y: H - ok - bad, width: w, height: bad, class: "failed" },
+      svgTitle(`${d.day}: ${t("tools.failedN", { n: d.failed })}`)));
+    if (i % every === 0 || i === days.length - 1) svg.append(svgEl("text", { x: x + w / 2, y: H + 15,
+      "text-anchor": "middle", class: "axis" }, document.createTextNode(d.day.slice(5))));
+  });
+  return svg;
+}
+
+function callRows(rows) {
+  return rows.length ? el("div", { class: "u-rows" }, rows.map((r) => el("div", { class: `u-row ${r.outcome === "ok" ? "" : "bad"}`.trim() },
+    el("span", { class: "mono" }, String(r.ts || "").slice(5, 16).replace("T", " ")),
+    el("span", { class: `inst-tag ${r.instance === "prod" ? "prod" : ""}`.trim() }, r.instance),
+    el("span", { class: "mono" }, r.outcome || "?"), el("span", { class: "mono dim", title: r.input || "" }, r.input || ""),
+    el("span", { class: "mono" }, ms(r.ms))))) : el("p", { class: "u-none" }, t("usage.noData"));
+}
+
+async function renderTools() {
+  const range = state.toolsRange;
+  const q = state.tool ? `&tool=${encodeURIComponent(state.tool)}` : "";
+  const data = await api(`/api/agents/${state.agent}/tools?range=${range}${q}`);
+  if (state.view !== "tools") return;
+  const pick = (r) => { state.toolsRange = r; renderView(true); };
+  const select = (name) => { state.tool = state.tool === name ? null : name; renderView(false); };
+  const toolbar = el("div", { class: "u-toolbar" }, rangeSeg("tools", range, pick),
+    el("span", { class: "u-note" }, t("tools.note", { agent: agentName(), instances: data.instances.join(" + ") })));
+  if (!data.tools.length) {
+    $("#tools").replaceChildren(el("div", { class: "u" }, toolbar,
+      emptyState("wrench", t("tools.emptyTitle"), t("tools.emptySub"))));
+    return;
+  }
+  const cols = ["tool", "calls", "failed", "rate", "median", "p95", "lastError", "usedBy"];
+  const table = el("div", { class: "u-table-wrap" }, el("div", { class: "u-table" },
+    el("div", { class: "u-tr head" }, cols.map((c) => el("span", {}, t(`tools.col.${c}`)))),
+    data.tools.map((r) => el("button", { type: "button", class: `u-tr ${state.tool === r.tool ? "sel" : ""}`.trim(),
+                                        onclick: () => select(r.tool) },
+      el("span", { class: "mono" }, r.tool), el("span", { class: "mono" }, String(r.calls)),
+      el("span", { class: `mono ${r.failed ? "bad" : ""}`.trim() }, String(r.failed)),
+      el("span", { class: `mono ${rateTone(r.rate, r.failed)}`.trim() }, `${(r.rate * 100).toFixed(1)} %`),
+      el("span", { class: "mono" }, ms(r.median_ms)), el("span", { class: "mono" }, ms(r.p95_ms)),
+      el("span", { class: `mono ${r.last_error ? "bad" : "dim"}`.trim() }, r.last_error
+        ? `${r.last_error.outcome} · ${String(r.last_error.ts || "").slice(5, 16).replace("T", " ")}` : t("tools.noError")),
+      el("span", { class: "chips" }, r.used_by.slice(0, 4).map((o) => el("span", { class: "chip" }, o)))))));
+  const detail = data.tool ? el("div", { class: "u-grid" },
+    el("div", { class: "u-card u-wide" }, el("div", { class: "u-head" }, el("h3", {}, t("tools.perDayOf", { tool: data.tool.name })),
+      el("span", { class: "u-legend" }, el("span", {}, el("i", { class: "ok" }), t("tools.ok")),
+        el("span", {}, el("i", { class: "failed" }), t("tools.failed")))), toolDays(data.tool)),
+    el("div", { class: "u-card" }, el("h3", {}, t("tools.slowest")), callRows(data.tool.slowest)),
+    el("div", { class: "u-card" }, el("h3", {}, t("tools.failedCalls")), callRows(data.tool.failed)))
+    : el("p", { class: "u-hint" }, t("tools.pickHint"));
+  $("#tools").replaceChildren(el("div", { class: "u" }, toolbar, table, detail));
 }
 
 async function renderLogs() {
@@ -1388,7 +1639,6 @@ $("#theme").addEventListener("click", () => {
   savePrefs();
   applyTheme();
 });
-$("#usage-days").addEventListener("change", refresh);
 $("#log-go").addEventListener("click", refresh);
 
 async function start() {

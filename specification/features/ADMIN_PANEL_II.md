@@ -1,7 +1,8 @@
 # Admin panel II — the server and the agent (v5)
 
-**Status:** planned (the owner, 2026-11-20). Placed as **v5**; the old v5–v9 moved to v6–v10. Ten phases,
-operations first (the owner's choice), then Лілі in the panel:
+**Status:** v5.1 built (2026-11-21: the usage origin and channel, the media and tool ledgers, the panel's
+rollups, the new shell, the Usage and Tools views); v5.2–v5.10 planned. Placed as **v5** (the owner, 2026-11-20); the
+old v5–v9 moved to v6–v10. Ten phases, operations first (the owner's choice), then Лілі in the panel:
 
 | Phase | Area | What | Release |
 |-------|------|------|---------|

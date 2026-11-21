@@ -28,8 +28,9 @@ def test_the_charts_scale_to_their_card():
     # cells pushed the Health table past prod's card
     js = (STATIC / "app.js").read_text(encoding="utf-8")
     css = (STATIC / "panel.css").read_text(encoding="utf-8")
-    assert 'setAttribute("viewBox"' in js and 'svg.setAttribute("width"' not in js
-    assert "svg.chart { display: block; width: 100%" in css
+    # v5.1 LUMI-345: the Usage charts are viewBox SVGs scaled to their card (no fixed width), as the old one was
+    assert "viewBox: `0 0 ${W + AX} ${H + 24}`" in js and 'svg.setAttribute("width"' not in js
+    assert ".u-chart { width: 100%; height: auto; display: block; }" in css
     assert "min-width: 0; overflow-x: auto;" in css and "max-width: 244px" in css
 
 
@@ -368,3 +369,109 @@ def test_v5_1_a_counted_string_has_its_singular():
     assert {"settings.pending", "settings.restart", "settings.applyTitle", "promote.intro", "promote.title"} <= bases
     missing = sorted(k for b in bases for k in (b, f"{b}One") if not _has(strings, k))
     assert not missing, missing
+
+
+# --- v5.1 LUMI-345: the Usage and Tools views ------------------------------------------------------------------------
+
+FAKE_DOM = """
+class Base {}
+class N extends Base {
+  constructor(tag) { super(); this.tag = tag; this.children = []; this.attrs = {}; this.className = ""; this.on = {}; }
+  append(...c) { for (const x of c) this.children.push(typeof x === "string" ? new T(x) : x); }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  addEventListener(k, f) { this.on[k] = f; }
+  get textContent() { return this.children.map((c) => c.textContent).join(" "); }
+  set textContent(v) { this.children = [new T(v)]; }
+  all() { return [this, ...this.children.flatMap((c) => c instanceof N ? c.all() : [])]; }
+}
+class T extends Base { constructor(s) { super(); this.text = String(s); } get textContent() { return this.text; } }
+const Node = Base;
+const document = { createElement: (t) => new N(t), createElementNS: (ns, t) => new N(t), createTextNode: (s) => new T(s) };
+"""
+
+
+def _view_helpers(*names):
+    import re
+
+    js = _js()
+    consts = "".join(m.group(0) + "\n" for m in re.finditer(r"^const (usd|ms|PROVIDERS|RANGES) = .*$", js, re.M))
+    return consts + "".join(_whole(n) for n in names)
+
+
+def _usage_answer(tmp_path):
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from tests._admin_world import AUTH, NOW, build_world
+
+    app, cfg, *_ = build_world(tmp_path)
+    tools = [{"ts": NOW.isoformat(), "tool": "web_lookup", "outcome": "error:TimeoutError", "ms": 15000,
+              "result_chars": 0, "turn_id": "", "session_id": "s1", "origin": "turn", "channel": "window",
+              "input": 'q="birds at night"'},
+             {"ts": NOW.isoformat(), "tool": "read_file", "outcome": "ok", "ms": 40, "result_chars": 9,
+              "turn_id": "", "session_id": "s1", "origin": "turn", "channel": "window", "input": "path=a.md"}]
+    (cfg.instance("prod").data / "tools.jsonl").write_text("".join(json.dumps(r) + "\n" for r in tools))
+    client = TestClient(app)
+    usage = client.get("/api/agents/lili/usage?range=month", headers=AUTH).json()
+    tools = client.get("/api/agents/lili/tools?range=7d&tool=web_lookup", headers=AUTH).json()
+    return usage, tools
+
+
+def test_v5_1_the_chart_geometry_keeps_a_gap_a_gap():
+    got = _node_eval(_view_helpers("niceScale", "stackedBars", "runPaths", "bandPaths") + """
+const days = [{day: "11-01", total: 2, providers: {anthropic: 1.5, google: 0.5}}, {day: "11-02", gap: true},
+              {day: "11-03", total: 1, providers: {google: 1}}, {day: "11-04", future: true, forecast: 1.5}];
+const bars = stackedBars(days, ["anthropic", "google"], 400, 100, 2);
+const pts = [{day: "a", median: 10, p25: 5, p95: 20}, {day: "b", gap: true}, {day: "c", median: 12, p25: 6, p95: 30}];
+console.log(JSON.stringify({scale: [niceScale(0.07), niceScale(9.3)], bars,
+  lines: runPaths(pts, "median", 300, 100, 40), bands: bandPaths(pts, "p25", "p95", 300, 100, 40)}));
+""")
+    assert got["scale"] == [{"step": 0.02, "top": 0.08}, {"step": 2, "top": 10}]
+    first, gap, third, future = got["bars"]
+    assert [s["provider"] for s in first["segments"]] == ["anthropic", "google"]
+    assert first["segments"][0]["y"] == 25 and first["segments"][1]["y"] == 0  # bottom-up, scaled to top = 2
+    assert gap["gap"] is True and gap["segments"] == []
+    assert future["future"] is True and future["h"] == 75
+    assert len(got["lines"]) == 2 and len(got["bands"]) == 2  # the gap splits the line and the band in two
+
+
+def test_v5_1_the_usage_and_tools_views_render_from_the_api_without_html(tmp_path):
+    import json
+
+    usage, tools = _usage_answer(tmp_path)
+    strings = json.dumps(_strings())
+    script = (FAKE_DOM + (STATIC / "icons.js").read_text(encoding="utf-8")
+              + f"\nconst STRINGS = {strings};\n"
+              + _view_helpers("t", "el", "svgEl", "svgTitle", "niceScale", "stackedBars", "runPaths", "bandPaths", "costChart",
+                         "barList", "cacheCard", "latencyCard", "slowestCard", "rangeSeg", "monthCard", "toolDays",
+                         "callRows", "rateTone")
+              + f"\nconst u = {json.dumps(usage)};\nconst tl = {json.dumps(tools)};\n" + """
+const views = [costChart(u), barList(t("usage.by.origin"), u.by_origin), cacheCard(u.cache), latencyCard(u),
+               slowestCard(u.slowest), rangeSeg("usage", "month", () => {}, u.month.label), monthCard(u),
+               toolDays(tl.tool), callRows(tl.tool.failed)];
+const nodes = views.flatMap((v) => v.all());
+console.log(JSON.stringify({text: views.map((v) => v.textContent), classes: nodes.map((n) => n.attrs.class || n.className),
+                            html: nodes.some((n) => "innerHTML" in n.attrs)}));
+""")
+    got = _node_eval(script)
+    cost, origin, cache, latency, slowest, seg, month, days, failed = got["text"]
+    assert "Cost per day" in cost and "google" in cost
+    assert "By origin" in origin and "—" in origin  # the fixture's legacy calls carry no origin
+    assert "Prompt cache" in cache and "Turn latency" in latency
+    assert "The slowest calls" in slowest and "gemini-2.5-flash" in slowest
+    assert "November" in seg and "7 days" in seg
+    assert "November · all agents" in month and "forecast ≈" in month
+    assert "error:TimeoutError" in failed and 'q="birds at night"' in failed
+    assert "forecast" in got["classes"]  # the month's future days, outlined
+    assert got["html"] is False
+
+
+def test_v5_1_usage_and_tools_follow_both_instances_and_have_their_rail_entries():
+    js = _js()
+    nav = js[js.index("const NAV = {"):js.index("const BODY")]
+    assert '{ id: "usage", label: "nav.views.usage", icon: "chart-bar", both: true, section: "usage" }' in nav
+    assert '{ id: "tools", label: "nav.views.tools", icon: "wrench", both: true, section: "tools" }' in nav
+    assert "/api/agents/${state.agent}/usage?range=" in js and "/api/agents/${state.agent}/tools?range=" in js
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert '<section id="tools" class="view" hidden></section>' in html and "usage-days" not in html
