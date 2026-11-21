@@ -86,13 +86,14 @@ def _parser() -> argparse.ArgumentParser:
 
 def _client_from_config(cfg: Any) -> Any:
     from tui.remote import (  # the v1 API client (shared with the TUI client mode)
+        CLI_PREFIX,
         RemoteCore,
         server_url,
     )
 
     if not cfg.server_token:
         raise SystemExit("server.token is not set (secrets.yaml, or LUMI_SERVER_TOKEN) — the CLI uses the server's token.")
-    return RemoteCore(server_url(cfg), cfg.server_token)
+    return RemoteCore(server_url(cfg), cfg.server_token, client_prefix=CLI_PREFIX)  # v5.1: the cli- channel
 
 
 def _print_result(result: Any, out) -> None:

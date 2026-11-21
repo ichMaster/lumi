@@ -36,6 +36,32 @@ def test_messages_round_trip_in_order(repo):
     assert msgs[1].emotion == "calm" and msgs[1].intent == "deepen"  # full record survives
 
 
+@pytest.mark.parametrize("backend", sorted(BACKENDS))
+def test_v51_a_messages_channel_survives_a_reopen_and_none_stays_none(tmp_path, backend):
+    # v5.1 (LUMI-340): the additive channel round-trips through each store, written and read back after a reopen.
+    path = tmp_path / "store.json"
+    repo = BACKENDS[backend](path)
+    s = repo.create_session("owner")
+    repo.append_message(_msg(s.id, "owner", "user", "раз", channel="window"))
+    repo.append_message(_msg(s.id, "owner", "lili", "сама"))  # a turn of her own: no channel
+    again = BACKENDS[backend](path)
+    assert [m.channel for m in again.load_messages(s.id)] == ["window", None]
+
+
+def test_v51_a_pre_v51_message_without_a_channel_loads_as_none(tmp_path):
+    # A store written before v5.1 has no "channel" key in its message records; it loads without migration.
+    path = tmp_path / "store.json"
+    repo = JsonRepository(path)
+    s = repo.create_session("owner")
+    repo.append_message(_msg(s.id, "owner", "user", "раз", channel="tui"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for msgs in data["messages"].values():
+        for m in msgs:
+            m.pop("channel")
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    assert [m.channel for m in JsonRepository(path).load_messages(s.id)] == [None]
+
+
 def test_messages_are_scoped_to_their_session(repo):
     a, b = repo.create_session("owner"), repo.create_session("owner")
     repo.append_message(_msg(a.id, "owner", "user", "в сесії A"))

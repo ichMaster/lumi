@@ -309,6 +309,7 @@ def test_the_compose_is_logged_in_the_ledger_as_the_rooms(tmp_path):
     _settle(space)
     [event] = [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines()]
     assert event["kind"] == "agora" and event["output"] == 38
+    assert (event["origin"], event["channel"]) == ("initiative", "agora")  # v5.1 (LUMI-340)
 
 
 def test_close_waits_for_a_compose_in_flight_and_then_no_compose_starts(tmp_path):

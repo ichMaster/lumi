@@ -124,12 +124,13 @@ redesign.
 
 | origin | When |
 |--------|------|
-| `turn` | the owner's turn (with `channel`: `window`, `tui`, `cli`, `api`, `telegram`) |
+| `turn` | the owner's turn (with `channel`: `window`, `tui`, `cli`, `api`, `telegram`); a slash command the owner typed counts as one |
 | `directive:<name>` | a `%directive` the owner typed |
-| `schedule:<row>` | a scheduled row (its name, or its key) |
-| `room` | the Agora space (`kind: agora` today) |
-| `initiative` | her Agora initiative (v3.4) |
-| `housekeeping:<what>` | the mood, the session close, the compaction, the topic close, the voice of a pushed line |
+| `schedule:<row>` | a scheduled row (its name, else its directive), and the spoken turn it graduates to |
+| `idle` | the v0.12 idle think and the v0.4 nudge, which run outside the schedule (added in LUMI-340) |
+| `room` | the Agora space (`kind: agora` today; channel `agora`) |
+| `initiative` | her Agora initiative (v3.4; channel `agora`) |
+| `housekeeping:<what>` | the mood, the session start and close, the compaction, the facts, the room's digests (`housekeeping:room`), the topic close, the voice of a pushed line — whatever started the work around it |
 
 No message text, no prompt and no audio enter either ledger.
 

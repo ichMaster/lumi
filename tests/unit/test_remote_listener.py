@@ -169,7 +169,8 @@ def test_every_request_names_this_client():
                                                               base_url="http://lumi"))
     rc.refresh()
     rc.command("/mood")
-    assert seen == [rc.client_id, rc.client_id] and len(rc.client_id) == 12
+    # v5.1 (LUMI-340): the terminal client's id carries its channel prefix, so the server records `tui`
+    assert seen == [rc.client_id, rc.client_id] and rc.client_id.startswith("tui-") and len(rc.client_id) == 16
 
 
 # --- v2.5: SSE ids, resume, own conversation lines ------------------------------------------------------------

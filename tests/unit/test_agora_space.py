@@ -194,6 +194,7 @@ def test_the_usage_line_is_the_rooms(tmp_path):
     [row] = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
     assert row["kind"] == "agora" and row["model"] == "gemini-2.5-flash" and row["input"] == 6420
     assert row["session_id"] == "agora-2026-11-16"
+    assert (row["origin"], row["channel"]) == ("room", "agora")  # v5.1 (LUMI-340)
 
 
 def test_a_core_beside_the_room_keeps_its_state(tmp_path):

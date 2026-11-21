@@ -147,6 +147,7 @@ def test_housekeeping_calls_go_to_the_rooms_ledger(tmp_path):
     space.housekeep(DAY)
     [row] = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
     assert row["kind"] == "agora" and row["input"] == 900 and row["session_id"] == "agora-2026-11-16"
+    assert (row["origin"], row["channel"]) == ("housekeeping:room", "agora")  # v5.1 (LUMI-340)
 
 
 def test_the_timer_never_needs_the_servers_lock(tmp_path):

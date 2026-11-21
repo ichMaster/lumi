@@ -91,10 +91,14 @@ class CacheEvent:
     pre_ms: int | None = None      # local work before the model call (RAG embed+search, compaction)
     post_ms: int | None = None     # local work after the model call (persist + embed on the critical path)
     think_chars: int | None = None  # size of the hidden reasoning (the think phase) this turn
+    # v5.1 (LUMI-340): what started the call and through which channel (core.usage_origin); "" on legacy records.
+    origin: str = ""
+    channel: str = ""
 
 
 _FIELDS = ("ts", "kind", "cache_read", "cache_write", "input", "output", "gap_s", "cause", "model",
-           "session_id", "changed_section", "latency_ms", "cache_event", "pre_ms", "post_ms", "think_chars")
+           "session_id", "changed_section", "latency_ms", "cache_event", "pre_ms", "post_ms", "think_chars",
+           "origin", "channel")
 
 
 def append_event(path: str | Path, event: CacheEvent) -> None:

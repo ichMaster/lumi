@@ -40,7 +40,7 @@ class Session:
 class Message:
     """A single turn, owned by one user. Assistant turns carry the emotion field from v0.3.
 
-    (``user_id`` added in v0.2; ``emotion``/``intensity`` in v0.3; ``intent`` in v1.1.)
+    (``user_id`` added in v0.2; ``emotion``/``intensity`` in v0.3; ``intent`` in v1.1; ``channel`` in v5.1.)
     """
 
     session_id: str
@@ -55,6 +55,9 @@ class Message:
     # v1.1: the intent the arbiter chose for the reply (one of core.intent.INTENTS);
     # None on user turns, pre-v1.1 records, and while the feature is off.
     intent: str | None = None
+    # v5.1 (LUMI-340): the channel the turn came through (core.usage_origin: window / tui / cli / api / telegram),
+    # on both messages of the turn; None on a turn of her own (a spoken thought, a nudge) and on pre-v5.1 records.
+    channel: str | None = None
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
@@ -71,6 +74,7 @@ def make_message(
     emotion: str | None = None,
     intensity: float | None = None,
     intent: str | None = None,
+    channel: str | None = None,
 ) -> Message:
     """Build a :class:`Message`, stamping ``ts`` now unless one is given."""
     return Message(
@@ -82,6 +86,7 @@ def make_message(
         emotion=emotion,
         intensity=intensity,
         intent=intent,
+        channel=channel,
     )
 
 

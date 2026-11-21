@@ -40,6 +40,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Web
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from core import usage_origin
 from core.actions import (
     UPLOAD_MAX_PICTURE,
     ActionLog,
@@ -66,7 +67,7 @@ from core.gallery import GALLERY_MAX_LIMIT, list_pictures, thumbnail
 from core.images import image_block
 from core.journal import list_days, read_day
 from core.llm import LLMError
-from core.thoughts import THOUGHT_PAGE_MAX
+from core.thoughts import THOUGHT_PAGE_MAX, parse_directive
 from core.user import may_read_journal
 from server.dictation import DictationSetup, relay
 from server.voice import (
@@ -593,7 +594,9 @@ class _Service:
                 }
             if self.outbox is not None and self.outbox.mirror_user:
                 self.mirror(mirror_user, req.text)  # your line → Telegram first, as in-process keyboard turns
-            result = self.core.reply(req.text, self.session, images=req.images, **hooks)
+            # v5.1 (LUMI-340): the owner's turn, through the channel the client id names (desktop- → window, …)
+            with usage_origin.usage_origin(usage_origin.ORIGIN_TURN, usage_origin.channel_of(origin)):
+                result = self.core.reply(req.text, self.session, images=req.images, **hooks)
             voice_id = self.voicer.new_id()  # v4.6: taken now — the message names it, the voice push follows
             self.bus.publish("turn", {"emotion": result.emotion.value, "intensity": result.intensity,
                                       "theme": self.core.theme, "origin": origin})
@@ -1168,7 +1171,9 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
     def command(req: CommandRequest, x_lumi_client: str | None = Header(default=None)) -> dict[str, Any]:
         service.acquire()
         try:
-            result = run_command(service.core, service.session, req.line, confirmed=req.confirmed)
+            # v5.1 (LUMI-340): a command the owner typed (/web, /journal write, …) is the owner's turn in its records
+            with usage_origin.usage_origin(usage_origin.ORIGIN_TURN, usage_origin.channel_of(x_lumi_client)):
+                result = run_command(service.core, service.session, req.line, confirmed=req.confirmed)
             snap = service.publish_state(origin_of(x_lumi_client))  # e.g. /model-set, /style, /theme
         finally:
             service.lock.release()
@@ -1182,10 +1187,14 @@ def create_app(core: Any, *, token: str, session: Any = None, env: str | None = 
         to every listener as ``thought``; a silent one only lands in her diary. Not a known directive →
         ``is_directive: false`` (the client sends the line as chat, as in-process)."""
         origin = origin_of(x_lumi_client)
+        parsed = parse_directive(req.line)
         service.acquire()
         try:
             service.last_input = service.core.clock()  # a typed directive is real input too
-            outcome = service.core.run_directive(req.line, service.session)
+            # v5.1 (LUMI-340): a directive the owner typed is its calls' origin (an unknown %name makes none)
+            with usage_origin.usage_origin(usage_origin.directive(parsed.name) if parsed else "",
+                                           usage_origin.channel_of(origin)):
+                outcome = service.core.run_directive(req.line, service.session)
             payload = directive_payload(outcome)
             if outcome.is_directive and outcome.mode == "open" and payload["thought"] is not None:
                 service.bus.publish("thought", {**payload["thought"], "origin": origin})

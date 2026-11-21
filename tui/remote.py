@@ -33,6 +33,8 @@ from core.repository import Thought
 
 NOT_YET = "not yet in server mode"
 CLIENT_HEADER = "X-Lumi-Client"  # v2.4: names this client — the events it causes come back with it as origin
+TUI_PREFIX = "tui-"  # v5.1: the terminal client's id prefix (core.usage_origin.CHANNEL_PREFIXES)
+CLI_PREFIX = "cli-"  # v5.1: the CLI's
 LISTEN_BACKOFF_S = (1.0, 30.0)  # reconnect delays for the push channel: doubling from the first to the cap
 LISTEN_READ_TIMEOUT_S = 45.0  # ~3 missed heartbeats (the server sends one per 15 s) → a dead stream
 NETWORK_WINDOW = 20  # v2.6: /latency's network hop is the median over this many recent turns
@@ -186,10 +188,13 @@ class RemoteCore:
 
     def __init__(self, base_url: str, token: str, *, client: httpx.Client | None = None,
                  events_client: httpx.Client | None = None,
-                 clock: Callable[[], datetime] | None = None, timeout_s: float = 600.0) -> None:
+                 clock: Callable[[], datetime] | None = None, timeout_s: float = 600.0,
+                 client_prefix: str = TUI_PREFIX) -> None:
         """``events_client`` carries the long-lived ``/v1/events`` stream. By default it is a dedicated
         client when this object builds its own; with an injected ``client`` (a test transport, which can't
-        stream) and no ``events_client`` there are no pushes — the client lives on responses alone."""
+        stream) and no ``events_client`` there are no pushes — the client lives on responses alone.
+        ``client_prefix`` (v5.1) starts this client's id, so the server records the channel it came through:
+        ``tui-`` for the terminal client, ``cli-`` for the CLI."""
         self.base_url = base_url.rstrip("/")
         self._http = client or httpx.Client(
             base_url=self.base_url, timeout=httpx.Timeout(timeout_s, connect=3.0),
@@ -200,7 +205,7 @@ class RemoteCore:
                 base_url=self.base_url, timeout=httpx.Timeout(LISTEN_READ_TIMEOUT_S, connect=3.0),
             )
         self._auth = {"Authorization": f"Bearer {token}"}
-        self.client_id = uuid.uuid4().hex[:12]  # v2.4: this client's name on the events it causes
+        self.client_id = client_prefix + uuid.uuid4().hex[:12]  # v2.4: this client's name on the events it causes
         self.clock = clock or system_clock
         self._state: dict[str, Any] = {}
         self.last_thinking: str | None = None

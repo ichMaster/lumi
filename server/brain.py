@@ -22,6 +22,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
+from core import usage_origin
 from core.nudge import load_nudges, pick_nudge_index, proactive_due
 from core.schedule import load_schedule
 from core.scheduler import Scheduler, TickService, graduates, is_loud, scheduled_text, spoken_seed
@@ -148,7 +149,9 @@ class BrainHost:
             try:
                 service.last_input = self._clock()  # a Telegram / dictated line is real input
                 service.publish_message("user", record["text"], source)
-                state = self._core.reply(record["text"], service.session)
+                # v5.1 (LUMI-340): the owner's turn through Telegram (a voice note too)
+                with usage_origin.usage_origin(usage_origin.ORIGIN_TURN, usage_origin.CHANNEL_TELEGRAM):
+                    state = self._core.reply(record["text"], service.session)
                 voice_id = service.voicer.new_id()  # v4.6: the message names it, the voice push follows
                 service.bus.publish("turn", {"emotion": state.emotion.value, "intensity": state.intensity,
                                              "theme": self._core.theme, "origin": None})
@@ -166,7 +169,10 @@ class BrainHost:
             return
         fired = parse_directive(text)
         name = fired.name if fired else entry.directive
-        with self._service.background():
+        # v5.1 (LUMI-340): the row (its name, else its directive) is the origin of every call it causes, the spoken
+        # turn it may graduate to included
+        with self._service.background(), usage_origin.usage_origin(
+                usage_origin.schedule(getattr(entry, "name", "") or entry.directive)):
             try:
                 outcome = self._core.run_directive(text, self._service.session)
                 thought = outcome.thought if outcome.is_directive else None
@@ -195,7 +201,8 @@ class BrainHost:
             self._nudge_idx = pick_nudge_index(len(self._nudges), self._nudge_idx)
             opener = self._nudges[self._nudge_idx]
             try:
-                self._spoken_turn(opener, source="nudge")
+                with usage_origin.usage_origin(usage_origin.ORIGIN_IDLE):  # v5.1 (LUMI-340): the v0.4 nudge
+                    self._spoken_turn(opener, source="nudge")
             except Exception:  # noqa: BLE001
                 log.exception("idle nudge failed")
             finally:
@@ -213,7 +220,8 @@ class BrainHost:
             parsed = parse_directive(self._think_seeds[self._think_seed_idx])
             if parsed is not None:
                 kind, topic = parsed.name, parsed.topic
-        with self._service.background():
+        # v5.1 (LUMI-340): the v0.12 idle think (outside the schedule) and the spoken turn it may become
+        with self._service.background(), usage_origin.usage_origin(usage_origin.ORIGIN_IDLE):
             now = self._clock()  # read inside the lock — a turn that just ended moved the anchor (review #3)
             anchor = max(self._service.last_input, self._last_think)
             try:

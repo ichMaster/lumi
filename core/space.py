@@ -19,6 +19,8 @@ from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Protocol
 
+from core import usage_origin
+
 SESSION_MAX_LINES = 1000  # a room session rolls by size past this many lines (no setting — a code constant)
 
 
@@ -671,8 +673,10 @@ class AgoraSpace:
         while len(self._outcomes) > KEPT_OUTCOMES:
             self._outcomes.popitem(last=False)
 
-    def _log_usage(self, stats: dict, session_id: str, *, llm: object | None = None) -> None:
-        """The room's call in the per-call ledger (``cache-log.jsonl``) as ``kind: "agora"`` — never his totals."""
+    def _log_usage(self, stats: dict, session_id: str, *, llm: object | None = None,
+                   origin: str = usage_origin.ORIGIN_ROOM) -> None:
+        """The room's call in the per-call ledger (``cache-log.jsonl``) as ``kind: "agora"`` — never his totals. v5.1
+        (LUMI-340): its origin (``room``, ``initiative`` or the room's housekeeping) and the channel ``agora``."""
         if self._cache_log_path is None:
             return
         try:
@@ -684,7 +688,8 @@ class AgoraSpace:
                 cache_read=int(getattr(last, "cache_read_tokens", None) or 0),
                 cache_write=int(getattr(last, "cache_write_tokens", None) or 0),
                 input=stats["input_tokens"], output=stats["output_tokens"], gap_s=None, cause="none",
-                session_id=session_id, latency_ms=stats["latency_ms"]))
+                session_id=session_id, latency_ms=stats["latency_ms"],
+                origin=origin, channel=usage_origin.CHANNEL_AGORA))
         except Exception:  # noqa: BLE001 — accounting never breaks the room's turn
             import logging
 
@@ -802,7 +807,7 @@ class AgoraSpace:
         started = self._now_s()
         raw = self._ini_llm.reply_structured(system, messages, self.model)
         stats = self._stats(int((self._now_s() - started) * 1000), llm=self._ini_llm)
-        self._log_usage(stats, session_id, llm=self._ini_llm)
+        self._log_usage(stats, session_id, llm=self._ini_llm, origin=usage_origin.ORIGIN_INITIATIVE)
         try:
             state = validate(raw, session_id=session_id)
         except EmotionError:  # nothing to say — an empty reply is her «no»
@@ -967,7 +972,7 @@ class AgoraSpace:
                  "input_tokens": int(getattr(last, "input_tokens", None) or 0),
                  "output_tokens": int(getattr(last, "output_tokens", None) or 0),
                  "latency_ms": int(getattr(last, "latency_ms", None) or (self._now_s() - started) * 1000)}
-        self._log_usage(stats, session_id, llm=self._hk_llm)
+        self._log_usage(stats, session_id, llm=self._hk_llm, origin=usage_origin.housekeeping("room"))
         return (text or "").strip()
 
     # --- v3.2: the room in HIS private recipe (the SpaceMemory side — Core.attach_space) -------------------------

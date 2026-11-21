@@ -32,6 +32,7 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, RichLog, Static, TextArea
 
+from core import usage_origin
 from core.agent import Core
 from core.commands import (  # v2.2 (LUMI-211): the command layer; the constants are re-exported for clients/tests
     BIORHYTHM_OFF,  # noqa: F401
@@ -771,7 +772,10 @@ class LumiApp(App[None]):
                     return
                 self._set_busy(False)
             else:
-                outcome = self._core.run_directive(text, self._session)
+                # v5.1 (LUMI-340): a directive you typed is its calls' origin (an unknown %name makes none)
+                with usage_origin.usage_origin(usage_origin.directive(parsed.name) if parsed else "",
+                                               usage_origin.CHANNEL_TUI):
+                    outcome = self._core.run_directive(text, self._session)
             if outcome.is_directive:
                 if self._thought_surface and parsed is not None:  # v0.33: a subtle chat-log meta line
                     line = thought_meta_line(parsed.name)
@@ -965,12 +969,17 @@ class LumiApp(App[None]):
         streamed = getattr(self._core, "stream_enabled", False) and not hidden
         try:
             assert self._session is not None
-            if streamed:
-                # v1.4: grows in place in the chat flow (+ v1.6.2: voice turns feed the speech pipeline)
-                state = await self._reply_streamed(text, images, register=register)
-            else:
-                state = await asyncio.to_thread(self._core.reply, text, self._session, images=images,
-                                                register=register)
+            # v5.1 (LUMI-340): an in-process turn's records say what started it — your turn from the terminal, or
+            # her own spoken line (a hidden turn: the scheduled row that graduated it, else the idle nudge or
+            # think). A remote turn's are set by the server.
+            with (usage_origin.usage_origin(usage_origin.current().origin or usage_origin.ORIGIN_IDLE) if hidden
+                  else usage_origin.usage_origin(usage_origin.ORIGIN_TURN, usage_origin.CHANNEL_TUI)):
+                if streamed:
+                    # v1.4: grows in place in the chat flow (+ v1.6.2: voice turns feed the speech pipeline)
+                    state = await self._reply_streamed(text, images, register=register)
+                else:
+                    state = await asyncio.to_thread(self._core.reply, text, self._session, images=images,
+                                                    register=register)
             if register == "voice" and self._voice_pipeline is not None and not streamed:
                 self._voice_pipeline.feed_delta(state.reply)  # blocking turn — queue the whole reply
             self._connected = True
@@ -1117,10 +1126,11 @@ class LumiApp(App[None]):
             # Gate (inside tick_think) on the later of: real-input idle AND the think's own last
             # fire — so the think paces on its OWN interval and never touches _last_activity.
             anchor = max(self._last_activity, self._last_think_ts)
-            thought = await asyncio.to_thread(
-                self._core.tick_think, self._session, anchor, now,
-                rng_seed=seed_n, kind=kind, topic=topic,
-            )
+            with usage_origin.usage_origin(usage_origin.ORIGIN_IDLE):  # v5.1 (LUMI-340): the v0.12 idle think
+                thought = await asyncio.to_thread(
+                    self._core.tick_think, self._session, anchor, now,
+                    rng_seed=seed_n, kind=kind, topic=topic,
+                )
             self._render_stats()  # a think consumes tokens too — reflect its cost in the bar
             if thought is None:
                 return  # not due / capped / off / nothing made — silent ones end here
@@ -1187,7 +1197,9 @@ class LumiApp(App[None]):
                     line = thought_meta_line(fired_name)
                     self._emit(line, Text(line, style=THINKING_COLOR))
                 try:
-                    outcome = await asyncio.to_thread(self._core.run_directive, text, self._session)
+                    # v5.1 (LUMI-340): the scheduled row is its calls' origin (its name, else its directive)
+                    with usage_origin.usage_origin(usage_origin.schedule(entry.name or entry.directive)):
+                        outcome = await asyncio.to_thread(self._core.run_directive, text, self._session)
                 except Exception:  # noqa: BLE001 — a scheduled act must never crash the UI
                     _log.exception("scheduled directive failed: %s", fired_name)
                     continue
@@ -1202,7 +1214,8 @@ class LumiApp(App[None]):
                 # monotonic seed used to make the first ~20 all graduate — the every-15-min flood).
                 if (loud and self._session is not None
                         and graduates(fired_name, random.randint(0, 99), self._thoughts_spoken_ratio)):
-                    await self._run_turn(spoken_seed(outcome.thought.text), hidden=True)
+                    with usage_origin.usage_origin(usage_origin.schedule(entry.name or entry.directive)):
+                        await self._run_turn(spoken_seed(outcome.thought.text), hidden=True)
                 # otherwise, if loud, show the 💭 line (the same a typed %catchup! shows)
                 elif loud:
                     body = f"💭 {outcome.thought.text}"

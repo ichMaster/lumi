@@ -27,6 +27,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from core import usage_origin as _usage_origin
 from core.biorhythm import (
     Biorhythms,
     biorhythm_detail,
@@ -1879,6 +1880,7 @@ class Core:
             from core import cache_log
 
             now = self._clock()
+            started = _usage_origin.for_call(kind)  # v5.1 (LUMI-340): the entry point's origin, or housekeeping
             last = self._cache_last_ts.get(kind)
             gap_s = (now - last).total_seconds() if last is not None else None
             self._cache_last_ts[kind] = now
@@ -1904,6 +1906,7 @@ class Core:
                 # S0 (LATENCY): the per-stage split, on the turn's first record only.
                 pre_ms=(timing or {}).get("pre_ms"), post_ms=(timing or {}).get("post_ms"),
                 think_chars=(timing or {}).get("think_chars"),
+                origin=started.origin, channel=started.channel,
             ))
         except Exception:  # noqa: BLE001 — monitoring must never break a turn
             _usage_log.warning("cache event log failed", exc_info=True)
@@ -2812,7 +2815,9 @@ class Core:
         )
         self._write_face_signal(state.emotion.value, state.intensity)  # update the viewer (v0.7)
 
-        user_msg = make_message(session.id, self._user_id, "user", user_text, ts=turn_ts)
+        # v5.1 (LUMI-340): the channel the turn came through (core.usage_origin); none on a turn of her own
+        channel = _usage_origin.current().channel or None
+        user_msg = make_message(session.id, self._user_id, "user", user_text, ts=turn_ts, channel=channel)
         lili_msg = make_message(
             session.id,
             self._user_id,
@@ -2822,6 +2827,7 @@ class Core:
             emotion=state.emotion.value,
             intensity=state.intensity,
             intent=self.last_intent,  # v1.1 (None when off/dropped)
+            channel=channel,
         )
         # v1.5 (LUMI-192): the post-turn tail — closeness advance + the two appends + the recall index —
         # in today's exact order. Sync (default) runs it inline; async queues it on the ordered worker
