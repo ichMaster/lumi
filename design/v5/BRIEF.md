@@ -278,7 +278,7 @@ The owner made it in Claude Design. Its handoff bundle is in [handoff/](handoff/
 - `handoff/prototype/*.dc.html` — the shell (`Lumi Admin.dc.html`), one prototype per view and the components sheet.
   They are a reference only (the design tool's runtime, `support.js`); serve the folder over http to view them.
 
-**Deviations the design made from the brief** (kept unless the owner says otherwise):
+**Deviations the design made from the brief** (the owner kept the look and the font, 2026-11-21):
 - **The look** is the Nocturne design system made denser, not the window's flat v2.12 style: radii of 4, 6 and 8 px,
   Inter, rules that fade at their ends, outlined primary buttons. Going back to zero radius and the system font is a
   change of the tokens (`--radius-*`, `--font-*`), not of the views.
@@ -317,8 +317,8 @@ The owner made it in Claude Design. Its handoff bundle is in [handoff/](handoff/
 
 **Still to handle when implementing** (now in the ROADMAP's v5 phases):
 - **Nothing loads from the network.** The prototype loads Inter from Google Fonts and the Phosphor icon font from
-  unpkg. The panel inlines the icons as SVG and uses the system font stack (it has Cyrillic) unless the owner wants
-  Inter, in which case its font files ship in `admin/static/`.
+  unpkg. The panel inlines the icons as SVG and serves Inter's variable woff2 (with its OFL license) from
+  `admin/static/`; the owner chose Inter on 2026-11-21.
 - **State (v5.7)** shows what the window's State view shows:
   - add the theme of the day (its English name and scene from the window's `themes`) and the hormonal cycle (a fourth
     row, as in the window);

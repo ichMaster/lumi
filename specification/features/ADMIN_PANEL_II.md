@@ -169,8 +169,9 @@ The design's page frame ([design/v5/handoff/](../../design/v5/handoff/README.md)
 v2.10–v2.11 view moves into it, so nothing is lost on the way:
 
 - **The page:** `admin/static/` rebuilt on the handoff's tokens (`nocturne.css`, `tokens.css` with the light theme)
-  and strings (`strings.json`); no framework, no bundler; the icons inlined as SVG; nothing loaded from the network;
-  every data string set with `textContent`.
+  and strings (`strings.json`); no framework, no bundler; the icons inlined as SVG; Inter served from
+  `admin/static/` (the `@import` from Google Fonts removed); nothing loaded from the network; every data string set
+  with `textContent`.
 - **The frame:** the attention strip, the rail (the two areas, their groups and badges, the agent picker with the
   reserved slot for a second agent), the header (the crumb, the updated time, the instance switcher with each
   instance's version, the theme toggle) and prod's red edge on every view that follows the switcher.
@@ -375,6 +376,9 @@ The instance switcher stays at the top; prod is red everywhere it appears. The a
 - **The models are shown per role and switched from the panel** (the owner, 2026-11-20).
 - **The server and the agent are separate areas** of the panel, its API and its registry, because the next version
   adds a second agent like Лілі (the owner, 2026-11-20).
+- **The look and the font are the mockup's** (the owner, 2026-11-21): the Nocturne system as the design made it
+  denser (radii of 4–8 px, fading rules, outlined primary buttons) and Inter. Nothing loads from the network, so
+  Inter's font file (the variable woff2, with its OFL license) ships in `admin/static/`.
 
 ## Open questions (decide before the phase's `/generate-issues`)
 
@@ -393,10 +397,6 @@ The instance switcher stays at the top; prod is red everywhere it appears. The a
    too, so a later run of it may unpin a fact the owner pinned, unless pins made in the panel are kept by it.
 8. **Retention:** usage and tool rollups 400 days, the health hourly rollup and container figures 90 days,
    incidents and alert history 400 days, the audit 12 × 2 MB. Proposed.
-9. **The look** (v5.1): the design uses the Nocturne system (radii of 4–8 px, Inter, fading rules), not the window's
-   flat v2.12 style. Kept as designed unless the owner chooses the window's style; that is a change of the tokens.
-10. **The font** (v5.1): nothing loads from the network, so either the system font stack (proposed; it has Cyrillic)
-    or Inter's files shipped in `admin/static/`.
 
 ## Not here
 

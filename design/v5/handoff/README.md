@@ -41,7 +41,8 @@ Port the styles into a real stylesheet built on the tokens in `tokens/`. Render 
   - rules that fade over 48px at each end;
   - outlined primary buttons.
 
-  If the owner wants zero radius and system fonts after all, that is a token-level change (`--radius-*`, `--font-*`).
+  The owner kept this look and Inter (2026-11-21). Inter's file ships in `admin/static/`, since nothing loads from the
+  network.
 - **Icons:** the brief says Lucide-style; Nocturne specifies **Phosphor** (regular weight; fill weight only for the toast check and the pinned-fact pin). The prototype loads the Phosphor web font for convenience. In production, inline the SVG paths from phosphoricons.com, as the brief requires, with `fill="currentColor"`.
 - **Sample content:** State, Thoughts, Gallery and Journal use invented Ukrainian sample content, because the v4 brief's samples weren't available.
 

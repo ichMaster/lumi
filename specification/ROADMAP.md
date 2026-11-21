@@ -2135,7 +2135,8 @@ still has to handle.
 - **Dev is free, prod is guarded:** settings, services, the schedule, the models and her texts on prod need the typed
   `prod`; edits of her files use the window's confirmations (the owner, 2026-11-20).
 - **The page follows the design** ([design/v5/handoff/](../design/v5/handoff/README.md)): a static page in
-  `admin/static/` with no framework, the tokens and the strings from the handoff, dark and light themes, the icons
+  `admin/static/` with no framework, the tokens and the strings from the handoff, the mockup's look and font (the
+  owner, 2026-11-21: Nocturne and Inter, Inter's file served from `admin/static/`), dark and light themes, the icons
   inlined as SVG, **nothing loaded from the network**, and every data string set with `textContent`.
 
 Depends on: v2.10–v2.11 (the panel), v4 (the window's read-only routes and actions), v2.8 (the containers and the
@@ -2198,7 +2199,8 @@ lost on the way:
   median with its band (a gap in the data drawn as a gap) and the PRE / MODEL / POST split, the slowest calls, the
   CSV export. The Tools view: the table, a tool's calls per day with its failures, its slowest and failed calls.
 - The panel's new shell from the v5 design: `admin/static/` rebuilt on the handoff's tokens (`nocturne.css`,
-  `tokens.css`, the light theme) and strings (`strings.json`), the icons inlined; the frame, the shared pieces and
+  `tokens.css`, the light theme) and strings (`strings.json`), Inter's variable woff2 and its OFL license in
+  `admin/static/`, the icons inlined; the frame, the shared pieces and
   the carried-over views listed above; the first Overview; the registry's `agents` map (`lili` → prod, dev) and the
   `/api/agents/<agent>/<instance>/…` routes (a 404 for an instance that doesn't run that agent).
 - ARCHITECTURE §Contracts: the three record shapes, `Message.channel` and the channel prefixes; ADMIN_PANEL_II.md
