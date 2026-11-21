@@ -17,7 +17,7 @@ started. Each version and each phase carries its own **Status:** line under its 
 | v2 — Client/server split | ✅ Closed | `2.1.0`–`2.12.3` |
 | v3 — Agora | ✅ Closed | `3.1.0`–`3.4.1` |
 | v4 — The window | ✅ Closed | `4.1.0`–`4.8.1` |
-| v5 — The admin panel II | 🔲 Planned | the design brief written; v5.1 waits for the design |
+| v5 — The admin panel II | 🟡 In progress | v5.1 issues generated (LUMI-340…345) |
 | v6 — Personality | 🔲 Planned | — |
 | v7 — Server platform | 🔲 Planned | — |
 | v8 — Face, voice, shared mind, dictation | 🔲 Planned | — |
@@ -2096,7 +2096,7 @@ the tool descriptions unchanged.
 
 ## v5 — The admin panel II: the server and the agent
 
-**Status:** 🔲 Planned — the design is in [design/v5/handoff/](../design/v5/handoff/README.md) (2026-11-21); next `/generate-issues v5.1`.
+**Status:** 🟡 In progress — the design is in [design/v5/handoff/](../design/v5/handoff/README.md) (2026-11-21); v5.1 issues generated.
 
 The v2.10–v2.11 panel (`lumi-admin` on the box, port 8767) watches and configures both instances: eight health
 checks, the containers' start / stop / restart, a 7-day usage table, a log tail, the settings editor with history and
@@ -2144,7 +2144,7 @@ Docker API).
 
 ### v5.1 — Usage analytics: every paid call, its origin, her tools
 
-**Status:** 🔲 Planned.
+**Status:** 🟡 In progress — issues generated (LUMI-340…345).
 
 **Goal:** the owner sees what she costs and what she does with her tools — by day and month, by provider, model, kind
 and origin, with the month's forecast — and the history outlives the instance's 10-day ledgers.
