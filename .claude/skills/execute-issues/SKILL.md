@@ -168,17 +168,23 @@ Append to the in-memory execution log:
    `subagent_type: "fork"` (it inherits the whole current conversation — the specs, the issues file, the plan, what
    was read and decided so far) and `isolation: "worktree"` (its own git worktree from the current HEAD, so parallel
    edits never touch each other). The brief names the one issue and the fork's limits:
-   - "You are the fork for **LUMI-xxx** only. In your worktree do Steps 2b–2d for it and commit once with the 2e
+   - "Your worktree is created from the repository's default branch, not from this branch. First run
+     `git rev-parse --show-toplevel`, work only inside that directory (the conversation's absolute paths point to the
+     main tree), and move the worktree onto this branch's tip: `git reset --hard origin/<this branch>` (it is pushed,
+     step 1). Check `git log -1` shows that tip before you start.
+   - You are the fork for **LUMI-xxx** only. In your worktree do Steps 2b–2d for it and commit once with the 2e
      message. Do **not** push, close or comment on the GitHub issue, edit the execution report or the ROADMAP's status
      lines, touch another issue's work, or spawn agents.
-   - The gates are the full ones: `uv run ruff check .` and `uv run pytest -q` in your worktree. The tests must pass
-     without the dev tree's gitignored files (`settings.yaml`, `secrets.yaml`), as in CI.
+   - The gates are the full ones: `uv run ruff check .` and `uv run pytest -q` in your worktree (run `uv sync
+     --all-extras` first). The tests must pass without the dev tree's gitignored files (`settings.yaml`,
+     `secrets.yaml`), as in CI.
    - If the issue is ambiguous, needs an owner's manual check, or can't pass its gates, stop and say so; don't guess.
    - Report: the commit hash and the worktree's branch, the files changed, each gate's result (the pytest count), each
      acceptance criterion pass / fail, and anything the owner must do or check."
 3. **Wait for every fork of the batch.** They run in the background and each sends a notification when it finishes.
    Don't do their work meanwhile, and never report a result before its notification arrives.
-4. **Merge in the issues file's order:** `git cherry-pick <commit>` from each fork's branch onto this branch.
+4. **Merge in the issues file's order:** check each fork's commit sits on this branch's tip (`git merge-base
+   --is-ancestor <branch tip> <fork branch>`), then `git cherry-pick <commit>` from each fork's branch onto this branch.
    - A conflict that only needs both sides kept (two sections of one document, two imports): resolve it and continue.
    - Any other conflict: `git cherry-pick --abort` and run that issue again **in this session** after the wave.
 5. **Gates on the merged tree:** `uv run ruff check .` and `uv run pytest -q`. The forks passed alone; together they
