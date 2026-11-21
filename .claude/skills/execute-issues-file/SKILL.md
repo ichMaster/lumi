@@ -1,13 +1,15 @@
 ---
 name: execute-issues-file
-description: Execute one phase's issues straight from its local specification/roadmap/implementation/vA.B-issues.md (no GitHub). Implement -> gates -> owner confirmation for manual checks -> commit -> push (if a remote exists) for each issue in dependency order, then write vA.B-execution-report.md. The offline counterpart of execute-issues.
+description: Execute one phase's issues straight from its local specification/roadmap/implementation/vA.B-issues.md (no GitHub). Implement -> gates -> owner confirmation for manual checks -> commit -> push (if a remote exists) for each issue in dependency order, then write vA.B-execution-report.md. Independent issues run in parallel by forked agents (full current context, own worktree), per the file's dependency tree. The offline counterpart of execute-issues.
 ---
 
 # Skill: Execute Issues From File
 
 Execute one phase's issues **straight from its issues file**, `specification/roadmap/implementation/vA.B-issues.md`,
 with **no GitHub involvement**: no issue lookup and no closing. Each issue is implemented, validated,
-committed and pushed in dependency order, and the run ends with an execution report.
+committed and pushed in dependency order, and the run ends with an execution report. Issues that don't depend on
+each other run **in parallel** in forked agents (each with the whole current context, in its own git worktree),
+exactly as `/execute-issues` Steps 1b and 2P describe.
 
 This is the offline counterpart of `/execute-issues`. The discipline is the same; only the issue list comes
 from the markdown file instead of `gh issue list`.
@@ -46,9 +48,21 @@ from the markdown file instead of `gh issue list`.
   is done; skip it. This is what makes the run resumable.
 - **`--issue`:** execute only that issue, after checking that its dependencies are committed.
 
-Show the ordered plan and proceed. With `--dry-run`, stop here.
+**Waves.** Group the queue into waves from the file's dependency tree (the summary table's `Dependencies` column and
+the Dependency Tree block — never re-derived by guess), split each wave by the files its issues touch, and cap it at 3
+agents, exactly as `/execute-issues` **Step 1b** says. An issue starts only when its dependencies are committed on
+this branch.
+
+Show the plan (the waves, what runs in parallel and why the rest doesn't) and proceed. With `--dry-run`, stop here.
 
 ### Step 2: Execute each issue, in dependency order
+
+A wave with two or more issues that may run together runs as `/execute-issues` **Step 2P** says: one fork per issue
+(`subagent_type: "fork"`, `isolation: "worktree"`, all spawned in one message), each implementing, gating and
+committing its one issue in its worktree and reporting back; this session cherry-picks the commits in the file's
+order, runs the full gates on the merged tree, pushes once, asks the owner's manual checks, logs each issue (noting it
+ran in parallel) and removes the worktrees. There is no GitHub step: nothing to close or comment. Every other issue
+runs here, in this session:
 
 1. **Announce:** `--- Starting LUMI-###: {title} ---`.
 2. **Read** its section: what needs to be done and the acceptance criteria.
@@ -113,7 +127,7 @@ Write `specification/roadmap/implementation/vA.B-execution-report.md` with the s
 Step 4:
 
 - a status summary table;
-- a per-issue table (LUMI id · title · status · commit · files · gates · manual);
+- a per-issue table (LUMI id · title · wave · status · commit · files · gates · manual);
 - detailed results;
 - next steps.
 
@@ -124,7 +138,9 @@ exists.
 
 - **File-driven, no GitHub.** The issue list, details and order come from `vA.B-issues.md`. Never run
   `gh issue list`/`create`/`close`, and never write `vA.B-github-report.md`.
-- **One issue = one commit**, one issue at a time, in dependency order.
+- **One issue = one commit**, in dependency order. This session works on one issue at a time; independent issues
+  run at the same time only in forked agents, each in its own worktree on exactly one issue. Only this session
+  pushes and writes the report, and the full gates run on the merged tree after every parallel wave.
 - **No broken code.** Commit only when lint and tests are green.
 - **Tests ship with the feature**, with the model/TTS/STT/web mocked. No test or gate calls the network or a paid
   API.

@@ -1,11 +1,14 @@
 ---
 name: execute-issues
-description: Execute GitHub issues for a version sequentially - implement, validate, commit, push, and generate a report.
+description: Execute GitHub issues for a version in dependency order - independent issues in parallel by forked agents (each with the full current context, in its own git worktree), the rest one by one - implement, validate, commit, push, and generate a report.
 ---
 
 # Skill: Execute GitHub Issues
 
-Execute GitHub issues for a version sequentially: implement, validate, commit, push, and generate a report.
+Execute GitHub issues for a version in the order of their dependency tree: implement, validate, commit, push, and
+generate a report. Issues that don't depend on each other run **in parallel**, each in a **forked agent** that
+inherits the whole current context and works in its own git worktree; the main session merges their commits, runs
+the gates on the merged tree, pushes and closes the issues.
 
 ## Usage
 
@@ -17,7 +20,7 @@ The `<label>` is the GitHub version label exactly as it appears (e.g., `v1::vers
 
 - `/execute-issues v1::version:1` -- execute all issues labeled `v1::version:1`
 - `/execute-issues v1::version:1 --issue LUMI-003` -- execute a single issue from that version
-- `/execute-issues v1::version:1 --dry-run` -- show execution plan without making changes
+- `/execute-issues v1::version:1 --dry-run` -- show execution plan (the waves) without making changes
 
 ## Instructions
 
@@ -45,11 +48,31 @@ From the GitHub issue list, build an ordered queue based on dependencies:
 - Skip issues already closed on GitHub
 - If `--issue LUMI-xxx` is specified, execute only that issue (but verify its dependencies are closed)
 
-Show the user the execution plan and ask for confirmation.
+**The dependency tree is the one already built.** Its source of truth is the issues file's Summary Table
+(`Dependencies` column) together with its Dependency Tree block; the GitHub "Blocked by" comments must agree with it.
+If they disagree, stop and ask — never invent or drop an edge.
+
+### Step 1b: Plan the waves
+
+Group the queue into **waves** from that tree:
+
+- **Wave 1** holds every open issue whose dependencies are all closed. **Wave k+1** holds the issues whose
+  dependencies are all closed or in waves 1…k. An issue never starts before every dependency is **closed and its
+  commit is on this branch**.
+- **Within a wave, split by files.** Read each issue's Description and "What needs to be done" for the files it
+  touches. Two issues that touch the same code file don't run at the same time: the later one (in the issues file's
+  order) moves to the next sub-wave. Shared documents (`specification/ARCHITECTURE.md`, a feature spec) may be edited
+  by two parallel issues only in different sections; the merge in Step 2P resolves them. When unsure, serialize.
+- **At most 3 agents at once.** A larger wave runs in batches of 3, in the issues file's order.
+- A wave of one issue, `--issue`, or a wave whose issues all overlap runs **in this session** (Step 2, as before).
+
+Show the user the plan — the waves, which issues run in parallel and why the others don't — and ask for confirmation
+once. `--dry-run` stops here.
 
 ### Step 2: Execute each issue (loop)
 
-For each issue in the queue:
+Take the waves in order. A wave with two or more issues that may run together goes through **Step 2P**; every other
+issue runs here, in this session, step by step. For each issue run in this session:
 
 #### 2a. Assign and announce
 
@@ -137,6 +160,38 @@ Append to the in-memory execution log:
 - Validation results (including test pass/fail)
 - Status: success/partial/failed
 
+### Step 2P: Run a wave in parallel (forked agents)
+
+1. **Start from a clean, pushed branch.** `git status` clean and nothing unpushed, so every worktree starts from the
+   state that includes the earlier waves.
+2. **Spawn one fork per issue**, all in **one message** so they run concurrently: the Agent tool with
+   `subagent_type: "fork"` (it inherits the whole current conversation — the specs, the issues file, the plan, what
+   was read and decided so far) and `isolation: "worktree"` (its own git worktree from the current HEAD, so parallel
+   edits never touch each other). The brief names the one issue and the fork's limits:
+   - "You are the fork for **LUMI-xxx** only. In your worktree do Steps 2b–2d for it and commit once with the 2e
+     message. Do **not** push, close or comment on the GitHub issue, edit the execution report or the ROADMAP's status
+     lines, touch another issue's work, or spawn agents.
+   - The gates are the full ones: `uv run ruff check .` and `uv run pytest -q` in your worktree. The tests must pass
+     without the dev tree's gitignored files (`settings.yaml`, `secrets.yaml`), as in CI.
+   - If the issue is ambiguous, needs an owner's manual check, or can't pass its gates, stop and say so; don't guess.
+   - Report: the commit hash and the worktree's branch, the files changed, each gate's result (the pytest count), each
+     acceptance criterion pass / fail, and anything the owner must do or check."
+3. **Wait for every fork of the batch.** They run in the background and each sends a notification when it finishes.
+   Don't do their work meanwhile, and never report a result before its notification arrives.
+4. **Merge in the issues file's order:** `git cherry-pick <commit>` from each fork's branch onto this branch.
+   - A conflict that only needs both sides kept (two sections of one document, two imports): resolve it and continue.
+   - Any other conflict: `git cherry-pick --abort` and run that issue again **in this session** after the wave.
+5. **Gates on the merged tree:** `uv run ruff check .` and `uv run pytest -q`. The forks passed alone; together they
+   can still break. Red → find the commit that breaks it (revert the last pick and rerun), then fix it in its own
+   commit or rerun that issue in this session. Never push a red tree.
+6. **Green → push once, then for each merged issue do 2g (close it, with the commit hash as it is on this branch) and
+   2h (log, noting it ran in parallel).**
+7. **The owner's manual checks** that the forks reported are asked here, by this session, after the merge.
+8. **Clean up:** remove each merged fork's worktree and branch (`git worktree remove <path>`, `git branch -D
+   <branch>`).
+9. **A fork that failed:** its issue gets Step 3 (no commit merged, a GitHub comment, the log); the wave's other issues
+   still merge; its dependents don't start until it is resolved.
+
 ### Step 3: Handle failures
 
 If implementation or validation fails for an issue:
@@ -214,10 +269,10 @@ After all issues are processed (or on stop), generate:
 
 ## Issues
 
-| # | LUMI ID | Title | Phase | Status | Commit | Files | Tests |
-|---|---------|-------|-------|--------|--------|-------|-------|
-| 1 | LUMI-001 | Skeleton and canon | v0.1 | completed | a1b2c3d | 4 | pass |
-| ... | ... | ... | ... | ... | ... | ... | ... |
+| # | LUMI ID | Title | Phase | Wave | Status | Commit | Files | Tests |
+|---|---------|-------|-------|------|--------|--------|-------|-------|
+| 1 | LUMI-001 | Skeleton and canon | v0.1 | 1 (parallel) | completed | a1b2c3d | 4 | pass |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
 
 ## Detailed Results
 
@@ -259,8 +314,13 @@ git push
 
 ## Important Rules
 
-- **One issue at a time.** Never work on multiple issues simultaneously.
-- **Dependency order.** Never start an issue whose dependencies are not closed.
+- **One issue per agent.** This session works on one issue at a time; independent issues run at the same time only
+  in forked agents (Step 2P), each in its own worktree, each on exactly one issue.
+- **Dependency order.** Never start an issue whose dependencies are not closed and merged on this branch; the tree
+  is the issues file's, never re-derived by guess.
+- **Only this session pushes, closes issues and writes the report.** A fork commits in its worktree and reports.
+- **The merged tree is what counts.** After every parallel wave the full gates run on the merged branch before the
+  push.
 - **Clean commits.** Each issue = one commit. No mixing work across issues.
 - **No broken code.** Only commit code that passes validation (tests + ruff included).
 - **Tests ship with the feature.** Every issue lands with the tests that encode its acceptance — no "tests later." Mock the model/TTS/STT/web search; never call paid APIs.
