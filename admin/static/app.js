@@ -75,6 +75,7 @@ const NAV = {
       { id: "logs", label: "nav.views.logs", icon: "scroll", section: "logs" }] },
     { name: "nav.groups.configuration", items: [
       { id: "settings", label: "nav.views.settings", icon: "sliders-horizontal", section: "settings" },
+      { id: "secrets", label: "nav.views.secrets", icon: "key", section: "secrets" },
       { id: "confighistory", label: "nav.views.configHistory", icon: "clock-counter-clockwise", section: "history" },
       { id: "promote", label: "nav.views.promote", icon: "arrow-fat-lines-up", both: true, section: "promote" }] },
     { name: "nav.groups.audit", items: [
@@ -438,7 +439,7 @@ function setInstance(name) {
 }
 
 const VIEWS = { overview: renderOverview, health: renderHealth, containers: renderServices, logs: renderLogs,
-                settings: renderSettings, confighistory: renderHistory, promote: renderPromote, audit: renderAudit,
+                settings: renderSettings, secrets: renderSecrets, confighistory: renderHistory, promote: renderPromote, audit: renderAudit,
                 usage: renderUsage, schedule: renderSections };
 
 async function renderView(loading) {
@@ -633,17 +634,17 @@ async function renderOverview() {
 async function renderHealth() {
   const data = await api("/api/health");
   const al = await api("/api/alerts");
-  const alerts = al.on ? `alerts on — ${al.instances.join(", ")} → the admin bot`
-    + (al.failing.length ? ` · failing now: ${al.failing.join(", ")}` : "") : (al.why || "alerts are off");
+  const alerts = al.on ? t("healthView.alertsOn", { instances: al.instances.join(", ") })
+    + (al.failing.length ? ` · ${t("healthView.failingNow", { instances: al.failing.join(", ") })}` : "")
+    : (al.why || t("healthView.alertsOff"));
   const cards = Object.entries(data.instances).map(([name, checks]) => el("div",
     { class: `card ${name === "prod" ? "prod" : ""}` }, el("h2", {}, name),
-    el("table", {}, el("tr", {}, el("th", {}, "check"), el("th", {}, "status"), el("th", {}, "detail"),
-                       el("th", {}, "last hour")),
+    el("table", {}, el("tr", {}, ["check", "status", "detail", "lastHour"].map((h) => el("th", {}, t(`healthView.columns.${h}`)))),
       checks.map((c) => el("tr", {}, el("td", {}, c.name), el("td", {}, badge(c.status)), el("td", { class: "detail" }, c.detail),
         el("td", {}, el("span", { class: "strip-cells" },
           c.history.slice(-60).map(([ts, s]) => el("i", { class: s, title: `${ts} ${s}` })))))))));
-  $("#health").replaceChildren(el("p", { class: "muted" }, `checked ${data.last_run ?? "not yet"} — every minute,`
-    + ` no model call · ${alerts}`), el("div", { class: "grid" }, cards));
+  $("#health").replaceChildren(el("p", { class: "muted" }, t("healthView.checked", { when: data.last_run ?? t("healthView.notYet") })
+    + ` · ${alerts}`), el("div", { class: "grid" }, cards));
 }
 
 async function renderServices() {
@@ -655,9 +656,10 @@ async function renderServices() {
     el("td", {}, info.uptime_s == null ? "—" : dur(info.uptime_s)), el("td", {}, String(info.restart_count ?? "—")),
     el("td", {}, info.image ?? "—"),
     el("td", { class: "actions" }, ["start", "stop", "restart"].map((a) =>
-      el("button", { onclick: () => act(name, service, a) }, a)))));
+      el("button", { onclick: () => act(name, service, a) }, t(`containers.${a}`))))));
+  const cols = ["service", "state", "up", "restarts", "image", "actions"];
   $("#services").replaceChildren(el("div", { class: `card ${name === "prod" ? "prod" : ""}` }, el("h2", {}, name),
-    el("table", {}, el("tr", {}, ["service", "state", "up", "restarts", "image", ""].map((h) => el("th", {}, h))),
+    el("table", {}, el("tr", {}, cols.map((h) => el("th", {}, t(`containers.table.${h}`)))),
       rows), actionLine()));
 }
 
@@ -676,16 +678,18 @@ function setAction(text, error = false) {
 }
 
 async function act(name, service, action) {
-  const confirm = await askConfirm(name, `${action} ${service}`,
-                                   { body: `${action} ${service} on prod — her session closes.`, action });
-  if (confirm === null) { setAction(`${action} ${name}/${service}: cancelled — nothing sent`, true); return; }
-  setAction(`${action} ${name}/${service} …`);
+  const verb = t(`containers.${action}`);
+  const what = t("actions.service", { action: verb, instance: name, service });
+  const confirm = await askConfirm(name, t("containers.actTitle", { action: verb, service }),
+                                   { body: t("containers.actBodyProd", { action: verb, service }), action: verb });
+  if (confirm === null) { setAction(t("actions.cancelled", { what }), true); return; }
+  setAction(t("actions.running", { what }));
   try {
     const r = await api(`/api/services/${name}/${service}/${action}`, { method: "POST",
                                                                          body: JSON.stringify({ confirm }) });
-    setAction(`${action} ${name}/${service}: ${r.result}`);
-    showToast(`${action} ${name}/${service}: ${r.result}`);
-  } catch (e) { setAction(`${action} ${name}/${service} refused: ${e.message}`, true); }
+    setAction(t("actions.serviceDone", { what, result: r.result }));
+    showToast(t("actions.serviceDone", { what, result: r.result }));
+  } catch (e) { setAction(t("actions.refused", { what, error: e.message }), true); }
   setTimeout(renderServices, 1500);
 }
 
@@ -747,32 +751,85 @@ async function renderLogs() {
   pre.scrollTop = pre.scrollHeight;
 }
 
-// --- v2.11: configure ------------------------------------------------------------------------------------------
-// Every write: preview (the diff) → apply (prod asks for "prod" in the confirmation dialog) → the running services
-// restart → the audit log.
+// --- v2.11 configure, restyled in v5.1 as the design draws it (design/v5/handoff/prototype/Configuration.dc.html) --
+// Every write: preview (the diff) → the confirmation dialog (the diff; prod asks for "prod") → apply → the running
+// services restart → the audit log. The outcome stays on the page (actionLine, the v2.10 review #1 rule).
 const asText = (v) => v == null ? "" : Array.isArray(v) ? v.join(", ") : String(v);
-const cfg = { view: null, edits: {}, preview: null, filter: "" };
+const cfg = { view: null, edits: {}, preview: null, filter: "", group: null };
 const sec = { text: {}, preview: {} };
-const promo = { chosen: new Set(), preview: null };
+const promo = { chosen: new Set(), preview: null, data: null };
+const secr = { view: null, history: [], open: null };
+const hist = { entries: [], pick: 0, instance: null };
 
 // undefined on dev (no dialog unless `always`); on prod the typed "prod", or null when cancelled
 async function askConfirm(name, what, { always = false, body, action, diff } = {}) {
   if (name !== "prod" && !always) return undefined;
   return confirmDialog({ instance: name, title: what, action,
-                         body: body ?? (name === "prod" ? `${what} on prod — her services restart.` : ""),
+                         body: body ?? (name === "prod" ? t("actions.restartsOnProd", { what }) : ""),
                          diff: diff || [], typed: true });
 }
 
 const restartedText = (r) => Object.entries(r.restarted || {}).map(([s, x]) => `${s} ${x}`).join(" · ")
-  || "nothing to restart";
+  || t("actions.nothingToRestart");
 const changesText = (c) => Object.entries(c || {}).map(([k, v]) => Array.isArray(v)
-  ? `${k}: ${asText(v[0]) || "default"} → ${asText(v[1]) || "default"}` : `${k} ${v}`).join("; ");
+  ? `${k}: ${asText(v[0]) || t("settings.defaultValue")} → ${asText(v[1]) || t("settings.defaultValue")}`
+  : `${k} ${v}`).join("; ");
 const changesDiff = (c) => Object.entries(c || {}).filter(([, v]) => Array.isArray(v))
-  .map(([k, v]) => ({ k, from: asText(v[0]) || "default", to: asText(v[1]) || "default" }));
+  .map(([k, v]) => ({ k, from: asText(v[0]) || t("settings.defaultValue"), to: asText(v[1]) || t("settings.defaultValue") }));
 
+function plural(key, n, vars) {  // the key, or its "One" twin when the count is 1 ("1 change", "2 changes")
+  return t(n === 1 ? `${key}One` : key, vars);
+}
+
+// --- pure helpers (checked in node) ------------------------------------------------------------------------------
+function settingMatches(s, filter) {
+  const f = String(filter || "").trim().toLowerCase();
+  return !f || s.key.toLowerCase().includes(f) || String(s.env || "").toLowerCase().includes(f)
+    || String(s.description || "").toLowerCase().includes(f);
+}
+
+function plainGroups(groups) {  // the Settings view's groups: a secret lives in the Secrets view, never here
+  return (groups || []).map((g) => ({ name: g.name, settings: g.settings.filter((s) => !s.secret) }))
+    .filter((g) => g.settings.length);
+}
+
+function pendingSummary(edits, groups) {  // how many edits wait, and how many of them need a restart
+  const all = (groups || []).flatMap((g) => g.settings);
+  const keys = Object.keys(edits || {});
+  return { n: keys.length, restart: keys.filter((k) => (all.find((s) => s.key === k) || {}).restart).length };
+}
+
+function numbered(entries) {  // the newest first, numbered from the oldest kept one (#1) up
+  return (entries || []).map((e, i, all) => Object.assign({}, e, { id: all.length - i }));
+}
+
+function whenOf(ts) {  // a history stamp "20261119-221400Z" → "2026-11-19 22:14 UTC"; anything else as it is
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})\d{2}Z/.exec(String(ts || ""));
+  return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]} UTC` : String(ts || "");
+}
+
+function entryDiff(changes, dflt) {  // a history entry's changes as diff lines; a secret is named only, never shown
+  const out = [];
+  for (const [k, v] of Object.entries(changes || {})) {
+    if (Array.isArray(v)) {
+      out.push({ sign: "-", text: `${k}: ${asText(v[0]) || dflt}` });
+      out.push({ sign: "+", text: `${k}: ${asText(v[1]) || dflt}` });
+    } else {
+      out.push({ sign: " ", text: `${k}: ${v}` });
+    }
+  }
+  return out;
+}
+
+function lastChanged(entries, key) {  // the newest history entry that touched `key` (its ts), or null
+  const e = (entries || []).find((x) => x.changes && Object.prototype.hasOwnProperty.call(x.changes, key));
+  return e ? e.ts : null;
+}
+
+// --- the shared write path ---------------------------------------------------------------------------------------
 function previewBlock(p) {
   return el("div", { class: "preview" },
-    p.problems.length ? el("ul", { class: "error" }, p.problems.map((x) => el("li", {}, x))) : "",
+    p.problems.length ? el("ul", { class: "cfg-problems" }, p.problems.map((x) => el("li", {}, x))) : "",
     (p.notes || []).map((n) => el("p", { class: "note" }, n)),
     p.diff ? el("pre", { class: "diff" }, p.diff.split("\n").map((line) => el("div",
       { class: line.startsWith("+") && !line.startsWith("+++") ? "add" : line.startsWith("-") && !line.startsWith("---")
@@ -780,171 +837,418 @@ function previewBlock(p) {
 }
 
 async function runWrite(label, call) {  // the outcome stays on the page (the v2.10 review #1 rule)
-  setAction(`${label} …`);
+  setAction(t("actions.running", { what: label }));
   try {
     const r = await call();
-    setAction(`${label}: done — ${restartedText(r)}` + ((r.notes || []).length ? ` · ${r.notes.join(" ")}` : ""));
-    showToast(`${label}: done`);
+    setAction(t("actions.done", { what: label, restarted: restartedText(r) })
+      + ((r.notes || []).length ? ` · ${r.notes.join(" ")}` : ""));
+    showToast(t("actions.doneShort", { what: label }));
     return r;
-  } catch (e) { setAction(`${label} refused: ${e.message}`, true); return null; }
+  } catch (e) { setAction(t("actions.refused", { what: label, error: e.message }), true); return null; }
 }
 
+function toggleSwitch(on, label, onToggle) {
+  return el("button", { class: `switch ${on ? "on" : ""}`.trim(), type: "button", role: "switch",
+                        "aria-checked": on ? "true" : "false", "aria-label": label, onclick: () => onToggle(!on) },
+    el("span", { class: "knob" }));
+}
+
+// --- Settings ----------------------------------------------------------------------------------------------------
 async function renderSettings() {
   const name = state.instance;
-  if (!cfg.view || cfg.view.instance !== name) { cfg.edits = {}; cfg.preview = null; }
+  if (!cfg.view || cfg.view.instance !== name) { cfg.edits = {}; cfg.preview = null; cfg.group = null; }
   cfg.view = await api(`/api/settings/${name}`);
-  $("#settings").replaceChildren(settingsBar(), el("div", { id: "settings-groups" }));
-  renderGroups();
+  drawSettings();
 }
 
-function settingsBar() {
-  const name = state.instance, n = Object.keys(cfg.edits).length, v = cfg.view;
-  const filter = el("input", { placeholder: "find a setting", value: cfg.filter,
-                               oninput: (ev) => { cfg.filter = ev.target.value; renderGroups(); } });
-  return el("div", { id: "settings-bar", class: `card ${name === "prod" ? "prod" : ""}` },
-    el("h2", {}, `${name} — settings`),
-    el("div", { class: "controls" }, filter,
-      el("span", {}, n ? `${n} pending: ${Object.keys(cfg.edits).join(", ")}` : "no pending change"),
-      el("button", { onclick: previewSettings, disabled: n ? null : "" }, "Preview"),
-      el("button", { class: name === "prod" ? "danger" : "primary", onclick: applySettings,
-                     disabled: cfg.preview && cfg.preview.ok ? null : "" }, name === "prod" ? "Apply to PROD" : "Apply"),
-      el("button", { onclick: () => { cfg.edits = {}; cfg.preview = null; renderSettings(); },
-                     disabled: n ? null : "" }, "Discard")),
-    v.deploy_busy ? el("p", { class: "error" }, "a deploy step is running — every change waits until it ends") : "",
-    v.problems.length ? el("ul", { class: "error" }, v.problems.map((x) => el("li", {}, `now: ${x}`))) : "",
-    cfg.preview ? previewBlock(cfg.preview) : "",
-    actionLine());
+function drawSettings() {
+  const search = el("input", { class: "input", placeholder: t("settings.find"), "aria-label": t("settings.find"),
+                               value: cfg.filter,
+                               oninput: (ev) => { cfg.filter = ev.target.value; drawGroupList(); drawRows(); } });
+  $("#settings").replaceChildren(el("div", { class: "cfg-settings" },
+    el("div", { class: "cfg-groups" }, el("div", { class: "cfg-search" }, icon("magnifying-glass", 13), search),
+      el("div", { id: "cfg-group-list" })),
+    el("div", { class: "cfg-main" }, el("div", { id: "cfg-rows" }), el("div", { id: "settings-bar" }))));
+  drawGroupList();
+  drawRows();
+  refreshBar();
 }
 
-function refreshBar() { $("#settings-bar").replaceWith(settingsBar()); }
+function settingsGroups() {
+  const groups = plainGroups(cfg.view.groups);
+  if (!cfg.group || !groups.some((g) => g.name === cfg.group)) {
+    const withEdit = groups.find((g) => g.settings.some((s) => s.key in cfg.edits));
+    cfg.group = (withEdit || groups[0] || {}).name || null;
+  }
+  return groups;
+}
 
-function renderGroups() {
-  const f = cfg.filter.trim().toLowerCase();
-  const match = (s) => !f || s.key.includes(f) || s.env.toLowerCase().includes(f)
-    || s.description.toLowerCase().includes(f);
-  const groups = cfg.view.groups.map((g) => {
-    const rows = g.settings.filter(match);
-    if (!rows.length) return null;
-    const set = rows.filter((s) => s.source !== "default" && s.source !== "unset").length;
-    return el("details", { class: "card group", open: f || rows.some((s) => s.key in cfg.edits) ? "" : null },
-      el("summary", {}, g.name, el("span", { class: "muted" }, ` · ${rows.length} settings · ${set} set here`)),
-      el("table", {}, rows.map(settingRow)));
-  }).filter(Boolean);
-  $("#settings-groups").replaceChildren(...(groups.length ? groups : [el("p", { class: "muted" }, "nothing matches")]));
+function drawGroupList() {
+  const groups = settingsGroups();
+  const searching = cfg.filter.trim() !== "";
+  $("#cfg-group-list").replaceChildren(...groups.map((g) => {
+    const n = g.settings.filter((s) => settingMatches(s, cfg.filter)).length;
+    const edited = g.settings.some((s) => s.key in cfg.edits);
+    return el("button", { class: `cfg-group ${!searching && g.name === cfg.group ? "on" : ""} ${n ? "" : "none"}`.trim(),
+                          type: "button", "aria-current": !searching && g.name === cfg.group ? "true" : null,
+                          onclick: () => { cfg.group = g.name; cfg.filter = ""; drawSettings(); } },
+      el("span", {}, g.name, edited ? el("span", { class: "edited-dot", title: t("settings.groupEdited") }) : ""),
+      el("span", { class: "n" }, String(n)));
+  }));
+}
+
+function drawRows() {
+  const name = state.instance;
+  const groups = settingsGroups();
+  const f = cfg.filter.trim();
+  const rows = f ? groups.flatMap((g) => g.settings.filter((s) => settingMatches(s, f)))
+    : ((groups.find((g) => g.name === cfg.group) || {}).settings || []);
+  const title = f ? t("settings.matches", { n: rows.length }) : (cfg.group || "");
+  $("#cfg-rows").replaceChildren(
+    el("div", { class: "cfg-title" }, el("h2", {}, title), el("span", {}, t("settings.file", { instance: name }))),
+    rows.length ? el("div", { class: "cfg-table" },
+      el("div", { class: "cfg-row head" }, el("span", {}, t("settings.columns.setting")),
+        el("span", {}, t("settings.columns.value")), el("span", {}, t("settings.columns.default"))),
+      rows.map(settingRow))
+      : emptyState("magnifying-glass", t("settings.nothing", { q: f }), t("settings.nothingSub"), t("settings.clear"),
+                   () => { cfg.filter = ""; drawSettings(); }));
 }
 
 function settingRow(s) {
-  const desc = el("div", { class: "muted" }, `${s.description} · ${s.env}${s.restart ? " · needs a restart" : ""}`);
-  const key = el("td", { class: "key" }, el("code", {}, s.key), desc);
-  if (s.secret) {
-    const input = el("input", { type: "password", autocomplete: "off", placeholder: s.set ? "a new value" : "value" });
-    return el("tr", {}, key,
-      el("td", {}, badge(s.set ? "green" : "off", s.set ? (s.last4 ? `set •••${s.last4}` : "set") : "unset")),
-      el("td", { class: "edit" }, input, el("button", { onclick: () => saveSecret(s.key, input) }, s.set ? "rotate" : "set"),
-        s.set ? el("button", { onclick: () => clearSecret(s.key) }, "clear") : ""));
-  }
-  if (s.container) return el("tr", {}, key, el("td", {}, asText(s.value)), el("td", { class: "muted" }, s.container));
   const pending = s.key in cfg.edits;
   const shown = pending ? (cfg.edits[s.key] ?? asText(s.default)) : asText(s.value);
-  const onchange = (ev) => {
-    if (ev.target.value === asText(s.value)) delete cfg.edits[s.key]; else cfg.edits[s.key] = ev.target.value;
-    ev.target.closest("tr").classList.toggle("pending", s.key in cfg.edits);
-    cfg.preview = null; refreshBar();
-  };
-  let input;
-  if (s.type === "bool" || s.type === "enum") {
-    const choices = s.type === "bool" ? ["true", "false"] : [...s.choices];
+  const head = el("div", { class: "cfg-key" },
+    el("div", { class: "line" }, el("span", { class: "k" }, s.key),
+      s.restart ? el("span", { class: "cfg-badge" }, icon("arrow-clockwise", 11), t("settings.needsRestart")) : ""),
+    el("span", { class: "d" }, s.description), el("span", { class: "env" }, s.env || ""));
+  let control;
+  if (s.container) {
+    control = el("span", { class: "cfg-note" }, asText(s.value) ? `${asText(s.value)} — ${s.container}` : s.container);
+  } else if (s.type === "bool") {
+    control = toggleSwitch(shown === "true", s.key, (on) => editSetting(s, on ? "true" : "false"));
+  } else if (s.type === "enum") {
+    const choices = [...s.choices];
     if (!choices.includes(shown)) choices.unshift(shown);
-    input = el("select", { onchange }, choices.map((c) => el("option", { value: c, selected: c === shown ? "" : null }, c)));
+    control = el("select", { class: "input mono", "aria-label": s.key,
+                             onchange: (ev) => editSetting(s, ev.target.value) },
+      choices.map((c) => el("option", { value: c, selected: c === shown ? "" : null }, c)));
   } else {
-    input = el("input", { value: shown, placeholder: asText(s.default), onchange });
+    control = el("input", { class: "input mono", value: shown, placeholder: asText(s.default), "aria-label": s.key,
+                            onchange: (ev) => editSetting(s, ev.target.value) });
   }
-  return el("tr", { class: pending ? "pending" : "" }, key,
-    el("td", { class: "edit" }, input, s.source === "settings.yaml" ? el("button", {
-      title: "remove the line — back to the default",
-      onclick: () => { cfg.edits[s.key] = null; cfg.preview = null; renderSettings(); } }, "default") : ""),
-    el("td", { class: "muted" }, s.source === "default" ? "the default" : `set here · default ${asText(s.default) || "—"}`));
+  const backToDefault = pending && cfg.edits[s.key] === null;
+  const canReset = !s.container && s.source === "settings.yaml" && !backToDefault;
+  return el("div", { class: `cfg-row ${pending ? "edited" : ""}`.trim(), "data-key": s.key }, head,
+    el("div", { class: "cfg-value" }, control),
+    el("div", { class: "cfg-default" },
+      el("span", {}, t("settings.default", { value: asText(s.default) || "—" })),
+      backToDefault ? el("span", { class: "back" }, t("settings.backToDefault")) : "",
+      canReset ? el("button", { class: "btn btn-ghost", type: "button", onclick: () => editSetting(s, null) },
+        t("settings.resetToDefault")) : ""));
+}
+
+function editSetting(s, value) {  // null = back to the default (the line removed from settings.yaml)
+  const unchanged = value === null ? s.source === "default" : value === asText(s.value);
+  if (unchanged) {
+    delete cfg.edits[s.key];
+  } else {
+    cfg.edits[s.key] = value;
+  }
+  cfg.preview = null;
+  drawRows();
+  drawGroupList();
+  refreshBar();
+}
+
+function settingsBar() {
+  const name = state.instance, v = cfg.view;
+  const sum = pendingSummary(cfg.edits, plainGroups(v.groups));
+  const text = !sum.n ? t("settings.none", { instance: name }) : plural("settings.pending", sum.n, { n: sum.n })
+    + (sum.restart ? ` · ${plural("settings.restart", sum.restart, { r: sum.restart, instance: name })}` : "");
+  return el("div", { id: "settings-bar", class: "cfg-bar" },
+    el("div", { class: "line" },
+      el("span", { class: `txt ${sum.n ? "on" : ""}`.trim() }, text),
+      el("button", { class: "btn btn-secondary", type: "button", disabled: sum.n ? null : "", onclick: discardSettings },
+        t("common.discard")),
+      el("button", { class: `btn btn-primary ${name === "prod" ? "btn-confirm-prod" : ""}`.trim(), type: "button",
+                     disabled: sum.n ? null : "", onclick: reviewSettings }, icon("git-diff", 14), t("settings.review"))),
+    v.deploy_busy ? el("p", { class: "cfg-warn" }, t("settings.deployBusy")) : "",
+    v.problems.length ? el("ul", { class: "cfg-problems" },
+      v.problems.map((x) => el("li", {}, t("settings.problemNow", { problem: x })))) : "",
+    cfg.preview && !cfg.preview.ok ? previewBlock(cfg.preview) : "",
+    actionLine());
+}
+
+function refreshBar() {
+  const bar = $("#settings-bar");
+  if (bar) bar.replaceWith(settingsBar());
+}
+
+function discardSettings() {
+  cfg.edits = {};
+  cfg.preview = null;
+  drawSettings();
+}
+
+async function reviewSettings() {  // "Review the diff and apply": the preview, then the dialog with its diff
+  await previewSettings();
+  if (cfg.preview && cfg.preview.ok) await applySettings();
 }
 
 async function previewSettings() {
   try {
     cfg.preview = await api(`/api/settings/${state.instance}/preview`, { method: "POST",
                                                                         body: JSON.stringify({ changes: cfg.edits }) });
-  } catch (e) { setAction(`preview refused: ${e.message}`, true); }
+  } catch (e) { cfg.preview = null; setAction(t("actions.previewRefused", { error: e.message }), true); }
   refreshBar();
 }
 
 async function applySettings() {
   const name = state.instance, keys = Object.keys(cfg.edits).join(", ");
-  const confirm = await askConfirm(name, `apply ${keys}`, { diff: changesDiff(cfg.preview && cfg.preview.changes) });
-  if (confirm === null) { setAction(`apply ${keys} on prod: cancelled — nothing sent`, true); return; }
-  const r = await runWrite(`apply ${keys} on ${name}`, () => api(`/api/settings/${name}/apply`, { method: "POST",
+  const what = t("actions.applySettings", { keys, instance: name });
+  const sum = pendingSummary(cfg.edits, plainGroups(cfg.view.groups));
+  // previewed and confirmed on dev too: the dialog is where the diff is reviewed; prod also asks for "prod"
+  const confirm = await askConfirm(name, plural("settings.applyTitle", sum.n, { n: sum.n, instance: name }), {
+    always: true, action: t("common.apply"), diff: changesDiff(cfg.preview && cfg.preview.changes),
+    body: t(sum.restart ? "settings.applyBodyRestart" : "settings.applyBody", { instance: name }) });
+  if (confirm === null) { setAction(t("actions.cancelled", { what }), true); return; }
+  const r = await runWrite(what, () => api(`/api/settings/${name}/apply`, { method: "POST",
     body: JSON.stringify({ changes: cfg.edits, hashes: cfg.preview.hashes, confirm }) }));
   if (r) { cfg.edits = {}; cfg.preview = null; }
   renderSettings();
 }
 
+// --- Secrets -----------------------------------------------------------------------------------------------------
+async function renderSecrets() {
+  const name = state.instance;
+  if (secr.instance !== name) { secr.open = null; secr.instance = name; }
+  const [view, history] = await Promise.all([api(`/api/settings/${name}`),
+                                             api(`/api/history/${name}?limit=200`).catch(() => ({ entries: [] }))]);
+  secr.view = view;
+  secr.history = history.entries || [];
+  drawSecrets();
+}
+
+function drawSecrets() {
+  const name = state.instance;
+  const secrets = secr.view.groups.flatMap((g) => g.settings).filter((s) => s.secret);
+  const cols = ["name", "state", "last4", "usedFor", "changed", "actions"];
+  $("#secrets").replaceChildren(el("div", { class: "cfg-secrets" },
+    el("div", { class: "cfg-info" }, icon("lock-key", 16), el("span", {}, t("secrets.note", { instance: name }))),
+    secr.view.deploy_busy ? el("p", { class: "cfg-warn" }, t("settings.deployBusy")) : "",
+    el("div", { class: "cfg-scroll" }, el("div", { class: "sec-table" },
+      el("div", { class: "sec-grid head" }, cols.map((k) => el("span", {}, t(`secrets.columns.${k}`)))),
+      secrets.map(secretRow))),
+    actionLine()));
+  const input = $("#secrets input[type=password]");
+  if (input) input.focus();
+}
+
+function secretRow(s) {
+  const open = secr.open === s.key;
+  const changed = lastChanged(secr.history, s.key);
+  const close = () => { secr.open = null; drawSecrets(); };
+  // a new value goes one way: a password field, never filled from the page, cleared after the save
+  const input = open ? el("input", { class: "input mono", type: "password", autocomplete: "off", spellcheck: "false",
+                                     placeholder: t("secrets.paste"), "aria-label": t("secrets.newValue", { key: s.key }),
+                                     onkeydown: (ev) => {
+                                       if (ev.key === "Enter") { ev.preventDefault(); saveSecret(s.key, input); }
+                                       else if (ev.key === "Escape") { ev.preventDefault(); close(); }
+                                     } }) : null;
+  return el("div", { class: `sec-row ${open ? "open" : ""}`.trim() },
+    el("div", { class: "sec-grid" },
+      el("span", { class: "k" }, s.key),
+      el("span", { class: `st ${s.set ? "on" : ""}`.trim() }, icon(s.set ? "check-circle" : "circle-dashed", 14),
+        t(s.set ? "secrets.set" : "secrets.unset")),
+      el("span", { class: "mono" }, s.set && s.last4 ? `···${s.last4}` : "—"),
+      el("span", { class: "d", title: s.description }, s.description),
+      el("span", { class: "mono when" }, changed ? whenOf(changed) : "—"),
+      el("div", { class: "acts" },
+        el("button", { class: "btn btn-secondary", type: "button", "aria-expanded": open ? "true" : "false",
+                       onclick: () => { secr.open = open ? null : s.key; drawSecrets(); } },
+          t(s.set ? "secrets.rotate" : "secrets.setAction")),
+        el("button", { class: "btn btn-ghost", type: "button", disabled: s.set ? null : "",
+                       onclick: () => clearSecret(s.key) }, t("secrets.clear")))),
+    open ? el("div", { class: "sec-edit" }, input,
+      el("button", { class: `btn btn-primary ${state.instance === "prod" ? "btn-confirm-prod" : ""}`.trim(),
+                     type: "button", onclick: () => saveSecret(s.key, input) }, t("common.save")),
+      el("button", { class: "btn btn-ghost", type: "button", onclick: close }, t("common.confirm.cancel")),
+      el("span", { class: "note" }, t(s.key === "server.token" ? "secrets.noteServerToken" : "secrets.noteRestarts")))
+      : "");
+}
+
 async function saveSecret(key, input) {
   const name = state.instance, value = input.value;
-  if (!value) { setAction(`${key}: type the new value first`, true); return; }
-  const confirm = await askConfirm(name, `set ${key}`);
-  if (confirm === null) { setAction(`set ${key} on prod: cancelled — nothing sent`, true); return; }
+  const what = t("actions.setSecret", { key, instance: name });
+  if (!value) { setAction(t("actions.typeFirst", { key }), true); return; }
+  const confirm = await askConfirm(name, t("secrets.setTitle", { key }));
+  if (confirm === null) { setAction(t("actions.cancelled", { what }), true); return; }
   input.value = "";
-  await runWrite(`set ${key} on ${name}`, () => api(`/api/secrets/${name}`, { method: "POST",
+  const r = await runWrite(what, () => api(`/api/secrets/${name}`, { method: "POST",
     body: JSON.stringify({ key, value, confirm }) }));
-  renderSettings();
+  if (r) secr.open = null;
+  renderSecrets();
 }
 
 async function clearSecret(key) {
   const name = state.instance;
-  const confirm = await askConfirm(name, `clear ${key}`, { always: true, action: "Clear",
-                                                          body: `${key} stops working on ${name} until it is set again.` });
-  if (confirm === null) { setAction(`clear ${key}: cancelled — nothing sent`, true); return; }
-  await runWrite(`clear ${key} on ${name}`, () => api(`/api/secrets/${name}`, { method: "POST",
+  const what = t("actions.clearSecret", { key, instance: name });
+  const confirm = await askConfirm(name, t("secrets.clearTitle", { key }), { always: true, action: t("secrets.clear"),
+                                                                           body: t("secrets.clearBody", { key, instance: name }) });
+  if (confirm === null) { setAction(t("actions.cancelled", { what }), true); return; }
+  await runWrite(what, () => api(`/api/secrets/${name}`, { method: "POST",
     body: JSON.stringify({ key, clear: true, confirm }) }));
-  renderSettings();
+  renderSecrets();
+}
+
+// --- Config history ----------------------------------------------------------------------------------------------
+const ACTIONS = { settings: "configHistory.actions.settings", secret: "configHistory.actions.secret",
+                  rollback: "configHistory.actions.rollback", section: "configHistory.actions.section",
+                  promote: "configHistory.actions.promote" };
+
+function entrySummary(e) {
+  if (e.action === "rollback" && e.of) return t("configHistory.rollbackOf", { when: whenOf(e.of) });
+  const label = ACTIONS[e.action] ? t(ACTIONS[e.action]) : (e.action || "");
+  const what = e.target || Object.keys(e.changes || {}).join(", ");
+  return what ? `${label} · ${what}` : label;
 }
 
 async function renderHistory() {
   const name = state.instance;
+  if (hist.instance !== name) { hist.pick = 0; hist.instance = name; }
   const data = await api(`/api/history/${name}`);
-  const rows = data.entries.map((e) => el("tr", {}, el("td", {}, e.ts),
-    el("td", {}, e.action + (e.of ? ` of ${e.of}` : "")), el("td", { class: "detail" }, changesText(e.changes)),
-    el("td", {}, el("button", { onclick: () => rollback(name, e.ts) }, "Roll back"))));
-  $("#history").replaceChildren(el("div", { class: `card ${name === "prod" ? "prod" : ""}` },
-    el("h2", {}, `${name} — config history`),
-    el("p", { class: "muted" }, "Each change kept the files as they were before it. “Roll back” restores them — the "
-      + "current files are kept first, so a rollback can be rolled back too."),
-    rows.length ? el("table", {}, el("tr", {}, ["when (UTC)", "what", "changes", ""].map((h) => el("th", {}, h))), rows)
-      : el("p", {}, "no change yet"), actionLine()));
+  hist.entries = numbered(data.entries);
+  drawHistory();
+}
+
+function drawHistory() {
+  const name = state.instance, list = hist.entries;
+  if (!list.length) {
+    $("#history").replaceChildren(emptyState("clock-counter-clockwise", t("configHistory.emptyTitle"),
+                                             t("configHistory.emptySub", { instance: name })), actionLine());
+    return;
+  }
+  const pick = Math.min(hist.pick, list.length - 1);
+  const cur = list[pick];
+  $("#history").replaceChildren(el("div", { class: "cfg-history" },
+    el("div", { class: "hist-list" }, list.map((e, i) => el("button", {
+      class: `hist-item ${i === pick ? "on" : ""}`.trim(), type: "button", "aria-current": i === pick ? "true" : null,
+      onclick: () => { hist.pick = i; drawHistory(); } },
+      el("span", { class: "id" }, `#${e.id}`),
+      el("span", { class: "txt" }, el("span", { class: "s" }, entrySummary(e)),
+        el("span", { class: "m" }, el("span", {}, whenOf(e.ts)), el("span", {}, (e.files || []).join(", "))))))),
+    el("div", { class: "hist-panel" },
+      el("div", { class: "head" }, el("span", { class: "id" }, `#${cur.id}`), el("span", { class: "s" }, entrySummary(cur)),
+        el("button", { class: `btn btn-primary ${name === "prod" ? "btn-confirm-prod" : ""}`.trim(), type: "button",
+                       onclick: () => rollback(name, cur.ts) }, icon("arrow-counter-clockwise", 14),
+          t("configHistory.rollback", { id: cur.id }))),
+      el("div", { class: "meta" }, `${whenOf(cur.ts)} · ${(cur.files || []).join(", ") || "—"}`),
+      el("div", { class: "hist-diff" }, entryDiff(cur.changes, t("settings.defaultValue")).map((d) => el("div",
+        { class: `ln ${d.sign === "+" ? "add" : d.sign === "-" ? "del" : ""}`.trim() },
+        el("span", {}, d.sign), el("span", {}, d.text)))),
+      el("p", { class: "hint" }, t("configHistory.hint")))),
+    actionLine());
 }
 
 async function rollback(name, ts) {  // preview first: a file goes back whole, later changes to it too (review #1)
+  const what = t("actions.rollback", { when: whenOf(ts), instance: name });
   let p;
   try { p = await api(`/api/history/${name}/${ts}/preview`, { method: "POST", body: "{}" }); }
-  catch (e) { setAction(`roll back ${ts} refused: ${e.message}`, true); return; }
-  if (!p.ok) { setAction(`roll back ${ts} refused: ${p.problems.join("; ")}`, true); return; }
-  const what = [`roll back ${ts}: ${changesText(p.changes)}`, ...(p.notes || [])].join("\n");
+  catch (e) { setAction(t("actions.refused", { what, error: e.message }), true); return; }
+  if (!p.ok) { setAction(t("actions.refused", { what, error: p.problems.join("; ") }), true); return; }
+  const body = [t("configHistory.rollbackBody", { instance: name }), ...(p.notes || [])].join("\n");
   // previewed and confirmed on dev too: the dialog shows the changes and the later ones a file takes back with it
-  const confirm = await askConfirm(name, `roll back ${ts}`, { always: true, body: what, action: "Roll back",
-                                                             diff: changesDiff(p.changes) });
-  if (confirm === null) { setAction(`roll back ${ts} on ${name}: cancelled — nothing sent`, true); return; }
-  await runWrite(`roll back ${ts} on ${name}`, () => api(`/api/history/${name}/${ts}/rollback`, { method: "POST",
+  const confirm = await askConfirm(name, t("configHistory.rollbackTitle", { when: whenOf(ts) }), {
+    always: true, body, action: t("configHistory.rollbackAction"), diff: changesDiff(p.changes) });
+  if (confirm === null) { setAction(t("actions.cancelled", { what }), true); return; }
+  await runWrite(what, () => api(`/api/history/${name}/${ts}/rollback`, { method: "POST",
     body: JSON.stringify({ confirm, hashes: p.hashes }) }));
+  hist.pick = 0;
   renderHistory();
 }
 
+// --- Promote -----------------------------------------------------------------------------------------------------
+async function renderPromote() {
+  promo.data = await api("/api/promote");
+  const keys = new Set(promo.data.differences.map((d) => d.key));
+  for (const k of [...promo.chosen]) if (!keys.has(k)) promo.chosen.delete(k);
+  drawPromote();
+}
+
+function drawPromote() {
+  const diffs = promo.data.differences;
+  const picked = diffs.filter((d) => promo.chosen.has(d.key)).length;
+  const p = promo.preview;
+  const head = el("div", { class: "promo-head" }, el("span", { class: "inst-tag" }, "dev"), icon("arrow-right", 13),
+    el("span", { class: "inst-tag prod" }, "prod"),
+    el("span", { class: "intro" }, plural("promote.intro", diffs.length, { n: diffs.length })),
+    el("span", { class: "images" }, t("promote.imagesNote")));
+  if (!diffs.length) {
+    $("#promote").replaceChildren(el("div", { class: "cfg-promote" }, head,
+      emptyState("check-circle", t("promote.agreeTitle"), t("promote.agreeSub"))), actionLine());
+    return;
+  }
+  const value = (v) => asText(v) || t("settings.defaultValue");
+  $("#promote").replaceChildren(el("div", { class: "cfg-promote" }, head,
+    el("div", { class: "cfg-scroll" }, el("div", { class: "promo-table" },
+      el("div", { class: "promo-row head" }, el("span", {}), el("span", {}, t("promote.columns.setting")),
+        el("span", {}, t("promote.columns.dev")), el("span", {}, t("promote.columns.prod")), el("span", {})),
+      diffs.map((d) => {
+        const on = promo.chosen.has(d.key);
+        return el("label", { class: `promo-row ${on ? "on" : ""}`.trim() },
+          el("input", { type: "checkbox", checked: on ? "" : null, onchange: (ev) => {
+            if (ev.target.checked) promo.chosen.add(d.key); else promo.chosen.delete(d.key);
+            promo.preview = null;
+            drawPromote();
+          } }),
+          el("span", { class: "k" }, d.key), el("span", { class: "dev" }, value(d.source)),
+          el("span", { class: "prodv" }, value(d.target)),
+          el("span", { class: "note" }, d.source === "(section)" || d.target === "(section)" ? t("promote.section") : ""));
+      }))),
+    el("div", { class: "promo-foot" },
+      el("span", {}, t("promote.picked", { n: picked, total: diffs.length })),
+      el("button", { class: "btn btn-primary btn-confirm-prod", type: "button", disabled: picked ? null : "",
+                     onclick: reviewPromote }, icon("arrow-fat-lines-up", 14), t("promote.action"))),
+    p && !p.ok ? previewBlock(p) : "", actionLine()));
+}
+
+async function reviewPromote() {  // "Review and promote to prod": the preview, then the typed confirmation
+  await previewPromote();
+  if (promo.preview && promo.preview.ok) await applyPromote();
+}
+
+async function previewPromote() {
+  try {
+    promo.preview = await api("/api/promote/preview", { method: "POST",
+                                                        body: JSON.stringify({ keys: [...promo.chosen] }) });
+  } catch (e) { promo.preview = null; setAction(t("actions.previewRefused", { error: e.message }), true); }
+  drawPromote();
+}
+
+async function applyPromote() {
+  const keys = [...promo.chosen];
+  const what = t("actions.promote", { keys: keys.join(", ") });
+  const confirm = await askConfirm("prod", plural("promote.title", keys.length, { n: keys.length }), {
+    action: t("promote.confirm"), body: t("promote.body"), diff: changesDiff(promo.preview && promo.preview.changes) });
+  if (confirm === null) { setAction(t("actions.cancelled", { what }), true); return; }
+  const r = await runWrite(what, () => api("/api/promote/apply", { method: "POST",
+    body: JSON.stringify({ keys, hashes: promo.preview.hashes, confirm }) }));
+  if (r) { promo.chosen.clear(); promo.preview = null; }
+  renderPromote();
+}
+
+// --- the schedule and models sections (YAML, as in v2.11 — their forms are v5.5) ---------------------------------
 function mergedView(s, merged) {
   if (s === "schedule") {
     const when = (r) => ["at", "between", "every", "idle", "cron"].filter((k) => r[k] != null)
       .map((k) => `${k} ${asText(r[k])}`).join(" ") + (r.days ? ` · ${asText(r.days)}` : "");
-    return el("table", {}, el("tr", {}, ["name", "directive", "when", "on"].map((h) => el("th", {}, h))),
+    return el("table", {}, el("tr", {}, ["name", "directive", "when", "on"].map((h) => el("th", {}, t(`sections.columns.${h}`)))),
       merged.map((r) => el("tr", {}, el("td", {}, r.name ?? ""), el("td", {}, r.directive ?? ""), el("td", {}, when(r)),
-        el("td", {}, badge(r.enabled === false ? "off" : "green", r.enabled === false ? "off" : "on")))));
+        el("td", {}, badge(r.enabled === false ? "off" : "green", t(r.enabled === false ? "sections.off" : "sections.on"))))));
   }
-  return el("table", {}, el("tr", {}, ["profile", "provider", "reply", "think", "mood", "housekeeping", "voice"]
-    .map((h) => el("th", {}, h))), Object.entries(merged.profiles).map(([n, p]) => el("tr", {}, el("td", {}, n),
-    ["provider", "reply", "think", "mood", "housekeeping", "voice"].map((k) => el("td", {}, p[k] || "—")))));
+  const roles = ["provider", "reply", "think", "mood", "housekeeping", "voice"];
+  return el("table", {}, el("tr", {}, ["profile", ...roles].map((h) => el("th", {}, t(`sections.columns.${h}`)))),
+    Object.entries(merged.profiles).map(([n, p]) => el("tr", {}, el("td", {}, n), roles.map((k) => el("td", {}, p[k] || "—")))));
 }
 
 async function renderSections() {
@@ -954,23 +1258,21 @@ async function renderSections() {
     const data = await api(`/api/sections/${name}/${s}`);
     const k = `${name}/${s}`;
     if (!(k in sec.text)) sec.text[k] = data.text;
-    const ta = el("textarea", { rows: "10", spellcheck: "false", placeholder: s === "schedule"
-      ? "- name: morning-brief\n  enabled: false" : "profiles:\n  anthropic:\n    reply: claude-sonnet-5",
-      oninput: (ev) => { sec.text[k] = ev.target.value; sec.preview[k] = null; } });
+    const ta = el("textarea", { rows: "10", spellcheck: "false", placeholder: t(`sections.${s}.placeholder`),
+                                "aria-label": t(`sections.${s}.title`, { instance: name }),
+                                oninput: (ev) => { sec.text[k] = ev.target.value; sec.preview[k] = null; } });
     ta.value = sec.text[k];
     const p = sec.preview[k];
     cards.push(el("div", { class: `card ${name === "prod" ? "prod" : ""}` },
-      el("h2", {}, `${name} — ${s}`),
-      el("p", { class: "muted" }, s === "schedule"
-        ? "this instance's rows over core/schedule.yaml, merged by name — a new name adds a row; quote every time (\"19:00\")"
-        : "this instance's aliases / profiles over core/models.yaml — a profile's fields over the authored profile's"),
+      el("h2", {}, t(`sections.${s}.title`, { instance: name })),
+      el("p", { class: "muted" }, t(`sections.${s}.help`)),
       ta,
       el("div", { class: "controls" },
-        el("button", { onclick: () => previewSection(k, s) }, "Preview"),
+        el("button", { onclick: () => previewSection(k, s) }, t("sections.preview")),
         el("button", { class: name === "prod" ? "danger" : "primary", disabled: p && p.ok ? null : "",
-                       onclick: () => applySection(k, s) }, name === "prod" ? "Apply to PROD" : "Apply")),
+                       onclick: () => applySection(k, s) }, t(name === "prod" ? "sections.applyProd" : "sections.apply"))),
       p ? previewBlock(p) : "",
-      el("h2", {}, "what runs (merged)"), mergedView(s, data.merged)));
+      el("h2", {}, t("sections.merged")), mergedView(s, data.merged)));
   }
   $("#sections").replaceChildren(actionLine(), el("div", { class: "grid wide" }, cards));
 }
@@ -979,64 +1281,28 @@ async function previewSection(k, s) {
   try {
     sec.preview[k] = await api(`/api/sections/${state.instance}/${s}/preview`, { method: "POST",
                                                                                 body: JSON.stringify({ text: sec.text[k] }) });
-  } catch (e) { setAction(`preview ${s} refused: ${e.message}`, true); }
+  } catch (e) { setAction(t("actions.previewRefused", { error: e.message }), true); }
   renderSections();
 }
 
-async function applySection(k, s) {
+async function applySection(k, s) {  // a schedule or models save on prod keeps the typed "prod" (a plan, like a setting)
   const name = state.instance;
-  const confirm = await askConfirm(name, `apply the ${s} section`);
-  if (confirm === null) { setAction(`apply ${s} on prod: cancelled — nothing sent`, true); return; }
-  const r = await runWrite(`apply ${s} on ${name}`, () => api(`/api/sections/${name}/${s}/apply`, { method: "POST",
+  const what = t("actions.applySection", { section: s, instance: name });
+  const confirm = await askConfirm(name, t("sections.applyTitle", { section: s }));
+  if (confirm === null) { setAction(t("actions.cancelled", { what }), true); return; }
+  const r = await runWrite(what, () => api(`/api/sections/${name}/${s}/apply`, { method: "POST",
     body: JSON.stringify({ text: sec.text[k], hashes: sec.preview[k].hashes, confirm }) }));
   if (r) { delete sec.text[k]; delete sec.preview[k]; }
   renderSections();
 }
 
-async function renderPromote() {
-  const data = await api("/api/promote");
-  const rows = data.differences.map((d) => el("tr", {},
-    el("td", {}, el("input", { type: "checkbox", checked: promo.chosen.has(d.key) ? "" : null,
-      onchange: (ev) => { ev.target.checked ? promo.chosen.add(d.key) : promo.chosen.delete(d.key); promo.preview = null;
-                          renderPromote(); } })),
-    el("td", {}, el("code", {}, d.key)), el("td", {}, asText(d.source) || "default"),
-    el("td", {}, asText(d.target) || "default")));
-  const p = promo.preview;
-  $("#promote").replaceChildren(el("div", { class: "card prod" }, el("h2", {}, "promote dev → prod"),
-    el("p", { class: "muted" }, "Settings that differ between dev and prod. Secrets and the per-instance keys never "
-      + "move."),
-    rows.length ? el("table", {}, el("tr", {}, ["", "setting", "dev", "prod"].map((h) => el("th", {}, h))), rows)
-      : el("p", {}, "dev and prod agree"),
-    el("div", { class: "controls" },
-      el("button", { disabled: promo.chosen.size ? null : "", onclick: previewPromote }, "Preview"),
-      el("button", { class: "danger", disabled: p && p.ok ? null : "", onclick: applyPromote }, "Apply to PROD")),
-    p ? previewBlock(p) : "", actionLine()));
-}
-
-async function previewPromote() {
-  try {
-    promo.preview = await api("/api/promote/preview", { method: "POST",
-                                                        body: JSON.stringify({ keys: [...promo.chosen] }) });
-  } catch (e) { setAction(`preview refused: ${e.message}`, true); }
-  renderPromote();
-}
-
-async function applyPromote() {
-  const keys = [...promo.chosen];
-  const confirm = await askConfirm("prod", `promote ${keys.join(", ")}`,
-                                   { diff: changesDiff(promo.preview && promo.preview.changes) });
-  if (confirm === null) { setAction("promote: cancelled — nothing sent", true); return; }
-  const r = await runWrite(`promote ${keys.join(", ")} to prod`, () => api("/api/promote/apply", { method: "POST",
-    body: JSON.stringify({ keys, hashes: promo.preview.hashes, confirm }) }));
-  if (r) { promo.chosen.clear(); promo.preview = null; }
-  renderPromote();
-}
-
+// --- the audit (the panel's own lines, as in v2.11 — its sources and chain are v5.4) -----------------------------
 async function renderAudit() {
   const data = await api("/api/audit?limit=300");
-  $("#audit").replaceChildren(el("div", { class: "card" }, el("h2", {}, "audit log"),
-    el("p", { class: "muted" }, "Every action the panel took or refused, the newest first. A secret shows as (secret)."),
-    el("table", {}, el("tr", {}, ["when", "action", "instance", "target", "changes", "result"].map((h) => el("th", {}, h))),
+  const cols = ["when", "action", "instance", "target", "changes", "result"];
+  $("#audit").replaceChildren(el("div", { class: "card" }, el("h2", {}, t("auditLog.title")),
+    el("p", { class: "muted" }, t("auditLog.note")),
+    el("table", {}, el("tr", {}, cols.map((h) => el("th", {}, t(`auditLog.columns.${h}`)))),
       data.entries.map((a) => el("tr", { class: a.instance === "prod" ? "prodrow" : "" },
         el("td", {}, (a.ts || "").replace("T", " ").slice(0, 19)), el("td", {}, a.action), el("td", {}, a.instance ?? ""),
         el("td", {}, a.target ?? ""), el("td", { class: "detail" }, changesText(a.changes)),
