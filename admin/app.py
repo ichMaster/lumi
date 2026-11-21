@@ -22,6 +22,7 @@ from datetime import datetime
 from http.client import HTTPException as DockerProtocolError
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -110,8 +111,16 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
 
     # --- the API (the token on every route) ---------------------------------------------------------------------
 
+    def alerts_status() -> dict:
+        return alerts.status() if alerts is not None else {"on": False, "why": cfg.alerts.off_reason or "alerts are off",
+                                                           "instances": list(cfg.alerts.instances), "failing": [],
+                                                           "last_sent": {}}
+
     @app.get("/api/overview", dependencies=guarded)
     def overview() -> dict:
+        """v2.10 the instances side by side and the box; v5.1 adds what the shell's cards draw: each instance's latest
+        checks (name, status, detail — no history), its server's port (for "can't reach" lines) and the alerts'
+        on / off and who is failing."""
         now = clock()
         out = []
         for inst in cfg.instances:
@@ -142,9 +151,14 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
                 "last_turn_age_s": usage["last_turn_age_s"],
                 "errors": rd.errors(inst, now=now),
                 "data_size": rd.data_size(inst),
+                "port": urlsplit(inst.url).port,
+                "checks": [{"name": r.name, "status": r.status, "detail": r.detail}
+                           for r in health.latest.get(inst.name, [])],
             })
+        status = alerts_status()
         return {"now": now.isoformat(timespec="seconds"), "instances": out,
-                "box": rd.box([i.root for i in cfg.instances], proc=proc)}
+                "box": rd.box([i.root for i in cfg.instances], proc=proc),
+                "alerts": {k: status.get(k) for k in ("on", "why", "instances", "failing")}}
 
     @app.get("/api/health", dependencies=guarded)
     def health_view() -> dict:
@@ -336,10 +350,7 @@ def create_app(cfg: AdminConfig, runner: ct.ContainerRunner, health: hl.HealthRu
 
     @app.get("/api/alerts", dependencies=guarded)
     def alerts_view() -> dict:
-        status = alerts.status() if alerts is not None else {"on": False, "why": cfg.alerts.off_reason or
-                                                             "alerts are off", "instances": list(cfg.alerts.instances),
-                                                             "failing": [], "last_sent": {}}
-        return status | {"deploy_busy": gd.agent_busy(cfg.agent_lock)}
+        return alerts_status() | {"deploy_busy": gd.agent_busy(cfg.agent_lock)}
 
     @app.get("/api/usage", dependencies=guarded)
     def usage(instance: str, days: int = Query(default=7, ge=1, le=31)) -> dict:

@@ -1,76 +1,88 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lumi admin</title>
+  <link rel="stylesheet" href="/static/nocturne.css">
+  <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/panel.css">
 </head>
 <body>
   <div id="login" class="login" hidden>
-    <form id="login-form">
-      <h1>Lumi admin</h1>
-      <p>The panel's token (<code>~/lumi/admin/secrets.yaml</code> → <code>admin.token</code>).</p>
-      <input id="token" type="password" autocomplete="current-password" placeholder="admin token" required>
-      <button type="submit">Open</button>
-      <p id="login-error" class="error" hidden></p>
+    <form id="login-form" class="login-form">
+      <div class="brand-line"><span class="brand-name">lumi</span><span class="brand-sub">admin</span></div>
+      <div>
+        <h1 id="login-title" class="login-title"></h1>
+        <div id="login-host" class="mono-meta"></div>
+      </div>
+      <div class="field">
+        <label id="login-label" for="token"></label>
+        <input id="token" class="input mono" type="password" autocomplete="current-password" required>
+      </div>
+      <p id="login-error" class="login-error" hidden></p>
+      <button id="login-submit" class="btn btn-primary btn-block" type="submit"></button>
+      <p id="login-note" class="login-note"></p>
     </form>
   </div>
 
-  <div id="app" hidden>
-    <header>
-      <span class="brand">Lumi admin</span>
-      <nav id="tabs">
-        <button data-tab="overview" class="active">Overview</button>
-        <button data-tab="health">Health</button>
-        <button data-tab="services">Services</button>
-        <button data-tab="usage">Usage</button>
-        <button data-tab="logs">Logs</button>
-        <button data-tab="settings">Settings</button>
-        <button data-tab="sections">Schedule &amp; models</button>
-        <button data-tab="history">History</button>
-        <button data-tab="promote">Promote</button>
-        <button data-tab="audit">Audit</button>
-      </nav>
-      <span id="switcher" class="switcher"></span>
-      <span id="updated" class="muted"></span>
-      <button id="logout" class="link">sign out</button>
-    </header>
-    <main>
-      <section id="overview" class="tab"></section>
-      <section id="health" class="tab" hidden></section>
-      <section id="services" class="tab" hidden></section>
-      <section id="usage" class="tab" hidden>
-        <div class="controls">days <select id="usage-days"><option>1</option><option selected>7</option>
-          <option>14</option><option>31</option></select></div>
-        <div id="usage-body"></div>
-      </section>
-      <section id="logs" class="tab" hidden>
-        <div class="controls">
-          <select id="log-source">
-            <option value="lumi">lumi.log</option>
-            <option value="telegram-inbound">telegram-inbound.log</option>
-            <option value="telegram-outbound">telegram-outbound.log</option>
-            <option value="container:server">container: server</option>
-            <option value="container:telegram-inbound">container: telegram-inbound</option>
-            <option value="container:telegram-outbound">container: telegram-outbound</option>
-          </select>
-          <select id="log-level"><option value="">all levels</option><option>INFO</option><option>WARNING</option>
-            <option>ERROR</option></select>
-          <input id="log-q" placeholder="filter text">
-          <select id="log-tail"><option>100</option><option selected>200</option><option>500</option>
-            <option>2000</option></select>
-          <button id="log-go">Show</button>
+  <div id="app" class="shell" hidden>
+    <div id="strip" class="strip" role="status" aria-live="polite"></div>
+    <div class="shell-body">
+      <nav id="rail" class="rail" aria-label="Views"></nav>
+      <main id="main" class="main">
+        <header class="view-header">
+          <div class="crumbs">
+            <div id="crumb" class="crumb"></div>
+            <div id="title" class="title"></div>
+          </div>
+          <div class="header-right">
+            <span id="updated" class="updated"></span>
+            <div id="switcher" class="switcher" role="radiogroup"></div>
+            <button id="theme" class="btn btn-secondary btn-icon theme-btn" type="button"></button>
+          </div>
+        </header>
+        <div id="scroll" class="view-scroll">
+          <section id="overview" class="view" hidden></section>
+          <section id="health" class="view legacy" hidden></section>
+          <section id="services" class="view legacy" hidden></section>
+          <section id="usage" class="view legacy" hidden>
+            <div class="controls">days <select id="usage-days"><option>1</option><option selected>7</option>
+              <option>14</option><option>31</option></select></div>
+            <div id="usage-body"></div>
+          </section>
+          <section id="logs" class="view legacy" hidden>
+            <div class="controls">
+              <select id="log-source">
+                <option value="lumi">lumi.log</option>
+                <option value="telegram-inbound">telegram-inbound.log</option>
+                <option value="telegram-outbound">telegram-outbound.log</option>
+                <option value="container:server">container: server</option>
+                <option value="container:telegram-inbound">container: telegram-inbound</option>
+                <option value="container:telegram-outbound">container: telegram-outbound</option>
+              </select>
+              <select id="log-level"><option value="">all levels</option><option>INFO</option><option>WARNING</option>
+                <option>ERROR</option></select>
+              <input id="log-q" placeholder="filter text">
+              <select id="log-tail"><option>100</option><option selected>200</option><option>500</option>
+                <option>2000</option></select>
+              <button id="log-go" type="button">Show</button>
+            </div>
+            <pre id="log-lines" class="log"></pre>
+          </section>
+          <section id="settings" class="view legacy" hidden></section>
+          <section id="sections" class="view legacy" hidden></section>
+          <section id="history" class="view legacy" hidden></section>
+          <section id="promote" class="view legacy" hidden></section>
+          <section id="audit" class="view legacy" hidden></section>
         </div>
-        <pre id="log-lines" class="log"></pre>
-      </section>
-      <section id="settings" class="tab" hidden></section>
-      <section id="sections" class="tab" hidden></section>
-      <section id="history" class="tab" hidden></section>
-      <section id="promote" class="tab" hidden></section>
-      <section id="audit" class="tab" hidden></section>
-    </main>
+      </main>
+    </div>
   </div>
+
+  <div id="dialog-root"></div>
+  <div id="toast-root"></div>
+  <script src="/static/icons.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

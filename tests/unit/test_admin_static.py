@@ -57,10 +57,21 @@ def _fn(js, name):
 
 def test_v2_11_every_write_asks_prod_for_its_confirmation_and_says_when_cancelled():
     js = _js()
-    for name in ("applySettings", "saveSecret", "clearSecret", "rollback", "applySection", "applyPromote"):
+    for name in ("applySettings", "saveSecret", "clearSecret", "rollback", "applySection", "applyPromote", "act"):
         body = _fn(js, name)
-        assert "askConfirm(" in body and "cancelled — nothing sent" in body, name
-    assert 'prompt(`${what} on PROD' in _fn(js, "askConfirm")
+        assert "await askConfirm(" in body and "cancelled — nothing sent" in body, name
+    ask = _fn(js, "askConfirm")  # v5.1: the dialog with the typed "prod" instead of prompt()
+    assert 'if (name !== "prod" && !always) return undefined;' in ask and "confirmDialog(" in ask
+    assert "typed: true" in ask
+
+
+def test_v5_1_the_typed_prod_gate_holds_in_the_dialog():
+    dialog = _fn(_js(), "confirmDialog")
+    assert "const needsType = prod && typed;" in dialog
+    assert 'input.value.trim() === "prod"' in dialog and "ok.disabled = !canConfirm();" in dialog
+    assert 'close(prod ? "prod" : undefined)' in dialog and "if (canConfirm())" in dialog  # nothing sent unconfirmed
+    js = _js()
+    assert "prompt(" not in js and "window.confirm(" not in js  # every confirmation goes through the dialog
 
 
 def test_v2_11_a_secret_is_typed_into_a_password_field_and_never_shown():
@@ -71,11 +82,14 @@ def test_v2_11_a_secret_is_typed_into_a_password_field_and_never_shown():
     assert 'input.value = ""' in _fn(js, "saveSecret")
 
 
-def test_v2_11_the_configure_tabs_exist_and_keep_their_outcome_on_the_page():
+def test_v2_11_the_configure_views_exist_and_keep_their_outcome_on_the_page():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    for tab in ("settings", "sections", "history", "promote", "audit"):
-        assert f'data-tab="{tab}"' in html and f'<section id="{tab}"' in html
+    for section in ("settings", "sections", "history", "promote", "audit"):
+        assert f'<section id="{section}"' in html
     js = _js()
+    for view, section in (("settings", "settings"), ("schedule", "sections"), ("confighistory", "history"),
+                          ("promote", "promote"), ("audit", "audit")):  # v5.1: each one in the rail
+        assert f'id: "{view}"' in js and f'section: "{section}"' in js
     assert "setAction(" in _fn(js, "runWrite") and "actionLine()" in _fn(js, "settingsBar")
     assert "actionLine()" in _fn(js, "renderHistory") and "actionLine()" in _fn(js, "renderPromote")
 
@@ -83,5 +97,138 @@ def test_v2_11_the_configure_tabs_exist_and_keep_their_outcome_on_the_page():
 def test_review_1_a_rollback_is_previewed_and_confirmed_on_dev_too():
     body = _fn(_js(), "rollback")
     assert body.index("/preview`") < body.index("/rollback`")  # the diff and the later changes first
-    assert "window.confirm(" in body and "p.notes" in body and "hashes: p.hashes" in body
+    assert "always: true" in body and "p.notes" in body and "hashes: p.hashes" in body
+
+
+# --- v5.1 LUMI-343: the shell ------------------------------------------------------------------------------------
+
+PAGE_FILES = ("index.html", "app.js", "icons.js", "panel.css", "nocturne.css", "tokens.css")
+SVG_NS = "http://www.w3.org/2000/svg"  # a namespace name for createElementNS, never fetched
+
+
+def test_v5_1_the_page_loads_nothing_from_the_network():
+    import re
+
+    for name in PAGE_FILES:
+        text = (STATIC / name).read_text(encoding="utf-8").replace(SVG_NS, "")
+        assert not re.search(r"https?://", text), name
+        assert "@import" not in text, name
+    css = (STATIC / "nocturne.css").read_text(encoding="utf-8")
+    assert '@font-face' in css and 'url("/static/fonts/InterVariable.woff2")' in css
+
+
+def test_v5_1_inter_and_its_license_ship_with_the_panel():
+    font = STATIC / "fonts" / "InterVariable.woff2"
+    assert font.read_bytes()[:4] == b"wOF2"
+    assert "SIL Open Font License" in (STATIC / "fonts" / "OFL.txt").read_text(encoding="utf-8")
+    assert "Phosphor Icons" in (STATIC / "icons.js").read_text(encoding="utf-8")  # the icons' MIT notice
+
+
+def test_v5_1_no_data_is_rendered_as_html_anywhere_in_the_page():
+    for name in ("app.js", "icons.js"):
+        js = (STATIC / name).read_text(encoding="utf-8")
+        assert "innerHTML" not in js and "outerHTML" not in js and "insertAdjacentHTML" not in js, name
+        assert "document.write" not in js, name
+
+
+def _strings():
+    import json
+
+    return json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
+
+
+def _has(strings, key):
+    node = strings
+    for part in key.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return isinstance(node, str)
+
+
+def test_v5_1_every_string_key_the_page_uses_exists():
+    import re
+
+    js, strings = _js(), _strings()
+    keys = set(re.findall(r'\bt\("([\w.]+)"', js))
+    keys |= set(re.findall(r'"((?:nav|strip|common|overview|signin|switcher|state)\.[\w.]+)"', js))
+    assert len(keys) > 60
+    missing = sorted(k for k in keys if not _has(strings, k))
+    assert not missing, missing
+    for prefix in ("prod", "dev"):  # the switcher's dynamic key
+        assert _has(strings, f"switcher.{prefix}")
+
+
+def test_v5_1_her_name_in_the_interface_is_lili_and_the_files_are_the_real_ones():
+    s = (STATIC / "strings.json").read_text(encoding="utf-8")
+    assert "secrets.yaml" in s and "secrets.env" not in s and "panel.env" not in s
+    js = _js()
+    assert 'name: "Lili"' in js  # the default agent until the registry names it
+
+
+def _node_eval(script: str):
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed — the page's pure helpers are checked where it is")
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def _whole(name: str) -> str:
+    js = _js()
+    start = js.index(f"function {name}(")
+    return js[start:js.index("\n}\n", start) + 2]
+
+
+def test_v5_1_deep_links_parse_and_a_stale_one_falls_back():
+    got = _node_eval(_whole("parseHash") + _whole("hashFor") + """
+const ids = { server: ["health", "logs", "settings"], agent: ["usage", "schedule"] };
+const agents = ["lili"];
+const cases = ["#/overview", "#/server/logs", "#/server/logs?src=prod-lumi&at=1", "#/agent/lili/usage",
+  "#/agent/other/usage", "#/agent/lili/health", "#/server/usage", "#/server", "", "#/nowhere/x", "#/server/logs/x"];
+console.log(JSON.stringify({ parsed: cases.map((c) => parseHash(c, ids, agents)),
+  hashes: [hashFor("logs", "server", "lili"), hashFor("usage", "agent", "lili"), hashFor("overview", "top", "lili")] }));
+""")
+    assert got["parsed"] == [{"view": "overview"}, {"view": "logs"}, {"view": "logs"},
+                             {"view": "usage", "agent": "lili"}, None, None, None, None, None, None, None]
+    assert got["hashes"] == ["#/server/logs", "#/agent/lili/usage", "#/overview"]
+
+
+def test_v5_1_j_and_k_walk_the_views_round():
+    got = _node_eval(_whole("nextView") + """
+const ids = ["overview", "health", "logs"];
+console.log(JSON.stringify([nextView(ids, "overview", 1), nextView(ids, "logs", 1), nextView(ids, "overview", -1),
+  nextView(ids, "gone", 1)]));
+""")
+    assert got == ["health", "overview", "logs", "health"]
+
+
+def test_v5_1_the_attention_strip_names_the_red_and_amber_checks_and_a_silent_server():
+    got = _node_eval("const TONE = { green: 'ok', amber: 'warn', red: 'bad', off: 'off' };\n" + _whole("runStart")
+                     + _whole("attentionItems") + _whole("railBadges") + """
+const health = { instances: {
+  prod: [{ name: "server", status: "green", detail: "", history: [] },
+         { name: "scheduler", status: "amber", detail: "the newest firing 6 h ago",
+           history: [["t1", "green"], ["t2", "amber"], ["t3", "amber"]] }],
+  dev: [{ name: "server", status: "red", detail: "connection refused", history: [["t1", "red"]] }] } };
+const overview = { instances: [
+  { name: "prod", up: true, services: { server: "running" } },
+  { name: "dev", up: false, services: { server: "stopped", "telegram-inbound": "running" } },
+  { name: "x", up: false, services: {} }] };
+console.log(JSON.stringify({ items: attentionItems(health, overview), quiet: attentionItems({ instances: {} }, { instances: [] }),
+  badges: railBadges(health, overview) }));
+""")
+    items = got["items"]
+    assert [(i["inst"], i["kind"], i["tone"]) for i in items] == [("x", "panel", "bad"), ("dev", "check", "bad"),
+                                                                   ("prod", "check", "warn")]
+    assert items[2]["since"] == "t2" and items[1]["detail"] == "connection refused"  # the run's start, not its end
+    assert got["quiet"] == []
+    assert got["badges"] == {"health": {"n": 2, "tone": "bad"}, "containers": {"n": 1, "tone": "bad"}}
 

@@ -35,6 +35,26 @@ def test_the_overview_shows_prod_and_dev_side_by_side(world):
     assert "box" in data
 
 
+def test_v5_1_the_overview_answers_what_the_shells_cards_draw(world):
+    client, runner, servers, health = world
+    before = client.get("/api/overview", headers=AUTH).json()
+    assert all(i["checks"] == [] for i in before["instances"])  # no health run yet → no checks, not an error
+    assert before["alerts"]["on"] is False and before["alerts"]["failing"] == []
+    health.run_once()
+    servers.down.add("dev")
+    runner.act("dev", "server", "stop")
+    health.run_once()
+    data = client.get("/api/overview", headers=AUTH).json()
+    by = {i["name"]: i for i in data["instances"]}
+    assert by["prod"]["port"] == 8765 and by["dev"]["port"] == 8766
+    names = [c["name"] for c in by["dev"]["checks"]]
+    assert names[:2] == ["server", "state"]
+    assert all(set(c) == {"name", "status", "detail"} for c in by["dev"]["checks"])  # the history stays in /api/health
+    assert {c["name"]: c["status"] for c in by["dev"]["checks"]}["server"] == "red"
+    assert by["dev"]["up"] is False and by["dev"]["services"]["server"] == "stopped"
+    assert set(data["alerts"]) == {"on", "why", "instances", "failing"}  # no last_sent, no token
+
+
 def test_health_turns_red_when_a_server_stops_and_green_after(world):
     client, runner, servers, health = world
     health.run_once()
