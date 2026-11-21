@@ -309,8 +309,13 @@ The owner made it in Claude Design. Its handoff bundle is in [handoff/](handoff/
   server on `:8765` and dev's on `:8766`, the `/v1/…` routes (there is no `/admin/state`), the panel's token in
   `~/lumi/admin/secrets.yaml` (`admin.token`) and the secrets in `secrets.yaml` (not `secrets.env`).
 - **The gallery's trash** said "removed for good in 28 days". Nothing is ever deleted (v4.5), and the line now says so.
+- **A schedule save on prod** skipped the typed `prod` as a "reversible action". It is a plan like a settings change
+  and keeps the typed confirmation (the v5 invariant); only moving to the trash and restoring use the window's simpler
+  confirmations.
+- **A fact correction in the audit** was drawn with the source `window`. The window doesn't edit facts; the panel does
+  (v5.8), so its source is `panel`.
 
-**Still to handle when implementing:**
+**Still to handle when implementing** (now in the ROADMAP's v5 phases):
 - **Nothing loads from the network.** The prototype loads Inter from Google Fonts and the Phosphor icon font from
   unpkg. The panel inlines the icons as SVG and uses the system font stack (it has Cyrillic) unless the owner wants
   Inter, in which case its font files ship in `admin/static/`.

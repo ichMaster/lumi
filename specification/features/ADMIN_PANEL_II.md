@@ -100,7 +100,8 @@ redesign.
    `X-Lumi-Client` (the events it causes carry that id): the window sends `desktop-<hex>`, the TUI client a bare hex
    id. v5.1 gives the TUI client and the CLI the prefixes `tui-` and `cli-`, and the server records the prefix as the
    turn's channel (`desktop-` → `window`); a missing or unprefixed id is `api`. Telegram turns are `telegram`, the
-   room's are `agora`. No new header, and no existing route changes.
+   room's are `agora`. No new header, and no existing route changes. The channel is written on the ledgers and on the
+   message itself (`Message.channel`, additive; older messages have none), so the history can show and filter it.
 
 ## v5.1 — the records and the shell
 
@@ -164,8 +165,27 @@ audio minute, Gemini image per picture, the grounded search per request. A unit 
 
 ### The shell
 
-The design's page frame lands in v5.1: the two areas, the agent picker (one agent today), the instance switcher, the
-attention strip, and the registry's `agents` map with the agent-keyed API. Every later phase fills a view in it.
+The design's page frame ([design/v5/handoff/](../../design/v5/handoff/README.md)) lands in v5.1, and every
+v2.10–v2.11 view moves into it, so nothing is lost on the way:
+
+- **The page:** `admin/static/` rebuilt on the handoff's tokens (`nocturne.css`, `tokens.css` with the light theme)
+  and strings (`strings.json`); no framework, no bundler; the icons inlined as SVG; nothing loaded from the network;
+  every data string set with `textContent`.
+- **The frame:** the attention strip, the rail (the two areas, their groups and badges, the agent picker with the
+  reserved slot for a second agent), the header (the crumb, the updated time, the instance switcher with each
+  instance's version, the theme toggle) and prod's red edge on every view that follows the switcher.
+- **The shared pieces:** the sign-in; the loading, empty and "can't reach {instance}'s server" states (with the time of
+  the last answer and the next retry); the confirmation dialog (a diff; the typed `prod`); the toast; the keyboard
+  (P / D the instance, J / K the view, Esc); the view, instance and theme in `localStorage`; deep links in the URL
+  hash.
+- **The views carried over:** Settings, Secrets, Config history and Promote restyled as the design draws them; Health,
+  Containers, Logs, the audit and the schedule and models YAML keep today's content in the new frame until their
+  phases.
+- **A first Overview** from what exists: the instance cards (today's checks and containers), the month's cost, the
+  agent's card with its cost per instance. v5.2 adds the box and the incidents, v5.3 the alerts, v5.2–v5.4 the last
+  24 hours, v5.7 her mood and last reply. The attention strip shows the red and amber checks first, then the open
+  incidents (v5.2) and the firing alerts (v5.3).
+- The registry's `agents` map with the agent-keyed API. Every later phase fills a view in the frame.
 
 ## v5.2 — the health history and the containers
 
@@ -175,6 +195,8 @@ attention strip, and the registry's `agents` map with the agent-keyed API. Every
 - **Incidents:** an incident opens at the first red check of an instance and closes when none is red. It records
   when, how long, which checks, the first red detail, and the container events inside it (a restart, an OOM kill).
   `incidents.jsonl`, kept 400 days. The alerts of v5.3 point at it.
+- **The box:** the kernel, the cores, the uptime, the load, the memory, the disk and the running containers, read from
+  the host (`/proc`, `statvfs`, the Docker API with GET), kept as the containers' figures are.
 - **The containers:** the six instance containers (prod and dev: `server`, `telegram-inbound`, `telegram-outbound`)
   and `lumi-admin` itself. Each minute the runner reads, with GET requests to the Docker API only: the state, the
   health status, the start time, the restart count, the last exit code and `OOMKilled` (inspect), the image tag, and
@@ -213,6 +235,10 @@ attention strip, and the registry's `agents` map with the agent-keyed API. Every
   **mute** turns a rule off. Each is in the audit.
 - **The alert history:** every message sent or held (rate limit, quiet hours, snooze), its rule, its incident, its
   acknowledgement. 400 days.
+- **From the design:** a rule's scope may be the box; the rule editor shows a **back-test** (how many times the rule
+  would have fired in the last 7 days, from the stored history; nothing is sent); the messages held in a rule's quiet
+  hours go out **as one message when they end**; the alerts of one incident are **grouped** into one message; a log
+  line has a deep link.
 
 ## v5.4 — the audit
 
@@ -241,13 +267,17 @@ One stream, `~/lumi/admin/audit.jsonl`, with a `source` on every entry, and the 
   (the log line of that firing), and the next firings (`core.schedule.next_due` with the quiet hours). The form: the
   directive from her registry, the trigger kind (`every`, `idle`, `at` + `days`, `between` + `every`, `cron`) with
   that kind's fields, the topic (the placeholders listed), `show`, `enabled`, validated by the core's own parser, the
-  next five firings previewed. The scheduler's settings beside it. A save is a v2.11 plan. Reset a row to the
+  next five firings previewed live. The form offers `every` (with its optional `between` window), `idle` and `at` (with
+  the days); `cron` is edited in "Advanced". Each row shows its **missed** firings: the due times since its last
+  firing, outside the quiet hours, that did not fire. The scheduler's settings beside it, the ones that exist (on /
+  off, `thoughts.quiet_hours`, `scheduler.day_cap`, `thoughts.spoken_ratio`), and the next firings across all rows. A save is a v2.11 plan. Reset a row to the
   authored one; copy a row from dev to prod. The YAML editor stays as "Advanced".
 - **The models.** Each role and the provider and model it runs **now** (`GET /v1/models`, owner only, read-only),
   beside what the settings say; a runtime `/model-set` or `/model` switch shows as a difference until the restart. The
   roles: reply, think, mood, housekeeping, the voice register, the tool step, the room (`agora.model`), the web lookup,
   the pictures, the embeddings, the voice (ElevenLabs model), the recognition (STT provider and model). The profiles
-  and aliases (`core/models.yaml` + the instance's `models:` section); a provider without a key can't be chosen.
+  and aliases (`core/models.yaml` + the instance's `models:` section), each profile a card; a provider without a key
+  can't be chosen; a role's options show each model's price from `core/pricing.yaml`.
   **Save** writes the setting as a plan (persisted, prod's confirmation, the restart); **now, until the restart**
   uses the existing commands through `POST /v1/command` for the roles they cover. Every switch is audited.
 
@@ -268,38 +298,48 @@ One stream, `~/lumi/admin/audit.jsonl`, with a `source` on every entry, and the 
   prod. A changed canon or inner voice moves the cached prompt prefix: the next turn writes the cache once.
 - **Drift:** a copy remembers the hash of the release file it was made from. When a new release changes that file, the
   panel marks the copy and shows both differences (the release's change, the copy's change); "download as a patch"
-  lets the change go into the repo.
+  lets the change go into the repo. The owner resolves it: **take the release** (the copy reset), **keep mine** (the
+  copy now remembers the new release's file) or **merge by hand** beside both differences; each is audited.
+- **The check line** names the loader's check, the sections, any unknown placeholder (the placeholder resolver's
+  names) and the encoding.
 - **The prompt:** `GET /v1/prompt` returns what the `/prompt` command shows (owner only, read-only, never the turn
   lock, no model call, bounded): the last turn's system prompt with the cache split marked, its sections with their
-  sizes, the messages, and that turn's token counts. The panel shows it with **copy** buttons (the whole prompt; the
+  sizes, the messages, and that turn's token counts, time, channel and model (the panel prices the counts). The panel shows it with **copy** buttons (the whole prompt; the
   system part only). The panel is plain http on the LAN, so the page has no secure context and no clipboard API: it
   copies through a selected text area.
 
 ## v5.7–v5.10 — Лілі in the panel
 
-- **State (v5.7)** shows what the window's State view (v4.4) shows: the mood of the day and its resolution, the
-  biorhythms and the hormonal cycle, the theme of the day, the closeness level, the last reply's emotion and
-  intensity (the emoji and the caption). The needs and the plans appear once v6.5–v6.8 build them; until then each
+- **State (v5.7)** shows what the window's State view (v4.4) shows: the mood of the day, its resolution, reading and
+  made-at time, the biorhythms and the hormonal cycle, the theme of the day (its English name and scene), the
+  closeness level (its English name), and the last reply's emotion and intensity (her emoji and the caption) with the
+  owner's line it answered and its channel. The needs and the plans appear once v6.5–v6.8 build them; until then each
   shows the window's "Arrives in a later version". The portrait stays in the window: the face pack lives beside the client, and no face
   asset crosses the network (the v2.12 rule).
 - **History (v5.7):** a new server route, `GET /v1/history`, owner only (the room's token 403), read-only,
-  user-scoped, bounded (a page of at most 100 messages, a cursor, a day, a text search over the last 90 days), never
-  the turn lock. Each message: who, when, the text, the emotion and intensity, the conversation move (v1.1), the
-  channel (a new additive field on `Message`, written from the client id's prefix and by the Telegram inbox; older
-  messages have none), and for her replies the turn's tools from `tools.jsonl`. Her hidden reasoning is not there (it is never
+  user-scoped, bounded (a page of at most 100 messages, a cursor, a day, a channel filter, a case-insensitive text
+  search over the last 30 days or, on request, all time), never the turn lock. Each message: who, when, the text, the emotion and intensity, the conversation move (v1.1), the
+  channel (`Message.channel`, v5.1; older messages have none), her pictures (v4.2), and for her replies the turn's
+  tools from `tools.jsonl` with their outcome, input line and duration. Her hidden reasoning is not there (it is never
   persisted, v2.6). The room's lines are not there (they are the space's, v3).
 - **Memory (v5.8):**
   - **The summaries**, `GET /v1/summaries`: the in-session compaction digests (`SessionDigest`), each session's
     summary and gist (`ShortSummary`), the day digests (`DaySummary`), the week digests (`WeekSummary`) and the facts
     digest (`FactsDigest`), by tier and time; the room's digests (v3.2) as a separate, labelled filter. Each entry says
-    what it covers and when it was written. Read-only.
+    what it covers and when it was written; a `ShortSummary` keeps neither, so a session's first and last message
+    time and their count come from its messages. Read-only.
   - **The facts about the owner**, `GET /v1/facts`: the text, the confidence, the source line, when, the
     identity-core mark, obsolete or not. **Edits** through new owner routes: add, correct (the text, the confidence),
     mark obsolete, restore, pin or unpin in the identity core. **Non-destructive:** a correction marks the old row
-    obsolete and adds the new one; nothing is deleted (the `review-facts` skill's rule). The facts digest is marked
+    obsolete and adds the new one; nothing is deleted (the `review-facts` skill's rule). The old row's new
+    `replaced_by` (additive) names the new text, shown as "corrected <date> → «…»". A fact is addressed by its text,
+    as the store does today; its source line is its stored `meta`. The facts digest is marked
     stale and the fact's recall vector replaced. The edit takes the turn lock briefly; a running turn answers 409.
     Logged in the server's `actions.jsonl` (`origin: admin`) and in the panel's audit with the old and the new text.
-- **Thoughts, Gallery, Journal, Files (v5.9)** are the window's v4.1–v4.3 views over the same routes. The markdown
+- **Thoughts, Gallery, Journal, Files (v5.9)** are the window's v4.1–v4.3 views over the same routes, drawn as the
+  design draws them. A thought's origin line is its `seeds` (the schedule row is not recorded). A picture's model and
+  where it was shown are joined from the v5.1 ledgers (an `image` row, a `send_image` row) for the pictures made
+  since; the gallery's Trash lists the pictures in `.trash/` that the actions log knows. The markdown
   reader shares the window's safe renderer (`desktop/ui/`), never `innerHTML`; the gallery's thumbnails come from
   `/v1/images/thumb` through the panel.
 - **Edits of her files (v5.10)** are the v4.5 actions: upload (create-only, capped), download, rename, move to
@@ -353,6 +393,10 @@ The instance switcher stays at the top; prod is red everywhere it appears. The a
    too, so a later run of it may unpin a fact the owner pinned, unless pins made in the panel are kept by it.
 8. **Retention:** usage and tool rollups 400 days, the health hourly rollup and container figures 90 days,
    incidents and alert history 400 days, the audit 12 × 2 MB. Proposed.
+9. **The look** (v5.1): the design uses the Nocturne system (radii of 4–8 px, Inter, fading rules), not the window's
+   flat v2.12 style. Kept as designed unless the owner chooses the window's style; that is a change of the tokens.
+10. **The font** (v5.1): nothing loads from the network, so either the system font stack (proposed; it has Cyrillic)
+    or Inter's files shipped in `admin/static/`.
 
 ## Not here
 

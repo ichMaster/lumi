@@ -126,7 +126,8 @@ Target screen: 1440×900. It must work in a narrower window too; a ~390px phone 
   - Optional diff block: mono 12px rows `key  ~~old~~ → new`, old in `--bad` struck through, new in `--ok`.
   - For prod: a field "Type **prod** to confirm" with a red-tinted border.
   - Actions: Cancel (with an "Esc" hint) and a confirm button. The confirm button is outlined red for prod and accent for dev, and stays disabled until the user types `prod`.
-  - Reversible actions (move to trash, schedule save) skip the typed step: `typed:false` in the prototype.
+  - Moving to the trash and restoring skip the typed step (the window's confirmations): `typed:false` in the prototype.
+    A schedule save on prod is a plan like a settings change and keeps the typed `prod` (corrected after the export).
 - **Toast:** fixed bottom-right, `--color-surface`, `--shadow-md`, radius 8px. A filled check-circle in `--ok`, the message, and an × button. Auto-hides after 4.2 s.
 - **Sign-in screen:**
   - A form centred at 380px wide over a faint accent radial glow. The h1 is "Sign in to the panel" at 24px.
